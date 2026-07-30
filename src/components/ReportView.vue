@@ -10,7 +10,7 @@
     <view class="score-row anim-fade-up">
       <view class="score-ring" :style="{ borderColor: scoreColor }">
         <text class="score-num" :style="{ color: scoreColor }">{{ a.score }}</text>
-        <text class="score-label">综合分</text>
+        <text class="score-label">技术面</text>
       </view>
       <view class="score-meta">
         <view class="meta-line">
@@ -74,7 +74,7 @@
     <view class="panel anim-fade-up" :style="{ animationDelay: '120ms' }">
       <view class="panel-title">
         <OutlineIcon type="medal" :size="28" color="var(--primary)" />
-        <text>综合评分依据</text>
+        <text>技术面评分依据</text>
       </view>
       <view class="reason-list">
         <view v-for="(r, i) in a.scoreReasons" :key="i" class="reason">
@@ -82,7 +82,7 @@
           <text class="r-delta" :style="{ color: r.delta > 0 ? 'var(--up)' : 'var(--down)' }">{{ r.delta > 0 ? '+' + r.delta : r.delta }}</text>
         </view>
       </view>
-      <text class="base-note">基准分 50，综合上述多空因子加权得出（范围 5–95）。</text>
+      <text class="base-note">基准分 50，按技术面多空因子加权得出（范围 5–95）；仅反映技术动能，非投资评级。</text>
     </view>
 
     <!-- 分析结论 -->
@@ -126,7 +126,7 @@
       </view>
       <view class="lv">
         <text class="lv-k">建议买入区间</text>
-        <text class="lv-v">{{ a.buyLow }} ~ {{ a.buyHigh }}</text>
+        <text class="lv-v">{{ buyText }}</text>
       </view>
       <view class="lv">
         <text class="lv-k">压力位</text>
@@ -274,7 +274,15 @@ const conclusion = computed(() => {
   else if (r.watch) rec = "可纳入自选关注，等待更优介入时点。";
   else rec = "多空信号交织，建议以观望为主，等待方向明朗。";
   parts.push(rec);
+  parts.push("（注：「运行阶段」为技术形态识别，仅描述量价特征，不构成对主力行为的确认；以上仅为技术参考，非投资建议。）");
   return parts.join("");
+});
+
+// 买入区间：价格远离支撑时（analyzer 置 NaN）显示占位，避免给出无意义买点
+const buyText = computed(() => {
+  const r = a.value;
+  if (r.buyLow == null || isNaN(r.buyLow) || isNaN(r.buyHigh)) return "—（远离支撑，按趋势跟踪）";
+  return `${r.buyLow} ~ ${r.buyHigh}`;
 });
 </script>
 

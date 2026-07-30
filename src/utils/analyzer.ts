@@ -103,6 +103,14 @@ function pivots(klines: Kline[], win: number, lookback: number) {
   }
   return { highs, lows };
 }
+// 筹码/成本分布（成交量分布 VP 近似）：
+// 真正的 CYQ 成本分布会把每个交易日的成交量按其 [low, high] 实际区间摊薄，而非压到
+// 收盘价一个点。这里采用标准 Volume-Profile 近似——将每日成交量均匀摊入其高低区间
+// 对应的价格桶，再平滑，得到「在哪些价格堆积了最多筹码」的分布。
+//   · avgCost    = 分布加权均价（近期持仓成本重心，比收盘价均价更贴近真实成本）
+//   · peakPrice  = 分布众数（筹码密集峰 / 主力成本区）
+//   · profitRatio= 成本重心以下成交量占比（近似获利盘比例）
+// 注意：这是基于成交量的近似，未纳入换手率加权的 TOTALV 口径，仅作技术参考。
 function chip(klines: Kline[], winDays: number) {
   const n = Math.min(winDays, klines.length);
   const slice = klines.slice(klines.length - n);
@@ -113,14 +121,18 @@ function chip(klines: Kline[], winDays: number) {
     maxP = Math.max(maxP, k.high);
   });
   if (minP === maxP) maxP = minP + 1;
-  const B = 40;
+  const B = 60; // 桶数，提升价格分辨率
   const step = (maxP - minP) / B;
   const vb = new Array(B).fill(0);
   slice.forEach((k) => {
-    let b = Math.floor((k.close - minP) / step);
-    if (b < 0) b = 0;
-    if (b >= B) b = B - 1;
-    vb[b] += k.vol;
+    // 当日成交量按其 [low, high] 区间均匀摊入对应价格桶（核心修正：不再只压收盘价）
+    let b0 = Math.floor((k.low - minP) / step);
+    let b1 = Math.floor((k.high - minP) / step);
+    b0 = Math.max(0, Math.min(B - 1, b0));
+    b1 = Math.max(0, Math.min(B - 1, b1));
+    if (b1 < b0) b1 = b0;
+    const span = b1 - b0 + 1;
+    for (let b = b0; b <= b1; b++) vb[b] += k.vol / span;
   });
   const sm = vb.slice();
   for (let i = 1; i < B - 1; i++) sm[i] = (vb[i - 1] + vb[i] * 2 + vb[i + 1]) / 4;
@@ -128,12 +140,14 @@ function chip(klines: Kline[], winDays: number) {
   let peak = 0;
   for (let i = 1; i < B; i++) if (sm[i] > sm[peak]) peak = i;
   const peakPrice = minP + (peak + 0.5) * step;
+  // 成本重心 = 分布加权均价（替代原收盘价加权均价）
   let wsum = 0;
   let vsum = 0;
-  slice.forEach((k) => {
-    wsum += k.close * k.vol;
-    vsum += k.vol;
-  });
+  for (let i = 0; i < B; i++) {
+    const p = minP + (i + 0.5) * step;
+    wsum += p * sm[i];
+    vsum += sm[i];
+  }
   const avgCost = vsum ? wsum / vsum : (minP + maxP) / 2;
   const cur = klines[klines.length - 1].close;
   let profitVol = 0;
@@ -224,17 +238,18 @@ export interface AnalysisResult {
   bannerCls: string;
 }
 
-function flowSum(klines: Kline[], flowMap: Record<string, number>, len: number, n: number): FlowSummary {
+// 主力净流入（近 N 个交易日累计）：与图表周期解耦。
+// 旧实现按 K 线索引取日期，周/月/年 K 的 bar 日期与日频资金流 key 不匹配，
+// 会导致非日 K 视图下资金流永远"暂无数据"。现改为直接取 flowMap 中最近的 N 个
+// 交易日（按日期排序），语义恒为「近 5/10/20 日主力净流入」，任何周期都正确。
+function flowSumByDays(flowMap: Record<string, number>, n: number): FlowSummary {
+  const dates = Object.keys(flowMap)
+    .filter((d) => flowMap[d] != null)
+    .sort()
+    .slice(-n);
   let s = 0;
-  let c = 0;
-  for (let i = 0; i < n && len - 1 - i >= 0; i++) {
-    const d = klines[len - 1 - i].date;
-    if (flowMap[d] != null) {
-      s += flowMap[d];
-      c++;
-    }
-  }
-  return { sum: s / 1e8, has: c > 0 };
+  for (const d of dates) s += flowMap[d];
+  return { sum: s / 1e8, has: dates.length > 0 };
 }
 
 export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): AnalysisResult {
@@ -310,9 +325,9 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
   const nearSup = distSup < 0.05;
   const nearRes = distRes < 0.05;
 
-  const f5 = flowSum(klines, flowMap, len, 5);
-  const f10 = flowSum(klines, flowMap, len, 10);
-  const f20 = flowSum(klines, flowMap, len, 20);
+  const f5 = flowSumByDays(flowMap, 5);
+  const f10 = flowSumByDays(flowMap, 10);
+  const f20 = flowSumByDays(flowMap, 20);
 
   const volRatio = vma5[len - 1] && vma20[len - 1] ? (vma5[len - 1] as number) / (vma20[len - 1] as number) : 1;
 
@@ -337,26 +352,28 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
   let stage: string;
   let stageText: string;
   let stageDetail: string;
+  // 注：阶段判断基于价/量/资金的技术形态识别，仅描述「当前形态特征」，
+  // 不确认背后是否存在真实的主力吸筹/派发行为（后者无法仅凭价量序列证明）。
   if (nearTop && (rNow > 72 || f10.sum < 0)) {
     stage = "dist";
-    stageText = "高位派发";
-    stageDetail = "价格接近阶段高位，且RSI偏高/主力资金开始流出，需警惕主力出货。";
+    stageText = "高位滞涨";
+    stageDetail = "价格接近阶段高位，且RSI偏高或近10日主力资金转为净流出，呈现量价背离的滞涨特征，需警惕回调。";
   } else if (nearBottom && f5.sum > 0 && rNow < 55 && volRatio > 0.85) {
     stage = "acc";
-    stageText = "吸筹建仓";
-    stageDetail = "股价处于相对低位、主力资金悄然流入、成交量温和放大，可能是主力吸筹阶段。";
+    stageText = "低位蓄势";
+    stageDetail = "股价处于相对低位、近5日主力资金净流入、成交温和，呈现低位企稳蓄势的技术特征。";
   } else if (trend === "up" && volRatio > 1.1 && f5.sum > 0) {
     stage = "pull";
-    stageText = "拉升阶段";
-    stageDetail = "均线多头排列、放量上涨、主力持续流入，处于拉升阶段，趋势偏强。";
+    stageText = "多头加速";
+    stageDetail = "均线多头排列、放量上行、近5日主力净流入，处于趋势加速段，动能偏强。";
   } else if (trend === "down" && volRatio < 0.95) {
     stage = "wash";
-    stageText = "弱势洗盘";
-    stageDetail = "趋势偏弱、缩量调整，属于阴跌/洗盘格局，建议观望。";
+    stageText = "弱势整理";
+    stageDetail = "趋势偏弱、缩量调整，处于阴跌/弱势整理格局，建议观望等待企稳。";
   } else if (trend === "shake" || trend === "shake_up" || trend === "shake_down") {
     stage = "range";
     stageText = "区间震荡";
-    stageDetail = "多空僵持、方向尚不明朗，建议等待放量突破或跌破再确认。";
+    stageDetail = "多空僵持、方向尚不明朗，建议等待放量突破或跌破关键位后再确认。";
   } else {
     stage = "mid";
     stageText = "趋势运行";
@@ -376,10 +393,15 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
     trend === "up" ? "多头趋势" : trend === "shake_up" ? "震荡偏强" : trend === "shake_down" ? "震荡偏弱" : trend === "down" ? "空头趋势" : "横向整理",
     trendDelta
   );
-  const posDelta = nearBottom ? 12 : nearSup ? 6 : nearRes ? -8 : nearTop ? -15 : 0;
+  // 位置因子：改用「价格相对 20 周期均线的偏离」做均值回归倾斜，
+  // 取代旧逻辑用 120 日极点（nearTop/nearBottom）——后者会让创新高的强势股恒为
+  // nearTop 而被固定扣分，对趋势跟随不公平。偏离 >15% 视为超买回撤风险（轻微扣），
+  // <-15% 视为超卖反弹机会（轻微加），否则中性。
+  const distMa20 = ma20_now ? (price - ma20_now) / ma20_now : 0;
+  const posDelta = distMa20 > 0.15 ? -6 : distMa20 < -0.15 ? 6 : 0;
   score += posDelta;
   addReason(
-    nearTop ? "接近阶段高位" : nearRes ? "接近压力位" : nearSup ? "接近支撑位" : nearBottom ? "接近低位区" : "中位区间",
+    distMa20 > 0.15 ? "偏离均线偏高" : distMa20 < -0.15 ? "偏离均线偏低" : "均线附近",
     posDelta
   );
   const flowDelta = f5.sum > 0 ? 10 : f5.has && f5.sum < 0 ? -10 : 0;
@@ -401,8 +423,13 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
   const add = trend === "up" && Math.abs(price - ma20[len - 1]!) / ma20[len - 1]! < 0.03 && f5.sum > 0 && rNow < 75;
   const reduce = nearTop || rNow > 78 || (price > ma60[len - 1]! * 1.5 && f10.sum < 0);
 
-  const buyLow = +(support * 0.985).toFixed(2);
-  const buyHigh = +Math.max(buyLow + 0.01, Math.min(support * 1.03, resistance)).toFixed(2);
+  // 买入区间仅在价格接近支撑（或距支撑 8% 内）时有意义；远离支撑的上涨趋势中
+  // 给出围绕支撑的买点会误导，故置 NaN，由 UI 显示「—」。
+  const nearBuyZone = nearSup || distSup < 0.08;
+  const buyLow = nearBuyZone ? +(support * 0.985).toFixed(2) : NaN;
+  const buyHigh = nearBuyZone
+    ? +Math.max(buyLow + 0.01, Math.min(support * 1.03, resistance)).toFixed(2)
+    : NaN;
 
   const risks: string[] = [];
   if (nearTop) risks.push(`当前价格接近阶段高位（约 ${topZone.toFixed(2)}），短期回调风险较大。`);
@@ -419,9 +446,9 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
     banner = "⚠️ 近期涨幅较大，已进入高风险区域，注意回调风险。";
     bannerCls = "bad";
   } else if (nearBottom && f5.sum > 0) {
-    banner = "✅ 当前价格接近历史支撑区域，风险较低，可重点关注。";
+    banner = "✅ 当前价格接近阶段支撑区域，风险较低，可重点关注。";
   } else if (trend === "up" && f5.sum > 0) {
-    banner = "🚀 主力资金持续流入，趋势偏强，可逢回调关注。";
+    banner = "🚀 近5日主力资金净流入，趋势偏强，可逢回调关注。";
   } else if (trend === "shake_up") {
     banner = "📈 价格震荡偏强，可逢回调（支撑位附近）关注。";
   } else if (trend === "shake_down") {
