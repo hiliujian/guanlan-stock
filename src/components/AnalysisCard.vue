@@ -25,13 +25,13 @@ withDefaults(
 
 <style scoped>
 .analysis-card {
-  padding: 16rpx 20rpx 18rpx;
+  padding: 12rpx 16rpx 12rpx;
 }
 .ac-head {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  margin-bottom: 10rpx;
+  margin-bottom: 6rpx;
 }
 .ac-title {
   font-size: 30rpx;

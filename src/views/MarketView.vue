@@ -99,32 +99,32 @@
             :key="p"
             :class="['ps', period === p ? 'active' : '']"
             @click="switchPeriod(p)"
-            >{{ periodMeta[p].label }}</text
-          >
+            >{{ periodMeta[p].label }}<view v-if="switching && period === p" class="ps-spin"
+          /></text>
         </view>
 
         <!-- 蜡烛 + 均线 / 分时：主图随周期切换（分时直接画分时走势，不再显示日K） -->
         <AnalysisCard :title="period === 'm' ? '分时走势' : 'K线 / 均线'" icon="bars" :delay="0">
           <template v-if="period === 'm'">
-            <KlineChart v-if="trends.length" :opts="trendOpts" :height="240" />
+            <KlineChart v-if="trends.length" :opts="trendOpts" :height="210" />
             <view v-else class="hint">分时数据暂不可用（不影响其他分析）</view>
           </template>
-          <KlineChart v-else :opts="candleOpts" :height="250" />
+          <KlineChart v-else :opts="candleOpts" :height="220" />
         </AnalysisCard>
 
         <!-- 成交量 + 主力净流入 -->
         <AnalysisCard title="成交量 / 主力净流入" icon="color" :delay="60">
-          <KlineChart :opts="volOpts" :height="170" />
+          <KlineChart :opts="volOpts" :height="150" />
         </AnalysisCard>
 
         <!-- MACD -->
         <AnalysisCard title="MACD" icon="loop" :delay="120">
-          <KlineChart :opts="macdOpts" :height="160" />
+          <KlineChart :opts="macdOpts" :height="140" />
         </AnalysisCard>
 
         <!-- 筹码分布 -->
         <AnalysisCard title="筹码分布" icon="medal" :delay="180">
-          <KlineChart :opts="chipOpts" :height="190" />
+          <KlineChart :opts="chipOpts" :height="170" />
         </AnalysisCard>
 
         <!-- 白话报告 -->
@@ -164,7 +164,7 @@ import {
 } from "@/utils/period";
 import { analyze, computeChip, type AnalysisResult } from "@/utils/analyzer";
 import { buildCandleOpts, buildVolOpts, buildMacdOpts, buildTrendOpts, buildChipOpts } from "@/utils/chart";
-import { addWatch, removeWatch, isWatched, useWatchlist } from "@/store/watchlist";
+import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
 import { useUser } from "@/store/user";
 import { navState } from "@/store/nav";
 
@@ -173,7 +173,8 @@ const periodMeta = PERIODS;
 
 const code = ref("");
 const period = ref<PeriodKey>("d");
-const loading = ref(false);
+const loading = ref(false); // 仅「搜索」动作使用，控制搜索按钮的「搜索中」态
+const switching = ref(false); // 仅「切换周期」使用，避免误占用搜索按钮的加载态
 const name = ref("");
 const secid = ref("");
 const preClose = ref(0);
@@ -204,7 +205,6 @@ function mktLabel(code: string): string {
   return "股票";
 }
 
-const watchState = useWatchlist();
 useUser();
 
 // 头部展示「实时价」（东方财富实时行情），未拿到实时价时回退到分析用的收盘价
@@ -403,10 +403,10 @@ async function run(forceMarket?: Market) {
 }
 
 async function switchPeriod(p: PeriodKey) {
-  if (p === period.value) return;
+  if (p === period.value || switching.value) return;
   period.value = p;
   if (!secid.value) return;
-  loading.value = true;
+  switching.value = true;
   try {
     const q = await fetchQuote(secid.value, p);
     klines.value = q.klines;
@@ -424,7 +424,7 @@ async function switchPeriod(p: PeriodKey) {
   } catch (e: any) {
     uni.showToast({ title: e?.message || "切换失败", icon: "none" });
   } finally {
-    loading.value = false;
+    switching.value = false;
   }
 }
 
@@ -556,7 +556,7 @@ onUnmounted(() => {
   box-shadow: 0 6rpx 16rpx rgba(0, 0, 0, 0.05);
 }
 .mk-body {
-  padding: 18rpx 18rpx 0;
+  padding: 14rpx 14rpx 0;
 }
 /* 品牌标识：APP 统一名称「观澜」，置于行情首页顶部 */
 .brand-bar {
@@ -775,8 +775,8 @@ onUnmounted(() => {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   /* 右侧预留更大星标空间，避免价格与星标重叠 */
-  padding: 18rpx 100rpx 18rpx 22rpx;
-  margin-bottom: 14rpx;
+  padding: 14rpx 96rpx 14rpx 18rpx;
+  margin-bottom: 12rpx;
 }
 .qh-name {
   font-size: 34rpx;
@@ -803,12 +803,13 @@ onUnmounted(() => {
   background: var(--card-2);
   border: 1rpx solid var(--border);
 }
-/* 自选星标：名称卡片右上角，纯图标、无背景色块；
+/* 自选星标：相对卡片垂直居中（右侧），纯图标、无背景色块；
    加入自选时仅改变星星图标颜色（灰 -> 绿），不渲染背景 */
 .qh-star {
   position: absolute;
-  top: 14rpx;
+  top: 50%;
   right: 16rpx;
+  transform: translateY(-50%);
   width: 64rpx;
   height: 64rpx;
   display: flex;
@@ -819,7 +820,7 @@ onUnmounted(() => {
   transition: transform 0.12s ease;
 }
 .qh-star:active {
-  transform: scale(0.9);
+  transform: translateY(-50%) scale(0.9);
 }
 .qh-right {
   text-align: right;
@@ -842,7 +843,7 @@ onUnmounted(() => {
   background: var(--card);
   border-radius: 999rpx;
   padding: 6rpx;
-  margin-bottom: 14rpx;
+  margin-bottom: 10rpx;
   box-shadow: var(--shadow);
 }
 .ps {
@@ -858,6 +859,20 @@ onUnmounted(() => {
   background: var(--primary);
   color: #fff;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+}
+/* 周期切换时的小转圈，仅在当前激活标签上显示，不占用搜索按钮的加载态 */
+.ps-spin {
+  width: 22rpx;
+  height: 22rpx;
+  border: 3rpx solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex: none;
 }
 
 .btn-primary {
@@ -871,16 +886,6 @@ onUnmounted(() => {
    表现为「背景超出圆角」。统一去掉，保证按钮是干净的胶囊形。 */
 .btn-primary::after {
   border: none;
-}
-.btn-t {
-  color: #fff;
-}
-.is-added {
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
-}
-.is-added .btn-t {
-  color: var(--text-2);
 }
 .bottom-pad {
   /* 留出底部导航栏高度，避免末尾内容被 tab 栏遮挡 */
@@ -899,7 +904,7 @@ onUnmounted(() => {
   text-align: center;
 }
 .hint {
-  padding: 40rpx 0;
+  padding: 28rpx 0;
   text-align: center;
   font-size: 24rpx;
   color: var(--text-3);

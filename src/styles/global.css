@@ -21,7 +21,7 @@ body {
   --radius-sm: 12rpx;
   --shadow: 0 6rpx 24rpx rgba(20, 24, 40, 0.06);
   --shadow-up: 0 8rpx 28rpx rgba(7, 193, 96, 0.18);
-  --gap: 24rpx;
+  --gap: 16rpx;
 
   background: var(--bg);
   color: var(--text);

@@ -151,7 +151,7 @@ async function remove(it: WatchItem) {
   height: 100%;
 }
 .wl {
-  padding: 18rpx 18rpx 0;
+  padding: 14rpx 14rpx 0;
 }
 .wl-head {
   display: flex;
@@ -190,8 +190,8 @@ async function remove(it: WatchItem) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14rpx;
-  padding: 22rpx 24rpx;
+  margin-bottom: 10rpx;
+  padding: 16rpx 18rpx;
   transition: transform 0.15s ease, box-shadow 0.2s ease;
 }
 .wl-item:active {
