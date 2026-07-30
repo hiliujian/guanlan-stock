@@ -573,7 +573,7 @@ onUnmounted(() => {
   box-shadow: 0 6rpx 16rpx rgba(0, 0, 0, 0.05);
 }
 .mk-body {
-  padding: 0 18rpx;
+  padding: 18rpx 18rpx 0;
 }
 /* 品牌标识：APP 统一名称「观澜」，置于行情首页顶部 */
 .brand-bar {
@@ -634,7 +634,7 @@ onUnmounted(() => {
 .search-bar {
   position: relative;
   z-index: 20;
-  margin-bottom: 18rpx;
+  margin-bottom: 0;
 }
 /* 搜索单元：搜索框 + 联想面板 共用同一张卡片，向下展开即「融为一体」 */
 .search-unit {

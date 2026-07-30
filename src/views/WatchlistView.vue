@@ -7,7 +7,7 @@
       </view>
 
       <view v-if="!list.length" class="empty anim-fade-up">
-        <OutlineIcon type="star" :size="64" color="var(--border)" />
+        <OutlineIcon type="bars" :size="64" color="var(--border)" />
         <text class="empty-t">还没有自选股</text>
         <text class="empty-s">在「行情」页分析后点击「加入自选」即可同步到这里</text>
       </view>
@@ -18,30 +18,26 @@
         class="wl-item card anim-rise"
         :style="{ animationDelay: i * 50 + 'ms' }"
         @click="$emit('open-market', { code: row.it.code, market: row.it.market })"
+        @longpress="remove(row.it)"
       >
-        <OutlineIcon
-          type="star-filled"
-          :size="44"
-          color="var(--up)"
-          class="wl-star"
-          @click.stop="remove(row.it)"
-        />
         <view class="wl-main">
           <view class="wl-top">
             <text class="wl-name">{{ row.it.name || row.it.code }}</text>
             <view class="mkt-tag">{{ row.mkt }}</view>
-            <text class="wl-code">{{ row.it.code }}</text>
           </view>
-          <view class="wl-price-row">
-            <text class="wl-price" :style="{ color: priceColor(row.q) }">
-              {{ row.q.loading ? "--" : fmtPrice(row.q.price) }}
-            </text>
-            <text class="wl-pct" :style="{ color: pctColor(row.q) }">
-              {{ row.q.loading ? "--" : fmtPct(row.q.pct) }}
-            </text>
-          </view>
+          <text class="wl-code">{{ row.it.code }}</text>
+        </view>
+        <view class="wl-right">
+          <text class="wl-price" :style="{ color: priceColor(row.q) }">
+            {{ row.q.loading ? "--" : fmtPrice(row.q.price) }}
+          </text>
+          <text class="wl-pct" :style="{ color: pctColor(row.q) }">
+            {{ row.q.loading ? "--" : fmtPct(row.q.pct) }}
+          </text>
         </view>
       </view>
+
+      <text v-if="list.length" class="wl-hint">长按条目可移除自选</text>
 
       <view class="risk-note">
         <OutlineIcon type="info" :size="22" color="var(--text-3)" />
@@ -195,7 +191,7 @@ async function remove(it: WatchItem) {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 14rpx;
-  padding: 20rpx 22rpx;
+  padding: 22rpx 24rpx;
   transition: transform 0.15s ease, box-shadow 0.2s ease;
 }
 .wl-item:active {
@@ -214,21 +210,16 @@ async function remove(it: WatchItem) {
 .wl-name {
   font-size: 30rpx;
   font-weight: 600;
-  max-width: 300rpx;
+  max-width: 320rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .wl-code {
+  display: block;
   font-size: 22rpx;
   color: var(--text-3);
-  flex: none;
-}
-/* 左侧星标：点击取消自选（带确认弹窗） */
-.wl-star {
-  flex: none;
-  align-self: center;
-  margin-right: 8rpx;
+  margin-top: 6rpx;
 }
 /* 市场标识：中性灰色小标签（沪 / 深 / 港 / 北），经典简洁 */
 .mkt-tag {
@@ -241,14 +232,17 @@ async function remove(it: WatchItem) {
   background: var(--card-2);
   border: 1rpx solid var(--border);
 }
-.wl-price-row {
+/* 右侧：现价 + 涨跌幅，右对齐成列 */
+.wl-right {
+  flex: none;
   display: flex;
-  align-items: baseline;
-  gap: 14rpx;
-  margin-top: 6rpx;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6rpx;
+  text-align: right;
 }
 .wl-price {
-  font-size: 30rpx;
+  font-size: 32rpx;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -256,6 +250,13 @@ async function remove(it: WatchItem) {
   font-size: 24rpx;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+/* 长按删除的轻提示 */
+.wl-hint {
+  display: block;
+  font-size: 22rpx;
+  color: var(--text-3);
+  padding: 4rpx 8rpx 0;
 }
 .bottom-pad {
   /* 留出底部导航栏高度，避免末尾内容被 tab 栏遮挡 */
