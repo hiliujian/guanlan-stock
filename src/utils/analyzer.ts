@@ -103,6 +103,81 @@ function pivots(klines: Kline[], win: number, lookback: number) {
   }
   return { highs, lows };
 }
+// Wilder 平滑 (RMA)：前 n 项用 SMA 初始化，之后递推。ATR/ADX 的标准算法（与 RSI 同源）。
+function rma(arr: number[], n: number): number[] {
+  const r = new Array(arr.length).fill(null);
+  let prev = 0;
+  for (let i = 0; i < arr.length; i++) {
+    if (i < n) prev = (prev * i + arr[i]) / (i + 1);
+    else prev = (prev * (n - 1) + arr[i]) / n;
+    r[i] = prev;
+  }
+  return r;
+}
+
+// DMI / ADX（Wilder，默认 14）—— 趋势方向与强度的业界标准度量
+//   · +DI / -DI ：多空方向力度
+//   · ADX       ：趋势强度（与方向无关）：<20 无趋势/震荡，20-25 初现，25-40 明显，>40 强趋势
+//   · ATR       ：平均真实波幅（波动率与止损位基准）
+// 说明：用 RMA 递推，符合 Wilder 原始定义。
+function dmi(high: number[], low: number[], close: number[], n = 14) {
+  const len = close.length;
+  const tr = new Array(len).fill(0);
+  const pDM = new Array(len).fill(0);
+  const mDM = new Array(len).fill(0);
+  for (let i = 1; i < len; i++) {
+    const hl = high[i] - low[i];
+    const hc = Math.abs(high[i] - close[i - 1]);
+    const lc = Math.abs(low[i] - close[i - 1]);
+    tr[i] = Math.max(hl, hc, lc);
+    const up = high[i] - high[i - 1];
+    const dn = low[i - 1] - low[i];
+    pDM[i] = up > dn && up > 0 ? up : 0;
+    mDM[i] = dn > up && dn > 0 ? dn : 0;
+  }
+  const atrR = rma(tr, n);
+  const pDIR = rma(pDM, n);
+  const mDIR = rma(mDM, n);
+  const pDI = new Array(len).fill(0);
+  const mDI = new Array(len).fill(0);
+  const dx = new Array(len).fill(0);
+  for (let i = 0; i < len; i++) {
+    const a = atrR[i] || 0;
+    pDI[i] = a ? (100 * pDIR[i]) / a : 0;
+    mDI[i] = a ? (100 * mDIR[i]) / a : 0;
+    const sum = pDI[i] + mDI[i];
+    dx[i] = sum ? (100 * Math.abs(pDI[i] - mDI[i])) / sum : 0;
+  }
+  const adx = rma(dx, n);
+  return { atr: atrR, pDI, mDI, adx };
+}
+
+// 布林带（BOLL，20,2）—— 波动率通道
+//   · 中轨 = MA20；上/下轨 = 中轨 ± 2σ
+//   · %B   = (收盘-下轨)/(上-下)，>1 触上轨(超买)，<0 触下轨(超卖)，0.5 在中轨
+//   · 带宽 = (上-下)/中轨，骤降为「挤压(squeeze)」预示变盘；骤升为波动扩张
+function boll(close: number[], n = 20, k = 2) {
+  const mid = ma(close, n);
+  const upper: (number | null)[] = new Array(close.length).fill(null);
+  const lower: (number | null)[] = new Array(close.length).fill(null);
+  const pctB: (number | null)[] = new Array(close.length).fill(null);
+  const bandwidth: (number | null)[] = new Array(close.length).fill(null);
+  for (let i = n - 1; i < close.length; i++) {
+    const m = mid[i]!;
+    let s = 0;
+    for (let j = i - n + 1; j <= i; j++) s += (close[j] - m) * (close[j] - m);
+    const sd = Math.sqrt(s / n);
+    const up = m + k * sd;
+    const lo = m - k * sd;
+    upper[i] = up;
+    lower[i] = lo;
+    const rng = up - lo;
+    pctB[i] = rng ? (close[i] - lo) / rng : 0.5;
+    bandwidth[i] = m ? rng / m : 0;
+  }
+  return { mid, upper, lower, pctB, bandwidth };
+}
+
 // 筹码/成本分布（成交量分布 VP 近似）：
 // 真正的 CYQ 成本分布会把每个交易日的成交量按其 [low, high] 实际区间摊薄，而非压到
 // 收盘价一个点。这里采用标准 Volume-Profile 近似——将每日成交量均匀摊入其高低区间
@@ -236,6 +311,26 @@ export interface AnalysisResult {
   risks: string[];
   banner: string;
   bannerCls: string;
+  // ---- 专业指标（新增，提升研判严谨度）----
+  adx: number[];
+  pDI: number[];
+  mDI: number[];
+  atr: number[];
+  adxState: string;
+  bollMid: (number | null)[];
+  bollUpper: (number | null)[];
+  bollLower: (number | null)[];
+  bollPctB: (number | null)[];
+  bollBw: (number | null)[];
+  bias6: number;
+  bias12: number;
+  bias24: number;
+  volAnn: number;
+  maxDrawdown: number;
+  atrPct: number;
+  obvTrend: string;
+  turnAvg: number;
+  turnState: string;
 }
 
 // 主力净流入（近 N 个交易日累计）：与图表周期解耦。
@@ -270,6 +365,61 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
   const last = klines[len - 1];
   const price = last.close;
 
+  // ---------------- 专业指标：趋势强度 / 波动率 / 风险 / 量能 ----------------
+  const high = klines.map((k) => k.high);
+  const low = klines.map((k) => k.low);
+  const { atr, pDI, mDI, adx } = dmi(high, low, close, 14);
+  const bo = boll(close, 20, 2);
+  const m6 = ma(close, 6);
+  const m12 = ma(close, 12);
+  const m24 = ma(close, 24);
+  const bias6 = ((price - (m6[len - 1] || price)) / (m6[len - 1] || price)) * 100;
+  const bias12 = ((price - (m12[len - 1] || price)) / (m12[len - 1] || price)) * 100;
+  const bias24 = ((price - (m24[len - 1] || price)) / (m24[len - 1] || price)) * 100;
+  // 年化波动率（近 120 日对数/简单收益 std × √252）
+  const win = klines.slice(Math.max(0, len - 120));
+  const rets: number[] = [];
+  for (let i = 1; i < win.length; i++) rets.push(win[i].close / win[i - 1].close - 1);
+  const mr = rets.reduce((a, b) => a + b, 0) / (rets.length || 1);
+  const varr = rets.reduce((a, b) => a + (b - mr) * (b - mr), 0) / (rets.length || 1);
+  const volAnn = Math.sqrt(varr) * Math.sqrt(252);
+  // 最大回撤（近 120 日）
+  let peak = -Infinity;
+  let mdd = 0;
+  const mddStart = Math.max(0, len - 120);
+  for (let i = mddStart; i < len; i++) {
+    peak = Math.max(peak, close[i]);
+    if (peak > 0) mdd = Math.max(mdd, (peak - close[i]) / peak);
+  }
+  const atrPct = price ? (atr[len - 1] / price) * 100 : 0;
+  // OBV 能量潮 + 20 日均线：量能趋势与背离确认
+  const obvArr = new Array(len).fill(0);
+  for (let i = 1; i < len; i++) {
+    if (close[i] > close[i - 1]) obvArr[i] = obvArr[i - 1] + vol[i];
+    else if (close[i] < close[i - 1]) obvArr[i] = obvArr[i - 1] - vol[i];
+    else obvArr[i] = obvArr[i - 1];
+  }
+  const obvMa = ma(obvArr, 20);
+  const obvUp = obvArr[len - 1] > (obvMa[len - 1] || obvArr[len - 1]);
+  // 近 20 日平均换手率（A 股特有，反映活跃度 / 筹码松动）+ 相对 60 日状态
+  const turnWin = klines.slice(Math.max(0, len - 20));
+  const turnAvg = turnWin.reduce((a, k) => a + (k.turnover || 0), 0) / (turnWin.length || 1);
+  const turn60 = klines.slice(Math.max(0, len - 60)).reduce((a, k) => a + (k.turnover || 0), 0) / Math.min(60, len);
+  let turnState = "正常";
+  if (turn60 > 0 && turnAvg > turn60 * 1.8) turnState = "显著放量换手";
+  else if (turn60 > 0 && turnAvg < turn60 * 0.6) turnState = "交投清淡";
+  const obvTrend = obvUp ? "量能配合(OBV多头)" : "量能背离(OBV空头)";
+
+  // ADX 趋势强度分级（业界通用阈值）
+  const adxNow = adx[len - 1];
+  const pdiNow = pDI[len - 1];
+  const mdiNow = mDI[len - 1];
+  let adxState = "";
+  if (adxNow < 20) adxState = "无趋势";
+  else if (adxNow < 25) adxState = "趋势初现";
+  else if (adxNow < 40) adxState = "明显趋势";
+  else adxState = "强趋势";
+
   const ma20_now = ma20[len - 1] as number;
   const ma20_prev = (ma20[len - 20] as number) || ma20_now;
   const slope = (ma20_now - ma20_prev) / ma20_prev;
@@ -286,26 +436,22 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
   let trend: string;
   let trendText: string;
   let strength: string;
-  if (upCount >= 2 && slope > 0.01) {
-    trend = "up";
-    trendText = "上涨趋势";
-    strength = upCount === 3 ? "强" : "偏强";
-  } else if (downCount >= 2 && slope < -0.01) {
-    trend = "down";
-    trendText = "下跌趋势";
-    strength = downCount === 3 ? "弱" : "偏弱";
-  } else if (slope > 0.004 || (aboveMa20 && upCount >= 1)) {
-    trend = "shake_up";
-    trendText = "震荡偏强";
-    strength = "中";
-  } else if (slope < -0.004 || (belowMa20 && downCount >= 1)) {
-    trend = "shake_down";
-    trendText = "震荡偏弱";
-    strength = "中";
+  // 趋势判定以 ADX（趋势强度）为准：ADX<20 视为无趋势（震荡，方向仅看短均线斜率），
+  // ADX≥25 视为有效趋势，方向由 +DI/-DI 决定；ADX≥40 为强趋势。
+  if (adxNow < 20) {
+    if (slope > 0.004 || (aboveMa20 && upCount >= 1)) {
+      trend = "shake_up"; trendText = "震荡偏强"; strength = "中";
+    } else if (slope < -0.004 || (belowMa20 && downCount >= 1)) {
+      trend = "shake_down"; trendText = "震荡偏弱"; strength = "中";
+    } else {
+      trend = "shake"; trendText = "震荡整理"; strength = "中";
+    }
+  } else if (pdiNow > mdiNow) {
+    if (adxNow >= 40) { trend = "up"; trendText = "上涨趋势"; strength = "强"; }
+    else { trend = "shake_up"; trendText = "震荡偏强"; strength = "偏强"; }
   } else {
-    trend = "shake";
-    trendText = "震荡整理";
-    strength = "中";
+    if (adxNow >= 40) { trend = "down"; trendText = "下跌趋势"; strength = "弱"; }
+    else { trend = "shake_down"; trendText = "震荡偏弱"; strength = "偏弱"; }
   }
 
   const maState = upCount >= 2 ? "多头排列" : downCount >= 2 ? "空头排列" : "均线纠缠";
@@ -415,8 +561,12 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
   addReason(macdCross === "gold" ? "MACD金叉" : macdCross === "dead" ? "MACD死叉" : "MACD持平", macdDelta);
   score = Math.max(5, Math.min(95, Math.round(score)));
   scoreReasons.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  // 风险等级：综合技术评分、波动率(ATR%)、最大回撤与高位
   let riskLevel = score >= 70 ? "低" : score >= 45 ? "中" : "高";
-  if (nearTop) riskLevel = riskLevel === "低" ? "中" : riskLevel;
+  const elevatedVol = atrPct > 4; // 单日波动幅度偏大
+  const deepDd = mdd > 0.35; // 近 120 日回撤超 35%
+  if (elevatedVol || deepDd || nearTop) riskLevel = riskLevel === "低" ? "中" : riskLevel;
+  if ((elevatedVol && deepDd) || (deepDd && nearTop)) riskLevel = riskLevel === "中" ? "高" : riskLevel;
 
   const watch = !(nearTop && rNow > 75) && trend !== "down";
   const build = (nearBottom || (trend === "up" && price <= ma20[len - 1]! * 1.02)) && rNow < 70 && !nearTop;
@@ -437,6 +587,9 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
   if (macdCross === "dead") risks.push("MACD 近期出现死叉，短线动能转弱。");
   if (nearRes) risks.push(`上方压力位在 ${resistance.toFixed(2)} 附近，若无量能配合可能遇阻。`);
   if (trend === "down") risks.push("均线空头排列，整体处于下跌趋势，抄底需严格控制仓位。");
+  if (Math.abs(bias6) > 10) risks.push(`短期乖离率 BIAS(6) 达 ${bias6.toFixed(1)}%，价格偏离短期均线过远，存在均值回归压力。`);
+  if (elevatedVol) risks.push(`平均真实波幅(ATR)约 ${atrPct.toFixed(1)}%，日内波动偏大，需放宽止损空间。`);
+  if (deepDd) risks.push(`近 120 日最大回撤达 ${(mdd * 100).toFixed(0)}%，历史持股体验波动剧烈。`);
   if (reduce && risks.length === 0) risks.push("综合指标偏谨慎，建议以观望为主。");
   if (risks.length === 0) risks.push("暂无显著风险信号，但仍需关注量能与大盘环境。");
 
@@ -516,6 +669,25 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
     risks,
     banner,
     bannerCls,
+    adx,
+    pDI,
+    mDI,
+    atr,
+    adxState,
+    bollMid: bo.mid,
+    bollUpper: bo.upper,
+    bollLower: bo.lower,
+    bollPctB: bo.pctB,
+    bollBw: bo.bandwidth,
+    bias6,
+    bias12,
+    bias24,
+    volAnn,
+    maxDrawdown: mdd,
+    atrPct,
+    obvTrend,
+    turnAvg,
+    turnState,
   };
 }
 

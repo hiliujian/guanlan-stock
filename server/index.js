@@ -21,6 +21,7 @@ const { execFile } = require("child_process");
 // 静态根目录：按优先级查找已构建产物（h5out > webapp > dist/build/h5）
 function resolveRoot() {
   const dirs = [
+    path.resolve(__dirname, "..", "h5out25"),
     path.resolve(__dirname, "..", "h5out24"),
     path.resolve(__dirname, "..", "h5out23"),
     path.resolve(__dirname, "..", "h5out22"),

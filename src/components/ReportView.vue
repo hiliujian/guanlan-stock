@@ -44,6 +44,10 @@
           <text class="m-v" :style="{ color: maColor }">{{ a.maState }}</text>
         </view>
         <view class="metric">
+          <text class="m-k">ADX 趋势强度</text>
+          <text class="m-v" :style="{ color: adxColor }">{{ adxStateText }}</text>
+        </view>
+        <view class="metric">
           <text class="m-k">MACD</text>
           <text class="m-v" :style="{ color: macdColor }">{{ macdState }}</text>
         </view>
@@ -66,6 +70,44 @@
         <view class="metric">
           <text class="m-k">支撑 / 压力</text>
           <text class="m-v">{{ a.support.toFixed(2) }} / {{ a.resistance.toFixed(2) }}</text>
+        </view>
+        <view class="metric">
+          <text class="m-k">布林 %B</text>
+          <text class="m-v" :style="{ color: bollColor }">{{ bollPctBText }}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 波动 · 风险 · 量能 -->
+    <view class="panel anim-fade-up" :style="{ animationDelay: '90ms' }">
+      <view class="panel-title">
+        <OutlineIcon type="color" :size="28" color="var(--primary)" />
+        <text>波动 · 风险 · 量能</text>
+      </view>
+      <view class="metric-grid">
+        <view class="metric">
+          <text class="m-k">年化波动率</text>
+          <text class="m-v">{{ volAnnText }}</text>
+        </view>
+        <view class="metric">
+          <text class="m-k">最大回撤(120日)</text>
+          <text class="m-v" :style="{ color: mddColor }">{{ mddText }}</text>
+        </view>
+        <view class="metric">
+          <text class="m-k">ATR 波动幅度</text>
+          <text class="m-v">{{ atrPctText }}</text>
+        </view>
+        <view class="metric">
+          <text class="m-k">平均换手率(20日)</text>
+          <text class="m-v">{{ turnText }}</text>
+        </view>
+        <view class="metric">
+          <text class="m-k">OBV 量能趋势</text>
+          <text class="m-v" :style="{ color: obvColor }">{{ a.obvTrend }}</text>
+        </view>
+        <view class="metric">
+          <text class="m-k">乖离率 BIAS(6/12/24)</text>
+          <text class="m-v">{{ biasText }}</text>
         </view>
       </view>
     </view>
@@ -256,13 +298,54 @@ const flowColor = computed(() => {
   return f.sum > 0 ? "var(--up)" : "var(--down)";
 });
 
+// ---------------- 新增专业指标派生 ----------------
+const adxLast = computed(() => {
+  const arr = a.value.adx;
+  return arr[arr.length - 1] || 0;
+});
+const adxStateText = computed(() => `${a.value.adxState} · ${adxLast.value.toFixed(0)}`);
+const adxColor = computed(() => {
+  if (adxLast.value < 20) return "var(--text-2)"; // 无趋势 → 中性
+  const last = a.value.adx.length - 1;
+  return a.value.pDI[last] > a.value.mDI[last] ? "var(--up)" : "var(--down)";
+});
+const bollPctBText = computed(() => {
+  const v = a.value.bollPctB[a.value.bollPctB.length - 1];
+  if (v == null) return "—";
+  if (v > 1) return "触上轨·超买";
+  if (v < 0) return "触下轨·超卖";
+  if (v > 0.8) return "偏上轨";
+  if (v < 0.2) return "偏下轨";
+  return "中轨附近";
+});
+const bollColor = computed(() => {
+  const v = a.value.bollPctB[a.value.bollPctB.length - 1];
+  if (v == null) return "var(--text-2)";
+  return v > 1 || v < 0 ? "var(--up)" : "var(--text-2)";
+});
+const volAnnText = computed(() => (a.value.volAnn * 100).toFixed(1) + "%");
+const mddText = computed(() => (a.value.maxDrawdown * 100).toFixed(1) + "%");
+const mddColor = computed(() =>
+  a.value.maxDrawdown > 0.35 ? "var(--up)" : a.value.maxDrawdown > 0.2 ? "#ff9f1c" : "var(--text-2)"
+);
+const atrPctText = computed(() => a.value.atrPct.toFixed(2) + "%");
+const turnText = computed(() => a.value.turnAvg.toFixed(2) + "% · " + a.value.turnState);
+const obvColor = computed(() =>
+  a.value.obvTrend.indexOf("配合") >= 0 ? "var(--up)" : "var(--down)"
+);
+const biasText = computed(
+  () => `${a.value.bias6.toFixed(1)} / ${a.value.bias12.toFixed(1)} / ${a.value.bias24.toFixed(1)}`
+);
+
 // ---------------- 分析结论（综合合成） ----------------
 const conclusion = computed(() => {
   const r = a.value;
   const parts: string[] = [];
   parts.push(`当前${r.trendText}（${r.strength}），均线${r.maState}，处于「${r.stageText}」阶段。${r.stageDetail}`);
+  const pb = r.bollPctB[r.bollPctB.length - 1];
+  const bollStr = pb == null ? "—" : pb.toFixed(2);
   parts.push(
-    `技术面：MACD${r.macdCross === "gold" ? "金叉" : r.macdCross === "dead" ? "死叉" : "红绿柱交替"}，KDJ${r.kdjCross === "gold" ? "金叉" : r.kdjCross === "dead" ? "死叉" : "纠缠"}且${r.kdjState}，RSI(12)=${r.rNow.toFixed(0)}（${rsiState.value}），量比${r.volRatio.toFixed(2)}（${volState.value}）。`
+    `技术面：MACD${r.macdCross === "gold" ? "金叉" : r.macdCross === "dead" ? "死叉" : "红绿柱交替"}，KDJ${r.kdjCross === "gold" ? "金叉" : r.kdjCross === "dead" ? "死叉" : "纠缠"}且${r.kdjState}，RSI(12)=${r.rNow.toFixed(0)}（${rsiState.value}），量比${r.volRatio.toFixed(2)}（${volState.value}）；趋势强度 ADX(14)=${r.adx[r.adx.length - 1].toFixed(0)}（${r.adxState}），布林%B=${bollStr}，近20日平均换手率${r.turnAvg.toFixed(2)}%（${r.turnState}）。`
   );
   parts.push(
     `关键价位：支撑 ${r.support.toFixed(2)}（距现价 ${(r.distSup * 100).toFixed(1)}%），压力 ${r.resistance.toFixed(2)}（上方空间 ${(r.distRes * 100).toFixed(1)}%）；${flowText.value}。`
