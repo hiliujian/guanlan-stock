@@ -186,14 +186,6 @@ const watched = ref(false);
 const errMsg = ref("");
 const realtime = ref<{ price: number; preClose: number; open?: number; high?: number; low?: number; time?: string } | null>(null);
 
-// 实时刷新指示：最后更新时间（让用户直观看到行情在不断刷新）
-const lastUpdated = ref("");
-function nowHMS(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-}
-
 // 搜索联想
 const suggestions = ref<SearchHit[]>([]);
 const showSuggest = ref(false);
@@ -251,11 +243,10 @@ function updateStatus() {
   status.value = getMarketStatus(curMarket.value);
 }
 
-// 实时刷新指示文案（让用户直观看到行情在持续刷新）
+// 实时状态文案（不再显示具体时间，仅保留交易状态提示）
 const liveText = computed(() => {
   if (refreshing.value) return "刷新中…";
-  if (lastUpdated.value) return "实时 · " + lastUpdated.value;
-  return status.value.open ? "实时行情 · 交易中" : "非交易时段";
+  return status.value.open ? "交易中" : "非交易时段";
 });
 
 // 自动保存 / 恢复「最近查看」的股票（localStorage，冷启动也能恢复，
@@ -301,7 +292,6 @@ async function refreshLight() {
     time: snap.time,
   };
   preClose.value = snap.preClose;
-  lastUpdated.value = nowHMS();
 }
 
 // 全量刷新：重抓 K线/资金流/分时并重新分析（每 ~60s，交易时段）

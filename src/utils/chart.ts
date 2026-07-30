@@ -30,6 +30,163 @@ const ZOOM = [
   { type: "slider", xAxisIndex: 0, bottom: 4, height: 16, start: 55, end: 100 },
 ];
 
+// ---------------- 博主画线 + 预测线（通用计算） ----------------
+const TREND_UP = "#14b8a6"; // 上升趋势线（青）
+const TREND_DOWN = "#f43f5e"; // 下降趋势线（玫红）
+const FIB = "#f59e0b"; // 斐波那契回调（琥珀）
+const PRED = "#db2777"; // 预测线（品红）
+
+interface DrawPoint { x: string; price: number; high: number; low: number; }
+interface DrawResult {
+  trendLine: { dir: "up" | "down"; p1: [string, number]; p2: [string, number] } | null;
+  fib: { label: string; price: number }[];
+  prediction: { dates: string[]; values: number[] } | null;
+}
+
+// 由最近若干根 K 线/分时点，自动识别摆点，输出：
+//  · 趋势线：连接近期两个同向摆点（上升连低点、下降连高点）
+//  · 斐波那契回调：窗口内主要摆动高/低之间的 38.2/50/61.8 位置
+//  · 预测线：对最近 N 根收盘做线性回归，外推未来 M 根（日期/时间向后延伸）
+function calcDraw(points: DrawPoint[], kind: "day" | "intraday"): DrawResult {
+  const n = points.length;
+  if (n < 12) return { trendLine: null, fib: [], prediction: null };
+  const order = kind === "day" ? 4 : 2;
+  const look = kind === "day" ? 140 : n;
+  const start = Math.max(0, n - look);
+  const lows: number[] = [];
+  const highs: number[] = [];
+  for (let i = start + order; i < n - order; i++) {
+    let isH = true;
+    let isL = true;
+    for (let j = i - order; j <= i + order; j++) {
+      if (points[j].high > points[i].high) isH = false;
+      if (points[j].low < points[i].low) isL = false;
+    }
+    if (isH) highs.push(i);
+    if (isL) lows.push(i);
+  }
+  let trendLine: DrawResult["trendLine"] = null;
+  if (lows.length >= 2) {
+    const a = lows[lows.length - 2];
+    const b = lows[lows.length - 1];
+    if (points[b].price >= points[a].price) {
+      trendLine = { dir: "up", p1: [points[a].x, +points[a].low.toFixed(2)], p2: [points[b].x, +points[b].low.toFixed(2)] };
+    }
+  }
+  if (!trendLine && highs.length >= 2) {
+    const a = highs[highs.length - 2];
+    const b = highs[highs.length - 1];
+    if (points[b].price <= points[a].price) {
+      trendLine = { dir: "down", p1: [points[a].x, +points[a].high.toFixed(2)], p2: [points[b].x, +points[b].high.toFixed(2)] };
+    }
+  }
+  let hi = -Infinity;
+  let lo = Infinity;
+  for (let i = start; i < n; i++) {
+    if (points[i].high > hi) hi = points[i].high;
+    if (points[i].low < lo) lo = points[i].low;
+  }
+  const fib: { label: string; price: number }[] = [];
+  const span = hi - lo;
+  if (span > 0) {
+    for (const lv of [0.382, 0.5, 0.618]) {
+      fib.push({ label: "F" + (lv * 100).toFixed(1).replace(/\.0$/, ""), price: +(hi - span * lv).toFixed(2) });
+    }
+  }
+  const Nreg = kind === "day" ? 30 : Math.min(45, n);
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let i = n - Nreg; i < n; i++) {
+    xs.push(i);
+    ys.push(points[i].price);
+  }
+  const mx = xs.reduce((a, b) => a + b, 0) / xs.length;
+  const my = ys.reduce((a, b) => a + b, 0) / ys.length;
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < xs.length; i++) {
+    num += (xs[i] - mx) * (ys[i] - my);
+    den += (xs[i] - mx) * (xs[i] - mx);
+  }
+  const slope = den ? num / den : 0;
+  const intercept = my - slope * mx;
+  const M = kind === "day" ? 12 : 24;
+  const dates: string[] = [];
+  const values: number[] = [];
+  for (let k = 1; k <= M; k++) {
+    const idx = n - 1 + k;
+    const v = intercept + slope * idx;
+    const x = kind === "day" ? genFutureDate(points[n - 1].x, k) : genFutureTime(points[n - 1].x, points, k);
+    dates.push(x);
+    values.push(+v.toFixed(2));
+  }
+  return { trendLine, fib, prediction: { dates, values } };
+}
+
+// 由最后一根 K 线日期向后推算 k 个交易日（跳过周末），返回 YYYY-MM-DD
+function genFutureDate(lastDate: string, k: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(lastDate);
+  let y: number, mo: number, d: number;
+  if (m) {
+    y = +m[1];
+    mo = +m[2];
+    d = +m[3];
+  } else {
+    const mm = /^(\d{2})-(\d{2})$/.exec(lastDate);
+    mo = mm ? +mm[1] : 1;
+    d = mm ? +mm[2] : 1;
+    y = new Date().getFullYear();
+  }
+  const dt = new Date(y, mo - 1, d);
+  let added = 0;
+  while (added < k) {
+    dt.setDate(dt.getDate() + 1);
+    const wd = dt.getDay();
+    if (wd !== 0 && wd !== 6) added++;
+  }
+  const p = (x: number) => String(x).padStart(2, "0");
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+}
+
+// 由最后分时时刻向后推算 k 个交易时刻（按观测间隔，跳过午休 11:30-13:00，上限 15:00）
+function genFutureTime(lastTime: string, points: DrawPoint[], k: number): string {
+  const tm = /^(\d{2}):(\d{2})/.exec(lastTime);
+  if (!tm) return `T+${k}`;
+  let hh = +tm[1];
+  let mm = +tm[2];
+  const n = points.length;
+  const cnt = Math.min(20, n - 1);
+  let tot = 0;
+  let c = 0;
+  for (let i = n - cnt; i < n; i++) {
+    const a = /^(\d{2}):(\d{2})/.exec(points[i - 1].x);
+    const b = /^(\d{2}):(\d{2})/.exec(points[i].x);
+    if (a && b) {
+      const diff = +b[1] * 60 + +b[2] - (+a[1] * 60 + +a[2]);
+      if (diff > 0 && diff < 60) {
+        tot += diff;
+        c++;
+      }
+    }
+  }
+  const step = c ? tot / c : 1;
+  for (let s = 0; s < k; s++) {
+    mm += step;
+    while (mm >= 60) {
+      mm -= 60;
+      hh++;
+    }
+    if (hh === 11 && mm >= 30) {
+      hh = 13;
+      mm = 0;
+    }
+    if (hh >= 15) {
+      return `${String(15).padStart(2, "0")}:${String(0).padStart(2, "0")}`;
+    }
+  }
+  return `${String(hh).padStart(2, "0")}:${String(Math.round(mm)).padStart(2, "0")}`;
+}
+
 // ---------------- 蜡烛 + 均线 + 支撑压力 ----------------
 export function buildCandleOpts(klines: Kline[], A: AnalysisResult): AnyObj {
   const data = tail(klines, 400);
@@ -46,9 +203,52 @@ export function buildCandleOpts(klines: Kline[], A: AnalysisResult): AnyObj {
   const buyHigh = +Math.max(buyLow + 0.01, Math.min(support * 1.03, resistance)).toFixed(2);
   const bottomZone = +A.bottomZone.toFixed(2);
   const topZone = +A.topZone.toFixed(2);
-  // 最新价位置标注：突破/破位/临近压力/临近支撑，让"什么是突破跌破"在图上直接可见
   const lastDate = dates[dates.length - 1];
   const lastClose = close[close.length - 1];
+  // 财经博主常用画线（趋势线 / 斐波那契）+ 预测线：基于近期 K 线形态自动绘制，
+  // 让用户在图上直接看到「支撑趋势线 / 回调位 / 未来预测路径」。
+  const draw = calcDraw(
+    data.map((k) => ({ x: k.date, price: k.close, high: k.high, low: k.low })),
+    "day"
+  );
+  const drawML: AnyObj[] = [];
+  if (draw.trendLine) {
+    const tc = draw.trendLine.dir === "up" ? TREND_UP : TREND_DOWN;
+    drawML.push([
+      {
+        coord: [draw.trendLine.p1[0], draw.trendLine.p1[1]],
+        lineStyle: { color: tc, width: 1.8 },
+        label: { formatter: "趋势线", color: tc, position: "insideStartTop", fontSize: 10 },
+      },
+      { coord: [draw.trendLine.p2[0], draw.trendLine.p2[1]], lineStyle: { color: tc, width: 1.8 } },
+    ]);
+  }
+  for (const f of draw.fib) {
+    drawML.push({
+      yAxis: f.price,
+      lineStyle: { color: FIB, type: "dashed", width: 1, opacity: 0.7 },
+      label: { formatter: f.label + " " + f.price, color: FIB, position: "insideEndBottom", fontSize: 9, opacity: 0.85 },
+    });
+  }
+  let xData = dates;
+  let predSeries: AnyObj | null = null;
+  if (draw.prediction && draw.prediction.dates.length) {
+    xData = dates.concat(draw.prediction.dates);
+    const predData: (number | null)[] = new Array(xData.length).fill(null);
+    predData[dates.length - 1] = +lastClose.toFixed(2);
+    for (let i = 0; i < draw.prediction.values.length; i++) predData[dates.length + i] = draw.prediction.values[i];
+    predSeries = {
+      name: "预测",
+      type: "line",
+      data: predData,
+      showSymbol: false,
+      smooth: false,
+      lineStyle: { width: 1.5, color: PRED, type: "dashed" },
+      itemStyle: { color: PRED },
+      z: 6,
+    };
+  }
+  // 最新价位置标注：突破/破位/临近压力/临近支撑
   let lastMp: AnyObj | null = null;
   if (A.breakout) {
     lastMp = { coord: [lastDate, lastClose], value: "突破", itemStyle: { color: UP }, label: { color: "#fff", fontSize: 11, fontWeight: "bold" } };
@@ -64,7 +264,7 @@ export function buildCandleOpts(klines: Kline[], A: AnalysisResult): AnyObj {
     animation: false,
     tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
     legend: {
-      data: ["K线", "MA5", "MA10", "MA20", "MA60"],
+      data: ["K线", "MA5", "MA10", "MA20", "MA60", ...(predSeries ? ["预测"] : [])],
       top: 4,
       left: "center",
       itemWidth: 14,
@@ -74,7 +274,7 @@ export function buildCandleOpts(klines: Kline[], A: AnalysisResult): AnyObj {
     grid: { left: 48, right: 14, top: 26, bottom: 24 },
     xAxis: {
       type: "category",
-      data: dates,
+      data: xData,
       boundaryGap: true,
       axisLabel: { show: false },
       axisLine: { lineStyle: { color: "#e5e5e5" } },
@@ -115,6 +315,7 @@ export function buildCandleOpts(klines: Kline[], A: AnalysisResult): AnyObj {
             ...(topZone > resistance * 1.03
               ? [{ yAxis: topZone, name: "高位区", lineStyle: { color: UP, opacity: 0.3, type: "dotted" }, label: { formatter: "高位区 " + topZone, color: UP, position: "insideEndBottom", fontSize: 10, opacity: 0.6 } }]
               : []),
+            ...drawML,
           ],
         },
         markPoint: lastMp
@@ -138,6 +339,7 @@ export function buildCandleOpts(klines: Kline[], A: AnalysisResult): AnyObj {
       { name: "MA10", type: "line", data: ma10, smooth: true, showSymbol: false, lineStyle: { width: 1 }, itemStyle: { color: "#3b82f6" } },
       { name: "MA20", type: "line", data: ma20, smooth: true, showSymbol: false, lineStyle: { width: 1.4 }, itemStyle: { color: "#8b5cf6" } },
       { name: "MA60", type: "line", data: ma60, smooth: true, showSymbol: false, lineStyle: { width: 1.4 }, itemStyle: { color: "#06b6d4" } },
+      ...(predSeries ? [predSeries] : []),
     ],
   };
 }
@@ -276,29 +478,77 @@ export function buildTrendOpts(trends: Trend[], preClose = 0): AnyObj {
   const up = preClose ? last >= preClose : true; // 高于/等于昨收为涨色，否则跌色
   const priceColor = up ? UP : DOWN;
   // 昨收参考线：分时图的标准基准，一眼看出当前价在昨收上方还是下方
-  const markLine = preClose
-    ? {
-        symbol: ["none", "none"] as [string, string],
-        silent: true,
-        lineStyle: { color: "#9aa0a6", type: "dashed" },
-        data: [
-          {
-            yAxis: +preClose.toFixed(2),
-            label: {
-              formatter: "昨收 " + preClose.toFixed(2),
-              color: "#9aa0a6",
-              position: "insideEndTop",
-              fontSize: 10,
-            },
+  const preCloseData = preClose
+    ? [
+        {
+          yAxis: +preClose.toFixed(2),
+          label: {
+            formatter: "昨收 " + preClose.toFixed(2),
+            color: "#9aa0a6",
+            position: "insideEndTop" as const,
+            fontSize: 10,
           },
-        ],
-      }
-    : undefined;
+        },
+      ]
+    : [];
+  // 财经博主常用画线（趋势线 / 斐波那契）+ 预测线：在分时走势上也自动绘制，
+  // 让用户一眼看到「分时趋势方向 / 回调参考位 / 未来走势预测」。
+  const draw = calcDraw(
+    trends.map((t) => ({ x: t.t.slice(11), price: t.price, high: t.price, low: t.price })),
+    "intraday"
+  );
+  const drawML: AnyObj[] = [];
+  if (draw.trendLine) {
+    const tc = draw.trendLine.dir === "up" ? TREND_UP : TREND_DOWN;
+    drawML.push([
+      {
+        coord: [draw.trendLine.p1[0], draw.trendLine.p1[1]],
+        lineStyle: { color: tc, width: 1.6 },
+        label: { formatter: "趋势线", color: tc, position: "insideStartTop", fontSize: 10 },
+      },
+      { coord: [draw.trendLine.p2[0], draw.trendLine.p2[1]], lineStyle: { color: tc, width: 1.6 } },
+    ]);
+  }
+  for (const f of draw.fib) {
+    drawML.push({
+      yAxis: f.price,
+      lineStyle: { color: FIB, type: "dashed", width: 1, opacity: 0.6 },
+      label: { formatter: f.label + " " + f.price, color: FIB, position: "insideEndBottom", fontSize: 9, opacity: 0.8 },
+    });
+  }
+  const fullML = {
+    symbol: ["none", "none"] as [string, string],
+    silent: true,
+    lineStyle: { type: "dashed" },
+    data: [...preCloseData, ...drawML],
+  };
+  // 预测线：以最近分时点线性回归外推未来时刻，x 轴拼接未来时间，价格/均价用 null 补齐长度
+  let xData = times;
+  let predSeries: AnyObj | null = null;
+  const padLen = draw.prediction ? draw.prediction.dates.length : 0;
+  if (draw.prediction && draw.prediction.dates.length) {
+    xData = times.concat(draw.prediction.dates);
+    const predData: (number | null)[] = new Array(xData.length).fill(null);
+    predData[times.length - 1] = +last.toFixed(2);
+    for (let i = 0; i < draw.prediction.values.length; i++) predData[times.length + i] = draw.prediction.values[i];
+    predSeries = {
+      name: "预测",
+      type: "line",
+      data: predData,
+      showSymbol: false,
+      smooth: false,
+      lineStyle: { width: 1.4, color: PRED, type: "dashed" },
+      itemStyle: { color: PRED },
+      z: 6,
+    };
+  }
+  const priceData = price.concat(new Array(padLen).fill(null));
+  const avgData = avg.concat(new Array(padLen).fill(null));
   return {
     animation: false,
     tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
     legend: {
-      data: ["价格", "均价"],
+      data: ["价格", "均价", ...(predSeries ? ["预测"] : [])],
       top: 4,
       left: "center",
       itemWidth: 14,
@@ -308,9 +558,9 @@ export function buildTrendOpts(trends: Trend[], preClose = 0): AnyObj {
     grid: { left: 48, right: 14, top: 28, bottom: 28 },
     xAxis: {
       type: "category",
-      data: times,
+      data: xData,
       boundaryGap: false,
-      axisLabel: { show: true, fontSize: 10, interval: Math.floor(times.length / 6) },
+      axisLabel: { show: true, fontSize: 10, interval: Math.floor(xData.length / 6) },
       axisLine: { lineStyle: { color: "#e5e5e5" } },
       axisTick: { show: false },
     },
@@ -324,14 +574,15 @@ export function buildTrendOpts(trends: Trend[], preClose = 0): AnyObj {
       {
         name: "价格",
         type: "line",
-        data: price,
+        data: priceData,
         smooth: false,
         showSymbol: false,
         lineStyle: { width: 1.6, color: priceColor },
         areaStyle: { color: up ? "rgba(7,193,96,.06)" : "rgba(250,81,81,.06)" },
-        markLine,
+        markLine: fullML,
       },
-      { name: "均价", type: "line", data: avg, smooth: false, showSymbol: false, lineStyle: { width: 1.2, color: "#3b82f6" } },
+      { name: "均价", type: "line", data: avgData, smooth: false, showSymbol: false, lineStyle: { width: 1.2, color: "#3b82f6" } },
+      ...(predSeries ? [predSeries] : []),
     ],
   };
 }
