@@ -331,6 +331,17 @@ export interface AnalysisResult {
   obvTrend: string;
   turnAvg: number;
   turnState: string;
+  // ---- 突破/跌破 + 直白买卖信号（支撑产品卖点：何时买卖 / 支撑压力突破）----
+  breakout: boolean; // 已有效突破压力（仅当压力来自明确 pivot 拐点）
+  breakdown: boolean; // 已有效跌破支撑（仅当支撑来自明确 pivot 拐点）
+  sigType: string; // 走势预测：突破上攻 / 破位下行 / 承压回落 / 企稳反弹 / 震荡上行 / 震荡下行 / 区间震荡
+  signal: {
+    level: "buy" | "sell" | "hold" | "watch" | "wait";
+    label: string; // 买点 / 卖点 / 持有 / 关注 / 观望
+    text: string; // 一句话建议
+    reason: string; // 触发条件
+    confirm: string; // 确认信号（如何验证，避免绝对化）
+  };
 }
 
 // 主力净流入（近 N 个交易日累计）：与图表周期解耦。
@@ -617,6 +628,93 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
     banner = "📈 价格站上短期均线，处于偏强运行阶段。";
   }
 
+  // ---------------- 突破 / 跌破 判定 ----------------
+  // 仅当支撑/压力来自明确的 pivot 拐点（非近60日极值兜底）才判定，
+  // 避免创阶段新高/新低时把"极值"误判为被突破/跌破。
+  const supportFromPivot = below.length > 0;
+  const resistanceFromPivot = above.length > 0;
+  const breakdown = supportFromPivot && price < support * 0.985; // 低于支撑约1.5% → 有效破位
+  const breakout = resistanceFromPivot && price > resistance * 1.015; // 高于压力约1.5% → 有效突破
+
+  // 走势预测（基于当前位置 + 趋势 + 量能的形态判断，非确定性预测）
+  let sigType = "区间震荡";
+  if (breakout) sigType = "突破上攻";
+  else if (breakdown) sigType = "破位下行";
+  else if (nearRes) sigType = "承压回落";
+  else if (nearSup) sigType = "企稳反弹";
+  else if (trend === "up") sigType = "震荡上行";
+  else if (trend === "down") sigType = "震荡下行";
+
+  // ---------------- 直白买卖信号（5 档）----------------
+  // 整合：突破/跌破 + 临近关键位 + 趋势/动能/资金，给普通人一句话买卖参考。
+  // 注意：这是技术形态信号，带「确认条件」，非保证、非投资建议。
+  let signal: AnalysisResult["signal"];
+  if (breakdown) {
+    signal = {
+      level: "sell",
+      label: "卖点",
+      text: "已跌破关键支撑，建议减仓回避",
+      reason: `现价 ${price.toFixed(2)} 已跌破支撑 ${support.toFixed(2)}，技术形态转弱`,
+      confirm: "若 3 日内不能收回支撑上方，下行空间进一步打开，应果断降低仓位",
+    };
+  } else if (breakout) {
+    signal = {
+      level: "buy",
+      label: "买点",
+      text: "已放量突破关键压力，可积极关注",
+      reason: `现价 ${price.toFixed(2)} 已站上压力 ${resistance.toFixed(2)}，打开上行空间`,
+      confirm: "回踩不破该压力位且量能维持，则确认有效突破，可顺势加仓",
+    };
+  } else if (nearRes && (rNow > 72 || macdCross === "dead" || reduce || (f10.has && f10.sum < 0))) {
+    signal = {
+      level: "sell",
+      label: "卖点",
+      text: "临近压力且动能转弱，注意逢高减仓",
+      reason: `价格接近压力 ${resistance.toFixed(2)}，且出现${rNow > 72 ? "RSI超买" : macdCross === "dead" ? "MACD死叉" : "资金净流出"}等滞涨信号`,
+      confirm: "若放量强势突破压力则转强可持有；否则易遇阻回落，应减仓",
+    };
+  } else if (nearSup && (rNow < 35 || macdCross === "gold" || build || (f5.has && f5.sum > 0))) {
+    signal = {
+      level: "buy",
+      label: "买点",
+      text: "临近支撑且出现企稳信号，可逢低关注",
+      reason: `价格接近支撑 ${support.toFixed(2)}，且出现${rNow < 35 ? "RSI超卖" : macdCross === "gold" ? "MACD金叉" : "资金净流入"}等企稳信号`,
+      confirm: "若放量站上支撑则确认止跌，可在买入区间内建仓；跌破则转弱观望",
+    };
+  } else if (trend === "up" && add) {
+    signal = {
+      level: "hold",
+      label: "持有",
+      text: "趋势向上，可持有跟随，回调即加仓点",
+      reason: "均线多头排列 + 主力资金流入，动能未衰减",
+      confirm: "跌破 MA20 或放量大阴线则警惕转弱，考虑减仓",
+    };
+  } else if (trend === "up" || trend === "shake_up") {
+    signal = {
+      level: "watch",
+      label: "关注",
+      text: "偏强运行，等待回调至支撑的更好买点",
+      reason: "趋势偏强但尚未到理想介入位，追高性价比低",
+      confirm: "回踩支撑企稳时介入更稳妥，避免追涨",
+    };
+  } else if (trend === "down") {
+    signal = {
+      level: "wait",
+      label: "观望",
+      text: "处于下跌趋势，暂不参与",
+      reason: "均线空头排列，弱势未改",
+      confirm: "放量站上 MA20 并企稳后再考虑介入",
+    };
+  } else {
+    signal = {
+      level: "wait",
+      label: "观望",
+      text: "多空僵持，等待方向明朗",
+      reason: "区间震荡，支撑与压力均未有效突破",
+      confirm: "放量突破压力或跌破支撑后，再顺势而为",
+    };
+  }
+
   return {
     price,
     last,
@@ -688,6 +786,10 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
     obvTrend,
     turnAvg,
     turnState,
+    breakout,
+    breakdown,
+    sigType,
+    signal,
   };
 }
 

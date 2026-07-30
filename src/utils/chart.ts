@@ -44,6 +44,21 @@ export function buildCandleOpts(klines: Kline[], A: AnalysisResult): AnyObj {
   const resistance = +A.resistance.toFixed(2);
   const buyLow = +(support * 0.985).toFixed(2);
   const buyHigh = +Math.max(buyLow + 0.01, Math.min(support * 1.03, resistance)).toFixed(2);
+  const bottomZone = +A.bottomZone.toFixed(2);
+  const topZone = +A.topZone.toFixed(2);
+  // 最新价位置标注：突破/破位/临近压力/临近支撑，让"什么是突破跌破"在图上直接可见
+  const lastDate = dates[dates.length - 1];
+  const lastClose = close[close.length - 1];
+  let lastMp: AnyObj | null = null;
+  if (A.breakout) {
+    lastMp = { coord: [lastDate, lastClose], value: "突破", itemStyle: { color: UP }, label: { color: "#fff", fontSize: 11, fontWeight: "bold" } };
+  } else if (A.breakdown) {
+    lastMp = { coord: [lastDate, lastClose], value: "破位", itemStyle: { color: DOWN }, label: { color: "#fff", fontSize: 11, fontWeight: "bold" } };
+  } else if (A.nearRes) {
+    lastMp = { coord: [lastDate, lastClose], value: "近压", itemStyle: { color: UP, opacity: 0.75 }, label: { color: "#fff", fontSize: 10 } };
+  } else if (A.nearSup) {
+    lastMp = { coord: [lastDate, lastClose], value: "近撑", itemStyle: { color: DOWN, opacity: 0.75 }, label: { color: "#fff", fontSize: 10 } };
+  }
 
   return {
     animation: false,
@@ -82,20 +97,29 @@ export function buildCandleOpts(klines: Kline[], A: AnalysisResult): AnyObj {
           silent: true,
           lineStyle: { type: "dashed" },
           data: [
+            ...(bottomZone < support * 0.97
+              ? [{ yAxis: bottomZone, name: "低位区", lineStyle: { color: DOWN, opacity: 0.3, type: "dotted" }, label: { formatter: "低位区 " + bottomZone, color: DOWN, position: "insideEndTop", fontSize: 10, opacity: 0.6 } }]
+              : []),
             {
               yAxis: support,
               name: "支撑",
               lineStyle: { color: DOWN },
-              label: { formatter: "支撑 " + support, color: DOWN, position: "insideEndTop" },
+              label: { formatter: (A.breakdown ? "支撑(已破) " : "支撑 ") + support, color: DOWN, position: "insideEndTop" },
             },
             {
               yAxis: resistance,
               name: "压力",
               lineStyle: { color: UP },
-              label: { formatter: "压力 " + resistance, color: UP, position: "insideEndBottom" },
+              label: { formatter: (A.breakout ? "压力(已突) " : "压力 ") + resistance, color: UP, position: "insideEndBottom" },
             },
+            ...(topZone > resistance * 1.03
+              ? [{ yAxis: topZone, name: "高位区", lineStyle: { color: UP, opacity: 0.3, type: "dotted" }, label: { formatter: "高位区 " + topZone, color: UP, position: "insideEndBottom", fontSize: 10, opacity: 0.6 } }]
+              : []),
           ],
         },
+        markPoint: lastMp
+          ? { symbol: "pin", symbolSize: 44, silent: true, data: [lastMp] }
+          : undefined,
         markArea: {
           silent: true,
           data: [
@@ -244,10 +268,32 @@ export function buildMacdOpts(klines: Kline[]): AnyObj {
 }
 
 // ---------------- 分时（价格 / 均价） ----------------
-export function buildTrendOpts(trends: Trend[]): AnyObj {
+export function buildTrendOpts(trends: Trend[], preClose = 0): AnyObj {
   const times = trends.map((t) => t.t.slice(11));
   const price = trends.map((t) => t.price);
   const avg = trends.map((t) => t.avg);
+  const last = price.length ? price[price.length - 1] : 0;
+  const up = preClose ? last >= preClose : true; // 高于/等于昨收为涨色，否则跌色
+  const priceColor = up ? UP : DOWN;
+  // 昨收参考线：分时图的标准基准，一眼看出当前价在昨收上方还是下方
+  const markLine = preClose
+    ? {
+        symbol: ["none", "none"] as [string, string],
+        silent: true,
+        lineStyle: { color: "#9aa0a6", type: "dashed" },
+        data: [
+          {
+            yAxis: +preClose.toFixed(2),
+            label: {
+              formatter: "昨收 " + preClose.toFixed(2),
+              color: "#9aa0a6",
+              position: "insideEndTop",
+              fontSize: 10,
+            },
+          },
+        ],
+      }
+    : undefined;
   return {
     animation: false,
     tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
@@ -281,8 +327,9 @@ export function buildTrendOpts(trends: Trend[]): AnyObj {
         data: price,
         smooth: false,
         showSymbol: false,
-        lineStyle: { width: 1.6, color: UP },
-        areaStyle: { color: "rgba(250,81,81,.06)" },
+        lineStyle: { width: 1.6, color: priceColor },
+        areaStyle: { color: up ? "rgba(7,193,96,.06)" : "rgba(250,81,81,.06)" },
+        markLine,
       },
       { name: "均价", type: "line", data: avg, smooth: false, showSymbol: false, lineStyle: { width: 1.2, color: "#3b82f6" } },
     ],

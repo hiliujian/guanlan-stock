@@ -104,20 +104,18 @@
           >
         </view>
 
-        <!-- 蜡烛 + 均线 -->
-        <AnalysisCard title="K线 / 均线" icon="bars" :delay="0">
-          <KlineChart :opts="candleOpts" :height="320" />
+        <!-- 蜡烛 + 均线 / 分时：主图随周期切换（分时直接画分时走势，不再显示日K） -->
+        <AnalysisCard :title="period === 'm' ? '分时走势' : 'K线 / 均线'" icon="bars" :delay="0">
+          <template v-if="period === 'm'">
+            <KlineChart v-if="trends.length" :opts="trendOpts" :height="320" />
+            <view v-else class="hint">分时数据暂不可用（不影响其他分析）</view>
+          </template>
+          <KlineChart v-else :opts="candleOpts" :height="320" />
         </AnalysisCard>
 
         <!-- 成交量 + 主力净流入 -->
         <AnalysisCard title="成交量 / 主力净流入" icon="color" :delay="60">
           <KlineChart :opts="volOpts" :height="220" />
-        </AnalysisCard>
-
-        <!-- 分时 -->
-        <AnalysisCard v-if="period === 'm'" title="分时走势" icon="pulldown" :delay="60">
-          <KlineChart v-if="trends.length" :opts="trendOpts" :height="260" />
-          <view v-else class="hint">分时数据暂不可用（不影响其他分析）</view>
         </AnalysisCard>
 
         <!-- MACD -->
@@ -357,7 +355,9 @@ const volOpts = computed(() =>
   result.value ? buildVolOpts(klines.value, flowMap.value, period.value !== "m") : null
 );
 const macdOpts = computed(() => (result.value ? buildMacdOpts(klines.value) : null));
-const trendOpts = computed(() => (trends.value.length ? buildTrendOpts(trends.value) : null));
+const trendOpts = computed(() =>
+  trends.value.length ? buildTrendOpts(trends.value, preClose.value) : null
+);
 const chipOpts = computed(() => (klines.value.length ? buildChipOpts(computeChip(klines.value)) : null));
 
 async function run(forceMarket?: Market) {

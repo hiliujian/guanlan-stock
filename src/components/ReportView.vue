@@ -6,6 +6,25 @@
       <text class="banner-text">{{ a.banner }}</text>
     </view>
 
+    <!-- 直白操作信号（核心卖点：什么时候买 / 什么时候卖） -->
+    <view :class="['signal', signalCls]">
+      <view class="sig-main">
+        <text class="sig-label">{{ a.signal.label }}</text>
+        <text class="sig-text">{{ a.signal.text }}</text>
+      </view>
+      <view class="sig-type">{{ a.sigType }}</view>
+    </view>
+    <view class="sig-detail anim-fade-up">
+      <view class="sd-row">
+        <text class="sd-k">触发条件</text>
+        <text class="sd-v">{{ a.signal.reason }}</text>
+      </view>
+      <view class="sd-row">
+        <text class="sd-k">确认信号</text>
+        <text class="sd-v">{{ a.signal.confirm }}</text>
+      </view>
+    </view>
+
     <!-- 综合评分 + 阶段 + 风险 -->
     <view class="score-row anim-fade-up">
       <view class="score-ring" :style="{ borderColor: scoreColor }">
@@ -164,7 +183,11 @@
     <view class="levels anim-fade-up" :style="{ animationDelay: '240ms' }">
       <view class="lv">
         <text class="lv-k">支撑位</text>
-        <PriceText :value="a.support" :size="30" />
+        <view class="lv-right">
+          <PriceText :value="a.support" :size="30" />
+          <text v-if="a.breakdown" class="lv-tag bad">已跌破</text>
+          <text v-else-if="a.nearSup" class="lv-tag warn">临近</text>
+        </view>
       </view>
       <view class="lv">
         <text class="lv-k">建议买入区间</text>
@@ -172,7 +195,11 @@
       </view>
       <view class="lv">
         <text class="lv-k">压力位</text>
-        <PriceText :value="a.resistance" :size="30" />
+        <view class="lv-right">
+          <PriceText :value="a.resistance" :size="30" />
+          <text v-if="a.breakout" class="lv-tag ok">已突破</text>
+          <text v-else-if="a.nearRes" class="lv-tag warn">临近</text>
+        </view>
       </view>
     </view>
 
@@ -211,6 +238,11 @@ const bannerIcon = computed(() => {
   if (bannerCls.value === "bad") return "info";
   if (bannerCls.value === "warn") return "info";
   return "medal";
+});
+// 操作信号卡片着色：买(绿) / 卖(红) / 持有(蓝) / 关注(橙) / 观望(灰)
+const signalCls = computed(() => {
+  const l = a.value.signal.level;
+  return l === "buy" ? "buy" : l === "sell" ? "sell" : l === "hold" ? "hold" : l === "watch" ? "watch" : "wait";
 });
 const scoreColor = computed(() => {
   const s = a.value.score;
@@ -588,6 +620,57 @@ const buyText = computed(() => {
   font-weight: 600;
   color: var(--text);
 }
+
+/* 直白操作信号卡片（核心卖点） */
+.signal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 24rpx;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 12rpx;
+}
+.signal.buy { background: rgba(7, 193, 96, 0.12); border-left: 8rpx solid var(--primary); }
+.signal.sell { background: rgba(250, 81, 81, 0.1); border-left: 8rpx solid var(--up); }
+.signal.hold { background: rgba(59, 130, 246, 0.1); border-left: 8rpx solid #3b82f6; }
+.signal.watch { background: rgba(255, 159, 28, 0.12); border-left: 8rpx solid #ff9f1c; }
+.signal.wait { background: var(--card-2); border-left: 8rpx solid var(--border); }
+.sig-main { display: flex; flex-direction: column; gap: 6rpx; flex: 1; min-width: 0; }
+.sig-label { font-size: 38rpx; font-weight: 800; line-height: 1.1; }
+.signal.buy .sig-label { color: var(--primary-dark); }
+.signal.sell .sig-label { color: var(--up); }
+.signal.hold .sig-label { color: #2563eb; }
+.signal.watch .sig-label { color: #c87f00; }
+.signal.wait .sig-label { color: var(--text-2); }
+.sig-text { font-size: 24rpx; color: var(--text-2); line-height: 1.5; }
+.sig-type {
+  flex: none;
+  font-size: 22rpx;
+  font-weight: 600;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-2);
+  margin-left: 16rpx;
+}
+.sig-detail {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16rpx 24rpx;
+  margin-bottom: 16rpx;
+}
+.sd-row { display: flex; gap: 16rpx; padding: 8rpx 0; }
+.sd-k { flex: none; font-size: 23rpx; color: var(--text-3); width: 128rpx; }
+.sd-v { flex: 1; font-size: 24rpx; color: var(--text-2); line-height: 1.6; }
+
+/* 关键价位状态徽标 */
+.lv-right { display: flex; align-items: center; gap: 12rpx; }
+.lv-tag { font-size: 20rpx; padding: 4rpx 12rpx; border-radius: 8rpx; font-weight: 600; }
+.lv-tag.ok { color: var(--primary-dark); background: rgba(7, 193, 96, 0.12); }
+.lv-tag.bad { color: var(--up); background: rgba(250, 81, 81, 0.12); }
+.lv-tag.warn { color: #c87f00; background: rgba(255, 159, 28, 0.14); }
 
 .risks {
   background: var(--card);
