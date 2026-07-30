@@ -21,7 +21,7 @@
       >
         <OutlineIcon
           type="star-filled"
-          :size="52"
+          :size="44"
           color="var(--up)"
           class="wl-star"
           @click.stop="remove(row.it)"
@@ -29,7 +29,7 @@
         <view class="wl-main">
           <view class="wl-top">
             <text class="wl-name">{{ row.it.name || row.it.code }}</text>
-            <view class="mkt-dot" :class="row.dot" />
+            <view class="mkt-tag">{{ row.mkt }}</view>
             <text class="wl-code">{{ row.it.code }}</text>
           </view>
           <view class="wl-price-row">
@@ -39,11 +39,7 @@
             <text class="wl-pct" :style="{ color: pctColor(row.q) }">
               {{ row.q.loading ? "--" : fmtPct(row.q.pct) }}
             </text>
-            <text class="wl-trend" :style="{ color: trendColor(row.q) }">
-              {{ row.q.loading ? "--" : trendState(row.q.pct) }}
-            </text>
           </view>
-          <text v-if="row.it.note" class="wl-note">{{ row.it.note }}</text>
         </view>
       </view>
 
@@ -85,7 +81,7 @@ const EMPTY: Snap = { price: 0, preClose: 0, chg: 0, pct: 0, vol: 0, amount: 0, 
 const quotes = reactive<Record<string, Snap>>({});
 const keyOf = (it: WatchItem) => `${it.code}|${it.market}`;
 
-// 自选股实时行情：批量拉取快照（与行情页同口径），填充涨跌幅/涨跌额/成交量/趋势
+// 自选股实时行情：批量拉取快照（与行情页同口径），填充现价与涨跌幅
 async function loadQuotes() {
   const tasks = list.value.map(async (it) => {
     const k = keyOf(it);
@@ -101,14 +97,9 @@ async function loadQuotes() {
   await Promise.allSettled(tasks);
 }
 
-// 市场标识：用彩色圆点图标（红=沪 / 蓝=深 / 橙=港 / 紫=京），纯图形「一个图标」形式
-const MKT_DOT: Record<string, string> = {
-  sh: "dot-sh",
-  sz: "dot-sz",
-  hk: "dot-hk",
-  bj: "dot-bj",
-};
-function mktDotCls(it: WatchItem): string {
+// 市场标识：沪 / 深 / 港 / 北（中性灰色小标签，经典简洁）
+const MKT_PREFIX: Record<string, string> = { sh: "沪", sz: "深", bj: "北", hk: "港", auto: "" };
+function mktChar(it: WatchItem): string {
   let m = it.market;
   const c = it.code;
   if (!m || m === "auto") {
@@ -118,11 +109,11 @@ function mktDotCls(it: WatchItem): string {
     else if (/^[48]/.test(c)) m = "bj";
     else m = "sh";
   }
-  return MKT_DOT[m] || "dot-sh";
+  return MKT_PREFIX[m] || "股";
 }
 
 const rows = computed(() =>
-  list.value.map((it) => ({ it, q: quotes[keyOf(it)] || EMPTY, dot: mktDotCls(it) }))
+  list.value.map((it) => ({ it, q: quotes[keyOf(it)] || EMPTY, mkt: mktChar(it) }))
 );
 
 function priceColor(q: Snap): string {
@@ -131,18 +122,6 @@ function priceColor(q: Snap): string {
   return "var(--text)";
 }
 function pctColor(q: Snap): string {
-  if (q.pct > 0) return "var(--up)";
-  if (q.pct < 0) return "var(--down)";
-  return "var(--text-2)";
-}
-function trendState(pct: number): string {
-  if (pct > 3) return "强势";
-  if (pct > 0) return "上涨";
-  if (pct === 0) return "平盘";
-  if (pct > -3) return "下跌";
-  return "弱势";
-}
-function trendColor(q: Snap): string {
   if (q.pct > 0) return "var(--up)";
   if (q.pct < 0) return "var(--down)";
   return "var(--text-2)";
@@ -228,7 +207,7 @@ async function remove(it: WatchItem) {
 .wl-top {
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  gap: 10rpx;
 }
 .wl-name {
   font-size: 30rpx;
@@ -243,24 +222,23 @@ async function remove(it: WatchItem) {
   color: var(--text-3);
   flex: none;
 }
-/* 左侧大星标：点击取消自选（带确认弹窗） */
+/* 左侧星标：点击取消自选（带确认弹窗） */
 .wl-star {
   flex: none;
   align-self: center;
   margin-right: 8rpx;
 }
-/* 市场标识：彩色圆点图标（纯图形，一个图标形式） */
-.mkt-dot {
+/* 市场标识：中性灰色小标签（沪 / 深 / 港 / 北），经典简洁 */
+.mkt-tag {
   flex: none;
-  width: 16rpx;
-  height: 16rpx;
-  border-radius: 50%;
-  margin-right: 4rpx;
+  font-size: 18rpx;
+  line-height: 1;
+  padding: 4rpx 10rpx;
+  border-radius: 6rpx;
+  color: var(--text-2);
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
 }
-.dot-sh { background: #e64545; }
-.dot-sz { background: #1a73e8; }
-.dot-hk { background: #f0a020; }
-.dot-bj { background: #6a5acd; }
 .wl-price-row {
   display: flex;
   align-items: baseline;
@@ -276,20 +254,6 @@ async function remove(it: WatchItem) {
   font-size: 24rpx;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-.wl-trend {
-  font-size: 22rpx;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.wl-note {
-  display: block;
-  margin-top: 10rpx;
-  font-size: 22rpx;
-  color: var(--text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .bottom-pad {
   /* 留出底部导航栏高度，避免末尾内容被 tab 栏遮挡 */

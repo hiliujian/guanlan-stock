@@ -26,7 +26,7 @@ interface Tab {
 const tabs: Tab[] = [
   { key: "market", label: "行情", icon: "bars", iconActive: "bars" },
   { key: "watch", label: "自选", icon: "star", iconActive: "star-filled" },
-  { key: "profile", label: "我的", icon: "person", iconActive: "person-filled" },
+  { key: "profile", label: "我的", icon: "person", iconActive: "person" },
 ];
 
 const props = defineProps<{ current: number }>();

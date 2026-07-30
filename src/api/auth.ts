@@ -59,6 +59,8 @@ export async function updateProfile(patch: ProfilePatch): Promise<AuthResult> {
 }
 
 // 头像上传到 Supabase Storage 的 avatars 桶（uni.chooseImage 跨端通用）
+// H5 下 localPath 是 blob/object URL，必须用 fetch 取二进制（getFileSystemManager 在 H5 不可靠）；
+// 非 H5 仍走微信/App 原生的 readFileSync + base64 路径。
 export async function uploadAvatar(localPath: string, ext = "png"): Promise<string | null> {
   try {
     const sb = getSupabase();
@@ -67,8 +69,18 @@ export async function uploadAvatar(localPath: string, ext = "png"): Promise<stri
     const uid = u.user?.id;
     if (!uid) return null;
     const path = `${uid}.${ext}`;
-    const b64 = uni.getFileSystemManager().readFileSync(localPath, "base64") as string;
-    const bin = uni.base64ToArrayBuffer(b64);
+
+    let bin: ArrayBuffer;
+    if (typeof window !== "undefined" && typeof document !== "undefined") {
+      // H5：tempFilePath 通常是 blob: URL，直接 fetch 取 ArrayBuffer
+      const resp = await fetch(localPath);
+      if (!resp.ok) throw new Error("读取图片失败");
+      bin = await resp.arrayBuffer();
+    } else {
+      const b64 = uni.getFileSystemManager().readFileSync(localPath, "base64") as string;
+      bin = uni.base64ToArrayBuffer(b64);
+    }
+
     const { error } = await sb.storage
       .from("avatars")
       .upload(path, bin, { contentType: `image/${ext}`, upsert: true });

@@ -1,6 +1,6 @@
 <template>
-  <scroll-view class="view-scroll" scroll-y>
-    <view class="market">
+  <view class="market">
+    <view class="mk-sticky">
       <!-- 品牌标识 -->
       <view class="brand-bar anim-fade-up">
         <text class="brand-name">观澜</text>
@@ -54,6 +54,19 @@
         </view>
       </view>
 
+      <!-- 周期切换（固定在顶部，随搜索一起常驻，向下滚动不消失） -->
+      <view v-if="result" class="period-seg anim-fade-up">
+        <text
+          v-for="p in periodOrder"
+          :key="p"
+          :class="['ps', period === p ? 'active' : '']"
+          @click="switchPeriod(p)"
+          >{{ periodMeta[p].label }}</text
+        >
+      </view>
+      </view><!-- /mk-sticky -->
+
+      <view class="mk-body">
       <!-- 空态 -->
       <view v-if="!result" class="empty anim-fade-up">
         <OutlineIcon type="bars" :size="120" color="var(--border)" />
@@ -66,7 +79,7 @@
         <!-- 头部：名称 + 价格 + 自选星标（右上角） -->
         <view class="quote-head anim-fade-up">
           <view class="qh-star" :class="{ on: watched }" @click="toggleWatch">
-            <OutlineIcon :type="watched ? 'star-filled' : 'star'" :size="34" :color="watched ? 'var(--up)' : 'var(--text-3)'" />
+            <OutlineIcon :type="watched ? 'star-filled' : 'star'" :size="52" :color="watched ? 'var(--up)' : 'var(--text-3)'" />
           </view>
           <view class="qh-left">
             <text class="qh-name">{{ name }}</text>
@@ -79,17 +92,6 @@
               <text class="qh-pct" :style="{ color: pctColor }">{{ pctText }}</text>
             </view>
           </view>
-        </view>
-
-        <!-- 周期切换 -->
-        <view class="period-seg anim-fade-up">
-          <text
-            v-for="p in periodOrder"
-            :key="p"
-            :class="['ps', period === p ? 'active' : '']"
-            @click="switchPeriod(p)"
-            >{{ periodMeta[p].label }}</text
-          >
         </view>
 
         <!-- 蜡烛 + 均线 -->
@@ -131,8 +133,8 @@
       </view>
 
       <view class="bottom-pad" />
+      </view><!-- /mk-body -->
     </view>
-  </scroll-view>
 </template>
 
 <script setup lang="ts">
@@ -407,11 +409,20 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.view-scroll {
-  height: 100%;
-}
 .market {
-  padding: 18rpx 18rpx 0;
+  padding: 0;
+}
+/* 顶部：品牌 + 搜索 + 周期切换 固定常驻，向下滚动时不被卷走 */
+.mk-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--bg);
+  padding: 12rpx 18rpx 8rpx;
+  box-shadow: 0 6rpx 16rpx rgba(0, 0, 0, 0.05);
+}
+.mk-body {
+  padding: 0 18rpx;
 }
 /* 品牌标识：APP 统一名称「观澜」，置于行情首页顶部 */
 .brand-bar {
@@ -590,8 +601,8 @@ onMounted(() => {
   background: var(--card);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  /* 右侧预留星标空间，避免价格与星标重叠 */
-  padding: 18rpx 84rpx 18rpx 22rpx;
+  /* 右侧预留更大星标空间，避免价格与星标重叠 */
+  padding: 18rpx 100rpx 18rpx 22rpx;
   margin-bottom: 14rpx;
 }
 .qh-name {
@@ -608,10 +619,10 @@ onMounted(() => {
    加入自选时仅改变星星图标颜色（灰 -> 绿），不渲染背景 */
 .qh-star {
   position: absolute;
-  top: 22rpx;
-  right: 22rpx;
-  width: 56rpx;
-  height: 56rpx;
+  top: 14rpx;
+  right: 16rpx;
+  width: 64rpx;
+  height: 64rpx;
   display: flex;
   align-items: center;
   justify-content: center;
