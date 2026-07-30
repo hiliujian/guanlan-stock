@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, watch, onMounted } from "vue";
+import { computed, reactive, watch, onMounted, onActivated } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import { useWatchlist, removeWatch, type WatchItem } from "@/store/watchlist";
 import { fetchSnapshot } from "@/api/quote";
@@ -128,6 +128,8 @@ function pctColor(q: Snap): string {
 }
 
 onMounted(loadQuotes);
+// keep-alive 下返回该页不会重新挂载，故在每次激活时刷新自选实时行情
+onActivated(loadQuotes);
 // 列表增删后重新拉取（key 串变化即触发）
 watch(
   () => list.value.map(keyOf).join(","),

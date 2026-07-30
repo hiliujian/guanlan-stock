@@ -1,10 +1,16 @@
 <template>
   <view class="market">
     <view class="mk-sticky">
-      <!-- 品牌标识 -->
+      <!-- 品牌标识 + 市场状态 -->
       <view class="brand-bar anim-fade-up">
-        <text class="brand-name">观澜</text>
-        <text class="brand-sub">智能股票分析</text>
+        <view class="brand-left">
+          <text class="brand-name">观澜</text>
+          <text class="brand-sub">智能股票分析</text>
+        </view>
+        <view class="mk-status" :class="status.cls">
+          <view class="ms-dot" />
+          <text class="ms-text">{{ status.label }}</text>
+        </view>
       </view>
 
       <!-- 搜索条（与联想列表融为一体的面板） -->
@@ -51,18 +57,7 @@
               <text class="sg-tag">{{ mktLabel(h.code) }}</text>
             </view>
           </view>
-        </view>
-      </view>
-
-      <!-- 周期切换（固定在顶部，随搜索一起常驻，向下滚动不消失） -->
-      <view v-if="result" class="period-seg anim-fade-up">
-        <text
-          v-for="p in periodOrder"
-          :key="p"
-          :class="['ps', period === p ? 'active' : '']"
-          @click="switchPeriod(p)"
-          >{{ periodMeta[p].label }}</text
-        >
+          </view>
       </view>
       </view><!-- /mk-sticky -->
 
@@ -83,7 +78,10 @@
           </view>
           <view class="qh-left">
             <text class="qh-name">{{ name }}</text>
-            <text class="qh-code">{{ dispCode }}</text>
+            <view class="qh-code-row">
+              <view class="mkt-tag">{{ marketChar }}</view>
+              <text class="qh-code">{{ rawCode }}</text>
+            </view>
           </view>
           <view class="qh-right">
             <PriceText :value="dispPrice" :prev="preClose" :size="44" :weight="700" />
@@ -91,7 +89,19 @@
               <PriceText :value="chg" :size="24" :prefix="true" />
               <text class="qh-pct" :style="{ color: pctColor }">{{ pctText }}</text>
             </view>
+            <text class="qh-live" :class="{ live: status.open }">{{ liveText }}</text>
           </view>
+        </view>
+
+        <!-- 周期切换（行情头部下方，随内容一起滚动；交易时段自动刷新） -->
+        <view v-if="result" class="period-seg anim-fade-up">
+          <text
+            v-for="p in periodOrder"
+            :key="p"
+            :class="['ps', period === p ? 'active' : '']"
+            @click="switchPeriod(p)"
+            >{{ periodMeta[p].label }}</text
+          >
         </view>
 
         <!-- 蜡烛 + 均线 -->
@@ -138,20 +148,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, onActivated, onDeactivated, onUnmounted, watch } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import PriceText from "@/components/PriceText.vue";
 import AnalysisCard from "@/components/AnalysisCard.vue";
 import KlineChart from "@/components/KlineChart.vue";
 import ReportView from "@/components/ReportView.vue";
-import { fetchQuote, fetchTrend, searchStocks, localSuggest, type SearchHit } from "@/api/quote";
+import { fetchQuote, fetchTrend, fetchSnapshot, searchStocks, localSuggest, type SearchHit } from "@/api/quote";
+import { getMarketStatus } from "@/utils/marketStatus";
 import {
   resolveSecid,
   PERIODS,
   PERIOD_ORDER,
   marketFromSecid,
   codeFromSecid,
-  fmtSecid,
   type PeriodKey,
   type Market,
 } from "@/utils/period";
@@ -176,7 +186,15 @@ const trends = ref<any[]>([]);
 const result = ref<AnalysisResult | null>(null);
 const watched = ref(false);
 const errMsg = ref("");
-const realtime = ref<{ price: number; preClose: number } | null>(null);
+const realtime = ref<{ price: number; preClose: number; open?: number; high?: number; low?: number; time?: string } | null>(null);
+
+// 实时刷新指示：最后更新时间（让用户直观看到行情在不断刷新）
+const lastUpdated = ref("");
+function nowHMS(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
 
 // 搜索联想
 const suggestions = ref<SearchHit[]>([]);
@@ -217,8 +235,122 @@ const curMarket = computed<Market>(() =>
   secid.value ? marketFromSecid(secid.value) : "auto"
 );
 
-// 易读代码展示：0.300008 -> 深300008 / 沪600519 / 港00700
-const dispCode = computed(() => (secid.value ? fmtSecid(secid.value) : ""));
+// 市场徽标（沪/深/港/北）与纯代码：徽标样式对齐自选股 .mkt-tag，不并入代码文本
+const MKT_CHAR: Record<string, string> = { sh: "沪", sz: "深", bj: "北", hk: "港", auto: "" };
+const marketChar = computed(() => {
+  if (!secid.value) return "";
+  return MKT_CHAR[marketFromSecid(secid.value)] || "股";
+});
+const rawCode = computed(() => (secid.value ? codeFromSecid(secid.value) : ""));
+
+// ---------------- 市场状态 + 实时刷新 ----------------
+const status = ref(getMarketStatus(curMarket.value));
+const refreshing = ref(false);
+let tickTimer: any = null;
+let tickCount = 0;
+
+function updateStatus() {
+  status.value = getMarketStatus(curMarket.value);
+}
+
+// 实时刷新指示文案（让用户直观看到行情在持续刷新）
+const liveText = computed(() => {
+  if (refreshing.value) return "刷新中…";
+  if (lastUpdated.value) return "实时 · " + lastUpdated.value;
+  return status.value.open ? "实时行情 · 交易中" : "非交易时段";
+});
+
+// 自动保存 / 恢复「最近查看」的股票（localStorage，冷启动也能恢复，
+// 配合 <keep-alive> 实现切到自选/我的再返回时数据不丢失）
+const LAST_KEY = "guanlan:lastStock";
+function saveLastViewed() {
+  try {
+    uni.setStorageSync(LAST_KEY, {
+      secid: secid.value,
+      code: curCode.value,
+      market: curMarket.value,
+      name: name.value,
+      period: period.value,
+    });
+  } catch {
+    /* 忽略存储异常 */
+  }
+}
+function loadLastViewed(): boolean {
+  try {
+    const v = uni.getStorageSync(LAST_KEY);
+    if (!v || !v.code) return false;
+    period.value = v.period || "d";
+    code.value = v.code;
+    chosen.value = { code: v.code, name: v.name || "" };
+    run(v.market || "auto");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// 轻量刷新：仅更新头部实时价/昨收（每 5s，交易时段）
+async function refreshLight() {
+  if (!secid.value) return;
+  const snap = await fetchSnapshot(secid.value);
+  realtime.value = {
+    price: snap.price,
+    preClose: snap.preClose,
+    open: snap.open,
+    high: snap.high,
+    low: snap.low,
+    time: snap.time,
+  };
+  preClose.value = snap.preClose;
+  lastUpdated.value = nowHMS();
+}
+
+// 全量刷新：重抓 K线/资金流/分时并重新分析（每 ~60s，交易时段）
+async function refreshFull() {
+  if (!secid.value) return;
+  const q = await fetchQuote(secid.value, period.value);
+  klines.value = q.klines;
+  flowMap.value = q.flowMap;
+  preClose.value = q.preClose;
+  realtime.value = q.realtime;
+  if (period.value === "m") {
+    const t = await fetchTrend(secid.value);
+    trends.value = t.trends;
+  } else {
+    trends.value = [];
+  }
+  result.value = analyze(q.klines, q.flowMap);
+}
+
+// 统一心跳：每 5s 刷新一次状态标识；交易时段内刷新行情（轻量为主，周期性全量）
+async function onTick() {
+  updateStatus();
+  if (!secid.value || loading.value || refreshing.value) return;
+  if (!status.value.open) return; // 非交易时段不拉取，避免无谓请求
+  refreshing.value = true;
+  try {
+    await refreshLight();
+    tickCount++;
+    if (tickCount % 12 === 0) await refreshFull(); // ~60s 全量刷新图表
+  } catch {
+    /* 忽略单次刷新失败，下一拍重试 */
+  } finally {
+    refreshing.value = false;
+  }
+}
+
+function startTimers() {
+  updateStatus();
+  if (tickTimer) return;
+  tickTimer = setInterval(onTick, 5000);
+}
+function stopTimers() {
+  if (tickTimer) {
+    clearInterval(tickTimer);
+    tickTimer = null;
+  }
+}
 
 const candleOpts = computed(() => (result.value ? buildCandleOpts(klines.value, result.value) : null));
 const volOpts = computed(() =>
@@ -277,6 +409,7 @@ async function run(forceMarket?: Market) {
     }
     result.value = analyze(q.klines, q.flowMap);
     watched.value = isWatched(curCode.value, curMarket.value);
+    saveLastViewed();
   } catch (e: any) {
     uni.showToast({ title: e?.message || "请求失败", icon: "none" });
   } finally {
@@ -304,6 +437,7 @@ async function switchPeriod(p: PeriodKey) {
     }
     result.value = analyze(q.klines, q.flowMap);
     watched.value = isWatched(curCode.value, curMarket.value);
+    saveLastViewed();
   } catch (e: any) {
     uni.showToast({ title: e?.message || "切换失败", icon: "none" });
   } finally {
@@ -399,12 +533,29 @@ watch(
 
 onMounted(() => {
   // 仅当从「自选」页跳转过来（带 pendingCode）时才自动搜索；
-  // 否则保持空态，不自动搜索、不显示「搜索中」。
+  // 否则若本地有最近查看记录则恢复该股票，保证切回行情页不丢数据、冷启动也能恢复。
   if (navState.pendingCode) {
     code.value = navState.pendingCode;
     chosen.value = null;
     run(navState.pendingMarket);
+  } else if (!result.value) {
+    loadLastViewed();
   }
+  // 关键修复：启动实时刷新心跳。onActivated 在 transition+keep-alive 包裹下
+  // 首次激活不一定可靠触发，故在 onMounted 也启动（startTimers 幂等，不会重复建定时器）。
+  startTimers();
+});
+
+// <keep-alive> 缓存：切到自选/我的再返回时组件不销毁，状态天然保留；
+// 仅在「行情」为当前可见页时跑心跳（刷新行情 + 状态标识），离开即暂停，省请求。
+onActivated(() => {
+  startTimers();
+});
+onDeactivated(() => {
+  stopTimers();
+});
+onUnmounted(() => {
+  stopTimers();
 });
 </script>
 
@@ -427,9 +578,48 @@ onMounted(() => {
 /* 品牌标识：APP 统一名称「观澜」，置于行情首页顶部 */
 .brand-bar {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: space-between;
   gap: 14rpx;
   padding: 6rpx 8rpx 14rpx;
+}
+.brand-left {
+  display: flex;
+  align-items: baseline;
+  gap: 14rpx;
+  min-width: 0;
+}
+/* 市场状态标识：开盘中(绿) / 午间休市(橙) / 未开盘·已收市·周末休市(灰) */
+.mk-status {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  flex: none;
+}
+.ms-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: currentColor;
+}
+.ms-text {
+  color: inherit;
+}
+.mk-status.ms-open {
+  color: var(--primary);
+  background: rgba(7, 193, 96, 0.1);
+}
+.mk-status.ms-lunch {
+  color: #fa9e0d;
+  background: rgba(250, 158, 13, 0.12);
+}
+.mk-status.ms-closed {
+  color: var(--text-3);
+  background: var(--card-2);
 }
 .brand-name {
   font-size: 42rpx;
@@ -609,11 +799,35 @@ onMounted(() => {
   font-size: 34rpx;
   font-weight: 700;
 }
+.qh-code-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-top: 4rpx;
+}
 .qh-code {
-  display: block;
   font-size: 22rpx;
   color: var(--text-3);
-  margin-top: 4rpx;
+}
+/* 市场徽标：沪 / 深 / 港 / 北，对齐自选股 .mkt-tag 的经典简洁样式 */
+.mkt-tag {
+  flex: none;
+  font-size: 18rpx;
+  line-height: 1;
+  padding: 4rpx 10rpx;
+  border-radius: 6rpx;
+  color: var(--text-2);
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
+}
+.qh-live {
+  display: inline-block;
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: var(--text-3);
+}
+.qh-live.live {
+  color: var(--primary);
 }
 /* 自选星标：名称卡片右上角，纯图标、无背景色块；
    加入自选时仅改变星星图标颜色（灰 -> 绿），不渲染背景 */

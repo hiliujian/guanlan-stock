@@ -1,7 +1,9 @@
 <template>
   <view class="app-shell">
     <transition name="tab-fade" mode="out-in">
-      <component :is="currentComp" :key="current" @open-market="onOpenMarket" />
+      <keep-alive>
+        <component :is="currentComp" :key="current" @open-market="onOpenMarket" />
+      </keep-alive>
     </transition>
 
     <AppTabBar :current="current" @change="onChange" />
