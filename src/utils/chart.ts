@@ -40,7 +40,7 @@ interface DrawPoint { x: string; price: number; high: number; low: number; }
 interface DrawResult {
   trendLine: { dir: "up" | "down"; p1: [string, number]; p2: [string, number] } | null;
   fib: { label: string; price: number }[];
-  prediction: { dates: string[]; values: number[] } | null;
+  prediction: { dates: string[]; values: number[]; upper: number[]; lower: number[] } | null;
 }
 
 // 由最近若干根 K 线/分时点，自动识别摆点，输出：
@@ -113,14 +113,27 @@ function calcDraw(points: DrawPoint[], kind: "day" | "intraday"): DrawResult {
   const M = kind === "day" ? 12 : 24;
   const dates: string[] = [];
   const values: number[] = [];
-  for (let k = 1; k <= M; k++) {
-    const idx = n - 1 + k;
+  const upper: number[] = [];
+  const lower: number[] = [];
+  // 回归残差标准差：用于构造「预测带」上下沿（预测 ± k·σ），
+  // 比单根刚性直线更专业，也更贴近主流软件的预测画法。
+  let ss = 0;
+  for (let i = n - Nreg; i < n; i++) {
+    const pv = intercept + slope * i;
+    ss += (points[i].price - pv) * (points[i].price - pv);
+  }
+  const sigma = Math.sqrt(ss / Math.max(1, Nreg - 2));
+  const kBand = 1.6;
+  for (let kk = 1; kk <= M; kk++) {
+    const idx = n - 1 + kk;
     const v = intercept + slope * idx;
-    const x = kind === "day" ? genFutureDate(points[n - 1].x, k) : genFutureTime(points[n - 1].x, points, k);
+    const x = kind === "day" ? genFutureDate(points[n - 1].x, kk) : genFutureTime(points[n - 1].x, points, kk);
     dates.push(x);
     values.push(+v.toFixed(2));
+    upper.push(+(v + kBand * sigma).toFixed(2));
+    lower.push(+(v - kBand * sigma).toFixed(2));
   }
-  return { trendLine, fib, prediction: { dates, values } };
+  return { trendLine, fib, prediction: { dates, values, upper, lower } };
 }
 
 // 由最后一根 K 线日期向后推算 k 个交易日（跳过周末），返回 YYYY-MM-DD
@@ -187,6 +200,62 @@ function genFutureTime(lastTime: string, points: DrawPoint[], k: number): string
   return `${String(hh).padStart(2, "0")}:${String(Math.round(mm)).padStart(2, "0")}`;
 }
 
+// 预测带：以线性回归中轴为「预测」线，±k·σ 为上下沿，用 ECharts 的 stack 面积技巧
+// 把上下沿之间填充成一条「预测通道」。相比单根刚性直线，通道能表达预测的不确定性区间，
+// 视觉上更专业，也避免「一条直线硬拉到未来」的业余感。下沿/带两个辅助 series 不进图例。
+function buildPredBand(
+  draw: DrawResult,
+  lastVal: number,
+  histLen: number
+): { center: AnyObj; lower: AnyObj; band: AnyObj } | null {
+  if (!draw.prediction || !draw.prediction.dates.length) return null;
+  const M = draw.prediction.dates.length;
+  const center: (number | null)[] = new Array(histLen).fill(null);
+  const lower: (number | null)[] = new Array(histLen).fill(null);
+  const band: (number | null)[] = new Array(histLen).fill(null);
+  center[histLen - 1] = +lastVal.toFixed(2);
+  lower[histLen - 1] = +lastVal.toFixed(2);
+  band[histLen - 1] = 0;
+  for (let i = 0; i < M; i++) {
+    center[histLen + i] = draw.prediction.values[i];
+    lower[histLen + i] = draw.prediction.lower[i];
+    band[histLen + i] = +(draw.prediction.upper[i] - draw.prediction.lower[i]).toFixed(2);
+  }
+  return {
+    center: {
+      name: "预测",
+      type: "line",
+      data: center,
+      showSymbol: false,
+      smooth: false,
+      lineStyle: { width: 1.5, color: PRED, type: "dashed" },
+      itemStyle: { color: PRED },
+      z: 6,
+    },
+    lower: {
+      name: "预测下沿",
+      type: "line",
+      data: lower,
+      showSymbol: false,
+      smooth: false,
+      lineStyle: { opacity: 0 },
+      stack: "predband",
+      symbol: "none",
+    },
+    band: {
+      name: "预测带",
+      type: "line",
+      data: band,
+      showSymbol: false,
+      smooth: false,
+      lineStyle: { opacity: 0 },
+      stack: "predband",
+      symbol: "none",
+      areaStyle: { color: "rgba(219,39,119,0.12)" },
+    },
+  };
+}
+
 // ---------------- 蜡烛 + 均线 + 支撑压力 ----------------
 export function buildCandleOpts(klines: Kline[], A: AnalysisResult): AnyObj {
   const data = tail(klines, 400);
@@ -230,24 +299,8 @@ export function buildCandleOpts(klines: Kline[], A: AnalysisResult): AnyObj {
       label: { formatter: f.label + " " + f.price, color: FIB, position: "insideEndBottom", fontSize: 9, opacity: 0.85 },
     });
   }
-  let xData = dates;
-  let predSeries: AnyObj | null = null;
-  if (draw.prediction && draw.prediction.dates.length) {
-    xData = dates.concat(draw.prediction.dates);
-    const predData: (number | null)[] = new Array(xData.length).fill(null);
-    predData[dates.length - 1] = +lastClose.toFixed(2);
-    for (let i = 0; i < draw.prediction.values.length; i++) predData[dates.length + i] = draw.prediction.values[i];
-    predSeries = {
-      name: "预测",
-      type: "line",
-      data: predData,
-      showSymbol: false,
-      smooth: false,
-      lineStyle: { width: 1.5, color: PRED, type: "dashed" },
-      itemStyle: { color: PRED },
-      z: 6,
-    };
-  }
+  const xData = dates.concat(draw.prediction ? draw.prediction.dates : []);
+  const predBand = buildPredBand(draw, lastClose, dates.length);
   // 最新价位置标注：突破/破位/临近压力/临近支撑
   let lastMp: AnyObj | null = null;
   if (A.breakout) {
@@ -264,7 +317,7 @@ export function buildCandleOpts(klines: Kline[], A: AnalysisResult): AnyObj {
     animation: false,
     tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
     legend: {
-      data: ["K线", "MA5", "MA10", "MA20", "MA60", ...(predSeries ? ["预测"] : [])],
+      data: ["K线", "MA5", "MA10", "MA20", "MA60", ...(predBand ? ["预测"] : [])],
       top: 4,
       left: "center",
       itemWidth: 14,
@@ -339,7 +392,7 @@ export function buildCandleOpts(klines: Kline[], A: AnalysisResult): AnyObj {
       { name: "MA10", type: "line", data: ma10, smooth: true, showSymbol: false, lineStyle: { width: 1 }, itemStyle: { color: "#3b82f6" } },
       { name: "MA20", type: "line", data: ma20, smooth: true, showSymbol: false, lineStyle: { width: 1.4 }, itemStyle: { color: "#8b5cf6" } },
       { name: "MA60", type: "line", data: ma60, smooth: true, showSymbol: false, lineStyle: { width: 1.4 }, itemStyle: { color: "#06b6d4" } },
-      ...(predSeries ? [predSeries] : []),
+      ...(predBand ? [predBand.lower, predBand.band, predBand.center] : []),
     ],
   };
 }
@@ -523,32 +576,16 @@ export function buildTrendOpts(trends: Trend[], preClose = 0): AnyObj {
     data: [...preCloseData, ...drawML],
   };
   // 预测线：以最近分时点线性回归外推未来时刻，x 轴拼接未来时间，价格/均价用 null 补齐长度
-  let xData = times;
-  let predSeries: AnyObj | null = null;
+  const xData = times.concat(draw.prediction ? draw.prediction.dates : []);
+  const predBand = buildPredBand(draw, last, times.length);
   const padLen = draw.prediction ? draw.prediction.dates.length : 0;
-  if (draw.prediction && draw.prediction.dates.length) {
-    xData = times.concat(draw.prediction.dates);
-    const predData: (number | null)[] = new Array(xData.length).fill(null);
-    predData[times.length - 1] = +last.toFixed(2);
-    for (let i = 0; i < draw.prediction.values.length; i++) predData[times.length + i] = draw.prediction.values[i];
-    predSeries = {
-      name: "预测",
-      type: "line",
-      data: predData,
-      showSymbol: false,
-      smooth: false,
-      lineStyle: { width: 1.4, color: PRED, type: "dashed" },
-      itemStyle: { color: PRED },
-      z: 6,
-    };
-  }
   const priceData = price.concat(new Array(padLen).fill(null));
   const avgData = avg.concat(new Array(padLen).fill(null));
   return {
     animation: false,
     tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
     legend: {
-      data: ["价格", "均价", ...(predSeries ? ["预测"] : [])],
+      data: ["价格", "均价", ...(predBand ? ["预测"] : [])],
       top: 4,
       left: "center",
       itemWidth: 14,
@@ -578,11 +615,11 @@ export function buildTrendOpts(trends: Trend[], preClose = 0): AnyObj {
         smooth: false,
         showSymbol: false,
         lineStyle: { width: 1.6, color: priceColor },
-        areaStyle: { color: up ? "rgba(7,193,96,.06)" : "rgba(250,81,81,.06)" },
+        areaStyle: { color: up ? "rgba(7,193,96,.04)" : "rgba(250,81,81,.04)" },
         markLine: fullML,
       },
-      { name: "均价", type: "line", data: avgData, smooth: false, showSymbol: false, lineStyle: { width: 1.2, color: "#3b82f6" } },
-      ...(predSeries ? [predSeries] : []),
+      { name: "均价", type: "line", data: avgData, smooth: false, showSymbol: false, lineStyle: { width: 1.5, color: "#2563eb", type: "dashed" } },
+      ...(predBand ? [predBand.lower, predBand.band, predBand.center] : []),
     ],
   };
 }

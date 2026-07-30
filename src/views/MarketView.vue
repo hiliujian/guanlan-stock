@@ -89,7 +89,6 @@
               <PriceText :value="chg" :size="24" :prefix="true" />
               <text class="qh-pct" :style="{ color: pctColor }">{{ pctText }}</text>
             </view>
-            <text class="qh-live" :class="{ live: status.open }">{{ liveText }}</text>
           </view>
         </view>
 
@@ -107,25 +106,25 @@
         <!-- 蜡烛 + 均线 / 分时：主图随周期切换（分时直接画分时走势，不再显示日K） -->
         <AnalysisCard :title="period === 'm' ? '分时走势' : 'K线 / 均线'" icon="bars" :delay="0">
           <template v-if="period === 'm'">
-            <KlineChart v-if="trends.length" :opts="trendOpts" :height="320" />
+            <KlineChart v-if="trends.length" :opts="trendOpts" :height="240" />
             <view v-else class="hint">分时数据暂不可用（不影响其他分析）</view>
           </template>
-          <KlineChart v-else :opts="candleOpts" :height="320" />
+          <KlineChart v-else :opts="candleOpts" :height="250" />
         </AnalysisCard>
 
         <!-- 成交量 + 主力净流入 -->
         <AnalysisCard title="成交量 / 主力净流入" icon="color" :delay="60">
-          <KlineChart :opts="volOpts" :height="220" />
+          <KlineChart :opts="volOpts" :height="170" />
         </AnalysisCard>
 
         <!-- MACD -->
         <AnalysisCard title="MACD" icon="loop" :delay="120">
-          <KlineChart :opts="macdOpts" :height="200" />
+          <KlineChart :opts="macdOpts" :height="160" />
         </AnalysisCard>
 
         <!-- 筹码分布 -->
         <AnalysisCard title="筹码分布" icon="medal" :delay="180">
-          <KlineChart :opts="chipOpts" :height="240" />
+          <KlineChart :opts="chipOpts" :height="190" />
         </AnalysisCard>
 
         <!-- 白话报告 -->
@@ -242,12 +241,6 @@ let tickCount = 0;
 function updateStatus() {
   status.value = getMarketStatus(curMarket.value);
 }
-
-// 实时状态文案（不再显示具体时间，仅保留交易状态提示）
-const liveText = computed(() => {
-  if (refreshing.value) return "刷新中…";
-  return status.value.open ? "交易中" : "非交易时段";
-});
 
 // 自动保存 / 恢复「最近查看」的股票（localStorage，冷启动也能恢复，
 // 配合 <keep-alive> 实现切到自选/我的再返回时数据不丢失）
@@ -809,15 +802,6 @@ onUnmounted(() => {
   color: var(--text-2);
   background: var(--card-2);
   border: 1rpx solid var(--border);
-}
-.qh-live {
-  display: inline-block;
-  margin-top: 6rpx;
-  font-size: 20rpx;
-  color: var(--text-3);
-}
-.qh-live.live {
-  color: var(--primary);
 }
 /* 自选星标：名称卡片右上角，纯图标、无背景色块；
    加入自选时仅改变星星图标颜色（灰 -> 绿），不渲染背景 */
