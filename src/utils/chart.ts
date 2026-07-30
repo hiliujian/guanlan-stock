@@ -547,7 +547,7 @@ export function buildTrendOpts(trends: Trend[], preClose = 0): AnyObj {
   // 财经博主常用画线（趋势线 / 斐波那契）+ 预测线：在分时走势上也自动绘制，
   // 让用户一眼看到「分时趋势方向 / 回调参考位 / 未来走势预测」。
   const draw = calcDraw(
-    trends.map((t) => ({ x: t.t.slice(11), price: t.price, high: t.price, low: t.price })),
+    trends.map((t) => ({ x: t.t.slice(11), price: t.price, high: t.high, low: t.low })),
     "intraday"
   );
   const drawML: AnyObj[] = [];

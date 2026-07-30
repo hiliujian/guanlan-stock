@@ -22,7 +22,7 @@
 // =====================================================================
 import config from "@/config/app";
 import type { Kline, Trend, PeriodKey } from "@/utils/period";
-import { dateStr } from "@/utils/period";
+import { dateStr, parseTrend } from "@/utils/period";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
@@ -434,19 +434,9 @@ async function fetchTrendRaw(secid: string) {
   const text = await requestText(url);
   const data = JSON.parse(text)?.data;
   if (!data || !data.trends) throw new Error("未获取到分时数据");
-  const trends: Trend[] = data.trends.map((s: string) => {
-    const a = s.split(",");
-    return {
-      t: a[0],
-      price: +a[1],
-      avg: +a[2],
-      open: +a[1],
-      high: +a[3] || +a[1],
-      low: +a[4] || +a[1],
-      vol: +(a[5] || 0),
-      amount: +(a[6] || 0),
-    } as Trend;
-  });
+  // 复用时序解析器 parseTrend（已正确映射 f52开/f53最新价/f54高/f55低/f56量/f57额/f58均价），
+  // 避免手写下标错位（曾误将 price 取成开盘、avg 取成最新价，导致均价线与股价线重合）。
+  const trends: Trend[] = data.trends.map((s: string) => parseTrend(s));
   return { trends, preClose: data.preClose ?? (trends.length ? trends[0].price : 0) };
 }
 
