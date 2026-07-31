@@ -298,21 +298,25 @@ export function formatRelative(ts: number): string {
 
 // =====================================================================
 // 远程实现（开放 Supabase 配置后启用，仅供切换参考）
-// 表结构建议：
-//   community_posts(id uuid pk, author text, type text, content text,
-//                   card jsonb, likes int, created_at timestamptz)
-//   community_replies(id uuid pk, post_id uuid fk, author text,
-//                     content text, created_at timestamptz)
-//   community_likes(post_id uuid fk, user_id uuid)  —— 真实点赞用行级权限
-// 注：下方为示意实现，开放配置后请按实际 RLS / 表名微调。
+// 表结构（严格对应 supabase/deploy.sql）：
+//   community_posts(id uuid pk, user_id uuid→auth.users on delete set null,
+//                   type text chk, author text, avatar text, topic jsonb,
+//                   content text, card jsonb, likes int chk>=0, created_at timestamptz)
+//   community_replies(id uuid pk, post_id uuid fk→posts on delete cascade,
+//                     user_id uuid, author text, content text, created_at timestamptz)
+//   community_likes(post_id uuid fk, user_id uuid, primary key(post_id, user_id))
+//   —— 点赞计数由 trg_sync_likes 触发器从 community_likes 聚合，客户端无法伪造
+//   —— 点赞切换走 RPC：public.toggle_post_like(p_post_id uuid)
+// 注：开放配置后 UI 一行不改即切远程；listRemote 已请求 avatar/topic 字段。
 // =====================================================================
 async function listRemote(): Promise<CommunityPost[]> {
   const sb = getSupabase();
   if (!sb) return [];
   const { data, error } = await sb
     .from("community_posts")
-    .select("id, type, author, content, card, likes, created_at, replies:community_replies(id, author, content, created_at)")
-    .order("created_at", { ascending: false });
+    .select("id, type, author, avatar, topic, content, card, likes, created_at, replies:community_replies(id, author, content, created_at)")
+    .order("created_at", { ascending: false })
+    .limit(50);
   if (error || !data) return [];
   const liked = loadLiked();
   return (data as any[]).map((r) => ({
