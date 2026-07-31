@@ -8,10 +8,10 @@
           <OutlineIcon type="person" :size="56" color="var(--text-2)" />
         </view>
         <text class="lp-title">登录后同步自选股与资料</text>
-        <text class="lp-sub">支持邮箱注册，数据保存在云端（Supabase）</text>
+        <text class="lp-sub">支持邮箱注册，数据自动保存在云端</text>
         <button class="btn-primary lp-btn" @click="openAuth">登录 / 注册</button>
         <text v-if="!user.supabaseEnabled" class="lp-tip">
-          未配置 Supabase：登录功能不可用，但行情分析与本地自选仍可正常使用。
+          登录服务未开启：当前可正常使用行情分析与本地自选，登录与云端同步暂不可用。
         </text>
       </view>
 

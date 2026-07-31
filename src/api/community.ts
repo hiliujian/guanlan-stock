@@ -345,7 +345,7 @@ async function createRemote(
     | { type: "card"; card: PostCard; avatar?: string }
 ): Promise<CommunityPost> {
   const sb = getSupabase();
-  if (!sb) throw new Error("Supabase 未配置");
+  if (!sb) throw new Error("发布失败，请稍后再试");
   const row: any = {
     author: getMyName(),
     avatar: input.avatar ?? getMyAvatar(),

@@ -2,7 +2,7 @@
   <view class="post glass anim-fade-up">
     <!-- 头部：头像 + 昵称 + 时间 + 话题 + 删除 -->
     <view class="p-head">
-      <view class="p-avatar" :style="avatarStyle">{{ avatarText }}</view>
+      <view class="p-avatar" :style="{ background: avatar.bg, fontSize: avatar.fontSize }">{{ avatar.text }}</view>
       <view class="p-meta">
         <text class="p-name">{{ post.author }}</text>
         <text class="p-time">{{ timeText }}</text>
@@ -98,7 +98,7 @@
 import { ref, computed } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import { formatRelative, type CommunityPost } from "@/api/community";
-import { avatarGradient, topicColor } from "@/utils/avatar";
+import { resolveAvatar, topicColor } from "@/utils/avatar";
 
 const props = defineProps<{ post: CommunityPost; mine: boolean }>();
 const emit = defineEmits<{
@@ -110,17 +110,8 @@ const emit = defineEmits<{
 const showReply = ref(false);
 const replyText = ref("");
 
-// 头像：优先显示 post.avatar（emoji）；否则用昵称首字母 + 按昵称哈希的稳定渐变底色
-const avatarText = computed(() => {
-  const a = props.post.avatar;
-  if (a) return a;
-  return (props.post.author || "?").slice(0, 1);
-});
-const avatarStyle = computed(() => {
-  // emoji 头像用中性底 + 稍大字号，避免与彩色渐变互相干扰；占位头像才铺渐变
-  if (props.post.avatar) return { background: "var(--card-2)", fontSize: "34rpx" };
-  return { background: avatarGradient(props.post.author) };
-});
+// 头像：优先用自选/上传的 emoji；无头像时回退到按昵称稳定分配的默认头像
+const avatar = computed(() => resolveAvatar(props.post.author, props.post.avatar));
 
 // 话题（股票 / 板块）标签配色，便于一眼区分标的归属
 const topicStyle = computed(() => {

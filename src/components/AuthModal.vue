@@ -60,7 +60,7 @@
         {{ loading ? "处理中…" : mode === "login" ? "登录" : "注册并登录" }}
       </button>
       <view class="hint">
-        <text>登录后可同步自选股与资料（Supabase）。未配置时仅本地保存。</text>
+        <text>登录后可同步自选股与资料到云端；未登录时数据仅保存在本机。</text>
       </view>
     </view>
   </view>

@@ -4,7 +4,7 @@
     <view class="cm-header">
       <text class="cm-brand">社区</text>
       <view class="cm-me" @click="editing = !editing">
-        <view class="cm-avatar" :style="myAvatarStyle">{{ myAvatarText }}</view>
+        <view class="cm-avatar" :style="{ background: myAvatarD.bg, fontSize: myAvatarD.fontSize }">{{ myAvatarD.text }}</view>
         <text class="cm-name">{{ myName }}</text>
         <OutlineIcon type="gear" :size="24" color="var(--text-2)" />
       </view>
@@ -16,7 +16,7 @@
         <input class="cm-edit-in" v-model="nameDraft" placeholder="设置你的昵称" maxlength="12" />
         <view class="cm-edit-save" @click="saveName">保存</view>
       </view>
-      <text class="cm-edit-lbl">选择头像（点选 emoji，留空则用昵称首字母）</text>
+      <text class="cm-edit-lbl">选择头像（点选 emoji，不填则用默认头像）</text>
       <view class="cm-emoji-row">
         <view
           v-for="e in presetEmojis"
@@ -81,7 +81,7 @@ import PostComposer from "./PostComposer.vue";
 import PostCard from "./PostCard.vue";
 import { useCommunity } from "@/store/community";
 import { getMyName, setMyName, getMyAvatar, setMyAvatar } from "@/store/identity";
-import { avatarGradient, topicColor, presetEmojis } from "@/utils/avatar";
+import { resolveAvatar, topicColor, presetEmojis } from "@/utils/avatar";
 import type { CommunityPost, PostCard as PostCardData, Topic } from "@/api/community";
 
 const { posts, loading, load, publishText, publishCard, like, reply, remove } = useCommunity();
@@ -89,13 +89,8 @@ const { posts, loading, load, publishText, publishCard, like, reply, remove } = 
 // ---------------- 我的身份（昵称 + 头像） ----------------
 const myName = ref(getMyName());
 const myAvatar = ref(getMyAvatar());
-const myInitial = computed(() => (myName.value || "?").slice(0, 1));
-const myAvatarText = computed(() => (myAvatar.value || myInitial.value));
-const myAvatarStyle = computed(() =>
-  myAvatar.value
-    ? { background: "var(--card-2)", fontSize: "26rpx" }
-    : { background: avatarGradient(myName.value) }
-);
+// 我的头像：有自选 emoji 用自选，否则按昵称稳定分配默认头像
+const myAvatarD = computed(() => resolveAvatar(myName.value, myAvatar.value));
 
 const editing = ref(false);
 const nameDraft = ref(myName.value);

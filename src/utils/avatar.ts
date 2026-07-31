@@ -1,20 +1,42 @@
 // =====================================================================
 // 头像与话题的视觉工具
 // ---------------------------------------------------------------------
-// 社区当前为「本地昵称」匿名体系，没有真实头像图片。这里提供两类视觉标识：
-//   - 首字母占位头像：按昵称哈希生成【稳定且各异】的渐变底色，
-//     解决"所有人头像都是同一个主色、分不清谁是谁"的问题。
-//   - emoji 头像：用户在身份栏任选一个，优先显示，更有"头像"感。
+// 社区当前为「本地昵称」匿名体系，没有真实头像图片。这里提供三类视觉标识：
+//   - 默认头像集合（DEFAULT_AVATARS）：一组精心搭配的 emoji + 渐变底，
+//     用户未上传/未自选头像时，按昵称哈希稳定分配一个，保证"人人有像、且各异"。
+//   - 自选 emoji 头像：用户在身份栏点选，优先于默认头像显示。
 // 另外导出话题（股票/板块）标签配色，供社区首页筛选与帖子头部使用。
 // =====================================================================
 
-/** 预设头像 emoji（用户在身份栏点选；空字符串表示"用首字母占位"） */
+/** 预设头像 emoji（用户在身份栏点选；空字符串表示"用默认头像"） */
 export const presetEmojis: string[] = [
   "", "🦊", "🐼", "🚀", "💰", "🐯", "🦉", "🌟", "🔥", "🐳",
   "🍀", "⚡", "🐺", "🐝", "🦅", "🌈", "💎", "🏆", "🌊", "🧠",
 ];
 
-/** 一套辨识度高、在明暗主题下都清晰的高级渐变（首字母占位头像用） */
+/** 单个头像的视觉设计（文本 + 底色 + 字号） */
+export interface AvatarDesign {
+  text: string;
+  bg: string;
+  fontSize: string;
+}
+
+/**
+ * 一组精心设计的默认头像（emoji + 渐变底）。
+ * 用户未上传 / 未自选头像时使用，按昵称稳定分配，避免"所有人都是同一个占位"或光秃秃首字母。
+ */
+export const DEFAULT_AVATARS: AvatarDesign[] = [
+  { text: "🦊", bg: "linear-gradient(135deg, #ff9a3c, #ff6b6b)", fontSize: "32rpx" },
+  { text: "🐼", bg: "linear-gradient(135deg, #9aa7b3, #5f6f7d)", fontSize: "32rpx" },
+  { text: "🚀", bg: "linear-gradient(135deg, #4f8cff, #6a5cff)", fontSize: "32rpx" },
+  { text: "🌟", bg: "linear-gradient(135deg, #f7b733, #fc4a1a)", fontSize: "32rpx" },
+  { text: "🐳", bg: "linear-gradient(135deg, #16bffd, #0a6cff)", fontSize: "32rpx" },
+  { text: "🌈", bg: "linear-gradient(135deg, #a18cd1, #fbc2eb)", fontSize: "32rpx" },
+  { text: "💎", bg: "linear-gradient(135deg, #43e97b, #38f9d7)", fontSize: "32rpx" },
+  { text: "🧠", bg: "linear-gradient(135deg, #2bc0e4, #330867)", fontSize: "32rpx" },
+];
+
+/** 一套辨识度高、在明暗主题下都清晰的高级渐变（默认头像 / 兼容旧逻辑用） */
 const GRADIENTS: string[] = [
   "linear-gradient(135deg, #07c160, #0a9d8f)",
   "linear-gradient(135deg, #3b82f6, #6366f1)",
@@ -27,6 +49,22 @@ const GRADIENTS: string[] = [
   "linear-gradient(135deg, #eab308, #f97316)",
   "linear-gradient(135deg, #06b6d4, #3b82f6)",
 ];
+
+/** 按昵称稳定分配一个默认头像（同昵称永远同一个） */
+export function defaultAvatarFor(name: string): AvatarDesign {
+  const s = (name || "?").trim();
+  return DEFAULT_AVATARS[hash(s) % DEFAULT_AVATARS.length];
+}
+
+/**
+ * 统一解析头像：优先用用户自选 / 上传的 emoji；
+ * 无头像时回退到按昵称稳定分配的默认头像（而不是光秃秃的首字母）。
+ */
+export function resolveAvatar(name: string, avatar?: string): AvatarDesign {
+  const a = (avatar || "").trim();
+  if (a) return { text: a, bg: "var(--card-2)", fontSize: "34rpx" };
+  return defaultAvatarFor(name);
+}
 
 /** 简单字符串哈希（djb2 变体），用于把昵称映射到稳定索引 */
 function hash(str: string): number {

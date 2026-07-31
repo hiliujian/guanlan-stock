@@ -12,7 +12,7 @@ export interface AuthResult {
 
 export async function signIn(email: string, password: string): Promise<AuthResult> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: "未配置 Supabase（请在 src/config/app.ts 填入 URL/KEY）" };
+  if (!sb) return { ok: false, error: SERVICE_UNAVAILABLE };
   const { error } = await sb.auth.signInWithPassword({ email, password });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
@@ -20,7 +20,7 @@ export async function signIn(email: string, password: string): Promise<AuthResul
 
 export async function signUp(email: string, password: string): Promise<AuthResult> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: "未配置 Supabase（请在 src/config/app.ts 填入 URL/KEY）" };
+  if (!sb) return { ok: false, error: SERVICE_UNAVAILABLE };
   const { data, error } = await sb.auth.signUp({ email, password });
   if (error) return { ok: false, error: error.message };
   // 若开启了邮件确认，data.session 为 null
@@ -47,9 +47,12 @@ export interface ProfilePatch {
   avatar_url?: string;
 }
 
+// 服务不可用时的统一友好提示（不向用户暴露内部配置/实现细节）
+const SERVICE_UNAVAILABLE = "服务暂时不可用，请稍后再试";
+
 export async function updateProfile(patch: ProfilePatch): Promise<AuthResult> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: "未配置 Supabase（请在 src/config/app.ts 填入 URL/KEY）" };
+  if (!sb) return { ok: false, error: SERVICE_UNAVAILABLE };
   const { data: u } = await sb.auth.getUser();
   const uid = u.user?.id;
   if (!uid) return { ok: false, error: "未登录" };
