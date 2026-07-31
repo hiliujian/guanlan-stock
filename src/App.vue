@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { onLaunch } from "@dcloudio/uni-app";
+import { initTheme } from "@/utils/theme";
 onLaunch(() => {
-  // 打开即用：登录态与自选在首页 setup 中初始化，这里仅做启动日志
-  console.log("App Launch - 观澜");
+  // 应用启动即套用用户保存的主题（深色默认）
+  initTheme();
 });
 </script>
 

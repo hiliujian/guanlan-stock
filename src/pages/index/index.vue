@@ -16,6 +16,7 @@
 import { ref, computed, markRaw } from "vue";
 import MarketView from "@/views/MarketView.vue";
 import WatchlistView from "@/views/WatchlistView.vue";
+import CommunityView from "@/components/CommunityView.vue";
 import ProfileView from "@/views/ProfileView.vue";
 import AppTabBar from "@/components/AppTabBar.vue";
 import AuthModal from "@/components/AuthModal.vue";
@@ -24,7 +25,7 @@ import { initWatchlist } from "@/store/watchlist";
 import { navState, openInMarket, closeAuth } from "@/store/nav";
 
 const current = ref(0);
-const comps = markRaw([MarketView, WatchlistView, ProfileView]);
+const comps = markRaw([MarketView, WatchlistView, CommunityView, ProfileView]);
 const currentComp = computed(() => comps[current.value]);
 
 // 打开即用：启动即初始化用户态与自选（未登录走本地降级，无门禁）

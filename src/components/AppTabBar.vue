@@ -26,6 +26,7 @@ interface Tab {
 const tabs: Tab[] = [
   { key: "market", label: "行情", icon: "bars", iconActive: "bars" },
   { key: "watch", label: "自选", icon: "star", iconActive: "star-filled" },
+  { key: "community", label: "社区", icon: "chatbubble", iconActive: "chatbubble" },
   { key: "profile", label: "我的", icon: "person", iconActive: "person" },
 ];
 
@@ -36,10 +37,10 @@ function onTap(i: number) {
   if (i !== props.current) emit("change", i);
 }
 function iconColor(i: number) {
-  return i === props.current ? "var(--primary)" : "var(--text-3)";
+  return i === props.current ? "var(--primary)" : "var(--text-2)";
 }
 function labelColor(i: number) {
-  return i === props.current ? "var(--primary)" : "var(--text-3)";
+  return i === props.current ? "var(--primary)" : "var(--text-2)";
 }
 </script>
 
@@ -53,10 +54,11 @@ function labelColor(i: number) {
   max-width: 480px;
   height: calc(110rpx + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(20rpx);
-  -webkit-backdrop-filter: blur(20rpx);
-  border-top: 1rpx solid var(--border);
+  background: var(--tabbar-bg);
+  backdrop-filter: blur(20rpx) saturate(150%);
+  -webkit-backdrop-filter: blur(20rpx) saturate(150%);
+  border-top: 1rpx solid var(--tabbar-border);
+  box-shadow: var(--tabbar-shadow);
   display: flex;
   z-index: 900;
 }

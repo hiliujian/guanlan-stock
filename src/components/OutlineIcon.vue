@@ -13,9 +13,15 @@
     v-html="svgBody"
     @click="$emit('click')"
   />
-  <!-- 微信小程序：回退到 uni-icons 字体图标 -->
-  <uni-icons
+  <!-- 微信小程序：回退到 uni-icons 字体图标。
+       注意：必须用动态 <component :is> 而非静态 <uni-icons>。
+       静态组件标签会被 Vue 提升为模块顶层 resolveComponent("uni-icons")，
+       在 H5（未注册 uni-icons）下一加载就报 “Failed to resolve component”。
+       改用动态 :is 后，解析延迟到渲染时，H5 走 v-else 永不执行 → 不再告警；
+       小程序下才解析 'uni-icons'（那边已注册），跨端能力保留。 -->
+  <component
     v-else
+    :is="uniIconName"
     :type="type"
     :size="size"
     :color="color"
@@ -35,6 +41,8 @@ const props = defineProps<{
 defineEmits<{ (e: "click"): void }>();
 
 const h5 = typeof window !== "undefined" && typeof document !== "undefined";
+// 仅非 H5（微信小程序等）时使用的回退组件名；H5 走 v-else 永不解析，避免 “uni-icons 未注册” 告警。
+const uniIconName = "uni-icons";
 
 // 24x24 outline 图标路径（stroke=currentColor）
 const ICONS: Record<string, { body: string; filled?: boolean }> = {
@@ -43,7 +51,12 @@ const ICONS: Record<string, { body: string; filled?: boolean }> = {
   bars: { body: '<line x1="7" y1="20" x2="7" y2="12"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="17" y1="20" x2="17" y2="9"/>' },
   plus: { body: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>' },
   "arrow-down": { body: '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="6 13 12 19 18 13"/>' },
+  "arrow-up": { body: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="6 11 12 5 18 11"/>' },
+  "arrow-left": { body: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="11 6 5 12 11 18"/>' },
   "arrow-right": { body: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/>' },
+  gear: {
+    body: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  },
   "arrowright": { body: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/>' },
   info: {
     body: '<circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="8" r="0.8" fill="currentColor" stroke="none"/>',
@@ -77,6 +90,32 @@ const ICONS: Record<string, { body: string; filled?: boolean }> = {
   },
   color: {
     body: '<polyline points="3 12 7 12 10 4 14 20 17 12 21 12"/>',
+  },
+  // 拖拽手柄：2×3 圆点，filled
+  grip: {
+    body: '<circle cx="9" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.5" fill="currentColor" stroke="none"/>',
+    filled: true,
+  },
+  // 刷新 / 重置
+  refresh: {
+    body: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+  },
+  // 资讯 / 新闻（报纸）
+  news: {
+    body: '<path d="M4 5h13v14H5a1 1 0 0 1-1-1z"/><path d="M17 8h3v11a1 1 0 0 1-1 1h-2"/><line x1="7" y1="8" x2="14" y2="8"/><line x1="7" y1="12" x2="14" y2="12"/><line x1="7" y1="16" x2="11" y2="16"/>',
+  },
+  // 点赞 / 喜欢（描边）
+  heart: {
+    body: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/>',
+  },
+  // 点赞 / 喜欢（填充，已点赞态）
+  "heart-filled": {
+    body: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/>',
+    filled: true,
+  },
+  // 发送 / 发布（纸飞机）
+  send: {
+    body: '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
   },
 };
 

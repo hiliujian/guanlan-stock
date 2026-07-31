@@ -1,13 +1,13 @@
 <template>
-  <view v-if="visible" class="auth-mask anim-mask" @click="onMaskClick">
+  <view v-if="visible" class="auth-mask mask-blur anim-mask" @click="onMaskClick">
     <view class="auth-card anim-card" @click.stop>
-      <OutlineIcon type="close" :size="26" color="var(--text-3)" class="card-close" @click="$emit('close')" />
+      <OutlineIcon type="close" :size="26" color="var(--text-2)" class="card-close" @click="$emit('close')" />
 
       <!-- 品牌 + 头像 -->
       <view class="card-hero">
         <view class="avatar-wrap" @click="chooseAvatar">
           <image v-if="avatarLocal" :src="avatarLocal" class="avatar-img" mode="aspectFill" />
-          <OutlineIcon v-else type="person" :size="56" color="var(--text-3)" />
+          <OutlineIcon v-else type="person" :size="56" color="var(--text-2)" />
           <view class="avatar-cam">
             <OutlineIcon type="camera" :size="20" color="#fff" />
           </view>
@@ -27,7 +27,7 @@
       </view>
 
       <view class="field">
-        <OutlineIcon type="person" :size="20" color="var(--text-3)" />
+        <OutlineIcon type="person" :size="20" color="var(--text-2)" />
         <input
           class="input"
           v-model="email"
@@ -38,7 +38,7 @@
         />
       </view>
       <view class="field">
-        <OutlineIcon type="locked" :size="20" color="var(--text-3)" />
+        <OutlineIcon type="locked" :size="20" color="var(--text-2)" />
         <input
           class="input"
           v-model="password"
@@ -170,8 +170,7 @@ async function submit() {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(6rpx);
-  -webkit-backdrop-filter: blur(6rpx);
+  /* 轻模糊由全局 .mask-blur 提供 */
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -257,11 +256,11 @@ async function submit() {
 }
 .brand-sub {
   font-size: 24rpx;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .hero-tip {
   font-size: 20rpx;
-  color: var(--text-3);
+  color: var(--text-2);
   margin-top: 4rpx;
 }
 .seg {
@@ -301,7 +300,7 @@ async function submit() {
   color: var(--text);
 }
 .ph {
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .btn-primary {
   width: 100%;
@@ -327,7 +326,7 @@ async function submit() {
 .hint {
   margin-top: 18rpx;
   font-size: 22rpx;
-  color: var(--text-3);
+  color: var(--text-2);
   line-height: 1.6;
   text-align: center;
 }

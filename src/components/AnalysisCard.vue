@@ -25,13 +25,17 @@ withDefaults(
 
 <style scoped>
 .analysis-card {
-  padding: 12rpx 16rpx 12rpx;
+  padding: 14rpx 18rpx 16rpx;
+  border: 1rpx solid var(--border);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  box-shadow: var(--shadow), inset 0 1rpx 0 rgba(255, 255, 255, 0.06);
 }
 .ac-head {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  margin-bottom: 6rpx;
+  margin-bottom: 8rpx;
 }
 .ac-title {
   font-size: 30rpx;

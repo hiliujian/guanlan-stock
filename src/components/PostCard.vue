@@ -1,0 +1,382 @@
+<template>
+  <view class="post glass anim-fade-up">
+    <!-- 头部：头像 + 昵称 + 时间 + 话题 + 删除 -->
+    <view class="p-head">
+      <view class="p-avatar" :style="avatarStyle">{{ avatarText }}</view>
+      <view class="p-meta">
+        <text class="p-name">{{ post.author }}</text>
+        <text class="p-time">{{ timeText }}</text>
+      </view>
+      <view v-if="post.topic" class="p-topic" :style="topicStyle">#{{ post.topic.name }}</view>
+      <view v-if="mine" class="p-del" @click="$emit('remove', post.id)">
+        <OutlineIcon type="trash" :size="30" color="var(--text-2)" />
+      </view>
+    </view>
+
+    <!-- 纯文字动态 -->
+    <text v-if="post.type === 'text'" class="p-text">{{ post.content }}</text>
+
+    <!-- 持仓卡片 -->
+    <view v-else-if="post.card?.kind === 'holding'" class="card-s holding">
+      <view class="cs-head">
+        <text class="cs-tag">持仓</text>
+        <text class="cs-title">{{ c.stock }}</text>
+        <text class="cs-code">{{ c.code }}</text>
+      </view>
+      <view class="cs-grid">
+        <view class="cs-cell"><text class="cs-k">持仓成本</text><text class="cs-v">{{ fmt(c.cost) }}</text></view>
+        <view class="cs-cell"><text class="cs-k">持仓数量</text><text class="cs-v">{{ fmt(c.shares) }}</text></view>
+        <view class="cs-cell"><text class="cs-k">现价</text><text class="cs-v">{{ fmt(c.price) }}</text></view>
+      </view>
+      <view class="cs-foot">
+        <text class="cs-k">浮动盈亏</text>
+        <text class="cs-pnl" :style="{ color: pnl >= 0 ? 'var(--up)' : 'var(--down)' }">
+          {{ pnl >= 0 ? "+" : "" }}{{ fmt(pnl) }} ({{ pct >= 0 ? "+" : "" }}{{ pct.toFixed(2) }}%)
+        </text>
+      </view>
+    </view>
+
+    <!-- 操作记录卡片 -->
+    <view v-else-if="post.card?.kind === 'operation'" class="card-s operation">
+      <view class="cs-head">
+        <text :class="['cs-side', c.side]">{{ c.side === "buy" ? "买入" : "卖出" }}</text>
+        <text class="cs-title">{{ c.stock }}</text>
+        <text class="cs-code">{{ c.code }}</text>
+      </view>
+      <view class="cs-grid">
+        <view class="cs-cell"><text class="cs-k">成交价</text><text class="cs-v">{{ fmt(c.price) }}</text></view>
+        <view class="cs-cell"><text class="cs-k">成交股数</text><text class="cs-v">{{ fmt(c.shares) }}</text></view>
+      </view>
+      <text v-if="c.note" class="cs-note">{{ c.note }}</text>
+    </view>
+
+    <!-- 收益卡片 -->
+    <view v-else-if="post.card?.kind === 'profit'" class="card-s profit">
+      <view class="cs-head">
+        <text class="cs-tag">收益</text>
+        <text class="cs-title">{{ c.period }}</text>
+      </view>
+      <view class="cs-big" :style="{ color: c.totalReturn >= 0 ? 'var(--up)' : 'var(--down)' }">
+        {{ c.totalReturn >= 0 ? "+" : "" }}{{ c.totalReturn }}%
+      </view>
+      <view class="cs-grid">
+        <view class="cs-cell"><text class="cs-k">已实现</text><text class="cs-v" :style="{ color: c.realized >= 0 ? 'var(--up)' : 'var(--down)' }">{{ signed(c.realized) }}</text></view>
+        <view class="cs-cell"><text class="cs-k">未实现</text><text class="cs-v" :style="{ color: c.unrealized >= 0 ? 'var(--up)' : 'var(--down)' }">{{ signed(c.unrealized) }}</text></view>
+        <view v-if="c.winRate != null" class="cs-cell"><text class="cs-k">胜率</text><text class="cs-v">{{ c.winRate }}%</text></view>
+      </view>
+    </view>
+
+    <!-- 操作栏：点赞 / 回复 -->
+    <view class="p-actions">
+      <view :class="['p-act', post.likedByMe ? 'liked' : '']" @click="$emit('like', post.id)">
+        <OutlineIcon :type="post.likedByMe ? 'heart-filled' : 'heart'" :size="32" :color="post.likedByMe ? 'var(--up)' : 'var(--text-2)'" />
+        <text class="p-act-t" :style="{ color: post.likedByMe ? 'var(--up)' : 'var(--text-2)' }">{{ post.likes || "" }}</text>
+      </view>
+      <view class="p-act" @click="toggleReply">
+        <OutlineIcon type="chatbubble" :size="32" color="var(--text-2)" />
+        <text class="p-act-t" :style="{ color: 'var(--text-2)' }">{{ post.replies.length || "" }}</text>
+      </view>
+    </view>
+
+    <!-- 回复区 -->
+    <view v-if="showReply" class="p-replies">
+      <view v-for="r in post.replies" :key="r.id" class="p-reply">
+        <text class="pr-name">{{ r.author }}</text>
+        <text class="pr-text">{{ r.content }}</text>
+      </view>
+      <view class="p-reply-input">
+        <input class="pri-in" v-model="replyText" placeholder="回复 TA…" :maxlength="200" @confirm="sendReply" />
+        <view class="pri-send" @click="sendReply">
+          <OutlineIcon type="send" :size="24" color="#fff" />
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from "vue";
+import OutlineIcon from "./OutlineIcon.vue";
+import { formatRelative, type CommunityPost } from "@/api/community";
+import { avatarGradient, topicColor } from "@/utils/avatar";
+
+const props = defineProps<{ post: CommunityPost; mine: boolean }>();
+const emit = defineEmits<{
+  (e: "like", id: string): void;
+  (e: "reply", id: string, content: string): void;
+  (e: "remove", id: string): void;
+}>();
+
+const showReply = ref(false);
+const replyText = ref("");
+
+// 头像：优先显示 post.avatar（emoji）；否则用昵称首字母 + 按昵称哈希的稳定渐变底色
+const avatarText = computed(() => {
+  const a = props.post.avatar;
+  if (a) return a;
+  return (props.post.author || "?").slice(0, 1);
+});
+const avatarStyle = computed(() => {
+  // emoji 头像用中性底 + 稍大字号，避免与彩色渐变互相干扰；占位头像才铺渐变
+  if (props.post.avatar) return { background: "var(--card-2)", fontSize: "34rpx" };
+  return { background: avatarGradient(props.post.author) };
+});
+
+// 话题（股票 / 板块）标签配色，便于一眼区分标的归属
+const topicStyle = computed(() => {
+  const t = props.post.topic;
+  if (!t) return {};
+  const c = topicColor(t.type);
+  return { color: c.fg, background: c.bg };
+});
+
+const timeText = computed(() => formatRelative(props.post.createdAt));
+const c = computed(() => props.post.card as any);
+
+// 持仓浮动盈亏 / 收益率
+const pnl = computed(() => {
+  const card = props.post.card;
+  if (!card || card.kind !== "holding") return 0;
+  return (card.price - card.cost) * card.shares;
+});
+const pct = computed(() => {
+  const card = props.post.card;
+  if (!card || card.kind !== "holding" || !card.cost) return 0;
+  return ((card.price - card.cost) / card.cost) * 100;
+});
+
+function fmt(n: number): string {
+  if (n == null || isNaN(n)) return "-";
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+function signed(n: number): string {
+  if (n == null || isNaN(n)) return "-";
+  return (n >= 0 ? "+" : "") + fmt(n);
+}
+
+function toggleReply() {
+  showReply.value = !showReply.value;
+}
+function sendReply() {
+  const v = replyText.value.trim();
+  if (!v) return;
+  emit("reply", props.post.id, v);
+  replyText.value = "";
+}
+</script>
+
+<style scoped>
+.post {
+  margin: 0 18rpx 14rpx;
+  padding: 20rpx;
+  border-radius: var(--radius);
+}
+.p-head {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  margin-bottom: 14rpx;
+}
+.p-avatar {
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  flex: none;
+}
+.p-meta {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.p-name {
+  font-size: 27rpx;
+  font-weight: 600;
+  color: var(--text);
+}
+.p-time {
+  font-size: 21rpx;
+  color: var(--text-2);
+}
+.p-del {
+  flex: none;
+  padding: 6rpx;
+}
+.p-text {
+  display: block;
+  font-size: 28rpx;
+  line-height: 1.6;
+  color: var(--text);
+  word-break: break-word;
+}
+
+/* ---------- 特殊卡片（持仓 / 操作 / 收益） ---------- */
+.card-s {
+  margin-top: 6rpx;
+  padding: 18rpx;
+  border-radius: 18rpx;
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
+  border-left: 6rpx solid var(--primary);
+}
+.card-s.holding { border-left-color: var(--primary); }
+.card-s.operation { border-left-color: var(--text-2); }
+.card-s.profit { border-left-color: var(--up); }
+
+.cs-head {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 14rpx;
+}
+.cs-tag {
+  font-size: 20rpx;
+  font-weight: 700;
+  color: #fff;
+  background: var(--primary);
+  padding: 3rpx 12rpx;
+  border-radius: 8rpx;
+}
+.cs-side {
+  font-size: 22rpx;
+  font-weight: 700;
+  padding: 4rpx 14rpx;
+  border-radius: 8rpx;
+}
+.cs-side.buy { color: var(--up); background: rgba(255, 91, 91, 0.12); }
+.cs-side.sell { color: var(--down); background: rgba(31, 216, 116, 0.12); }
+.cs-title {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+.cs-code {
+  font-size: 21rpx;
+  color: var(--text-2);
+}
+.cs-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10rpx;
+}
+.cs-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+.cs-k {
+  font-size: 20rpx;
+  color: var(--text-2);
+}
+.cs-v {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--text);
+}
+.cs-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx solid var(--border);
+}
+.cs-pnl {
+  font-size: 27rpx;
+  font-weight: 700;
+}
+.cs-big {
+  font-size: 52rpx;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 1rpx;
+  margin: 4rpx 0 14rpx;
+}
+.cs-note {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 23rpx;
+  color: var(--text-2);
+  font-style: italic;
+}
+
+/* ---------- 操作栏 ---------- */
+.p-actions {
+  display: flex;
+  gap: 40rpx;
+  margin-top: 16rpx;
+}
+.p-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx;
+  transition: transform 0.15s ease;
+}
+.p-act:active {
+  transform: scale(0.9);
+}
+.p-act-t {
+  font-size: 24rpx;
+}
+
+/* ---------- 回复区 ---------- */
+.p-replies {
+  margin-top: 14rpx;
+  padding-top: 14rpx;
+  border-top: 1rpx solid var(--border);
+}
+.p-reply {
+  font-size: 24rpx;
+  line-height: 1.5;
+  padding: 6rpx 0;
+}
+.pr-name {
+  font-weight: 600;
+  color: var(--primary);
+  margin-right: 10rpx;
+}
+.pr-text {
+  color: var(--text-2);
+  word-break: break-word;
+}
+.p-reply-input {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+.pri-in {
+  flex: 1;
+  height: 64rpx;
+  padding: 0 18rpx;
+  font-size: 24rpx;
+  color: var(--text);
+  background: var(--card-2);
+  border-radius: 999rpx;
+}
+.pri-in::placeholder {
+  color: var(--text-2);
+}
+.pri-send {
+  width: 64rpx;
+  height: 64rpx;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--primary);
+  transition: transform 0.15s ease;
+}
+.pri-send:active {
+  transform: scale(0.9);
+}
+</style>

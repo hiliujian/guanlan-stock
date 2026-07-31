@@ -76,14 +76,14 @@
         </view>
         <view class="metric">
           <text class="m-k">RSI(12)</text>
-          <text class="m-v" :style="{ color: rsiColor }">{{ a.rNow.toFixed(0) }} · {{ rsiState }}</text>
+          <text class="m-v" :style="{ color: rsiColor }">{{ a.rNow.toFixed(2) }} · {{ rsiState }}</text>
         </view>
         <view class="metric">
-          <text class="m-k">量能(量比)</text>
+          <text class="m-k">量能比(VMA5/20)</text>
           <text class="m-v" :style="{ color: volColor }">{{ a.volRatio.toFixed(2) }} · {{ volState }}</text>
         </view>
         <view class="metric">
-          <text class="m-k">资金流向</text>
+          <text class="m-k">主力净流入(近5日)</text>
           <text class="m-v" :style="{ color: flowColor }">{{ flowText }}</text>
         </view>
         <view class="metric">
@@ -113,12 +113,12 @@
           <text class="m-v" :style="{ color: mddColor }">{{ mddText }}</text>
         </view>
         <view class="metric">
-          <text class="m-k">ATR 波动幅度</text>
+          <text class="m-k">ATR(占现价%)</text>
           <text class="m-v">{{ atrPctText }}</text>
         </view>
         <view class="metric">
           <text class="m-k">平均换手率(20日)</text>
-          <text class="m-v">{{ turnText }}</text>
+          <text class="m-v" :style="{ color: turnColor }">{{ turnText }}</text>
         </view>
         <view class="metric">
           <text class="m-k">OBV 量能趋势</text>
@@ -131,11 +131,50 @@
       </view>
     </view>
 
-    <!-- 综合评分依据 -->
-    <view class="panel anim-fade-up" :style="{ animationDelay: '120ms' }">
+    <view class="panel news-panel anim-fade-up" :style="{ animationDelay: '160ms' }">
+      <view class="panel-title">
+        <OutlineIcon type="news" :size="28" color="var(--primary)" />
+        <text>关联资讯</text>
+      </view>
+      <view v-if="newsItems.length" class="news-list">
+        <view v-for="(it, i) in newsItems" :key="it.id" class="news-item" @click="openNews(it)">
+          <view class="ni-head">
+            <text :class="['ni-tag', tagCls(it)]">{{ tagText(it) }}</text>
+            <text class="ni-title">{{ it.title }}</text>
+          </view>
+          <view v-if="it.summary" class="ni-sum">{{ it.summary }}</view>
+          <view class="ni-foot">
+            <text class="ni-src">{{ it.source }}</text>
+            <text class="ni-time">{{ it.time || '时间未知' }}</text>
+          </view>
+        </view>
+      </view>
+      <view v-if="newsItems.length > 5" class="news-more">
+        <text>滑动查看剩余 {{ newsItems.length - 5 }} 条 · 共 {{ newsItems.length }} 条</text>
+      </view>
+      <view v-if="!newsItems.length" class="news-empty">
+        <text>暂无数据</text>
+      </view>
+
+      <view v-if="ns" class="news-impact">
+        <text class="ni-h">资讯如何影响分析</text>
+        <view v-if="ns.catalysts.length" class="ni-row">
+          <text class="ni-k ok">利好催化剂</text>
+          <text class="ni-v">{{ ns.catalysts.join('、') }}</text>
+        </view>
+        <view v-if="ns.risks.length" class="ni-row">
+          <text class="ni-k bad">利空风险事件</text>
+          <text class="ni-v">{{ ns.risks.join('、') }}</text>
+        </view>
+        <text class="ni-note">资讯情绪已按 ±12 分纳入综合评分（当前贡献 {{ newsDelta > 0 ? '+' : '' }}{{ newsDelta }} 分），与量价 / 资金因子协同研判，不构成单独买卖依据。</text>
+      </view>
+    </view>
+
+    <!-- 技术面评分（评分构成依据，置于结论之上） -->
+    <view class="panel anim-fade-up" :style="{ animationDelay: '170ms' }">
       <view class="panel-title">
         <OutlineIcon type="medal" :size="28" color="var(--primary)" />
-        <text>技术面评分依据</text>
+        <text>技术面评分</text>
       </view>
       <view class="reason-list">
         <view v-for="(r, i) in a.scoreReasons" :key="i" class="reason">
@@ -146,7 +185,7 @@
       <text class="base-note">基准分 50，按技术面多空因子加权得出（范围 5–95）；仅反映技术动能，非投资评级。</text>
     </view>
 
-    <!-- 分析结论 -->
+    <!-- 分析结论（综合所有量化因子的最终总结，置于关联资讯之后） -->
     <view class="panel anim-fade-up" :style="{ animationDelay: '180ms' }">
       <view class="panel-title">
         <OutlineIcon type="chatbubble" :size="28" color="var(--primary)" />
@@ -174,7 +213,7 @@
         <text>建议减仓</text>
       </view>
       <view v-if="!a.watch && !a.build && !a.add && !a.reduce" class="dec-item wait">
-        <OutlineIcon type="info" :size="26" color="var(--text-3)" />
+        <OutlineIcon type="info" :size="26" color="var(--text-2)" />
         <text>观望为主</text>
       </view>
     </view>
@@ -222,8 +261,9 @@ import { computed } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import PriceText from "./PriceText.vue";
 import type { AnalysisResult } from "@/utils/analyzer";
+import { tagNewsItem, type NewsItem, type NewsSignal } from "@/utils/newsSentiment";
 
-const props = defineProps<{ result: AnalysisResult }>();
+const props = defineProps<{ result: AnalysisResult; news?: NewsItem[]; newsSignal?: NewsSignal | null }>();
 // 关键：必须用 computed（不要立即 .value），否则 a 会变成 setup 时刻的静态快照，
 // 切换股票时 props.result 变了但 a 不变 → 报告不刷新。
 const a = computed(() => props.result);
@@ -262,13 +302,13 @@ const trendColor = computed(() => {
   const t = a.value.trend;
   if (t === "up" || t === "shake_up") return "var(--up)";
   if (t === "down" || t === "shake_down") return "var(--down)";
-  return "var(--text-2)";
+  return "var(--text)";
 });
 const maColor = computed(() => {
   const s = a.value.maState;
   if (s === "多头排列") return "var(--up)";
   if (s === "空头排列") return "var(--down)";
-  return "var(--text-2)";
+  return "var(--text)";
 });
 const macdState = computed(() => {
   const c = a.value.macdCross;
@@ -282,7 +322,7 @@ const macdColor = computed(() => {
   const c = a.value.macdCross;
   if (c === "gold") return "var(--up)";
   if (c === "dead") return "var(--down)";
-  return "var(--text-2)";
+  return "var(--text)";
 });
 const kdjStateText = computed(() => {
   const c = a.value.kdjCross;
@@ -293,7 +333,7 @@ const kdjColor = computed(() => {
   const s = a.value.kdjState;
   if (s === "超买") return "var(--up)";
   if (s === "超卖") return "var(--down)";
-  return "var(--text-2)";
+  return "var(--text)";
 });
 const rsiState = computed(() => {
   const r = a.value.rNow;
@@ -305,7 +345,7 @@ const rsiColor = computed(() => {
   const r = a.value.rNow;
   if (r > 70) return "var(--up)";
   if (r < 30) return "var(--down)";
-  return "var(--text-2)";
+  return "var(--text)";
 });
 const volState = computed(() => {
   const v = a.value.volRatio;
@@ -317,17 +357,23 @@ const volColor = computed(() => {
   const v = a.value.volRatio;
   if (v > 1.15) return "var(--up)";
   if (v < 0.85) return "var(--down)";
-  return "var(--text-2)";
+  return "var(--text)";
 });
 const flowText = computed(() => {
   const f = a.value.f5;
   if (!f.has) return "暂无数据";
-  return f.sum > 0 ? "净流入" + f.sum.toFixed(2) + "亿" : "净流出" + Math.abs(f.sum).toFixed(2) + "亿";
+  return (f.sum > 0 ? "+" : "") + f.sum.toFixed(2) + "亿";
 });
 const flowColor = computed(() => {
   const f = a.value.f5;
   if (!f.has) return "var(--text-3)";
   return f.sum > 0 ? "var(--up)" : "var(--down)";
+});
+// 换手率无数据（降级源未提供）时统一用 --text-3 着色，与主力净流入无数据保持一致
+const turnColor = computed(() => {
+  const v = a.value.turnAvg;
+  if (!(v > 0)) return "var(--text-3)";
+  return "var(--text)";
 });
 
 // ---------------- 新增专业指标派生 ----------------
@@ -335,9 +381,9 @@ const adxLast = computed(() => {
   const arr = a.value.adx;
   return arr[arr.length - 1] || 0;
 });
-const adxStateText = computed(() => `${a.value.adxState} · ${adxLast.value.toFixed(0)}`);
+const adxStateText = computed(() => `${a.value.adxState} · ${adxLast.value.toFixed(2)}`);
 const adxColor = computed(() => {
-  if (adxLast.value < 20) return "var(--text-2)"; // 无趋势 → 中性
+  if (adxLast.value < 20) return "var(--text)"; // 无趋势 → 中性
   const last = a.value.adx.length - 1;
   return a.value.pDI[last] > a.value.mDI[last] ? "var(--up)" : "var(--down)";
 });
@@ -352,21 +398,34 @@ const bollPctBText = computed(() => {
 });
 const bollColor = computed(() => {
   const v = a.value.bollPctB[a.value.bollPctB.length - 1];
-  if (v == null) return "var(--text-2)";
-  return v > 1 || v < 0 ? "var(--up)" : "var(--text-2)";
+  if (v == null) return "var(--text)";
+  return v > 1 || v < 0 ? "var(--up)" : "var(--text)";
 });
-const volAnnText = computed(() => (a.value.volAnn * 100).toFixed(1) + "%");
-const mddText = computed(() => (a.value.maxDrawdown * 100).toFixed(1) + "%");
+const volAnnText = computed(() => (a.value.volAnn * 100).toFixed(2) + "%");
+const mddText = computed(() => (a.value.maxDrawdown * 100).toFixed(2) + "%");
 const mddColor = computed(() =>
-  a.value.maxDrawdown > 0.35 ? "var(--up)" : a.value.maxDrawdown > 0.2 ? "#ff9f1c" : "var(--text-2)"
+  a.value.maxDrawdown > 0.35 ? "var(--up)" : a.value.maxDrawdown > 0.2 ? "#ff9f1c" : "var(--text)"
 );
 const atrPctText = computed(() => a.value.atrPct.toFixed(2) + "%");
-const turnText = computed(() => a.value.turnAvg.toFixed(2) + "% · " + a.value.turnState);
+const turnText = computed(() => {
+  const v = a.value.turnAvg;
+  // 换手率仅东方财富提供；若该源未命中（降级到腾讯/新浪），turnover 全为 0，
+  // 此时不应显示误导性的「0.00% · 正常」，明确告知用户数据缺失。
+  if (!(v > 0)) return "暂无数据";
+  return v.toFixed(2) + "% · " + a.value.turnState;
+});
 const obvColor = computed(() =>
   a.value.obvTrend.indexOf("配合") >= 0 ? "var(--up)" : "var(--down)"
 );
 const biasText = computed(
-  () => `${a.value.bias6.toFixed(1)} / ${a.value.bias12.toFixed(1)} / ${a.value.bias24.toFixed(1)}`
+  () => `${a.value.bias6.toFixed(2)} / ${a.value.bias12.toFixed(2)} / ${a.value.bias24.toFixed(2)}`
+);
+
+// ---------------- 资讯情绪（供分析结论综合所有量化因子） ----------------
+const ns = computed<NewsSignal | null>(() => props.newsSignal ?? null);
+// 资讯情绪对综合评分的贡献（analyzer 同口径：±12 封顶）
+const newsDelta = computed(() =>
+  ns.value ? Math.max(-12, Math.min(12, Math.round((ns.value.score / 100) * 12))) : 0
 );
 
 // ---------------- 分析结论（综合合成） ----------------
@@ -377,11 +436,21 @@ const conclusion = computed(() => {
   const pb = r.bollPctB[r.bollPctB.length - 1];
   const bollStr = pb == null ? "—" : pb.toFixed(2);
   parts.push(
-    `技术面：MACD${r.macdCross === "gold" ? "金叉" : r.macdCross === "dead" ? "死叉" : "红绿柱交替"}，KDJ${r.kdjCross === "gold" ? "金叉" : r.kdjCross === "dead" ? "死叉" : "纠缠"}且${r.kdjState}，RSI(12)=${r.rNow.toFixed(0)}（${rsiState.value}），量比${r.volRatio.toFixed(2)}（${volState.value}）；趋势强度 ADX(14)=${r.adx[r.adx.length - 1].toFixed(0)}（${r.adxState}），布林%B=${bollStr}，近20日平均换手率${r.turnAvg.toFixed(2)}%（${r.turnState}）。`
+    `技术面：MACD${r.macdCross === "gold" ? "金叉" : r.macdCross === "dead" ? "死叉" : "红绿柱交替"}，KDJ${r.kdjCross === "gold" ? "金叉" : r.kdjCross === "dead" ? "死叉" : "纠缠"}且${r.kdjState}，RSI(12)=${r.rNow.toFixed(2)}（${rsiState.value}），量能比${r.volRatio.toFixed(2)}（${volState.value}）；趋势强度 ADX(14)=${r.adx[r.adx.length - 1].toFixed(2)}（${r.adxState}），布林%B=${bollStr}，近20日平均换手率${r.turnAvg > 0 ? r.turnAvg.toFixed(2) + "%（" + r.turnState + "）" : "暂无数据"}。`
   );
   parts.push(
-    `关键价位：支撑 ${r.support.toFixed(2)}（距现价 ${(r.distSup * 100).toFixed(1)}%），压力 ${r.resistance.toFixed(2)}（上方空间 ${(r.distRes * 100).toFixed(1)}%）；${flowText.value}。`
+    `关键价位：支撑 ${r.support.toFixed(2)}（距现价 ${(r.distSup * 100).toFixed(2)}%），压力 ${r.resistance.toFixed(2)}（上方空间 ${(r.distRes * 100).toFixed(2)}%）；近5日主力净流入${flowText.value}。`
   );
+  // 资讯情绪因子：与其他量化因子一并汇总进结论（放在关联资讯板块之后，形成完整闭环）
+  if (ns.value) {
+    const tone = newsDelta.value > 0 ? "偏多" : newsDelta.value < 0 ? "偏空" : "中性";
+    const cats = ns.value.catalysts.length ? `利好催化含「${ns.value.catalysts.join("、")}」` : "";
+    const risks = ns.value.risks.length ? `需留意「${ns.value.risks.join("、")}」等风险事件` : "";
+    const conn = cats && risks ? "，" : "";
+    parts.push(
+      `资讯面：近3日相关公开资讯情绪${tone}（综合评分贡献 ${newsDelta.value > 0 ? "+" : ""}${newsDelta.value} 分）${cats}${conn}${risks}。`
+    );
+  }
   let rec = "";
   if (r.reduce) rec = "综合信号偏空，建议逢高减仓、严格控制仓位风险。";
   else if (r.add) rec = "趋势与资金配合良好，可于回调时分批加仓。";
@@ -389,6 +458,9 @@ const conclusion = computed(() => {
   else if (r.watch) rec = "可纳入自选关注，等待更优介入时点。";
   else rec = "多空信号交织，建议以观望为主，等待方向明朗。";
   parts.push(rec);
+  parts.push(
+    "综上，以上研判综合了趋势、均线、动量(KDJ/MACD/RSI)、量能与资金(主力净流入)、波动风险(ATR/最大回撤/换手率)及资讯情绪等全部量化因子，力求对各维度的一致性与矛盾点给出整体判断。"
+  );
   parts.push("（注：「运行阶段」为技术形态识别，仅描述量价特征，不构成对主力行为的确认；以上仅为技术参考，非投资建议。）");
   return parts.join("");
 });
@@ -399,6 +471,29 @@ const buyText = computed(() => {
   if (r.buyLow == null || isNaN(r.buyLow) || isNaN(r.buyHigh)) return "—（远离支撑，按趋势跟踪）";
   return `${r.buyLow} ~ ${r.buyHigh}`;
 });
+
+// ---------------- 关联资讯展示列表 ----------------
+// 直接使用 MarketView 已做完「相关性 + 最近3天 + 时间倒序」过滤后的条目（props.news），
+// 确保呈现给投资者的每一条都与当前股票相关且时效有效。
+// 情绪信号（ns / newsDelta）已上移至「分析结论」计算之前，用于让结论综合资讯情绪因子。
+const newsItems = computed<NewsItem[]>(() => props.news || []);
+function tagText(it: NewsItem): string {
+  const t = tagNewsItem(it);
+  return t === "bull" ? "利好" : t === "bear" ? "利空" : "中性";
+}
+function tagCls(it: NewsItem): string {
+  const t = tagNewsItem(it);
+  return t === "bull" ? "ok" : t === "bear" ? "bad" : "neutral";
+}
+function openNews(it: NewsItem) {
+  if (!it.url) return;
+  // H5 直接新窗口打开；非 H5（小程序）环境无 window，静默忽略避免运行报错
+  try {
+    if (typeof window !== "undefined" && (window as any).open) (window as any).open(it.url, "_blank");
+  } catch {
+    /* ignore */
+  }
+}
 </script>
 
 <style scoped>
@@ -456,7 +551,7 @@ const buyText = computed(() => {
 }
 .score-label {
   font-size: 20rpx;
-  color: var(--text-3);
+  color: var(--text-2);
   margin-top: 4rpx;
 }
 .score-meta {
@@ -473,7 +568,7 @@ const buyText = computed(() => {
   border-bottom: none;
 }
 .meta-k {
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .meta-v {
   color: var(--text);
@@ -512,17 +607,21 @@ const buyText = computed(() => {
   padding: 16rpx 18rpx;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 6rpx;
+  text-align: center;
 }
 .m-k {
   font-size: 22rpx;
-  color: var(--text-3);
+  color: var(--text);
+  text-align: center;
 }
 .m-v {
   font-size: 26rpx;
   font-weight: 600;
   color: var(--text);
   letter-spacing: 0.3rpx;
+  text-align: center;
 }
 
 /* 评分依据 */
@@ -541,7 +640,7 @@ const buyText = computed(() => {
   font-size: 24rpx;
 }
 .r-label {
-  color: var(--text-2);
+  color: var(--text);
 }
 .r-delta {
   font-weight: 700;
@@ -551,14 +650,14 @@ const buyText = computed(() => {
   display: block;
   margin-top: 14rpx;
   font-size: 22rpx;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
 /* 分析结论 */
 .conclusion {
   display: block;
   font-size: 25rpx;
-  color: var(--text-2);
+  color: var(--text);
   line-height: 1.75;
 }
 
@@ -591,7 +690,7 @@ const buyText = computed(() => {
 }
 .dec-item.wait {
   background: var(--card-2);
-  color: var(--text-3);
+  color: var(--text-2);
 }
 
 .levels {
@@ -612,7 +711,7 @@ const buyText = computed(() => {
   border-bottom: none;
 }
 .lv-k {
-  color: var(--text-3);
+  color: var(--text-2);
   font-size: 25rpx;
 }
 .lv-v {
@@ -642,8 +741,8 @@ const buyText = computed(() => {
 .signal.sell .sig-label { color: var(--up); }
 .signal.hold .sig-label { color: #2563eb; }
 .signal.watch .sig-label { color: #c87f00; }
-.signal.wait .sig-label { color: var(--text-2); }
-.sig-text { font-size: 24rpx; color: var(--text-2); line-height: 1.5; }
+.signal.wait .sig-label { color: var(--text); }
+.sig-text { font-size: 24rpx; color: var(--text); line-height: 1.5; }
 .sig-type {
   flex: none;
   font-size: 22rpx;
@@ -651,7 +750,7 @@ const buyText = computed(() => {
   padding: 6rpx 16rpx;
   border-radius: 999rpx;
   background: rgba(0, 0, 0, 0.05);
-  color: var(--text-2);
+  color: var(--text);
   margin-left: 16rpx;
 }
 .sig-detail {
@@ -662,8 +761,8 @@ const buyText = computed(() => {
   margin-bottom: 16rpx;
 }
 .sd-row { display: flex; gap: 16rpx; padding: 8rpx 0; }
-.sd-k { flex: none; font-size: 23rpx; color: var(--text-3); width: 128rpx; }
-.sd-v { flex: 1; font-size: 24rpx; color: var(--text-2); line-height: 1.6; }
+.sd-k { flex: none; font-size: 23rpx; color: var(--text-2); width: 128rpx; }
+.sd-v { flex: 1; font-size: 24rpx; color: var(--text); line-height: 1.6; }
 
 /* 关键价位状态徽标 */
 .lv-right { display: flex; align-items: center; gap: 12rpx; }
@@ -691,10 +790,124 @@ const buyText = computed(() => {
   gap: 8rpx;
   padding: 5rpx 0;
   font-size: 24rpx;
-  color: var(--text-2);
+  color: var(--text);
   line-height: 1.6;
 }
 .dot {
   color: var(--up);
+}
+
+/* 关联资讯板块 */
+.news-panel { margin-bottom: 16rpx; }
+.news-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+  margin-top: 4rpx;
+  /* 固定约 5 条资讯的高度，超出内部滚动，不无限撑长面板 */
+  max-height: 920rpx;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4rpx;
+}
+.news-more {
+  margin-top: 10rpx;
+  text-align: center;
+  font-size: 20rpx;
+  color: var(--text-2);
+}
+.news-item {
+  background: var(--card-2);
+  border-radius: var(--radius-sm);
+  padding: 14rpx 18rpx;
+  transition: transform 0.12s ease;
+}
+.news-item:active { transform: scale(0.985); }
+.ni-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+}
+.ni-tag {
+  flex: none;
+  font-size: 20rpx;
+  font-weight: 700;
+  padding: 3rpx 12rpx;
+  border-radius: 6rpx;
+  margin-top: 4rpx;
+}
+.ni-tag.ok { color: var(--up); background: rgba(250, 81, 81, 0.14); }
+.ni-tag.bad { color: var(--down); background: rgba(9, 187, 7, 0.14); }
+.ni-tag.neutral { color: var(--text-2); background: var(--border); }
+.ni-title {
+  flex: 1;
+  font-size: 25rpx;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.5;
+}
+.ni-sum {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: var(--text-2);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.ni-foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8rpx;
+  font-size: 20rpx;
+  color: var(--text-2);
+}
+.news-empty {
+  font-size: 23rpx;
+  color: var(--text-3);
+  text-align: center;
+  padding: 24rpx 0;
+  line-height: 1.6;
+}
+.news-impact {
+  margin-top: 16rpx;
+  padding-top: 14rpx;
+  border-top: 1rpx solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+.ni-h {
+  font-size: 23rpx;
+  font-weight: 600;
+  color: var(--text);
+}
+.ni-row {
+  display: flex;
+  gap: 12rpx;
+  align-items: baseline;
+}
+.ni-k {
+  flex: none;
+  font-size: 21rpx;
+  font-weight: 600;
+  padding: 3rpx 12rpx;
+  border-radius: 6rpx;
+}
+.ni-k.ok { color: var(--up); background: rgba(250, 81, 81, 0.12); }
+.ni-k.bad { color: var(--down); background: rgba(9, 187, 7, 0.12); }
+.ni-v {
+  flex: 1;
+  font-size: 23rpx;
+  color: var(--text);
+  line-height: 1.5;
+}
+.ni-note {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 21rpx;
+  color: var(--text-2);
+  line-height: 1.55;
 }
 </style>

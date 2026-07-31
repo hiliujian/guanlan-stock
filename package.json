@@ -29,7 +29,7 @@
     "@dcloudio/uni-mp-xhs": "3.0.0-5010520260709002",
     "@dcloudio/uni-quickapp-webview": "3.0.0-5010520260709002",
     "@supabase/supabase-js": "^2.111.0",
-    "echarts": "^5.5.0",
+    "klinecharts": "^9.7.0",
     "vue": "^3.4.21"
   },
   "devDependencies": {

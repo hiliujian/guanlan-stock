@@ -1,10 +1,11 @@
 <template>
   <view class="market">
+    <BackgroundFX />
     <view class="mk-sticky">
       <!-- 品牌标识 + 市场状态 -->
       <view class="brand-bar anim-fade-up">
         <view class="brand-left">
-          <text class="brand-name">观澜</text>
+          <text class="brand-name anim-glow">观澜</text>
           <text class="brand-sub">智能股票分析</text>
         </view>
         <view class="mk-status" :class="status.cls">
@@ -15,9 +16,9 @@
 
       <!-- 搜索条（与联想列表融为一体的面板） -->
       <view class="search-bar anim-fade-up">
-        <view class="search-unit" :class="{ open: suggestOpen }">
+        <view class="glass glass--lg search-unit" :class="{ open: suggestOpen }">
           <view class="search-box">
-            <OutlineIcon type="search" :size="28" color="var(--text-3)" />
+            <OutlineIcon type="search" :size="28" color="var(--text-2)" />
             <input
               class="si"
               v-model="code"
@@ -33,12 +34,12 @@
               v-if="code"
               type="close"
               :size="28"
-              color="var(--text-3)"
+              color="var(--text-2)"
               @click="clearInput"
             />
             <button class="btn-primary go" :disabled="loading" @click="run()">
               <view v-if="loading" class="spinner" />
-              <text class="go-t">{{ loading ? "搜索中" : "搜索" }}</text>
+              <text class="go-t">{{ loading ? "分析中" : "搜索" }}</text>
             </button>
           </view>
           <!-- 联想面板：随搜索框向下展开，与搜索框同一张卡片，不挤占下方 UI -->
@@ -49,7 +50,7 @@
               class="sg-item"
               @click="chooseSuggestion(h)"
             >
-              <OutlineIcon type="search" :size="26" color="var(--text-3)" class="sg-ic" />
+              <OutlineIcon type="search" :size="26" color="var(--text-2)" class="sg-ic" />
               <view class="sg-main">
                 <text class="sg-name">{{ h.name }}</text>
                 <text class="sg-code">{{ h.code }}</text>
@@ -64,17 +65,16 @@
       <view class="mk-body">
       <!-- 空态 -->
       <view v-if="!result" class="empty anim-fade-up">
-        <OutlineIcon type="bars" :size="120" color="var(--border)" />
+        <OutlineIcon type="bars" :size="96" color="var(--border)" />
         <text class="empty-t">输入代码或名称，搜索查看智能分析</text>
-        <text class="empty-s">支持 A股 / 港股，输入代码或名称即可自动识别市场并分析</text>
       </view>
 
       <!-- 结果 -->
       <block v-else>
         <!-- 头部：名称 + 价格 + 自选星标（右上角） -->
-        <view class="quote-head anim-fade-up">
+        <view class="glass quote-head anim-fade-up">
           <view class="qh-star" :class="{ on: watched }" @click="toggleWatch">
-            <OutlineIcon :type="watched ? 'star-filled' : 'star'" :size="52" :color="watched ? 'var(--up)' : 'var(--text-3)'" />
+            <OutlineIcon :type="watched ? 'star-filled' : 'star'" :size="52" :color="watched ? 'var(--up)' : 'var(--text-2)'" />
           </view>
           <view class="qh-left">
             <text class="qh-name">{{ name }}</text>
@@ -92,50 +92,41 @@
           </view>
         </view>
 
-        <!-- 周期切换（行情头部下方，随内容一起滚动；交易时段自动刷新） -->
-        <view v-if="result" class="period-seg anim-fade-up">
+        <!-- 周期切换（行情头部下方，随内容一起滚动；交易时段自动刷新）
+             仅在「分时 / K线」卡片可见时展示；该卡片被隐藏时本栏一并隐藏 -->
+        <view v-if="result && trendVisible" class="glass glass--pill period-seg anim-fade-up">
+          <view class="ps-ind" :style="indStyle" />
           <text
             v-for="p in periodOrder"
             :key="p"
             :class="['ps', period === p ? 'active' : '']"
             @click="switchPeriod(p)"
-            >{{ periodMeta[p].label }}<view v-if="switching && period === p" class="ps-spin"
-          /></text>
+            >{{ periodMeta[p].label }}</text>
         </view>
 
-        <!-- 蜡烛 + 均线 / 分时：主图随周期切换（分时直接画分时走势，不再显示日K） -->
-        <AnalysisCard :title="period === 'm' ? '分时走势' : 'K线 / 均线'" icon="bars" :delay="0">
-          <template v-if="period === 'm'">
-            <KlineChart v-if="trends.length" :opts="trendOpts" :height="210" />
-            <view v-else class="hint">分时数据暂不可用（不影响其他分析）</view>
-          </template>
-          <KlineChart v-else :opts="candleOpts" :height="220" />
-        </AnalysisCard>
-
-        <!-- 成交量 + 主力净流入 -->
-        <AnalysisCard title="成交量 / 主力净流入" icon="color" :delay="60">
-          <KlineChart :opts="volOpts" :height="150" />
-        </AnalysisCard>
-
-        <!-- MACD -->
-        <AnalysisCard title="MACD" icon="loop" :delay="120">
-          <KlineChart :opts="macdOpts" :height="140" />
-        </AnalysisCard>
-
-        <!-- 筹码分布 -->
-        <AnalysisCard title="筹码分布" icon="medal" :delay="180">
-          <KlineChart :opts="chipOpts" :height="170" />
-        </AnalysisCard>
-
-        <!-- 白话报告 -->
-        <AnalysisCard title="分析报告" icon="chatbubble" :delay="240">
-          <ReportView :result="result" />
+        <!-- 行情卡片：顺序与显隐由「设置 → 行情卡片」控制 -->
+        <AnalysisCard
+          v-for="(c, idx) in displayCards"
+          :key="c.id"
+          :title="cardTitle(c)"
+          :icon="c.icon"
+          :delay="idx * 60"
+        >
+          <!-- 切换周期时：加载态显示在各图表「数据区」，而非周期标签上 -->
+          <view v-if="switching" class="card-loading">
+            <view class="cl-spin" />
+          </view>
+          <component
+            v-else
+            :is="CARD_RENDERERS[c.id].comp"
+            v-bind="CARD_RENDERERS[c.id].props()"
+          />
         </AnalysisCard>
 
       </block>
 
       <view class="risk-note">
-        <OutlineIcon type="info" :size="22" color="var(--text-3)" />
+        <OutlineIcon type="info" :size="22" color="var(--text-2)" />
         <text>以上分析仅供参考，不构成任何投资建议</text>
       </view>
 
@@ -145,13 +136,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated, onDeactivated, onUnmounted, watch } from "vue";
+import { ref, computed, onMounted, onActivated, onDeactivated, onUnmounted, watch, type Component } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import PriceText from "@/components/PriceText.vue";
 import AnalysisCard from "@/components/AnalysisCard.vue";
-import KlineChart from "@/components/KlineChart.vue";
+import BackgroundFX from "@/components/BackgroundFX.vue";
 import ReportView from "@/components/ReportView.vue";
-import { fetchQuote, fetchTrend, fetchSnapshot, searchStocks, localSuggest, type SearchHit } from "@/api/quote";
+import KlineCard from "@/components/KlineCard.vue";
+import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, type SearchHit, type QuoteBundle, type NewsItem } from "@/api/quote";
 import { getMarketStatus } from "@/utils/marketStatus";
 import {
   resolveSecid,
@@ -162,8 +154,9 @@ import {
   type PeriodKey,
   type Market,
 } from "@/utils/period";
-import { analyze, computeChip, type AnalysisResult } from "@/utils/analyzer";
-import { buildCandleOpts, buildVolOpts, buildMacdOpts, buildTrendOpts, buildChipOpts } from "@/utils/chart";
+import { analyze, type AnalysisResult } from "@/utils/analyzer";
+import { scoreNews, filterNews, type NewsSignal } from "@/utils/newsSentiment";
+import { visibleMarketCards, type MarketCardMeta, type CardId } from "@/utils/cardLayout";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
 import { useUser } from "@/store/user";
 import { navState } from "@/store/nav";
@@ -173,18 +166,47 @@ const periodMeta = PERIODS;
 
 const code = ref("");
 const period = ref<PeriodKey>("d");
-const loading = ref(false); // 仅「搜索」动作使用，控制搜索按钮的「搜索中」态
+const loading = ref(false); // 仅「搜索」动作使用，控制搜索按钮的「分析中」态（点击后拉数据+算指标+出报告）
 const switching = ref(false); // 仅「切换周期」使用，避免误占用搜索按钮的加载态
 const name = ref("");
 const secid = ref("");
 const preClose = ref(0);
 const klines = ref<any[]>([]);
-const flowMap = ref<Record<string, number>>({});
 const trends = ref<any[]>([]);
+// 预取缓存：一次联网拿全部分时/K线/资金流，切换周期直接读缓存，不再重复请求
+const bundle = ref<QuoteBundle | null>(null);
 const result = ref<AnalysisResult | null>(null);
-const watched = ref(false);
+// 关联资讯：与行情包并行获取；原始条目 + 量化情绪信号，注入 analyze 与 ReportView
+const news = ref<NewsItem[]>([]);
+const newsSig = ref<NewsSignal | null>(null);
+// 星星状态直接读自选 store（响应式）：在自选页增删后，行情页（keep-alive 常驻）自动同步，
+// 不再依赖 run()/switchPeriod() 里的手动赋值。
+const watched = computed(() => isWatched(curCode.value, curMarket.value));
 const errMsg = ref("");
 const realtime = ref<{ price: number; preClose: number; open?: number; high?: number; low?: number; time?: string } | null>(null);
+
+// 卡片渲染注册表：新增分析卡只需在此加一项（comp + props 工厂），
+// MarketView 模板无需再写 v-if 分支，彻底解耦「卡片种类」与「渲染逻辑」。
+const CARD_RENDERERS: Record<CardId, { comp: Component; props: () => Record<string, any> }> = {
+  kline: {
+    comp: KlineCard,
+    props: () => ({
+      period: period.value,
+      trends: trends.value,
+      preClose: preClose.value,
+      klines: klines.value,
+      height: 460,
+    }),
+  },
+  report: {
+    comp: ReportView,
+    props: () => ({
+      result: result.value,
+      news: news.value,
+      newsSignal: newsSig.value,
+    }),
+  },
+};
 
 // 搜索联想
 const suggestions = ref<SearchHit[]>([]);
@@ -287,21 +309,38 @@ async function refreshLight() {
   preClose.value = snap.preClose;
 }
 
-// 全量刷新：重抓 K线/资金流/分时并重新分析（每 ~60s，交易时段）
-async function refreshFull() {
-  if (!secid.value) return;
-  const q = await fetchQuote(secid.value, period.value);
-  klines.value = q.klines;
-  flowMap.value = q.flowMap;
-  preClose.value = q.preClose;
-  realtime.value = q.realtime;
-  if (period.value === "m") {
-    const t = await fetchTrend(secid.value);
-    trends.value = t.trends;
+// 从预取缓存取数并设置当前周期视图（纯本地，瞬时切换，无联网等待）
+function applyPeriod(p: PeriodKey) {
+  const b = bundle.value;
+  if (!b) return;
+  if (p === "m") {
+    // 分时视图：用日 K 做技术分析，分时序列单独展示
+    klines.value = b.klines.d;
+    trends.value = b.trends;
   } else {
+    klines.value = b.klines[p] || [];
     trends.value = [];
   }
-  result.value = analyze(q.klines, q.flowMap);
+  // 资金流（主力净流入）按日期累计，与图表周期解耦：分时/日/周/月视图都展示同一组
+  // 「近 5/10/20 日」数据。此前分时视图强行传 {} 会导致「主力净流入 暂无数据」，已移除。
+  result.value = analyze(klines.value, b.flowMap, newsSig.value, b.klines.d);
+}
+
+// 全量刷新：重新预取并覆盖缓存（每 ~60s，交易时段），随后从新缓存刷新当前视图
+async function refreshFull() {
+  if (!secid.value) return;
+  const b = await fetchBundle(secid.value);
+  bundle.value = b;
+  name.value = b.name || chosen.value?.name || name.value || curCode.value;
+  preClose.value = b.preClose;
+  realtime.value = b.realtime;
+  // 关联资讯：先取行情拿到确切公司名，再按「代码 + 公司名」双关键词抓取，
+  // 经「多维严格关联（代码/全称/核心词/简称）+ 时效（最近3天）」过滤后注入情绪量化。
+  const n = await fetchNews(secid.value, name.value).catch(() => [] as NewsItem[]);
+  const filtered = filterNews(n, { code: curCode.value, name: name.value });
+  news.value = filtered;
+  newsSig.value = scoreNews(filtered);
+  applyPeriod(period.value);
 }
 
 // 统一心跳：每 5s 刷新一次状态标识；交易时段内刷新行情（轻量为主，周期性全量）
@@ -333,15 +372,28 @@ function stopTimers() {
   }
 }
 
-const candleOpts = computed(() => (result.value ? buildCandleOpts(klines.value, result.value) : null));
-const volOpts = computed(() =>
-  result.value ? buildVolOpts(klines.value, flowMap.value, period.value !== "m") : null
-);
-const macdOpts = computed(() => (result.value ? buildMacdOpts(klines.value) : null));
-const trendOpts = computed(() =>
-  trends.value.length ? buildTrendOpts(trends.value, preClose.value) : null
-);
-const chipOpts = computed(() => (klines.value.length ? buildChipOpts(computeChip(klines.value)) : null));
+// 行情图卡片标题随周期动态变化（日K↔分时）；其余卡片用元数据标题。
+function cardTitle(c: MarketCardMeta): string {
+  if (c.id === "kline") return period.value === "m" ? "分时图" : "日K线";
+  return c.title;
+}
+
+// 可见卡片直接由「设置 → 行情卡片」驱动（行情图已合并 K线/分时/量/MACD/筹码于单图，
+// 分析报告独立成卡），无需再折叠。
+const displayCards = visibleMarketCards;
+
+// 周期切换滑动指示条：宽度按段数均分，位移按激活下标平移（纯 CSS calc，响应式）
+const indStyle = computed(() => {
+  const n = periodOrder.length;
+  const i = periodOrder.indexOf(period.value);
+  return {
+    width: `calc((100% - 12rpx - ${(n - 1) * 8}rpx) / ${n})`,
+    transform: `translateX(calc(${i} * (100% + 8rpx)))`,
+  };
+});
+
+// 「行情图」卡片在「设置 → 行情卡片」中被隐藏时，周期切换栏（分时/日K/周K…）一并隐藏
+const trendVisible = computed(() => displayCards.value.some((c) => c.id === "kline"));
 
 async function run(forceMarket?: Market) {
   errMsg.value = "";
@@ -378,20 +430,22 @@ async function run(forceMarket?: Market) {
       }
     }
     secid.value = sid;
-    const q = await fetchQuote(sid, period.value);
-    klines.value = q.klines;
-    name.value = q.name;
-    flowMap.value = q.flowMap;
-    preClose.value = q.preClose;
-    realtime.value = q.realtime;
-    if (period.value === "m") {
-      const t = await fetchTrend(secid.value);
-      trends.value = t.trends;
-    } else {
-      trends.value = [];
-    }
-    result.value = analyze(q.klines, q.flowMap);
-    watched.value = isWatched(curCode.value, curMarket.value);
+    // 行情包与关联资讯：先取行情拿到确切公司名，再按「代码 + 公司名」双关键词抓取资讯，
+    // 经量化情绪得分后注入 analyze，与量价/资金协同研判。
+    const b = await fetchBundle(sid);
+    bundle.value = b;
+    // 优先用接口返回的名字；实时接口降级（push2 不可用）时名字为空，回退到
+    // 联想选择/历史记录/代码，避免头部股票名变空白。
+    name.value = b.name || chosen.value?.name || name.value || curCode.value;
+    preClose.value = b.preClose;
+    realtime.value = b.realtime;
+    // 关联资讯：先做「多维严格关联 + 时效（最近3天）」过滤，所有 scope 统一校验相关性，
+    // 确保展示与情绪量化因子都只基于「对当前股票相关的近期资讯」；过滤后再计算情绪信号。
+    const n = await fetchNews(sid, name.value).catch(() => [] as NewsItem[]);
+    const filtered = filterNews(n, { code: curCode.value, name: name.value });
+    news.value = filtered;
+    newsSig.value = scoreNews(filtered);
+    applyPeriod(period.value); // 从缓存装配当前周期，切换无需再等联网
     saveLastViewed();
   } catch (e: any) {
     uni.showToast({ title: e?.message || "请求失败", icon: "none" });
@@ -408,18 +462,12 @@ async function switchPeriod(p: PeriodKey) {
   if (!secid.value) return;
   switching.value = true;
   try {
-    const q = await fetchQuote(secid.value, p);
-    klines.value = q.klines;
-    flowMap.value = q.flowMap;
-    realtime.value = q.realtime;
-    if (p === "m") {
-      const t = await fetchTrend(secid.value);
-      trends.value = t.trends;
-    } else {
-      trends.value = [];
+    if (!bundle.value) {
+      // 极端情况（缓存未建立），回退到单次预取
+      await run();
+      return;
     }
-    result.value = analyze(q.klines, q.flowMap);
-    watched.value = isWatched(curCode.value, curMarket.value);
+    applyPeriod(p); // 纯本地，瞬时切换，无联网等待
     saveLastViewed();
   } catch (e: any) {
     uni.showToast({ title: e?.message || "切换失败", icon: "none" });
@@ -432,7 +480,6 @@ async function toggleWatch() {
   if (!result.value) return;
   if (watched.value) {
     await removeWatch(curCode.value, curMarket.value);
-    watched.value = false;
     uni.showToast({ title: "已移除自选", icon: "none" });
   } else {
     const r = await addWatch({
@@ -442,7 +489,6 @@ async function toggleWatch() {
       note: "",
     });
     if (r.ok) {
-      watched.value = true;
       uni.showToast({ title: "已加入自选", icon: "success" });
     } else {
       uni.showToast({ title: r.error || "加入失败", icon: "none" });
@@ -551,12 +597,14 @@ onUnmounted(() => {
   position: sticky;
   top: 0;
   z-index: 30;
-  background: var(--bg);
+  background: var(--sticky-bg);
+  backdrop-filter: blur(16rpx) saturate(140%);
+  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
   padding: 12rpx 18rpx 8rpx;
-  box-shadow: 0 6rpx 16rpx rgba(0, 0, 0, 0.05);
+  box-shadow: var(--sticky-shadow);
 }
 .mk-body {
-  padding: 14rpx 14rpx 0;
+  padding: 18rpx 18rpx 0;
 }
 /* 品牌标识：APP 统一名称「观澜」，置于行情首页顶部 */
 .brand-bar {
@@ -601,7 +649,7 @@ onUnmounted(() => {
   background: rgba(250, 158, 13, 0.12);
 }
 .mk-status.ms-closed {
-  color: var(--text-3);
+  color: var(--text-2);
   background: var(--card-2);
 }
 .brand-name {
@@ -612,7 +660,7 @@ onUnmounted(() => {
 }
 .brand-sub {
   font-size: 22rpx;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .search-bar {
   position: relative;
@@ -622,9 +670,7 @@ onUnmounted(() => {
 /* 搜索单元：搜索框 + 联想面板 共用同一张卡片，向下展开即「融为一体」 */
 .search-unit {
   position: relative;
-  background: var(--card);
-  border-radius: 28rpx;
-  box-shadow: var(--shadow);
+  /* 玻璃拟态（含 28rpx 圆角）由全局 .glass.glass--lg 提供 */
   transition: box-shadow 0.2s ease;
   overflow: visible;
 }
@@ -646,7 +692,7 @@ onUnmounted(() => {
   font-size: 28rpx;
 }
 .ph {
-  color: var(--text-3);
+  color: var(--text-2);
 }
 /* 联想面板：随搜索框向下展开，同一卡片底色，不挤占下方 UI（绝对浮层） */
 .suggest {
@@ -654,10 +700,12 @@ onUnmounted(() => {
   top: 100%;
   left: 0;
   right: 0;
-  background: var(--card);
+  background: var(--suggest-bg);
   border-radius: 0 0 28rpx 28rpx;
   border-top: 1rpx solid var(--border);
-  box-shadow: 0 14rpx 30rpx rgba(0, 0, 0, 0.14);
+  box-shadow: var(--suggest-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
   overflow: hidden;
   z-index: 60;
   max-height: 540rpx;
@@ -669,6 +717,7 @@ onUnmounted(() => {
   gap: 16rpx;
   padding: 20rpx 26rpx;
   border-bottom: 1rpx solid var(--border);
+  transition: background 0.15s ease;
 }
 .sg-item:last-child {
   border-bottom: none;
@@ -697,7 +746,7 @@ onUnmounted(() => {
 }
 .sg-code {
   font-size: 22rpx;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .sg-tag {
   flex: none;
@@ -761,22 +810,16 @@ onUnmounted(() => {
   color: var(--text-2);
   font-weight: 500;
 }
-.empty-s {
-  font-size: 24rpx;
-  color: var(--text-3);
-}
 
 .quote-head {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--card);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  /* 玻璃拟态由全局 .glass 提供，此处仅保留卡片专属内边距 */
   /* 右侧预留更大星标空间，避免价格与星标重叠 */
-  padding: 14rpx 96rpx 14rpx 18rpx;
-  margin-bottom: 12rpx;
+  padding: 18rpx 96rpx 18rpx 18rpx;
+  margin-bottom: 14rpx;
 }
 .qh-name {
   font-size: 34rpx;
@@ -790,7 +833,7 @@ onUnmounted(() => {
 }
 .qh-code {
   font-size: 22rpx;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 /* 市场徽标：沪 / 深 / 港 / 北，对齐自选股 .mkt-tag 的经典简洁样式 */
 .mkt-tag {
@@ -838,41 +881,39 @@ onUnmounted(() => {
 }
 
 .period-seg {
+  position: relative;
   display: flex;
   gap: 8rpx;
-  background: var(--card);
-  border-radius: 999rpx;
+  /* 玻璃拟态（含 999rpx 圆角）由全局 .glass.glass--pill 提供 */
   padding: 6rpx;
-  margin-bottom: 10rpx;
-  box-shadow: var(--shadow);
+  margin-bottom: 12rpx;
+}
+/* 滑动指示条：跟随激活段平移（位移见 indStyle） */
+.ps-ind {
+  position: absolute;
+  top: 6rpx;
+  bottom: 6rpx;
+  left: 6rpx;
+  border-radius: 999rpx;
+  background: var(--primary);
+  box-shadow: var(--shadow-up);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 0;
 }
 .ps {
+  position: relative;
+  z-index: 1;
   flex: 1;
   text-align: center;
   padding: 11rpx 0;
   font-size: 26rpx;
   color: var(--text-2);
   border-radius: 999rpx;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease;
 }
 .ps.active {
-  background: var(--primary);
   color: #fff;
   font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-}
-/* 周期切换时的小转圈，仅在当前激活标签上显示，不占用搜索按钮的加载态 */
-.ps-spin {
-  width: 22rpx;
-  height: 22rpx;
-  border: 3rpx solid rgba(255, 255, 255, 0.45);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  flex: none;
 }
 
 .btn-primary {
@@ -899,14 +940,24 @@ onUnmounted(() => {
   margin: 0 8rpx;
   padding: 8rpx 0 0;
   font-size: 22rpx;
-  color: var(--text-3);
+  color: var(--text-2);
   line-height: 1.5;
   text-align: center;
 }
-.hint {
-  padding: 28rpx 0;
-  text-align: center;
-  font-size: 24rpx;
-  color: var(--text-3);
+/* 切换周期时的数据区加载态：居中转圈，位于各图表卡片内部（而非周期标签） */
+.card-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120rpx;
+  padding: 20rpx 0;
+}
+.cl-spin {
+  width: 44rpx;
+  height: 44rpx;
+  border: 4rpx solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 </style>

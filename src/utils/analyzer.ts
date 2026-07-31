@@ -4,6 +4,7 @@
 // =====================================================================
 import type { Kline, Trend } from "./period";
 import { UP, DOWN } from "./colors";
+import type { NewsSignal } from "./newsSentiment";
 
 // ---------------- 指标计算 ----------------
 function ma(arr: number[], n: number): (number | null)[] {
@@ -342,6 +343,13 @@ export interface AnalysisResult {
     reason: string; // 触发条件
     confirm: string; // 确认信号（如何验证，避免绝对化）
   };
+  // ---- 资讯情绪因子（量化新闻/行业/市场事件后协同参与研判）----
+  newsScore: number; // -100 ~ 100
+  newsLabel: string; // 利好偏多 / 中性 / 利空偏空
+  newsBull: number; // 偏多条目数
+  newsBear: number; // 偏空条目数
+  newsCatalysts: string[]; // 命中利好关键词
+  newsRisks: string[]; // 命中利空关键词
 }
 
 // 主力净流入（近 N 个交易日累计）：与图表周期解耦。
@@ -358,7 +366,19 @@ function flowSumByDays(flowMap: Record<string, number>, n: number): FlowSummary 
   return { sum: s / 1e8, has: dates.length > 0 };
 }
 
-export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): AnalysisResult {
+export function analyze(
+  klines: Kline[],
+  flowMap: Record<string, number> = {},
+  news?: NewsSignal | null,
+  // 换手率按「日频」口径计算，与图表周期解耦：周/月 K 视图下若仍用当期 K 线平均，
+  // 会拿周线/月线的区间换手率去平均，数字严重失真。传入日 K 序列即可恒为「近 20 日日均」。
+  dailyKlines?: Kline[]
+): AnalysisResult {
+  // 边界条件：样本过少时任何指标都无意义，直接抛清晰错误交由上层提示，
+  // 避免后续 klines[len-1] 等越界访问产生 NaN/崩溃（此前空 K 线会静默崩在 Math.min 上）。
+  if (!klines || klines.length < 2) {
+    throw new Error("K线数据不足，暂无法生成分析（样本过少）");
+  }
   const len = klines.length;
   const close = klines.map((k) => k.close);
   const ma5 = ma(close, 5);
@@ -387,7 +407,7 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
   const bias6 = ((price - (m6[len - 1] || price)) / (m6[len - 1] || price)) * 100;
   const bias12 = ((price - (m12[len - 1] || price)) / (m12[len - 1] || price)) * 100;
   const bias24 = ((price - (m24[len - 1] || price)) / (m24[len - 1] || price)) * 100;
-  // 年化波动率（近 120 日对数/简单收益 std × √252）
+  // 年化波动率（近 120 日「简单日收益率」标准差 × √252 年化；√252 为交易日年化因子）
   const win = klines.slice(Math.max(0, len - 120));
   const rets: number[] = [];
   for (let i = 1; i < win.length; i++) rets.push(win[i].close / win[i - 1].close - 1);
@@ -412,14 +432,19 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
   }
   const obvMa = ma(obvArr, 20);
   const obvUp = obvArr[len - 1] > (obvMa[len - 1] || obvArr[len - 1]);
-  // 近 20 日平均换手率（A 股特有，反映活跃度 / 筹码松动）+ 相对 60 日状态
-  const turnWin = klines.slice(Math.max(0, len - 20));
+  // 近 20 日平均换手率（A 股特有，反映活跃度 / 筹码松动）+ 相对 60 日状态。
+  // 统一用日 K 序列（dailyKlines）计算，避免周/月 K 视图下口径错乱。
+  const turnSrc = dailyKlines && dailyKlines.length >= 20 ? dailyKlines : klines;
+  const tLen = turnSrc.length;
+  const turnWin = turnSrc.slice(Math.max(0, tLen - 20));
   const turnAvg = turnWin.reduce((a, k) => a + (k.turnover || 0), 0) / (turnWin.length || 1);
-  const turn60 = klines.slice(Math.max(0, len - 60)).reduce((a, k) => a + (k.turnover || 0), 0) / Math.min(60, len);
+  const turn60 = turnSrc.slice(Math.max(0, tLen - 60)).reduce((a, k) => a + (k.turnover || 0), 0) / Math.min(60, tLen);
   let turnState = "正常";
   if (turn60 > 0 && turnAvg > turn60 * 1.8) turnState = "显著放量换手";
   else if (turn60 > 0 && turnAvg < turn60 * 0.6) turnState = "交投清淡";
-  const obvTrend = obvUp ? "量能配合(OBV多头)" : "量能背离(OBV空头)";
+  // OBV 与自身 20 日均线比较：上行=量能配合价格，下行=量能走弱（注意：并非严格「背离」，
+  // 背离需价格与 OBV 反向，这里仅表达 OBV 相对自身均线的强弱）。
+  const obvTrend = obvUp ? "量能配合(OBV上行)" : "量能走弱(OBV下行)";
 
   // ADX 趋势强度分级（业界通用阈值）
   const adxNow = adx[len - 1];
@@ -434,14 +459,18 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
   const ma20_now = ma20[len - 1] as number;
   const ma20_prev = (ma20[len - 20] as number) || ma20_now;
   const slope = (ma20_now - ma20_prev) / ma20_prev;
+  // ma60 仅在样本 >=60 时非空；样本不足时（如月/年 K 视图）其值为 null，
+  // 若直接 `ma20 > ma60*1.5` 会因 JS 中 null*1.5===0 而误判（price>0 恒真）。
+  // 故统一以「ma60 非空」为前置条件，样本不足时该配对不参与多空计数与减仓判定。
+  const ma60Last = ma60[len - 1];
   const upCount =
     (ma5[len - 1]! > ma10[len - 1]! ? 1 : 0) +
     (ma10[len - 1]! > ma20[len - 1]! ? 1 : 0) +
-    (ma20[len - 1]! > ma60[len - 1]! ? 1 : 0);
+    (ma60Last != null && ma20[len - 1]! > ma60Last ? 1 : 0);
   const downCount =
     (ma5[len - 1]! < ma10[len - 1]! ? 1 : 0) +
     (ma10[len - 1]! < ma20[len - 1]! ? 1 : 0) +
-    (ma20[len - 1]! < ma60[len - 1]! ? 1 : 0);
+    (ma60Last != null && ma20[len - 1]! < ma60Last ? 1 : 0);
   const aboveMa20 = price > ma20[len - 1]!;
   const belowMa20 = price < ma20[len - 1]!;
   let trend: string;
@@ -465,7 +494,9 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
     else { trend = "shake_down"; trendText = "震荡偏弱"; strength = "偏弱"; }
   }
 
-  const maState = upCount >= 2 ? "多头排列" : downCount >= 2 ? "空头排列" : "均线纠缠";
+  // 多头排列/空头排列取严格定义：MA5 > MA10 > MA20 > MA60（三个相邻配对同时满足），
+  // 避免仅满足 2/3 时把「中长期仍为空头」误判为多头排列。
+  const maState = upCount === 3 ? "多头排列" : downCount === 3 ? "空头排列" : "均线纠缠";
 
   const pv = pivots(klines, 5, 90);
   const below = pv.lows.filter((p) => p < price).sort((a, b) => b - a);
@@ -571,6 +602,32 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
   score += macdDelta;
   addReason(macdCross === "gold" ? "MACD金叉" : macdCross === "dead" ? "MACD死叉" : "MACD持平", macdDelta);
   score = Math.max(5, Math.min(95, Math.round(score)));
+
+  // ---------------- 资讯情绪因子（协同参与综合评分） ----------------
+  // 情绪分 -100~100 映射到 ±12 分：与趋势(±18)、资金(±10) 同量级，作为「协同因子」
+  // 而非主导项，避免单条新闻左右结论；权重经词库分级 + 时效衰减已在 scoreNews 完成。
+  let newsScore = 0;
+  let newsLabel = "—";
+  let newsBull = 0;
+  let newsBear = 0;
+  let newsCatalysts: string[] = [];
+  let newsRisks: string[] = [];
+  if (news && news.items.length) {
+    newsScore = news.score;
+    newsLabel = news.label;
+    newsBull = news.bullItems;
+    newsBear = news.bearItems;
+    newsCatalysts = news.catalysts;
+    newsRisks = news.risks;
+    const newsDelta = Math.max(-12, Math.min(12, Math.round((news.score / 100) * 12)));
+    score += newsDelta;
+    addReason(
+      news.label === "利好偏多" ? "资讯偏多" : news.label === "利空偏空" ? "资讯偏空" : "资讯中性",
+      newsDelta
+    );
+  }
+
+  score = Math.max(5, Math.min(95, Math.round(score)));
   scoreReasons.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
   // 风险等级：综合技术评分、波动率(ATR%)、最大回撤与高位
   let riskLevel = score >= 70 ? "低" : score >= 45 ? "中" : "高";
@@ -582,7 +639,7 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
   const watch = !(nearTop && rNow > 75) && trend !== "down";
   const build = (nearBottom || (trend === "up" && price <= ma20[len - 1]! * 1.02)) && rNow < 70 && !nearTop;
   const add = trend === "up" && Math.abs(price - ma20[len - 1]!) / ma20[len - 1]! < 0.03 && f5.sum > 0 && rNow < 75;
-  const reduce = nearTop || rNow > 78 || (price > ma60[len - 1]! * 1.5 && f10.sum < 0);
+  const reduce = nearTop || rNow > 78 || (ma60Last != null && price > ma60Last * 1.5 && f10.sum < 0);
 
   // 买入区间仅在价格接近支撑（或距支撑 8% 内）时有意义；远离支撑的上涨趋势中
   // 给出围绕支撑的买点会误导，故置 NaN，由 UI 显示「—」。
@@ -594,13 +651,15 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
 
   const risks: string[] = [];
   if (nearTop) risks.push(`当前价格接近阶段高位（约 ${topZone.toFixed(2)}），短期回调风险较大。`);
-  if (rNow > 78) risks.push(`RSI(12) 已达 ${rNow.toFixed(0)}，进入超买区，追高需谨慎。`);
+  if (rNow > 78) risks.push(`RSI(12) 已达 ${rNow.toFixed(2)}，进入超买区，追高需谨慎。`);
   if (macdCross === "dead") risks.push("MACD 近期出现死叉，短线动能转弱。");
   if (nearRes) risks.push(`上方压力位在 ${resistance.toFixed(2)} 附近，若无量能配合可能遇阻。`);
   if (trend === "down") risks.push("均线空头排列，整体处于下跌趋势，抄底需严格控制仓位。");
-  if (Math.abs(bias6) > 10) risks.push(`短期乖离率 BIAS(6) 达 ${bias6.toFixed(1)}%，价格偏离短期均线过远，存在均值回归压力。`);
-  if (elevatedVol) risks.push(`平均真实波幅(ATR)约 ${atrPct.toFixed(1)}%，日内波动偏大，需放宽止损空间。`);
-  if (deepDd) risks.push(`近 120 日最大回撤达 ${(mdd * 100).toFixed(0)}%，历史持股体验波动剧烈。`);
+  if (Math.abs(bias6) > 10) risks.push(`短期乖离率 BIAS(6) 达 ${bias6.toFixed(2)}%，价格偏离短期均线过远，存在均值回归压力。`);
+  if (elevatedVol) risks.push(`平均真实波幅(ATR)约 ${atrPct.toFixed(2)}%，日内波动偏大，需放宽止损空间。`);
+  if (deepDd) risks.push(`近 120 日最大回撤达 ${(mdd * 100).toFixed(2)}%，历史持股体验波动剧烈。`);
+  // 资讯面风险：把量化出的利空关键词作为消息面风险提示（最多取 2 条，避免淹没技术风险）
+  for (const r of newsRisks.slice(0, 2)) risks.push("资讯面：" + r);
   if (reduce && risks.length === 0) risks.push("综合指标偏谨慎，建议以观望为主。");
   if (risks.length === 0) risks.push("暂无显著风险信号，但仍需关注量能与大盘环境。");
 
@@ -626,6 +685,12 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
     bannerCls = "bad";
   } else {
     banner = "📈 价格站上短期均线，处于偏强运行阶段。";
+  }
+  // 资讯偏空（情绪分 ≤ -30）且当前横幅尚未标红时，以警示色提示消息面风险，
+  // 让「重大利空新闻」能直接反映在顶部横幅，与技术风险形成合力提醒。
+  if (news && news.score <= -30 && bannerCls !== "bad") {
+    banner = "⚠️ 近期相关资讯偏空，注意消息面风险。";
+    bannerCls = "warn";
   }
 
   // ---------------- 突破 / 跌破 判定 ----------------
@@ -790,6 +855,12 @@ export function analyze(klines: Kline[], flowMap: Record<string, number> = {}): 
     breakdown,
     sigType,
     signal,
+    newsScore,
+    newsLabel,
+    newsBull,
+    newsBear,
+    newsCatalysts,
+    newsRisks,
   };
 }
 

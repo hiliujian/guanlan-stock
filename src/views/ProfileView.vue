@@ -1,10 +1,11 @@
 <template>
   <scroll-view class="view-scroll" scroll-y>
     <view class="pf">
+      <BackgroundFX />
       <!-- 未登录：引导登录 -->
       <view v-if="!user.loggedIn" class="login-prompt card anim-fade-up">
         <view class="lp-avatar">
-          <OutlineIcon type="person" :size="56" color="var(--text-3)" />
+          <OutlineIcon type="person" :size="56" color="var(--text-2)" />
         </view>
         <text class="lp-title">登录后同步自选股与资料</text>
         <text class="lp-sub">支持邮箱注册，数据保存在云端（Supabase）</text>
@@ -24,7 +25,7 @@
               class="ph-img"
               mode="aspectFill"
             />
-            <OutlineIcon v-else type="person" :size="56" color="var(--text-3)" />
+            <OutlineIcon v-else type="person" :size="56" color="var(--text-2)" />
             <view class="ph-cam">
               <OutlineIcon type="camera" :size="22" color="#fff" />
             </view>
@@ -58,6 +59,18 @@
         </button>
       </block>
 
+      <!-- 设置入口：放在资料卡片下方（应用级偏好，与登录态无关） -->
+      <view class="set-row card lift anim-fade-up" hover-class="set-row-hover" @click="goSettings">
+        <view class="sr-left">
+          <OutlineIcon type="gear" :size="32" color="var(--text-2)" />
+          <text class="sr-label">设置</text>
+        </view>
+        <view class="sr-right">
+          <text class="sr-val">{{ isDark ? "深色" : "浅色" }}</text>
+          <OutlineIcon type="arrow-right" :size="30" color="var(--text-2)" />
+        </view>
+      </view>
+
       <view class="bottom-pad" />
     </view>
   </scroll-view>
@@ -66,11 +79,18 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
+import BackgroundFX from "@/components/BackgroundFX.vue";
 import { useUser, refreshProfile } from "@/store/user";
 import { openAuth } from "@/store/nav";
 import { updateProfile, uploadAvatar, signOut } from "@/api/auth";
+import { isDark } from "@/utils/theme";
 
 const user = useUser();
+
+// 进入设置页（独立页面，可返回）
+function goSettings() {
+  uni.navigateTo({ url: "/pages/settings/settings" });
+}
 
 const displayName = ref("");
 const username = ref("");
@@ -155,8 +175,8 @@ async function logout() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16rpx;
-  padding: 60rpx 40rpx;
+  gap: 14rpx;
+  padding: 44rpx 32rpx;
 }
 .lp-avatar {
   width: 140rpx;
@@ -174,7 +194,7 @@ async function logout() {
 }
 .lp-sub {
   font-size: 24rpx;
-  color: var(--text-3);
+  color: var(--text-2);
   text-align: center;
 }
 .lp-btn {
@@ -183,7 +203,7 @@ async function logout() {
 }
 .lp-tip {
   font-size: 21rpx;
-  color: var(--text-3);
+  color: var(--text-2);
   text-align: center;
   line-height: 1.6;
   margin-top: 8rpx;
@@ -192,13 +212,13 @@ async function logout() {
 .profile-head {
   display: flex;
   align-items: center;
-  gap: 28rpx;
-  padding: 36rpx 28rpx;
+  gap: 24rpx;
+  padding: 28rpx 24rpx;
 }
 .ph-avatar {
   position: relative;
-  width: 128rpx;
-  height: 128rpx;
+  width: 112rpx;
+  height: 112rpx;
   border-radius: 50%;
   background: var(--card-2);
   display: flex;
@@ -237,7 +257,7 @@ async function logout() {
 .ph-email {
   display: block;
   font-size: 24rpx;
-  color: var(--text-3);
+  color: var(--text-2);
   margin-top: 8rpx;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -245,13 +265,13 @@ async function logout() {
 }
 
 .form {
-  padding: 12rpx 28rpx;
+  padding: 10rpx 24rpx;
 }
 .field {
   display: flex;
   align-items: center;
   gap: 20rpx;
-  padding: 24rpx 0;
+  padding: 20rpx 0;
   border-bottom: 1rpx solid var(--border);
 }
 .field.col {
@@ -280,7 +300,7 @@ async function logout() {
   padding: 16rpx;
 }
 .ph {
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .save {
   margin-top: 28rpx;
@@ -292,5 +312,35 @@ async function logout() {
 .bottom-pad {
   /* 留出底部导航栏高度，避免末尾内容被 tab 栏遮挡 */
   height: 140rpx;
+}
+
+/* 设置入口行 */
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 26rpx 24rpx;
+}
+.set-row-hover {
+  background: var(--card-2);
+}
+.sr-left {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+.sr-label {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--text);
+}
+.sr-right {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+.sr-val {
+  font-size: 26rpx;
+  color: var(--text-2);
 }
 </style>

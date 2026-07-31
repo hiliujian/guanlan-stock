@@ -4,25 +4,75 @@
    - 颜色、间距、圆角、字号、阴影、动效 全部用 CSS 变量统一
    - 适配：rpx 在手机/小程序按屏宽缩放；H5 桌面用 .app-shell 限制最大宽度
    ============================================================ */
-page,
-body {
-  --bg: #f5f6fa;
-  --card: #ffffff;
-  --card-2: #fafbfc;
+/* 默认（深色）主题变量：定义在 :root，所有元素继承；页面 <html> 默认深色 */
+:root {
+  --bg: #05080f;
+  --bg-2: #0a1322;
+  --card: rgba(255, 255, 255, 0.06);
+  --card-2: rgba(255, 255, 255, 0.04);
   --primary: #07c160;
   --primary-dark: #06a454;
-  --up: #fa5151;
-  --down: #09bb07;
-  --text: #1a1a1a;
-  --text-2: #6b6f76;
-  --text-3: #9aa0a8;
-  --border: #ececf0;
+  --up: #ff5b5b;
+  --down: #1fd874;
+  --text: #eaf0fb;
+  --text-2: #aab4c8;
+  --text-3: #6b7689;
+  --border: rgba(255, 255, 255, 0.10);
   --radius: 20rpx;
   --radius-sm: 12rpx;
-  --shadow: 0 6rpx 24rpx rgba(20, 24, 40, 0.06);
-  --shadow-up: 0 8rpx 28rpx rgba(7, 193, 96, 0.18);
+  --shadow: 0 12rpx 34rpx rgba(0, 0, 0, 0.45);
+  --shadow-up: 0 8rpx 28rpx rgba(7, 193, 96, 0.30);
   --gap: 16rpx;
+  --glass-blur: 22rpx;
+  /* 跨主题专用表面（深浅色各自一套，避免硬编码导致切主题不彻底） */
+  --tabbar-bg: rgba(8, 13, 24, 0.72);
+  --tabbar-border: rgba(255, 255, 255, 0.10);
+  --tabbar-shadow: 0 -6rpx 24rpx rgba(0, 0, 0, 0.45);
+  --sticky-bg: rgba(5, 8, 15, 0.6);
+  --sticky-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.35);
+  --suggest-bg: rgba(10, 16, 28, 0.86);
+  --suggest-shadow: 0 14rpx 30rpx rgba(0, 0, 0, 0.4);
+  --shell-shadow: 0 0 60rpx rgba(0, 0, 0, 0.5);
+  /* 统一动效参数：全站缓动曲线与入场时长集中管理，避免各组件硬编码导致风格漂移 */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 0.25s;
+  --dur: 0.32s;
+  --dur-slow: 0.42s;
+  --dur-slower: 0.5s;
+}
 
+/* 浅色主题：<html class="theme-light"> 时覆盖变量（红涨绿跌与中国习惯保持一致，不随主题变） */
+:root.theme-light {
+  --bg: #eef1f6;
+  --bg-2: #ffffff;
+  --card: rgba(255, 255, 255, 0.72);
+  --card-2: rgba(20, 30, 50, 0.03);
+  --primary: #07c160;
+  --primary-dark: #06a454;
+  --up: #ff5b5b;
+  --down: #1fd874;
+  --text: #16202e;
+  --text-2: #5b6677;
+  --text-3: #97a1b0;
+  --border: rgba(20, 30, 50, 0.10);
+  --radius: 20rpx;
+  --radius-sm: 12rpx;
+  --shadow: 0 12rpx 34rpx rgba(20, 30, 50, 0.10);
+  --shadow-up: 0 8rpx 28rpx rgba(7, 193, 96, 0.22);
+  --gap: 16rpx;
+  --glass-blur: 18rpx;
+  --tabbar-bg: rgba(255, 255, 255, 0.82);
+  --tabbar-border: rgba(20, 30, 50, 0.10);
+  --tabbar-shadow: 0 -6rpx 24rpx rgba(20, 30, 50, 0.12);
+  --sticky-bg: rgba(238, 241, 246, 0.78);
+  --sticky-shadow: 0 6rpx 20rpx rgba(20, 30, 50, 0.10);
+  --suggest-bg: rgba(255, 255, 255, 0.94);
+  --suggest-shadow: 0 14rpx 30rpx rgba(20, 30, 50, 0.14);
+  --shell-shadow: 0 0 60rpx rgba(20, 30, 50, 0.12);
+}
+
+page,
+body {
   background: var(--bg);
   color: var(--text);
   font-size: 28rpx;
@@ -38,14 +88,21 @@ input {
   box-sizing: border-box;
 }
 
+/* 暗色主题下输入框默认文字改为浅色，避免黑字看不见 */
+input,
+textarea {
+  color: var(--text);
+}
+
 /* 桌面端 H5：居中成手机宽度的外壳，保证 Web/小程序视觉一致 */
 .app-shell {
   max-width: 480px;
   margin: 0 auto;
   min-height: 100vh;
-  background: var(--bg);
+  background: transparent;
   position: relative;
-  box-shadow: 0 0 40rpx rgba(0, 0, 0, 0.04);
+  z-index: 1;
+  box-shadow: var(--shell-shadow);
   /* 自定义导航（navigationStyle:custom）后，顶部从状态栏下开始，避免被刘海/状态栏遮挡 */
   padding-top: env(safe-area-inset-top);
 }
@@ -59,8 +116,11 @@ input {
 .card {
   background: var(--card);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 28rpx;
+  border: 1rpx solid var(--border);
+  box-shadow: var(--shadow), inset 0 1rpx 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  padding: 22rpx;
   margin-bottom: var(--gap);
 }
 
@@ -126,7 +186,7 @@ input {
 /* ============ 动效工具类 ============ */
 /* 卡片进场：自下而上淡入 */
 .anim-fade-up {
-  animation: fadeUp 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: fadeUp var(--dur-slow) var(--ease-out) both;
 }
 @keyframes fadeUp {
   0% {
@@ -140,7 +200,7 @@ input {
 }
 /* 列表项依次进场（配合 inline animation-delay） */
 .anim-rise {
-  animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: rise var(--dur-slower) var(--ease-out) both;
 }
 @keyframes rise {
   0% {
@@ -155,7 +215,7 @@ input {
 
 /* 弹窗遮罩淡入 */
 .anim-mask {
-  animation: maskIn 0.25s ease both;
+  animation: maskIn var(--dur-fast) ease both;
 }
 @keyframes maskIn {
   from {
@@ -167,7 +227,7 @@ input {
 }
 /* 弹窗面板自下而上滑入 */
 .anim-sheet {
-  animation: sheetUp 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: sheetUp var(--dur) var(--ease-out) both;
 }
 @keyframes sheetUp {
   from {
@@ -190,6 +250,16 @@ input {
   }
 }
 
+/* 通用加载圈（跨组件复用；spin 关键帧为全局） */
+.cl-spin {
+  width: 44rpx;
+  height: 44rpx;
+  border: 4rpx solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 /* 价格跳动高亮 */
 .anim-flash-up {
   animation: flashUp 0.6s ease;
@@ -199,7 +269,7 @@ input {
 }
 @keyframes flashUp {
   0% {
-    background: rgba(250, 81, 81, 0.18);
+    background: rgba(255, 91, 91, 0.20);
   }
   100% {
     background: transparent;
@@ -207,9 +277,75 @@ input {
 }
 @keyframes flashDown {
   0% {
-    background: rgba(9, 187, 7, 0.18);
+    background: rgba(31, 216, 116, 0.20);
   }
   100% {
     background: transparent;
   }
+}
+
+/* ============ 玻璃拟态工具类 ============ */
+.glass {
+  background: var(--card);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow), inset 0 1rpx 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+}
+/* 玻璃拟态半径变体：避免组件层重复书写同一套 bg/border/shadow/blur */
+.glass--pill {
+  border-radius: 999rpx;
+}
+.glass--lg {
+  border-radius: 28rpx;
+}
+/* 弹窗遮罩轻模糊（AuthModal / ConfirmDialog 共用） */
+.mask-blur {
+  backdrop-filter: blur(6rpx);
+  -webkit-backdrop-filter: blur(6rpx);
+}
+
+/* 轻抬升微交互（移动端点按反馈） */
+.lift {
+  transition: transform 0.18s ease, box-shadow 0.25s ease;
+}
+.lift:active {
+  transform: translateY(-2rpx) scale(0.992);
+  box-shadow: var(--shadow-up), inset 0 1rpx 0 rgba(255, 255, 255, 0.08);
+}
+
+/* 品牌头部入场辉光 */
+.anim-glow {
+  animation: glowPulse 3.4s ease-in-out infinite;
+}
+@keyframes glowPulse {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(7, 193, 96, 0)); }
+  50% { filter: drop-shadow(0 0 18rpx rgba(7, 193, 96, 0.5)); }
+}
+
+/* 上浮动效：淡入 + 轻微上浮 + 缩放（卡片入场更顺滑） */
+.anim-rise-soft {
+  animation: riseSoft var(--dur-slower) var(--ease-out) both;
+}
+@keyframes riseSoft {
+  0% { opacity: 0; transform: translateY(26rpx) scale(0.985); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* 装饰性细微浮动 */
+.anim-float {
+  animation: floatY 6s ease-in-out infinite;
+}
+@keyframes floatY {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10rpx); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-glow,
+  .anim-float { animation: none !important; }
+  .anim-fade-up,
+  .anim-rise,
+  .anim-rise-soft { animation-duration: 0.001s !important; }
 }
