@@ -12,6 +12,11 @@ node_modules
 .DS_Store
 *.local
 
+# ---- Local env (含 Supabase anon key，虽前端可公开但勿入库) ----
+.env
+.env.*
+!.env.example
+
 # ---- Build outputs (NOT project source) ----
 dist
 dist_bak_old

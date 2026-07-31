@@ -377,7 +377,8 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
   const sb = getSupabase();
   if (!sb) return null;
   // rpc 直接返回 data（数组，单行），不要用 .select().single() 链（rpc 不支持）
-  const { data, error } = await sb.rpc("toggle_post_like", { post_id: id });
+  // 注意：已部署函数的入参名为 p_post_id（见 supabase/deploy.sql），必须与之一致
+  const { data, error } = await sb.rpc("toggle_post_like", { p_post_id: id });
   if (error || !data) return null;
   const d = (data as any[])[0];
   if (!d) return null;
