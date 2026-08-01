@@ -11,7 +11,7 @@ export interface AuthResult {
 
 export async function signIn(email: string, password: string): Promise<AuthResult> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: SERVICE_UNAVAILABLE };
+  if (!sb) return { ok: false, error: BACKEND_NOT_CONFIGURED };
   const { error } = await sb.auth.signInWithPassword({ email, password });
   if (error) return { ok: false, error: translateSupabaseError(error.message) };
   return { ok: true };
@@ -23,7 +23,7 @@ export async function signIn(email: string, password: string): Promise<AuthResul
  */
 export async function verifyEmailToken(tokenHash: string, type: string): Promise<AuthResult> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: SERVICE_UNAVAILABLE };
+  if (!sb) return { ok: false, error: BACKEND_NOT_CONFIGURED };
   const { data, error } = await sb.auth.verifyOtp({
     token_hash: tokenHash,
     type: type as any,
@@ -41,7 +41,7 @@ export async function verifyEmailToken(tokenHash: string, type: string): Promise
  */
 export async function requestResetCode(email: string): Promise<AuthResult> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: SERVICE_UNAVAILABLE };
+  if (!sb) return { ok: false, error: BACKEND_NOT_CONFIGURED };
   const { error } = await sb.auth.signInWithOtp({
     email,
     options: { shouldCreateUser: false, data: { purpose: "reset" } },
@@ -56,7 +56,7 @@ export async function requestResetCode(email: string): Promise<AuthResult> {
  */
 export async function verifyResetCode(email: string, code: string): Promise<AuthResult> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: SERVICE_UNAVAILABLE };
+  if (!sb) return { ok: false, error: BACKEND_NOT_CONFIGURED };
   const { error } = await sb.auth.verifyOtp({
     email,
     token: code,
@@ -74,7 +74,7 @@ export async function verifyResetCode(email: string, code: string): Promise<Auth
  */
 export async function requestSignupCode(email: string): Promise<AuthResult> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: SERVICE_UNAVAILABLE };
+  if (!sb) return { ok: false, error: BACKEND_NOT_CONFIGURED };
   const { error } = await sb.auth.signInWithOtp({
     email,
     options: { shouldCreateUser: true, data: { purpose: "signup" } },
@@ -89,7 +89,7 @@ export async function requestSignupCode(email: string): Promise<AuthResult> {
  */
 export async function verifySignupCode(email: string, code: string): Promise<AuthResult> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: SERVICE_UNAVAILABLE };
+  if (!sb) return { ok: false, error: BACKEND_NOT_CONFIGURED };
   const { error } = await sb.auth.verifyOtp({
     email,
     token: code,
@@ -105,7 +105,7 @@ export async function verifySignupCode(email: string, code: string): Promise<Aut
  */
 export async function updatePassword(newPassword: string): Promise<AuthResult> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: SERVICE_UNAVAILABLE };
+  if (!sb) return { ok: false, error: BACKEND_NOT_CONFIGURED };
   const { error } = await sb.auth.updateUser({ password: newPassword });
   if (error) return { ok: false, error: translateSupabaseError(error.message) };
   return { ok: true };
@@ -204,6 +204,10 @@ export async function uploadAvatar(localPath: string): Promise<UploadResult> {
 // 服务不可用时的统一友好提示（不向用户暴露内部配置/实现细节）
 const SERVICE_UNAVAILABLE = "服务暂时不可用，请稍后再试";
 
+// 后端未配置时的提示（部署时未注入 Supabase 环境变量）：与「服务异常」明确区分，
+// 否则用户会误以为服务挂了，其实是部署配置问题。
+const BACKEND_NOT_CONFIGURED = "后端服务未配置，登录功能暂不可用（部署时未注入 Supabase 环境变量）";
+
 // Supabase / 后端原始英文报错 → 中文（面向中国用户）
 // 覆盖登录、注册、资料、自选股同步等最常见场景；未命中则降级为中性提示。
 const AUTH_ERROR_MAP: Record<string, string> = {
@@ -253,7 +257,7 @@ export function translateSupabaseError(raw: string | undefined | null): string {
 
 export async function updateProfile(patch: ProfilePatch): Promise<AuthResult> {
   const sb = getSupabase();
-  if (!sb) return { ok: false, error: SERVICE_UNAVAILABLE };
+  if (!sb) return { ok: false, error: BACKEND_NOT_CONFIGURED };
   const { data: u } = await sb.auth.getUser();
   const uid = u.user?.id;
   if (!uid) return { ok: false, error: "未登录" };

@@ -2,6 +2,12 @@
   <view class="card auth-form anim-rise-soft">
     <text class="auth-lead">登录后从云端同步自选股与资料。</text>
 
+    <view v-if="!isSupabaseConfigured" class="auth-warn">
+      后端服务未配置，登录功能暂不可用。请部署时在 Vercel 注入
+      <text class="auth-warn-code">VITE_SUPABASE_URL</text> /
+      <text class="auth-warn-code">VITE_SUPABASE_ANON_KEY</text> 后重新构建。
+    </view>
+
     <AuthField
       icon="person"
       v-model="email"
@@ -36,6 +42,7 @@
 import { ref, reactive } from "vue";
 import AuthField from "./AuthField.vue";
 import { signIn } from "@/api/auth";
+import { isSupabaseConfigured } from "@/config/app";
 
 const props = defineProps<{ mode: "login" }>();
 const emit = defineEmits<{
@@ -78,4 +85,23 @@ async function submit() {
     loading.value = false;
   }
 }
+
 </script>
+
+<style scoped>
+.auth-warn {
+  margin: 4rpx 0 18rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 14rpx;
+  background: rgba(255, 159, 64, 0.14);
+  border: 1rpx solid rgba(255, 159, 64, 0.45);
+  color: #b26a00;
+  font-size: 24rpx;
+  line-height: 1.65;
+}
+.auth-warn-code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-weight: 600;
+  color: #8a5200;
+}
+</style>
