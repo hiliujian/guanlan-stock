@@ -3,28 +3,20 @@
     <!-- 顶部：品牌 + 我的昵称 / 头像（可点击编辑） -->
     <view class="cm-header">
       <text class="cm-brand">社区</text>
-      <view class="cm-me" @click="editing = !editing">
-        <view class="cm-avatar" :style="{ background: myAvatarD.bg, fontSize: myAvatarD.fontSize }">{{ myAvatarD.text }}</view>
+      <view class="cm-me" @click="toggleEdit">
+      <view class="cm-avatar" :style="{ background: myAvatarBg }">{{ myChar }}</view>
         <text class="cm-name">{{ myName }}</text>
         <OutlineIcon type="gear" :size="24" color="var(--text-2)" />
       </view>
     </view>
 
-    <!-- 昵称 / 头像编辑 -->
+    <!-- 昵称编辑（未登录时本地编辑；已登录昵称同步到账号资料） -->
     <view v-if="editing" class="cm-edit glass">
       <view class="cm-edit-row">
         <input class="cm-edit-in" v-model="nameDraft" placeholder="设置你的昵称" maxlength="12" />
         <view class="cm-edit-save" @click="saveName">保存</view>
       </view>
-      <text class="cm-edit-lbl">选择头像（点选 emoji，不填则用默认头像）</text>
-      <view class="cm-emoji-row">
-        <view
-          v-for="e in presetEmojis"
-          :key="e || 'none'"
-          :class="['cm-emoji', myAvatar === e ? 'on' : '']"
-          @click="pickEmoji(e)"
-        >{{ e || "字" }}</view>
-      </view>
+      <text class="cm-edit-lbl">{{ userState.loggedIn ? "用户名可在「我的 → 个人资料」中修改" : "昵称仅保存在本机，换设备不互通" }}</text>
     </view>
 
     <!-- 发帖器 -->
@@ -57,7 +49,7 @@
       v-for="p in displayPosts"
       :key="p.id"
       :post="p"
-      :mine="p.author === myName"
+      :mine="isMine(p)"
       @like="like"
       @reply="reply"
       @remove="remove"
@@ -75,35 +67,61 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onActivated, watch } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import PostComposer from "./PostComposer.vue";
 import PostCard from "./PostCard.vue";
 import { useCommunity } from "@/store/community";
-import { getMyName, setMyName, getMyAvatar, setMyAvatar } from "@/store/identity";
-import { resolveAvatar, topicColor, presetEmojis } from "@/utils/avatar";
+import { openAuth } from "@/store/nav";
+import { getMyName, setMyName } from "@/store/identity";
+import { userState } from "@/store/user";
+import { updateProfile } from "@/api/auth";
+import { refreshProfile } from "@/store/user";
+import { avatarGradient, avatarChar, topicColor } from "@/utils/avatar";
 import type { CommunityPost, PostCard as PostCardData, Topic } from "@/api/community";
 
 const { posts, loading, load, publishText, publishCard, like, reply, remove } = useCommunity();
 
-// ---------------- 我的身份（昵称 + 头像） ----------------
-const myName = ref(getMyName());
-const myAvatar = ref(getMyAvatar());
-// 我的头像：有自选 emoji 用自选，否则按昵称稳定分配默认头像
-const myAvatarD = computed(() => resolveAvatar(myName.value, myAvatar.value));
+// 未登录且已配置后端（登录可达）时，进入本页自动跳转登录页（见 onActivated）
+const needLogin = computed(() => userState.supabaseEnabled && !userState.loggedIn);
+
+// ---------------- 我的身份（昵称，账号感知且响应式） ----------------
+// getMyName 已内置账号优先逻辑：登录后用账号资料，未登录回退本地。
+// 这里包一层 computed，登录态/资料变化时自动重算；头像为按昵称生成的「字」头像。
+const myName = computed(() => getMyName());
+const myAvatarBg = computed(() => avatarGradient(myName.value));
+const myChar = computed(() => avatarChar(myName.value));
+
+function isMine(p: CommunityPost): boolean {
+  // 已登录：按账号 id 判定（帖子创建时已写入 userId）
+  if (userState.loggedIn && userState.userId) {
+    return !!p.userId && p.userId === userState.userId;
+  }
+  // 未登录：按本地昵称判定
+  return p.author === myName.value;
+}
 
 const editing = ref(false);
-const nameDraft = ref(myName.value);
-function saveName() {
+const nameDraft = ref("");
+function toggleEdit() {
+  editing.value = !editing.value;
+  if (editing.value) nameDraft.value = myName.value;
+}
+async function saveName() {
   const v = nameDraft.value.trim();
   if (!v) return;
-  setMyName(v);
-  myName.value = v;
+  if (userState.loggedIn) {
+    // 已登录：昵称同步写入账号资料（与「我的 → 个人资料」同源）
+    const r = await updateProfile({ username: v, display_name: v });
+    if (!r.ok) {
+      uni.showToast({ title: r.error || "保存失败", icon: "none" });
+      return;
+    }
+    await refreshProfile();
+  } else {
+    setMyName(v);
+  }
   editing.value = false;
-}
-function pickEmoji(e: string) {
-  myAvatar.value = e;
-  setMyAvatar(e);
 }
 
 // ---------------- 话题筛选 ----------------
@@ -147,15 +165,35 @@ const displayPosts = computed(() => {
 
 // ---------------- 发布 ----------------
 async function onText(content: string, topic?: Topic) {
-  await publishText(content, topic);
+  try {
+    await publishText(content, topic);
+  } catch (e: any) {
+    uni.showToast({ title: e?.message || "发布失败，请稍后再试", icon: "none" });
+  }
 }
 async function onCard(card: PostCardData) {
-  await publishCard(card);
+  try {
+    await publishCard(card);
+  } catch (e: any) {
+    uni.showToast({ title: e?.message || "发布失败，请稍后再试", icon: "none" });
+  }
 }
 
-onMounted(() => {
+// keep-alive 每次激活：未登录则自动跳转登录页，否则（首次 / 登录后）加载社区动态
+onActivated(() => {
+  if (needLogin.value) {
+    openAuth("login");
+    return;
+  }
   if (!posts.value.length) load();
 });
+// 登录后：空态消失，立即加载社区动态
+watch(
+  () => userState.loggedIn,
+  (li) => {
+    if (li && !posts.value.length) load();
+  }
+);
 </script>
 
 <style scoped>
@@ -193,12 +231,14 @@ onMounted(() => {
   width: 44rpx;
   height: 44rpx;
   border-radius: 50%;
+  overflow: hidden;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22rpx;
   font-weight: 700;
   color: #fff;
+  font-size: 22rpx;
 }
 .cm-name {
   font-size: 24rpx;
@@ -243,25 +283,6 @@ onMounted(() => {
   margin: 16rpx 0 10rpx;
   font-size: 21rpx;
   color: var(--text-2);
-}
-.cm-emoji-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-}
-.cm-emoji {
-  width: 56rpx;
-  height: 56rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 30rpx;
-  border-radius: 14rpx;
-  background: var(--card-2);
-  border: 2rpx solid transparent;
-}
-.cm-emoji.on {
-  border-color: var(--primary);
 }
 
 /* 话题筛选 chips */
@@ -318,6 +339,43 @@ onMounted(() => {
 .cm-empty-t {
   font-size: 25rpx;
   color: var(--text-2);
+}
+
+/* 未登录空态：直接提示，不展示 loading */
+.cm-gated {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18rpx;
+  padding: 180rpx 0;
+}
+.cm-gated-t {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+.cm-gated-s {
+  font-size: 24rpx;
+  color: var(--text-2);
+  text-align: center;
+  padding: 0 60rpx;
+  line-height: 1.6;
+}
+.cm-gated-btn {
+  margin-top: 18rpx;
+  padding: 18rpx 56rpx;
+  border-radius: 999rpx;
+  background: var(--primary);
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 700;
+  transition: transform 0.12s ease, filter 0.18s ease;
+}
+.cm-gated-btn:active {
+  transform: scale(0.97);
+}
+.cm-gated-btn-hover {
+  filter: brightness(1.08);
 }
 .cm-pad {
   height: calc(140rpx + env(safe-area-inset-bottom));

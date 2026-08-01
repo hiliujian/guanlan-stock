@@ -25,14 +25,14 @@
               class="seg-i"
               :class="{ active: isDark }"
               role="button"
-              aria-pressed="isDark"
+              :aria-pressed="isDark"
               @click="setTheme('dark')"
             >深色</view>
             <view
               class="seg-i"
               :class="{ active: !isDark }"
               role="button"
-              aria-pressed="!isDark"
+              :aria-pressed="!isDark"
               @click="setTheme('light')"
             >浅色</view>
           </view>

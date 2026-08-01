@@ -5,6 +5,7 @@
 // =====================================================================
 import { reactive, readonly } from "vue";
 import { getSupabase } from "@/api/supabase";
+import { translateSupabaseError } from "@/api/auth";
 import { userState } from "./user";
 
 export interface WatchItem {
@@ -109,7 +110,7 @@ export async function addWatch(item: WatchItem): Promise<{ ok: boolean; error?: 
       name: item.name,
       note: item.note || "",
     });
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: translateSupabaseError(error.message) };
     await loadCloud(userState.userId);
   } else {
     const next = [item, ...state.items.filter((i) => !(i.code === item.code && i.market === item.market))];

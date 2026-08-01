@@ -1,31 +1,17 @@
 // =====================================================================
 // 本地身份（昵称）
-// 当前未接入登录体系（Supabase 未配置），社区以"本地昵称"标识发布者。
-// 后续开放 Supabase 登录后，可平滑替换为真实用户资料（见 store/user.ts）。
+// 已登录时优先返回云端账号用户名 / 昵称，保证社区与「我的」同一身份；
+// 未登录时回退到本地昵称（游客模式），行为与接入登录前一致。
 // =====================================================================
 const KEY = "guanlan_nick";
-const AVATAR_KEY = "guanlan_avatar";
 
-/** 读取本地头像 emoji（可为空串，表示使用首字母占位头像） */
-export function getMyAvatar(): string {
-  try {
-    return localStorage.getItem(AVATAR_KEY) || "";
-  } catch {
-    return "";
-  }
-}
+import { userState } from "@/store/user";
 
-/** 保存用户选择的头像 emoji（空串表示退回首字母占位） */
-export function setMyAvatar(raw: string): void {
-  try {
-    localStorage.setItem(AVATAR_KEY, raw || "");
-  } catch {
-    /* 静默降级 */
-  }
-}
-
-/** 读取本地昵称；首次访问自动生成一个"股友_xxxx"的默认昵称 */
+/** 读取我的昵称：已登录用账号用户名 / 昵称，否则回退本地昵称 */
 export function getMyName(): string {
+  if (userState.loggedIn && userState.profile) {
+    return userState.profile.username || userState.profile.display_name || userState.email || "我";
+  }
   try {
     let n = localStorage.getItem(KEY);
     if (!n) {

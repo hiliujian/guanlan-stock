@@ -37,6 +37,12 @@ _uniui_src
 # 已按需求纳入版本库（前后端同仓）；仅 webapp（旧构建产物）仍排除。
 webapp
 
+# ---- 本地临时 / scratch / 开发期产物（不入库） ----
+Microsoft/
+dist_trash_*/
+tmp/
+supabase/.temp/
+
 # ---- Editor directories and files ----
 .idea
 *.suo

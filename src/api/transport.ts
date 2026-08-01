@@ -7,18 +7,38 @@
 //            ② 直连 fetch 到上游官方域名（若上游带 CORS 头则零代理成功）
 //            ③ JSONP 直连（<script> 跨域，不受 CORS 限制，纯静态托管可用）
 //            ④ 公共 CORS 代理兜底（不稳定，最后才用）
-//   小程序：   同源 / API_PROXY / 公共代理（无 JSONP/直连可用）
+//   小程序：   同源 / 公共代理（无 JSONP/直连可用）
 //
 // 注意：本层只负责「拿到数据」，不关心数据来自哪家数据源。多数据源（东财 /
 // 腾讯 / 新浪）的自动降级由 src/api/sources 在「数据源」层面处理。两层叠加，
 // 既保证「单家数据源挂了能换一家」，又保证「某传输通道不通能换通道」。
 // =====================================================================
-import config from "@/config/app";
+import { isSupabaseConfigured } from "@/config/app";
+import { getSupabase } from "@/api/supabase";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
 const isH5 = () => typeof window !== "undefined" && typeof document !== "undefined";
+
+// 行情统一后端代理（Supabase Edge Function）。配置好 Supabase 后，行情请求
+// 优先经此函数转发到东方财富；若该函数取数失败（如东财封锁云 IP），H5 会
+// 自动回退到 JSONP / 直连，业务层无感知、跨端一致。
+const EDGE_FN = "guanlan-quote-proxy";
+
+// 经 Supabase Edge Function 透传东方财富接口，返回原始响应文本。
+// 仅当 Supabase 已配置时可用；未配置时由调用方回退到本地取数通道。
+async function requestViaSupabase(full: string): Promise<string> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase 未配置");
+  const { data, error } = await sb.functions.invoke(EDGE_FN, {
+    body: { url: full },
+  });
+  if (error) throw new Error(error.message || "行情代理请求失败");
+  const text = typeof data === "string" ? data : JSON.stringify(data ?? null);
+  if (looksLikeHtml(text)) throw new Error("行情代理返回非 JSON 响应");
+  return text;
+}
 
 // 上游 host -> 同源代理前缀（仅覆盖东方财富官方域名；腾讯/新浪等走直连 + JSONP）
 const HOST_PREFIX: Record<string, string> = {
@@ -49,21 +69,18 @@ function publicProxyUrls(full: string): string[] {
 // 识别到一次 HTML 响应后即标记同源不可用，后续请求直接跳过，省一次无谓往返。
 let sameOriginDead = false;
 
-// 取候选请求地址：同源优先，API_PROXY 次之，公共代理兜底（仅前端可用）
+// 取候选请求地址：同源优先，公共代理兜底（仅前端可用）
 function candidates(full: string): string[] {
   const list: string[] = [];
   if (isH5() && !sameOriginDead) list.push(localPath(full));
-  if (config.API_PROXY) list.push(config.API_PROXY.replace(/\/$/, "") + localPath(full));
-  if (isH5()) list.push(...publicProxyUrls(full));
-  else if (!config.API_PROXY) list.push(...publicProxyUrls(full));
+  list.push(...publicProxyUrls(full));
   return list;
 }
 
-// 可靠的同源 / 私有代理（优先于不稳定的公共 CORS 代理）
+// 可靠的同源代理（优先于不稳定的公共 CORS 代理）
 function reliableProxies(full: string): string[] {
   const list: string[] = [];
   if (!sameOriginDead) list.push(localPath(full));
-  if (config.API_PROXY) list.push(config.API_PROXY.replace(/\/$/, "") + localPath(full));
   return list;
 }
 
@@ -247,10 +264,30 @@ function requestGlobalVar(
   });
 }
 
-// 东方财富 JSON 接口浏览器取数：优先 JSONP(cb) 绕开 CORS（无需代理，最稳），
-// 4s 内拿不到再回退 requestText（同源 / 私有代理 / 公共代理）。小程序无 script
-// 注入，直接走 requestText。东财实时/K线/分时/搜索均支持 cb 回调包裹。
+// 东方财富 JSON 接口取数：
+// - 已配置 Supabase：优先走 Edge Function 代理（guanlan-quote-proxy）；若代理取数
+//   失败（典型：东方财富在 TLS 层封锁 Supabase 海外云 IP，已知硬约束），H5 浏览器
+//   自动回退到 JSONP / 直连（用户本地中国 IP 直连东财可用），小程序无 JSONP/直连只能继续抛错；
+// - 未配置（本地模式）：优先 JSONP(cb) 绕开 CORS（无需代理，最稳），失败再回退
+//   requestText（同源 / 私有代理 / 公共代理）。小程序无 script 注入，直接走 requestText。
 async function requestEmJson(full: string): Promise<string> {
+  if (isSupabaseConfigured) {
+    try {
+      return await requestViaSupabase(full);
+    } catch (e) {
+      // Edge Function 取数失败兜底：H5 回退本地通道；小程序无替代通道只能继续抛错。
+      if (isH5()) {
+        console.warn("[transport] Edge Function 取数失败，回退本地通道：", (e as Error)?.message);
+        try {
+          return await jsonpText(full, 4000);
+        } catch {
+          /* JSONP 不可达，继续走 requestText 回退 */
+        }
+        return await requestText(full);
+      }
+      throw e;
+    }
+  }
   if (isH5()) {
     try {
       return await jsonpText(full, 4000);
@@ -322,7 +359,7 @@ async function requestText(full: string): Promise<string> {
       }
     }
   } else {
-    // 小程序：同源代理 / API_PROXY / 公共代理，无 JSONP/直连可用
+    // 小程序：同源代理 / 公共代理，无 JSONP/直连可用
     const urls = candidates(full);
     for (let i = 0; i < urls.length; i++) {
       try {

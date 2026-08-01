@@ -2,7 +2,7 @@
   <view v-if="modelValue" class="cd-mask mask-blur" @click.self="onCancel">
     <view class="cd-card" role="dialog" aria-modal="true">
       <view class="cd-icon" :style="{ background: tintBg, color: tintColor }">
-        <OutlineIcon :type="icon" :size="34" :color="tintColor" />
+        <OutlineIcon :type="icon || 'info'" :size="34" :color="tintColor" />
       </view>
       <text class="cd-title">{{ title }}</text>
       <text class="cd-msg">{{ message }}</text>

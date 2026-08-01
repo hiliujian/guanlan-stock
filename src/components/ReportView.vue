@@ -31,7 +31,7 @@
         <text class="score-num" :style="{ color: scoreColor }">{{ a.score }}</text>
         <text class="score-label">技术面</text>
       </view>
-      <view class="score-meta">
+      <view class="score-meta subsection">
         <view class="meta-line">
           <text class="meta-k">当前趋势</text>
           <text class="meta-v">{{ a.trendText }}（{{ a.strength }}）</text>
@@ -156,7 +156,7 @@
         <text>暂无数据</text>
       </view>
 
-      <view v-if="ns" class="news-impact">
+      <view v-if="ns" class="news-impact subsection">
         <text class="ni-h">资讯如何影响分析</text>
         <view v-if="ns.catalysts.length" class="ni-row">
           <text class="ni-k ok">利好催化剂</text>
@@ -218,29 +218,29 @@
       </view>
     </view>
 
-    <!-- 关键价位 -->
-    <view class="levels anim-fade-up" :style="{ animationDelay: '240ms' }">
-      <view class="lv">
-        <text class="lv-k">支撑位</text>
-        <view class="lv-right">
-          <PriceText :value="a.support" :size="30" />
-          <text v-if="a.breakdown" class="lv-tag bad">已跌破</text>
-          <text v-else-if="a.nearSup" class="lv-tag warn">临近</text>
-        </view>
-      </view>
-      <view class="lv">
-        <text class="lv-k">建议买入区间</text>
-        <text class="lv-v">{{ buyText }}</text>
-      </view>
-      <view class="lv">
-        <text class="lv-k">压力位</text>
-        <view class="lv-right">
-          <PriceText :value="a.resistance" :size="30" />
-          <text v-if="a.breakout" class="lv-tag ok">已突破</text>
-          <text v-else-if="a.nearRes" class="lv-tag warn">临近</text>
-        </view>
-      </view>
-    </view>
+          <!-- 关键价位 -->
+          <view class="levels anim-fade-up" :style="{ animationDelay: '240ms' }">
+            <view class="lv subsection">
+              <text class="lv-k">支撑位</text>
+              <view class="lv-right">
+                <PriceText :value="a.support" :size="30" />
+                <text v-if="a.breakdown" class="lv-tag bad">已跌破</text>
+                <text v-else-if="a.nearSup" class="lv-tag warn">临近</text>
+              </view>
+            </view>
+            <view class="lv subsection">
+              <text class="lv-k">建议买入区间</text>
+              <text class="lv-v">{{ buyText }}</text>
+            </view>
+            <view class="lv subsection">
+              <text class="lv-k">压力位</text>
+              <view class="lv-right">
+                <PriceText :value="a.resistance" :size="30" />
+                <text v-if="a.breakout" class="lv-tag ok">已突破</text>
+                <text v-else-if="a.nearRes" class="lv-tag warn">临近</text>
+              </view>
+            </view>
+          </view>
 
     <!-- 风险提示 -->
     <view class="risks anim-fade-up" :style="{ animationDelay: '300ms' }">
@@ -556,16 +556,15 @@ function openNews(it: NewsItem) {
 }
 .score-meta {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
 }
 .meta-line {
   display: flex;
   justify-content: space-between;
-  padding: 7rpx 0;
-  border-bottom: 1rpx solid var(--border);
+  align-items: center;
   font-size: 25rpx;
-}
-.meta-line:last-child {
-  border-bottom: none;
 }
 .meta-k {
   color: var(--text-2);
@@ -694,21 +693,15 @@ function openNews(it: NewsItem) {
 }
 
 .levels {
-  background: var(--card);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 6rpx 26rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
   margin-bottom: 16rpx;
 }
 .lv {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16rpx 0;
-  border-bottom: 1rpx solid var(--border);
-}
-.lv:last-child {
-  border-bottom: none;
 }
 .lv-k {
   color: var(--text-2);
@@ -872,8 +865,6 @@ function openNews(it: NewsItem) {
 }
 .news-impact {
   margin-top: 16rpx;
-  padding-top: 14rpx;
-  border-top: 1rpx solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 8rpx;

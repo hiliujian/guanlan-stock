@@ -1,21 +1,51 @@
 <template>
-  <!-- klinecharts 基于原生 canvas 渲染，直接用 div 作容器（H5 下等价于 DOM 节点） -->
-  <div ref="el" class="kc-box" :style="{ height: height + 'px' }"></div>
+  <!-- 板块化行情图：价格 / 成交量 / MACD 拆成三张独立面板卡片，
+       各自带背景与边框，块间留间距，三者横向滚动与缩放联动。 -->
+  <div class="kc-panels">
+    <section class="kc-panel">
+      <div class="kc-panel__hd">
+        <text class="kc-panel__tag">价格</text>
+      </div>
+      <div ref="priceEl" class="kc-canvas" :style="{ height: priceH + 'px' }"></div>
+    </section>
+
+    <section class="kc-panel">
+      <div class="kc-panel__hd">
+        <text class="kc-panel__tag">成交量</text>
+      </div>
+      <div ref="volEl" class="kc-canvas" :style="{ height: volH + 'px' }"></div>
+    </section>
+
+    <section class="kc-panel kc-panel--last">
+      <div class="kc-panel__hd">
+        <text class="kc-panel__tag">MACD</text>
+      </div>
+      <div ref="macdEl" class="kc-canvas" :style="{ height: macdH + 'px' }"></div>
+    </section>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
-import { init, dispose, CandleType, registerIndicator, type Chart, type KLineData, type IndicatorDrawParams } from "klinecharts";
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
+import {
+  init,
+  dispose,
+  CandleType,
+  registerIndicator,
+  ActionType,
+  type Chart,
+  type KLineData,
+  type IndicatorDrawParams,
+} from "klinecharts";
 import { isDark } from "@/utils/theme";
 import { computeChip, type ChipResult } from "@/utils/analyzer";
 import { UP, DOWN } from "@/utils/colors";
 import type { Kline, Trend } from "@/utils/period";
 
-// 成本分布（筹码）数据结构（来自 analyzer.computeChip）
 type ChipData = ChipResult;
 
 // klinecharts v9 无内置 CYQ，这里注册一个自定义「叠加」指标，把筹码成本分布以横向
-// 直方图形式绘制在主图蜡烛窗格的右侧（同花顺式：价位为纵轴、占比为横轴、红绿区分
+// 直方图形式绘制在价格面板蜡烛窗格的右侧（同花顺式：价位为纵轴、占比为横轴、红绿区分
 // 成本高于/低于现价）。计算复用 analyzer.computeChip，仅负责把结果画出来。
 let cyqRegistered = false;
 function ensureCyq() {
@@ -89,49 +119,85 @@ const props = withDefaults(
   { height: 440 }
 );
 
-const el = ref<HTMLElement | null>(null);
-let chart: Chart | null = null;
+// 三块面板各自的高度：价格占主，成交量/MACD 各约两成
+const priceH = computed(() => Math.max(170, Math.round(props.height * 0.56)));
+const volH = computed(() => Math.max(72, Math.round(props.height * 0.22)));
+const macdH = computed(() => Math.max(80, props.height - priceH.value - volH.value));
+
+const priceEl = ref<HTMLElement | null>(null);
+const volEl = ref<HTMLElement | null>(null);
+const macdEl = ref<HTMLElement | null>(null);
+
+let priceChart: Chart | null = null;
+let volChart: Chart | null = null;
+let macdChart: Chart | null = null;
 let ro: ResizeObserver | null = null;
 
 // 红涨绿跌（A股惯例）：涨=红、跌=绿，颜色取自 @/utils/colors（与 CYQ 筹码直方图同源）
+const TRANSPARENT = "rgba(0,0,0,0)";
 
-function buildStyles(area: boolean) {
+type Kind = "price" | "vol" | "macd";
+
+// 每个面板一套样式：价格面板画真实蜡烛；成交量/MACD 面板把蜡烛主图压成透明极小条，
+// 只留各自的指标；时间轴仅在最底 MACD 面板显示（顺带收起其余面板的滚动条）。
+function styleFor(kind: Kind) {
+  const intraday = props.mode === "intraday";
+  const hideCandle = kind !== "price";
+  const showXAxis = kind === "macd";
+  const gridColor = isDark.value ? "#1c2026" : "#eef1f5";
+  const axisColor = isDark.value ? "#33383f" : "#d8d8d8";
+  const tickColor = isDark.value ? "#8b929e" : "#8a8a8a";
   return {
     candle: {
-      type: area ? CandleType.Area : CandleType.CandleSolid,
-      bar: {
-        upColor: UP,
-        downColor: DOWN,
-        noChangeColor: "#888888",
-        upBorderColor: UP,
-        downBorderColor: DOWN,
-        upWickColor: UP,
-        downWickColor: DOWN,
-      },
-      priceMark: {
-        high: { color: "#c8c8c8" },
-        low: { color: "#c8c8c8" },
-        last: {
-          upColor: UP,
-          downColor: DOWN,
-          noChangeColor: "#888888",
-          text: { color: "#ffffff" },
-        },
-      },
+      type: intraday ? CandleType.Area : CandleType.CandleSolid,
+      bar: hideCandle
+        ? {
+            upColor: TRANSPARENT,
+            downColor: TRANSPARENT,
+            noChangeColor: TRANSPARENT,
+            upBorderColor: TRANSPARENT,
+            downBorderColor: TRANSPARENT,
+            upWickColor: TRANSPARENT,
+            downWickColor: TRANSPARENT,
+          }
+        : {
+            upColor: UP,
+            downColor: DOWN,
+            noChangeColor: "#888888",
+            upBorderColor: UP,
+            downBorderColor: DOWN,
+            upWickColor: UP,
+            downWickColor: DOWN,
+          },
+      priceMark: hideCandle
+        ? { high: { show: false }, low: { show: false }, last: { show: false } }
+        : {
+            high: { color: "#c8c8c8" },
+            low: { color: "#c8c8c8" },
+            last: {
+              upColor: UP,
+              downColor: DOWN,
+              noChangeColor: "#888888",
+              text: { color: "#ffffff" },
+            },
+          },
     },
     grid: {
-      horizontal: { color: isDark.value ? "#22262b" : "#ededed" },
-      vertical: { color: isDark.value ? "#22262b" : "#ededed" },
+      horizontal: { color: gridColor },
+      vertical: { color: gridColor },
     },
     xAxis: {
-      axisLine: { color: isDark.value ? "#33383f" : "#d8d8d8" },
-      tickText: { color: isDark.value ? "#8b929e" : "#8a8a8a" },
+      show: showXAxis,
+      axisLine: { show: showXAxis, color: axisColor },
+      tickText: { show: showXAxis, color: tickColor },
+      tickLine: { show: showXAxis, color: axisColor },
     },
     yAxis: {
-      axisLine: { color: isDark.value ? "#33383f" : "#d8d8d8" },
-      tickText: { color: isDark.value ? "#8b929e" : "#8a8a8a" },
+      axisLine: { color: axisColor },
+      tickText: { color: tickColor },
+      tickLine: { color: axisColor },
     },
-    separator: { color: isDark.value ? "#2a2f36" : "#e6e6e6" },
+    separator: { size: 1, color: isDark.value ? "#2a2f36" : "#e6e6e6" },
     crosshair: {
       horizontal: { text: { backgroundColor: isDark.value ? "#cfd3da" : "#5a5a5a" } },
       vertical: { text: { backgroundColor: isDark.value ? "#cfd3da" : "#5a5a5a" } },
@@ -172,58 +238,135 @@ function buildData(): KLineData[] {
   });
 }
 
-function setup() {
-  const node = el.value;
-  if (!node) return;
-  destroyChart();
-  const c = init(node);
-  if (!c) return;
-  chart = c;
-  const intraday = props.mode === "intraday";
-  chart.setStyles(buildStyles(intraday));
-  ensureCyq();
-  if (intraday) {
-    // 分时：主图叠加均价线(AVP = 成交额/成交量)，成交量、MACD 各独立窗格
-    chart.createIndicator("AVP", true, { id: "candle_pane" });
-    chart.createIndicator("VOL");
-    chart.createIndicator("MACD");
-  } else {
-    // 日K：主图叠加 MA5/10/20/60，成交量、MACD 各独立窗格
-    chart.createIndicator("MA", true, { id: "candle_pane" });
-    chart.overrideIndicator({ name: "MA", calcParams: [5, 10, 20, 60] });
-    chart.createIndicator("VOL");
-    chart.createIndicator("MACD");
-    // 筹码分布：主图右侧叠加成本分布直方图（自定义 CYQ 指标）
-    const chip = props.klines && props.klines.length ? computeChip(props.klines) : null;
-    if (chip) {
-      chart.createIndicator("CYQ", true, { id: "candle_pane" });
-      chart.overrideIndicator({ name: "CYQ", calcParams: [chip] }, "candle_pane");
+function computeChipFor(): ChipData | null {
+  return props.klines && props.klines.length ? computeChip(props.klines) : null;
+}
+
+// 三实例横向滚动/缩放联动 -------------------------------------------------
+let syncing = false;
+function alignScroll(src: Chart) {
+  if (syncing) return;
+  syncing = true;
+  const offset = src.getOffsetRightDistance();
+  for (const c of [priceChart, volChart, macdChart]) {
+    if (c && c !== src) {
+      const d = offset - c.getOffsetRightDistance();
+      if (Math.abs(d) > 0.5) c.scrollByDistance(d);
     }
   }
-  // applyNewData 放最后：触发全部指标（含 CYQ）以最新 calcParams 重算
-  chart.applyNewData(buildData());
+  syncing = false;
+}
+function alignZoom(src: Chart) {
+  if (syncing) return;
+  syncing = true;
+  const bs = src.getBarSpace();
+  for (const c of [priceChart, volChart, macdChart]) {
+    if (c && c !== src) {
+      const cur = c.getBarSpace();
+      if (Math.abs(cur - bs) > 0.01) c.setBarSpace(bs);
+    }
+  }
+  syncing = false;
+}
+function registerSync(c: Chart) {
+  c.subscribeAction(ActionType.OnScroll, () => alignScroll(c));
+  c.subscribeAction(ActionType.OnZoom, () => alignZoom(c));
 }
 
-// 切换股票 / 周期刷新：重算筹码分布并重灌数据（指标自动重算）
-function refreshChip() {
-  if (!chart || props.mode !== "kline") return;
-  const chip = props.klines && props.klines.length ? computeChip(props.klines) : null;
-  try {
-    if (chip) chart.overrideIndicator({ name: "CYQ", calcParams: [chip] }, "candle_pane");
-  } catch (e) {
-    /* CYQ 尚未创建则忽略 */
+// 挂载单个面板实例
+function mountPanel(kind: Kind, node: HTMLElement): Chart | null {
+  const c = init(node);
+  if (!c) return null;
+  // 关键：双指捏合缩放。浏览器默认 touch-action 会拦截双指手势（视为页面缩放），
+  // 必须显式设为 none，把所有触摸手势交给 klinecharts 自行处理，否则 pinch 不生效。
+  node.style.touchAction = "none";
+  // 自定义滚轮缩放（修复 PC 端鼠标滚轮无法缩放）：
+  // klinecharts 原生滚轮只在「主图蜡烛区(MAIN widget)」生效——而本图把成交量/MACD 面板的
+  // 蜡烛主图压成 0 高(setPaneOptions height:0)，这两块根本没有 MAIN 区可悬停，原生滚轮在
+  // 它们上面完全失效；价格面板也只在精确停在蜡烛上才生效。故在捕获阶段挂自有 wheel 监听，
+  // 用官方 zoomAtCoordinate 直接缩放(不依赖 MAIN widget、按光标位置锚定)，并
+  // stopImmediatePropagation 挡掉原生那套会失效/重复的滚轮处理。三面板经既有 OnZoom 订阅自动联动。
+  node.addEventListener(
+    "wheel",
+    (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const rect = node.getBoundingClientRect();
+      c.zoomAtCoordinate(e.deltaY < 0 ? 1.1 : 0.9, {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      });
+    },
+    { capture: true, passive: false }
+  );
+  c.setStyles(styleFor(kind));
+  if (kind === "price") {
+    ensureCyq();
+    if (props.mode === "intraday") {
+      c.createIndicator("AVP", true, { id: "candle_pane" });
+    } else {
+      c.createIndicator("MA", true, { id: "candle_pane" });
+      c.overrideIndicator({ name: "MA", calcParams: [5, 10, 20, 60] });
+      const chip = computeChipFor();
+      if (chip) {
+        c.createIndicator("CYQ", true, { id: "candle_pane" });
+        c.overrideIndicator({ name: "CYQ", calcParams: [chip] }, "candle_pane");
+      }
+    }
+  } else {
+    // 成交量 / MACD 面板：主图蜡烛透明化并压成极小条，只显示各自指标
+    c.createIndicator(kind === "vol" ? "VOL" : "MACD");
+    c.setPaneOptions({ id: "candle_pane", height: 0, minHeight: 0 });
+  }
+  c.applyNewData(buildData());
+  registerSync(c);
+  return c;
+}
+
+function setup() {
+  destroyAll();
+  if (!priceEl.value || !volEl.value || !macdEl.value) return;
+  priceChart = mountPanel("price", priceEl.value);
+  volChart = mountPanel("vol", volEl.value);
+  macdChart = mountPanel("macd", macdEl.value);
+}
+
+// 切换股票 / 周期刷新：重灌数据（指标自动重算），并刷新价格面板的筹码分布
+function refreshData() {
+  const data = buildData();
+  priceChart?.applyNewData(data);
+  volChart?.applyNewData(data);
+  macdChart?.applyNewData(data);
+  if (priceChart && props.mode === "kline") {
+    const chip = computeChipFor();
+    try {
+      if (chip) priceChart.overrideIndicator({ name: "CYQ", calcParams: [chip] }, "candle_pane");
+    } catch (e) {
+      /* CYQ 尚未创建则忽略 */
+    }
   }
 }
 
-function destroyChart() {
-  if (chart) {
+function destroyChart(c: Chart | null) {
+  if (c) {
     try {
-      dispose(chart);
+      dispose(c);
     } catch (e) {
       /* 忽略重复销毁 */
     }
-    chart = null;
   }
+}
+function destroyAll() {
+  destroyChart(priceChart);
+  destroyChart(volChart);
+  destroyChart(macdChart);
+  priceChart = volChart = macdChart = null;
+}
+
+function applyTheme() {
+  if (priceChart) priceChart.setStyles(styleFor("price"));
+  if (volChart) volChart.setStyles(styleFor("vol"));
+  if (macdChart) macdChart.setStyles(styleFor("macd"));
 }
 
 onMounted(async () => {
@@ -231,26 +374,26 @@ onMounted(async () => {
   setup();
   if (typeof window !== "undefined" && window.ResizeObserver) {
     ro = new ResizeObserver(() => {
-      if (chart) {
-        try {
-          chart.resize();
-        } catch (e) {
-          /* noop */
+      for (const c of [priceChart, volChart, macdChart]) {
+        if (c) {
+          try {
+            c.resize();
+          } catch (e) {
+            /* noop */
+          }
         }
       }
     });
-    if (el.value) ro.observe(el.value);
+    if (priceEl.value) ro.observe(priceEl.value);
+    if (volEl.value) ro.observe(volEl.value);
+    if (macdEl.value) ro.observe(macdEl.value);
   }
 });
 
 // 数据更新（切换股票 / 周期刷新）→ 重灌数据，指标自动重算
 watch(
   () => [props.klines, props.trends, props.preClose],
-  () => {
-    if (!chart) return;
-    chart.applyNewData(buildData());
-    refreshChip();
-  }
+  () => refreshData()
 );
 
 // 周期切换（日K ↔ 分时）需要更换蜡烛类型与指标 → 整图重建
@@ -260,23 +403,44 @@ watch(
 );
 
 // 深浅主题切换 → 重设样式（canvas 不继承 CSS 变量，需主动重设配色）
-watch(isDark, () => {
-  if (chart) chart.setStyles(buildStyles(props.mode === "intraday"));
-});
+watch(isDark, () => applyTheme());
 
 onBeforeUnmount(() => {
   if (ro) {
     ro.disconnect();
     ro = null;
   }
-  destroyChart();
+  destroyAll();
 });
 </script>
 
 <style scoped>
-.kc-box {
+.kc-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+/* 每个子图是一张独立面板卡片：底色略深一档、细边框、圆角，块间留空 → 清晰的板块感 */
+.kc-panel {
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
+  border-radius: 16rpx;
+  overflow: hidden;
+}
+.kc-panel__hd {
+  display: flex;
+  align-items: center;
+  padding: 12rpx 16rpx 4rpx;
+}
+.kc-panel__tag {
+  font-size: 22rpx;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+  color: var(--text-2);
+}
+.kc-canvas {
   width: 100%;
-  /* 背景透明，露出卡片底色（var(--card)），由主题 CSS 控制明暗 */
+  /* 背景透明，露出面板底色（var(--card-2)），由主题 CSS 控制明暗 */
   background: transparent;
 }
 </style>

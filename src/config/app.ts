@@ -12,24 +12,11 @@
 export interface AppConfig {
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
-  // 是否通过 Supabase Edge Function 代理行情（默认 false）
-  USE_EDGE_FUNCTIONS: boolean;
-  // 自带的行情代理服务地址（同源或独立域名）。留空则由前端自动回退到公共 CORS 代理。
-  // 例如本地起 server/index.js 后设为 http://localhost:8787
-  API_PROXY: string;
 }
 
 export const config: AppConfig = {
   SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL || "https://YOUR-PROJECT-REF.supabase.co",
   SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || "YOUR-ANON-KEY",
-  // 是否通过 Supabase Edge Function 代理行情（默认 false）
-  USE_EDGE_FUNCTIONS:
-    import.meta.env.VITE_USE_EDGE_FUNCTIONS != null
-      ? import.meta.env.VITE_USE_EDGE_FUNCTIONS === "true" || import.meta.env.VITE_USE_EDGE_FUNCTIONS === true
-      : false,
-  // 自带的行情代理服务地址（同源或独立域名）。留空则由前端自动回退到公共 CORS 代理。
-  // 例如本地起 server/index.js 后设为 http://localhost:8787
-  API_PROXY: import.meta.env.VITE_API_PROXY || "",
 };
 
 export const isSupabaseConfigured = !!(

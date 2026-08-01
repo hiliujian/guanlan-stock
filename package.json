@@ -9,7 +9,15 @@
     "build:mp-weixin": "uni build -p mp-weixin",
     "dev:app": "uni -p app",
     "build:app": "uni build -p app",
-    "type-check": "vue-tsc --noEmit"
+    "type-check": "vue-tsc --noEmit",
+    "preview": "npx vite preview --port 4173",
+    "lint": "eslint . --ext .vue,.ts,.tsx",
+    "format": "prettier --write \"src/**/*.{vue,ts}\"",
+    "clean": "rm -rf dist h5out h5out*",
+    "supabase:login": "npx supabase login",
+    "supabase:link": "npx supabase link --project-ref $SUPABASE_PROJECT_REF",
+    "supabase:deploy": "npx supabase functions deploy guanlan-quote-proxy",
+    "supabase:db:push": "npx supabase db push"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-5010520260709002",

@@ -70,6 +70,8 @@ import { computed, reactive, ref, watch, onMounted, onActivated } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import { useWatchlist, removeWatch, type WatchItem } from "@/store/watchlist";
+import { userState } from "@/store/user";
+import { openAuth } from "@/store/nav";
 import { fetchSnapshot } from "@/api/quote";
 import { resolveSecid } from "@/utils/period";
 import { fmtPrice, fmtPct } from "@/utils/format";
@@ -78,6 +80,9 @@ const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: s
 
 const wl = useWatchlist();
 const list = computed(() => wl.items as WatchItem[]);
+
+// 未登录且已配置后端（登录可达）时，进入本页自动跳转登录页（见 onActivated）
+const needLogin = computed(() => userState.supabaseEnabled && !userState.loggedIn);
 
 interface Snap {
   price: number;
@@ -93,6 +98,8 @@ const keyOf = (it: WatchItem) => `${it.code}|${it.market}`;
 
 // 自选股实时行情：批量拉取快照（与行情页同口径），填充现价与涨跌幅
 async function loadQuotes() {
+  // 未登录（且已配置后端）：不拉取，交由「未登录」空态提示，避免无意义的 loading
+  if (userState.supabaseEnabled && !userState.loggedIn) return;
   const tasks = list.value.map(async (it) => {
     const k = keyOf(it);
     quotes[k] = { ...EMPTY, loading: true };
@@ -141,8 +148,21 @@ function pctCls(q: Snap): string {
 }
 
 onMounted(loadQuotes);
-// keep-alive 下返回该页不会重新挂载，故在每次激活时刷新自选实时行情
-onActivated(loadQuotes);
+// keep-alive 下返回该页不会重新挂载；每次激活：未登录则自动跳转登录页，否则刷新自选实时行情
+onActivated(() => {
+  if (needLogin.value) {
+    openAuth("login");
+    return;
+  }
+  loadQuotes();
+});
+// 登录后：空态消失，立即拉取自选实时行情
+watch(
+  () => userState.loggedIn,
+  (li) => {
+    if (li) loadQuotes();
+  }
+);
 // 列表增删后重新拉取（key 串变化即触发）
 watch(
   () => list.value.map(keyOf).join(","),
@@ -369,6 +389,42 @@ function doRemove(it: WatchItem) {
   text-align: center;
   padding: 0 60rpx;
   line-height: 1.6;
+}
+
+/* 未登录空态：直接提示，不展示 loading */
+.wl-gated {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
+  padding: 160rpx 40rpx;
+}
+.wl-gated-t {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+.wl-gated-s {
+  font-size: 24rpx;
+  color: var(--text-2);
+  text-align: center;
+  line-height: 1.6;
+}
+.wl-gated-btn {
+  margin-top: 18rpx;
+  padding: 18rpx 56rpx;
+  border-radius: 999rpx;
+  background: var(--primary);
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 700;
+  transition: transform 0.12s ease, filter 0.18s ease;
+}
+.wl-gated-btn:active {
+  transform: scale(0.97);
+}
+.wl-gated-btn-hover {
+  filter: brightness(1.08);
 }
 
 /* 行容器：圆角 + 裁切；底色即「删除」红色——静止时整张不透明卡片盖住它，

@@ -117,6 +117,36 @@ const ICONS: Record<string, { body: string; filled?: boolean }> = {
   send: {
     body: '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
   },
+  // 邮件（信封）
+  mail: {
+    body: '<rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/>',
+  },
+  // 眼睛（显示密码）
+  eye: {
+    body: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  },
+  // 眼睛（隐藏密码 / 划线）
+  "eye-off": {
+    body: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
+  },
+  // 对勾（成功）
+  check: {
+    body: '<polyline points="20 6 9 17 4 12"/>',
+  },
+  // 警告（三角感叹号）
+  warning: {
+    body: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  },
+  // 皇冠（股神徽章）
+  crown: {
+    body: '<path d="M3 7l4.5 4L12 3l4.5 8L21 7l-1.4 12H4.4z"/>',
+    filled: true,
+  },
+  // 奖杯（资深操盘手 / 私募经理徽章）
+  trophy: {
+    body: '<path d="M8 4h8v4a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 3"/><path d="M16 6h3a3 3 0 0 1-3 3"/><path d="M12 12v4"/><path d="M9 20h6"/><path d="M10 16h4l-1 4h-2z"/>',
+    filled: true,
+  },
 };
 
 const svgBody = computed(() => {

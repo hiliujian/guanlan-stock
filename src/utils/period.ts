@@ -62,19 +62,6 @@ export function codeFromSecid(secid: string): string {
   return secid.split(".")[1] || secid;
 }
 
-// 市场前缀（中文习惯）：沪 / 深 / 北 / 港
-const MKT_PREFIX: Record<string, string> = { sh: "沪", sz: "深", bj: "北", hk: "港", auto: "" };
-
-// 由「代码 + 市场」生成易读展示串，如 "深300008" / "沪600519" / "港00700"
-export function fmtMarketCode(code: string, market: string): string {
-  return (MKT_PREFIX[market] || "") + code;
-}
-
-// 由 secid 直接生成展示串（行情头部使用）
-export function fmtSecid(secid: string): string {
-  return fmtMarketCode(codeFromSecid(secid), marketFromSecid(secid));
-}
-
 export interface Kline {
   date: string;
   open: number;

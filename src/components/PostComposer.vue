@@ -77,6 +77,8 @@
 import { ref, reactive, computed } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import type { HoldingCard, OperationCard, ProfitCard, Topic } from "@/api/community";
+import { useUser } from "@/store/user";
+import { openAuth } from "@/store/nav";
 
 const emit = defineEmits<{
   (e: "publish-text", content: string, topic?: Topic): void;
@@ -111,6 +113,12 @@ const canSend = computed(() => {
 });
 
 function send() {
+  // 后端已收紧为「仅登录用户可发帖」：未登录先引导登录，避免 RLS 报错
+  if (!useUser().loggedIn) {
+    uni.showToast({ title: "请先登录后再发布", icon: "none" });
+    openAuth("login");
+    return;
+  }
   if (!canSend.value) return;
   if (mode.value === "text") {
     const name = topicName.value.trim();

@@ -6,8 +6,8 @@
 -- 幂等性：全部使用 if not exists / drop ... if exists / create or replace，
 --         可重复执行，不会因"已存在"而报错。
 --
--- 本文件已完整覆盖并取代 supabase/schema.sql 与 migrations/0001_community.sql，
--- ⚠️ 请不要再单独执行这两个旧文件（重复执行只会冗余重建策略，无副作用但没必要）。
+-- 本文件是唯一的建库脚本（表 / 策略 / 存储桶 / 函数 / 示例数据 全部在此）。
+-- ⚠️ 旧有的 schema.sql 与 migrations/0001_community.sql 已删除并合并进本文件，请勿再单独执行旧文件。
 --
 -- 设计原则（详见随附说明）：
 --   ① 表结构：原生类型、合理默认值、CHECK 兜底数据完整性、外键级联
@@ -37,6 +37,12 @@ create table if not exists public.profiles (
   username     text not null default '',
   bio          text not null default '',
   avatar_url   text not null default '',
+  level        integer not null default 0,                -- 用户等级序号（0=新手散户，对应前端 TIERS 下标）；由后端维护，前端只读展示
+  -- 扩展预留（接入登录后按需启用，以下均为可选、带默认值，不影响现有逻辑）
+  website      text not null default '',
+  location     text not null default '',
+  prefs        jsonb not null default '{}'::jsonb,        -- 用户偏好（主题/通知开关等），用 jsonb 避免将来每加一项就 ALTER
+  last_seen_at timestamptz,                               -- 最近活跃时间（社区排序 / 在线状态）
   created_at   timestamptz not null default now()
 );
 
@@ -48,6 +54,11 @@ create table if not exists public.watchlists (
   market     text not null default 'auto' check (market in ('auto','sh','sz','hk','us')),
   name       text not null default '',
   note       text not null default '',
+  -- 扩展预留
+  group_name text not null default '',                   -- 自选分组名（未来支持分组管理）
+  sort_order integer not null default 0,                 -- 自定义排序权重
+  is_hidden  boolean not null default false,             -- 归档 / 隐藏
+  alerts     jsonb not null default '{}'::jsonb,         -- 价格提醒等配置占位（避免将来为提醒另建表 / 加多列）
   created_at timestamptz not null default now()
 );
 create index if not exists idx_watchlists_user on public.watchlists (user_id);
@@ -110,7 +121,6 @@ create table if not exists public.community_posts (
   user_id    uuid references auth.users (id) on delete set null,
   type       text not null check (type in ('text','card')),
   author     text not null check (length(author) between 1 and 30),
-  avatar     text,                                  -- 头像 emoji
   -- 关联标的 {type:'stock'|'sector', name, code?}；允许 null（无关联标的的纯文字帖）
   topic      jsonb check (
     topic is null or (
@@ -121,6 +131,12 @@ create table if not exists public.community_posts (
   content    text check (content is null or length(content) <= 2000),  -- 纯文字帖正文
   card       jsonb,                                  -- 持仓/操作/收益 特殊卡片
   likes      integer not null default 0 check (likes >= 0),
+  -- 扩展预留
+  status     text not null default 'published'
+             check (status in ('published','draft','hidden','deleted')),  -- 内容状态机：软删用 deleted，可审计/恢复
+  images     text[] not null default '{}',               -- 帖子配图 URL 数组（未来配图）
+  tags       text[] not null default '{}',               -- 话题标签（#大盘），便于 @> 包含查询 + GIN 索引
+  meta       jsonb not null default '{}'::jsonb,         -- 兜底扩展位：任何未来结构化字段先放这里，避免频繁 ALTER
   created_at timestamptz not null default now(),
   -- 数据完整性：text 帖必须有 content 且无 card；card 帖必须有 card 且无 content
   constraint posts_shape check (
@@ -130,6 +146,8 @@ create table if not exists public.community_posts (
 );
 -- 信息流排序 + 游标分页（keyset）：(created_at desc, id desc)
 create index if not exists idx_posts_feed on public.community_posts (created_at desc, id desc);
+-- 话题标签包含查询（如「含 #大盘 的帖子」）走 GIN 索引，未来启用标签筛选时无需再建
+create index if not exists idx_posts_tags on public.community_posts using gin (tags);
 
 -- 2.2 回复（listRemote 通过 post_id 外键关联读取，资源名 community_replies）
 create table if not exists public.community_replies (
@@ -138,6 +156,11 @@ create table if not exists public.community_replies (
   user_id    uuid references auth.users (id) on delete set null,
   author     text not null check (length(author) between 1 and 30),
   content    text not null check (length(content) between 1 and 1000),
+  -- 扩展预留
+  status     text not null default 'published'
+             check (status in ('published','hidden','deleted')),
+  parent_id  uuid references public.community_replies (id) on delete set null,  -- 楼中楼 / 引用回复
+  meta       jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 create index if not exists idx_replies_post on public.community_replies (post_id, created_at);
@@ -220,7 +243,7 @@ create policy "community_posts_delete" on public.community_posts for delete usin
 -- ╚══════════════════════════════════════════════════════════════╝
 create or replace function public.toggle_post_like(p_post_id uuid)
 returns table (
-  id uuid, type text, author text, avatar text, topic jsonb,
+  id uuid, type text, author text, topic jsonb,
   content text, card jsonb, likes integer, liked_by_me boolean, created_at timestamptz
 )
 language plpgsql security definer set search_path = public as $$
@@ -236,7 +259,7 @@ begin
     v_liked := false;
   end if;
   return query
-    select p.id, p.type, p.author, p.avatar, p.topic, p.content, p.card, p.likes, v_liked, p.created_at
+    select p.id, p.type, p.author, p.topic, p.content, p.card, p.likes, v_liked, p.created_at
     from public.community_posts p where p.id = p_post_id;
 end;
 $$;
@@ -264,15 +287,51 @@ end $$;
 -- 取消下方注释并执行，即可开箱有内容（演示文字帖 + 三类特殊卡片）。    ║
 -- ╚══════════════════════════════════════════════════════════════╝
 /*
-insert into public.community_posts (type, author, avatar, topic, content, card, likes) values
- ('text','趋势猎人','🦊','{"type":"sector","name":"大盘"}',
+insert into public.community_posts (type, author, topic, content, card, likes) values
+ ('text','趋势猎人','{"type":"sector","name":"大盘"}',
   '大盘缩量回踩 20 日线，但北向资金连续三日净流入，个人判断这里更像是洗盘而不是转势。仓位不动，等放量确认再决定加仓。', null, 18),
- ('card','价值守望','🐼','{"type":"stock","name":"贵州茅台","code":"600519"}', null,
+ ('card','价值守望','{"type":"stock","name":"贵州茅台","code":"600519"}', null,
   '{"kind":"holding","stock":"贵州茅台","code":"600519","cost":1480,"shares":100,"price":1526.5}', 7),
- ('card','短线小王','🚀','{"type":"stock","name":"宁德时代","code":"300750"}', null,
+ ('card','短线小王','{"type":"stock","name":"宁德时代","code":"300750"}', null,
   '{"kind":"operation","stock":"宁德时代","code":"300750","side":"buy","price":186.2,"shares":200,"note":"突破平台 + 量能放大，打底仓"}', 4),
- ('card','复利机器','💰', null, null,
+ ('card','复利机器', null, null,
   '{"kind":"profit","period":"本月","totalReturn":6.8,"realized":4200,"unrealized":-1300,"winRate":63}', 25),
- ('text','复利机器','💰','{"type":"sector","name":"投资理念"}',
+ ('text','复利机器','{"type":"sector","name":"投资理念"}',
   '分享一个心态：账户回撤 5% 以内就当没发生，别天天盯盘。把时间花在研究财报和产业链上，收益是认知的副产品。', null, 33);
 */
+
+
+-- ╔══════════════════════════════════════════════════════════════╗
+-- ║ 8. 生产强化（接入登录、正式上线前执行本段）                  ║
+-- 把社区写操作从「匿名可写」收紧为「仅登录用户可写」，并约束     ║
+-- 「仅作者可删 / 改自己的帖子」，杜绝匿名用户乱发、乱删。         ║
+-- 读（select）保持公开，匿名访客仍可浏览社区。                   ║
+-- 前提：前端已接入 Supabase Auth，发帖/回复会带上 auth.uid()。     ║
+-- 注：点赞走 toggle_post_like（security definer，以表属主身份执行， ║
+--     自动绕过 RLS），因此点赞计数仍由触发器维护、客户端无法伪造。  ║
+-- ╚══════════════════════════════════════════════════════════════╝
+
+-- 帖子：登录用户才能发；强制 user_id = 本人 且 likes = 0（防伪造点赞）
+drop policy if exists "community_posts_insert" on public.community_posts;
+create policy "community_posts_insert" on public.community_posts
+  for insert to authenticated with check (auth.uid() = user_id and likes = 0);
+drop policy if exists "community_posts_update" on public.community_posts;
+create policy "community_posts_update" on public.community_posts
+  for update to authenticated using (auth.uid() = user_id);
+drop policy if exists "community_posts_delete" on public.community_posts;
+create policy "community_posts_delete" on public.community_posts
+  for delete to authenticated using (auth.uid() = user_id);
+
+-- 回复：登录用户才能回复（作者为本人昵称）
+drop policy if exists "community_replies_insert" on public.community_replies;
+create policy "community_replies_insert" on public.community_replies
+  for insert to authenticated with check (true);
+
+-- 点赞：登录用户才能点赞（直接表操作层面收紧；实际走 rpc 已安全）
+drop policy if exists "community_likes_insert" on public.community_likes;
+create policy "community_likes_insert" on public.community_likes
+  for insert to authenticated with check (true);
+drop policy if exists "community_likes_delete" on public.community_likes;
+create policy "community_likes_delete" on public.community_likes
+  for delete to authenticated using (true);
+

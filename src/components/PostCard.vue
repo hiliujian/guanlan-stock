@@ -2,7 +2,7 @@
   <view class="post glass anim-fade-up">
     <!-- 头部：头像 + 昵称 + 时间 + 话题 + 删除 -->
     <view class="p-head">
-      <view class="p-avatar" :style="{ background: avatar.bg, fontSize: avatar.fontSize }">{{ avatar.text }}</view>
+      <view class="p-avatar" :style="{ background: avatarBg }">{{ ch }}</view>
       <view class="p-meta">
         <text class="p-name">{{ post.author }}</text>
         <text class="p-time">{{ timeText }}</text>
@@ -98,7 +98,7 @@
 import { ref, computed } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import { formatRelative, type CommunityPost } from "@/api/community";
-import { resolveAvatar, topicColor } from "@/utils/avatar";
+import { avatarGradient, avatarChar, topicColor } from "@/utils/avatar";
 
 const props = defineProps<{ post: CommunityPost; mine: boolean }>();
 const emit = defineEmits<{
@@ -110,8 +110,9 @@ const emit = defineEmits<{
 const showReply = ref(false);
 const replyText = ref("");
 
-// 头像：优先用自选/上传的 emoji；无头像时回退到按昵称稳定分配的默认头像
-const avatar = computed(() => resolveAvatar(props.post.author, props.post.avatar));
+// 头像：按昵称生成的「字」头像（渐变底 + 首字），无需任何图片 / emoji
+const avatarBg = computed(() => avatarGradient(props.post.author));
+const ch = computed(() => avatarChar(props.post.author));
 
 // 话题（股票 / 板块）标签配色，便于一眼区分标的归属
 const topicStyle = computed(() => {
@@ -172,14 +173,15 @@ function sendReply() {
   width: 60rpx;
   height: 60rpx;
   border-radius: 50%;
+  overflow: hidden;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28rpx;
   font-weight: 700;
   color: #fff;
+  font-size: 28rpx;
   background: linear-gradient(135deg, var(--primary), var(--primary-2));
-  flex: none;
 }
 .p-meta {
   display: flex;

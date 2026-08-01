@@ -92,19 +92,8 @@
           </view>
         </view>
 
-        <!-- 周期切换（行情头部下方，随内容一起滚动；交易时段自动刷新）
-             仅在「分时 / K线」卡片可见时展示；该卡片被隐藏时本栏一并隐藏 -->
-        <view v-if="result && trendVisible" class="glass glass--pill period-seg anim-fade-up">
-          <view class="ps-ind" :style="indStyle" />
-          <text
-            v-for="p in periodOrder"
-            :key="p"
-            :class="['ps', period === p ? 'active' : '']"
-            @click="switchPeriod(p)"
-            >{{ periodMeta[p].label }}</text>
-        </view>
-
-        <!-- 行情卡片：顺序与显隐由「设置 → 行情卡片」控制 -->
+        <!-- 行情卡片：顺序与显隐由「设置 → 行情卡片」控制。
+             周期切换轴已并入「行情图」卡片内部（见 KlineCard），不再单独悬浮于此。 -->
         <AnalysisCard
           v-for="(c, idx) in displayCards"
           :key="c.id"
@@ -112,12 +101,7 @@
           :icon="c.icon"
           :delay="idx * 60"
         >
-          <!-- 切换周期时：加载态显示在各图表「数据区」，而非周期标签上 -->
-          <view v-if="switching" class="card-loading">
-            <view class="cl-spin" />
-          </view>
           <component
-            v-else
             :is="CARD_RENDERERS[c.id].comp"
             v-bind="CARD_RENDERERS[c.id].props()"
           />
@@ -147,8 +131,6 @@ import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, type
 import { getMarketStatus } from "@/utils/marketStatus";
 import {
   resolveSecid,
-  PERIODS,
-  PERIOD_ORDER,
   marketFromSecid,
   codeFromSecid,
   type PeriodKey,
@@ -159,10 +141,7 @@ import { scoreNews, filterNews, type NewsSignal } from "@/utils/newsSentiment";
 import { visibleMarketCards, type MarketCardMeta, type CardId } from "@/utils/cardLayout";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
 import { useUser } from "@/store/user";
-import { navState } from "@/store/nav";
-
-const periodOrder = PERIOD_ORDER;
-const periodMeta = PERIODS;
+import { navState, openAuth } from "@/store/nav";
 
 const code = ref("");
 const period = ref<PeriodKey>("d");
@@ -196,6 +175,8 @@ const CARD_RENDERERS: Record<CardId, { comp: Component; props: () => Record<stri
       preClose: preClose.value,
       klines: klines.value,
       height: 460,
+      loading: switching.value,
+      onPick: switchPeriod,
     }),
   },
   report: {
@@ -227,7 +208,7 @@ function mktLabel(code: string): string {
   return "股票";
 }
 
-useUser();
+const user = useUser();
 
 // 头部展示「实时价」（东方财富实时行情），未拿到实时价时回退到分析用的收盘价
 const dispPrice = computed(() =>
@@ -287,7 +268,7 @@ function loadLastViewed(): boolean {
     period.value = v.period || "d";
     code.value = v.code;
     chosen.value = { code: v.code, name: v.name || "" };
-    run(v.market || "auto");
+    run(v.market || "auto", false); // 自动恢复历史查看，不计入体验 / 不弹窗
     return true;
   } catch {
     return false;
@@ -372,30 +353,18 @@ function stopTimers() {
   }
 }
 
-// 行情图卡片标题随周期动态变化（日K↔分时）；其余卡片用元数据标题。
+// 行情图卡片标题固定为「行情图」；具体周期（分时/日K/周K…）由卡片内分段控件展示，
+// 不再在标题与分段控件间重复表达。
 function cardTitle(c: MarketCardMeta): string {
-  if (c.id === "kline") return period.value === "m" ? "分时图" : "日K线";
+  if (c.id === "kline") return "行情图";
   return c.title;
 }
 
 // 可见卡片直接由「设置 → 行情卡片」驱动（行情图已合并 K线/分时/量/MACD/筹码于单图，
-// 分析报告独立成卡），无需再折叠。
+// 分析报告独立成卡），无需再折叠。周期切换轴已并入「行情图」卡片内部（见 KlineCard）。
 const displayCards = visibleMarketCards;
 
-// 周期切换滑动指示条：宽度按段数均分，位移按激活下标平移（纯 CSS calc，响应式）
-const indStyle = computed(() => {
-  const n = periodOrder.length;
-  const i = periodOrder.indexOf(period.value);
-  return {
-    width: `calc((100% - 12rpx - ${(n - 1) * 8}rpx) / ${n})`,
-    transform: `translateX(calc(${i} * (100% + 8rpx)))`,
-  };
-});
-
-// 「行情图」卡片在「设置 → 行情卡片」中被隐藏时，周期切换栏（分时/日K/周K…）一并隐藏
-const trendVisible = computed(() => displayCards.value.some((c) => c.id === "kline"));
-
-async function run(forceMarket?: Market) {
+async function run(forceMarket?: Market, userInitiated = true) {
   errMsg.value = "";
   const kw = code.value.trim();
   if (!kw) {
@@ -463,8 +432,8 @@ async function switchPeriod(p: PeriodKey) {
   switching.value = true;
   try {
     if (!bundle.value) {
-      // 极端情况（缓存未建立），回退到单次预取
-      await run();
+      // 极端情况（缓存未建立），回退到单次预取（内部调用，不计入体验 / 不弹窗）
+      await run(undefined, false);
       return;
     }
     applyPeriod(p); // 纯本地，瞬时切换，无联网等待
@@ -478,6 +447,11 @@ async function switchPeriod(p: PeriodKey) {
 
 async function toggleWatch() {
   if (!result.value) return;
+  // 自选功能需登录：未登录游客直接跳转登录页（与自选页门禁一致），避免「加了却看不到」
+  if (!user.loggedIn && user.supabaseEnabled) {
+    openAuth("login");
+    return;
+  }
   if (watched.value) {
     await removeWatch(curCode.value, curMarket.value);
     uni.showToast({ title: "已移除自选", icon: "none" });
@@ -702,7 +676,6 @@ onUnmounted(() => {
   right: 0;
   background: var(--suggest-bg);
   border-radius: 0 0 28rpx 28rpx;
-  border-top: 1rpx solid var(--border);
   box-shadow: var(--suggest-shadow);
   backdrop-filter: blur(var(--glass-blur)) saturate(150%);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
@@ -710,21 +683,24 @@ onUnmounted(() => {
   z-index: 60;
   max-height: 540rpx;
   overflow-y: auto;
+  padding: 12rpx;
 }
 .sg-item {
   display: flex;
   align-items: center;
   gap: 16rpx;
-  padding: 20rpx 26rpx;
-  border-bottom: 1rpx solid var(--border);
-  transition: background 0.15s ease;
+  padding: 18rpx 20rpx;
+  margin-bottom: 10rpx;
+  background: var(--card-2);
+  border-radius: var(--radius-sm);
+  transition: background 0.15s ease, transform 0.12s ease;
 }
 .sg-item:last-child {
-  border-bottom: none;
-  border-radius: 0 0 28rpx 28rpx;
+  margin-bottom: 0;
 }
 .sg-item:active {
-  background: var(--card-2);
+  background: var(--card);
+  transform: scale(0.985);
 }
 .sg-ic {
   flex: none;
@@ -810,6 +786,38 @@ onUnmounted(() => {
   color: var(--text-2);
   font-weight: 500;
 }
+.empty-s {
+  font-size: 24rpx;
+  color: var(--text-2);
+  text-align: center;
+  padding: 0 40rpx;
+}
+/* 游客剩余体验次数提示：用主色轻微强调，引导登录但不刺眼 */
+.empty-s.guest {
+  color: var(--primary);
+  font-weight: 600;
+}
+/* 体验用完：登录 CTA 卡片 */
+.empty-guest {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18rpx;
+  margin-top: 6rpx;
+}
+.empty-guest-btn {
+  padding: 16rpx 40rpx;
+  border-radius: 999rpx;
+  background: var(--primary);
+  color: #fff;
+  font-size: 26rpx;
+  font-weight: 700;
+  box-shadow: 0 4rpx 14rpx rgba(7, 193, 96, 0.28);
+  transition: transform 0.12s ease;
+}
+.empty-guest-btn:active {
+  transform: scale(0.95);
+}
 
 .quote-head {
   position: relative;
@@ -880,42 +888,6 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
-.period-seg {
-  position: relative;
-  display: flex;
-  gap: 8rpx;
-  /* 玻璃拟态（含 999rpx 圆角）由全局 .glass.glass--pill 提供 */
-  padding: 6rpx;
-  margin-bottom: 12rpx;
-}
-/* 滑动指示条：跟随激活段平移（位移见 indStyle） */
-.ps-ind {
-  position: absolute;
-  top: 6rpx;
-  bottom: 6rpx;
-  left: 6rpx;
-  border-radius: 999rpx;
-  background: var(--primary);
-  box-shadow: var(--shadow-up);
-  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-  z-index: 0;
-}
-.ps {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-  text-align: center;
-  padding: 11rpx 0;
-  font-size: 26rpx;
-  color: var(--text-2);
-  border-radius: 999rpx;
-  transition: color 0.2s ease;
-}
-.ps.active {
-  color: #fff;
-  font-weight: 600;
-}
-
 .btn-primary {
   display: flex;
   align-items: center;
@@ -943,21 +915,5 @@ onUnmounted(() => {
   color: var(--text-2);
   line-height: 1.5;
   text-align: center;
-}
-/* 切换周期时的数据区加载态：居中转圈，位于各图表卡片内部（而非周期标签） */
-.card-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 120rpx;
-  padding: 20rpx 0;
-}
-.cl-spin {
-  width: 44rpx;
-  height: 44rpx;
-  border: 4rpx solid var(--border);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
 }
 </style>
