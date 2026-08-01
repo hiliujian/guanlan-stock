@@ -84,12 +84,68 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ============ 跨浏览器基础重置 ============
+   抹平不同浏览器 / WebView 的默认样式差异，保证 UI 表现一致：
+   1) 统一盒模型（必须显式列出 uni-app H5 编译出的 uni-* 自定义元素，原生标签选择器对它们不生效）；
+   2) 清除 html/body 默认 margin/padding（部分移动端浏览器默认 body 有外边距，会造成顶部留白/偏移）；
+   3) 关闭原生控件外观（iOS Safari/WebKit 会给 <button>/<input> 套用原生圆角、边框、内边距、最小高度，
+      与我们的长条药丸按钮冲突，表现为「圆角变大 / 不再是长条」），并清除 uni-app 注入的 button::after 边框。 */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app,
+uni-app,
+uni-page-wrapper,
+uni-page-body {
+  margin: 0;
+  padding: 0;
+}
+
 view,
 text,
 button,
 input,
-uni-view {
+textarea,
+uni-view,
+uni-text,
+uni-input,
+uni-textarea,
+uni-button {
   box-sizing: border-box;
+}
+
+/* 清除原生按钮外观：必须显式关闭，否则 iOS/WebKit 的默认控件样式会盖过我们的药丸按钮 */
+button,
+uni-button {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: normal;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+button::after,
+uni-button::after {
+  border: none;
+}
+
+/* iOS 等会给 input/textarea 套用原生圆角与内阴影，统一抹平 */
+input,
+textarea,
+uni-input,
+uni-textarea {
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 /* 暗色主题下输入框默认文字改为浅色，避免黑字看不见 */
@@ -104,6 +160,7 @@ textarea {
   margin: 0 auto;
   box-sizing: border-box;
   min-height: 100vh;
+  min-height: 100dvh;
   background: transparent;
   position: relative;
   z-index: 1;
@@ -111,7 +168,7 @@ textarea {
   /* 自定义导航（navigationStyle:custom）后，顶部从状态栏下开始，避免被刘海/状态栏遮挡。
      必须是 border-box：否则 content-box 下 padding-top(安全区) 会叠加在 100vh 之上，
      使页面总高 = 100vh + 安全区 → 超出视口出现滚动条，且安全区呈现为顶部空白。 */
-  padding-top: env(safe-area-inset-top);
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 /* 关掉 uni-app H5 原生导航条（.uni-page-head 仅 H5 运行时存在，小程序为原生条不受影响） */
@@ -319,9 +376,10 @@ textarea {
   position: relative;
   box-sizing: border-box;
   min-height: 100vh;
+  min-height: 100dvh;
   /* 自定义导航后顶部从状态栏下开始，避免被刘海 / 状态栏遮挡。
      border-box：避免 content-box 下 padding-top 叠加在 100vh 之上导致溢出滚动。 */
-  padding-top: env(safe-area-inset-top);
+  padding-top: env(safe-area-inset-top, 0px);
 }
 /* 关键修复：uni-app H5 框架对所有 <view>(uni-view) 强制 overflow:hidden，
    导致 suffix/按钮等子元素被裁剪。在授权页子树中全局覆盖为 visible。 */
@@ -337,7 +395,8 @@ textarea {
   /* 父级 .auth-page 已是 border-box + min-height:100vh + padding-top:env(safe-area-inset-top)。
      此处必须减去安全区，否则子级再要一个 100vh 会超出父级内容框 safe-area 高度 → 二次溢出滚动条 + 顶部空白。
      配合 border-box，padding(130rpx/96rpx) 已含在内，居中区域 = (100vh - 安全区) - 上下预留。 */
-  min-height: calc(100vh - env(safe-area-inset-top));
+  min-height: calc(100vh - env(safe-area-inset-top, 0px));
+  min-height: calc(100dvh - env(safe-area-inset-top, 0px));
   display: flex;
   flex-direction: column;
   justify-content: center; /* 观澜 + 输入框整体垂直居中 */

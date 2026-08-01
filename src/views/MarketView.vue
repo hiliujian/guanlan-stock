@@ -864,11 +864,6 @@ onUnmounted(() => {
   gap: 10rpx;
   border-radius: 999rpx;
 }
-/* uni-app 默认给 button 加了一个方角 ::after 描边，会戳在圆角外，
-   表现为「背景超出圆角」。统一去掉，保证按钮是干净的胶囊形。 */
-.btn-primary::after {
-  border: none;
-}
 .bottom-pad {
   /* 留出底部导航栏高度，避免末尾内容被 tab 栏遮挡 */
   height: 140rpx;
