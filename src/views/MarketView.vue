@@ -25,6 +25,7 @@
               type="text"
               placeholder="输入代码或名称"
               placeholder-class="ph"
+              confirm-type="search"
               @input="onInput"
               @focus="onFocus"
               @blur="onBlur"
@@ -268,7 +269,7 @@ function loadLastViewed(): boolean {
     period.value = v.period || "d";
     code.value = v.code;
     chosen.value = { code: v.code, name: v.name || "" };
-    run(v.market || "auto", false); // 自动恢复历史查看，不计入体验 / 不弹窗
+    run(v.market || "auto", false); // 自动恢复历史查看，不弹窗
     return true;
   } catch {
     return false;
@@ -432,7 +433,7 @@ async function switchPeriod(p: PeriodKey) {
   switching.value = true;
   try {
     if (!bundle.value) {
-      // 极端情况（缓存未建立），回退到单次预取（内部调用，不计入体验 / 不弹窗）
+      // 极端情况（缓存未建立），回退到单次预取（内部调用，不弹窗）
       await run(undefined, false);
       return;
     }
@@ -734,9 +735,9 @@ onUnmounted(() => {
 }
 .go {
   flex: 0 0 auto;
-  height: 64rpx;
-  line-height: 64rpx;
-  padding: 0 34rpx;
+  /* 触摸目标 ≥44px；高度用 min-height 自适应内容，避免固定 rpx 在窄屏缩水 */
+  min-height: 44px;
+  padding: 0 30rpx;
   font-size: 27rpx;
   font-weight: 600;
   margin-left: 6rpx;
@@ -786,39 +787,6 @@ onUnmounted(() => {
   color: var(--text-2);
   font-weight: 500;
 }
-.empty-s {
-  font-size: 24rpx;
-  color: var(--text-2);
-  text-align: center;
-  padding: 0 40rpx;
-}
-/* 游客剩余体验次数提示：用主色轻微强调，引导登录但不刺眼 */
-.empty-s.guest {
-  color: var(--primary);
-  font-weight: 600;
-}
-/* 体验用完：登录 CTA 卡片 */
-.empty-guest {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18rpx;
-  margin-top: 6rpx;
-}
-.empty-guest-btn {
-  padding: 16rpx 40rpx;
-  border-radius: 999rpx;
-  background: var(--primary);
-  color: #fff;
-  font-size: 26rpx;
-  font-weight: 700;
-  box-shadow: 0 4rpx 14rpx rgba(7, 193, 96, 0.28);
-  transition: transform 0.12s ease;
-}
-.empty-guest-btn:active {
-  transform: scale(0.95);
-}
-
 .quote-head {
   position: relative;
   display: flex;
@@ -861,8 +829,9 @@ onUnmounted(() => {
   top: 50%;
   right: 16rpx;
   transform: translateY(-50%);
-  width: 64rpx;
-  height: 64rpx;
+  /* 触摸目标 ≥44px（固定 px 保证任意屏不缩水），图标在圈内居中 */
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;

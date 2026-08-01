@@ -97,12 +97,21 @@ function pick(p: PeriodKey) {
   position: relative;
   z-index: 1;
   flex: 1;
+  /* 触摸目标 ≥44px（移动端可达性规范），用固定 px 保证任意屏都不缩水 */
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  padding: 11rpx 0;
   font-size: 26rpx;
   color: var(--text-2);
   border-radius: 999rpx;
-  transition: color 0.2s ease;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.15s ease, transform 0.1s ease;
+}
+.ps:active {
+  background: var(--primary-soft, rgba(99, 102, 241, 0.12));
+  transform: scale(0.96);
 }
 .ps.active {
   color: #fff;

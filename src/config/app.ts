@@ -21,7 +21,12 @@ export const config: AppConfig = {
 
 export const isSupabaseConfigured = !!(
   config.SUPABASE_URL &&
-  !config.SUPABASE_URL.includes("YOUR-PROJECT")
+  !config.SUPABASE_URL.includes("YOUR-PROJECT") &&
+  // 同时校验 anon key 不是占位值：否则 URL 配了但 key 漏配，getSupabase() 会带着
+  // 无效 key 建客户端，所有请求报 "Invalid API key" → 被映射成「服务暂时不可用」，
+  // 体验上极像「Supabase 没对接上」。漏配时主动降级为本地模式（门禁关闭），更直观。
+  config.SUPABASE_ANON_KEY &&
+  !config.SUPABASE_ANON_KEY.includes("YOUR-ANON")
 );
 
 export default config;

@@ -391,42 +391,6 @@ function doRemove(it: WatchItem) {
   line-height: 1.6;
 }
 
-/* 未登录空态：直接提示，不展示 loading */
-.wl-gated {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16rpx;
-  padding: 160rpx 40rpx;
-}
-.wl-gated-t {
-  font-size: 32rpx;
-  font-weight: 700;
-  color: var(--text);
-}
-.wl-gated-s {
-  font-size: 24rpx;
-  color: var(--text-2);
-  text-align: center;
-  line-height: 1.6;
-}
-.wl-gated-btn {
-  margin-top: 18rpx;
-  padding: 18rpx 56rpx;
-  border-radius: 999rpx;
-  background: var(--primary);
-  color: #fff;
-  font-size: 28rpx;
-  font-weight: 700;
-  transition: transform 0.12s ease, filter 0.18s ease;
-}
-.wl-gated-btn:active {
-  transform: scale(0.97);
-}
-.wl-gated-btn-hover {
-  filter: brightness(1.08);
-}
-
 /* 行容器：圆角 + 裁切；底色即「删除」红色——静止时整张不透明卡片盖住它，
    左滑才露出右侧红色操作区，与卡片浑然一体（红色是卡片的一部分，而非外挂按钮）。 */
 .wl-row {

@@ -341,42 +341,6 @@ watch(
   color: var(--text-2);
 }
 
-/* 未登录空态：直接提示，不展示 loading */
-.cm-gated {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18rpx;
-  padding: 180rpx 0;
-}
-.cm-gated-t {
-  font-size: 32rpx;
-  font-weight: 700;
-  color: var(--text);
-}
-.cm-gated-s {
-  font-size: 24rpx;
-  color: var(--text-2);
-  text-align: center;
-  padding: 0 60rpx;
-  line-height: 1.6;
-}
-.cm-gated-btn {
-  margin-top: 18rpx;
-  padding: 18rpx 56rpx;
-  border-radius: 999rpx;
-  background: var(--primary);
-  color: #fff;
-  font-size: 28rpx;
-  font-weight: 700;
-  transition: transform 0.12s ease, filter 0.18s ease;
-}
-.cm-gated-btn:active {
-  transform: scale(0.97);
-}
-.cm-gated-btn-hover {
-  filter: brightness(1.08);
-}
 .cm-pad {
   height: calc(140rpx + env(safe-area-inset-bottom));
 }

@@ -7,6 +7,36 @@
         <text class="kc-panel__tag">价格</text>
       </div>
       <div ref="priceEl" class="kc-canvas" :style="{ height: priceH + 'px' }"></div>
+      <!-- 缩放工具栏：滚轮/捏合之外的显式入口，触屏与无障碍兜底 -->
+      <view class="kc-zoom" role="group" aria-label="图表缩放">
+        <view
+          class="kc-zoom__btn"
+          role="button"
+          tabindex="0"
+          aria-label="缩小"
+          @click="zoomBy(-1)"
+          @keydown.enter.prevent="zoomBy(-1)"
+          >－</view
+        >
+        <view
+          class="kc-zoom__btn"
+          role="button"
+          tabindex="0"
+          aria-label="重置缩放"
+          @click="resetZoom()"
+          @keydown.enter.prevent="resetZoom()"
+          >⟲</view
+        >
+        <view
+          class="kc-zoom__btn"
+          role="button"
+          tabindex="0"
+          aria-label="放大"
+          @click="zoomBy(1)"
+          @keydown.enter.prevent="zoomBy(1)"
+          >＋</view
+        >
+      </view>
     </section>
 
     <section class="kc-panel">
@@ -119,6 +149,34 @@ const props = withDefaults(
   { height: 440 }
 );
 
+// 时间轴 / 十字光标日期格式化（接管 klinecharts 默认实现）：
+// 默认实现依赖 Intl 的「, 」分割，locale 一变就崩，且日期零填充缺失（如 "2026-8-2"）；
+// 日K 还会带无意义的 "00:00"。这里用原生 Date 字段零填充，完全对照主流财经软件：
+//  · 日K：坐标轴/光标只显示日期（不显示 00:00）；自适应粒度由 klinecharts 决定——
+//    跨年显示 YYYY、跨月显示 YYYY-MM、否则 MM-DD（与东财/同花顺一致）；
+//  · 分时：显示 HH:mm（午休缺口由数据本身保留，符合真实交易时段）。
+function formatDate(_dtf: Intl.DateTimeFormat, timestamp: number, format: string): string {
+  const d = new Date(timestamp);
+  const p = (n: number) => String(n).padStart(2, "0");
+  const map: Record<string, string> = {
+    YYYY: String(d.getFullYear()),
+    MM: p(d.getMonth() + 1),
+    DD: p(d.getDate()),
+    HH: p(d.getHours()),
+    mm: p(d.getMinutes()),
+    ss: p(d.getSeconds()),
+  };
+  if (props.mode === "kline") {
+    // 日K 丢弃时间分量（时间戳为当日 00:00，显示时分无意义），并清理残留分隔符
+    return format
+      .replace(/YYYY|MM|DD|HH|mm|ss/g, (k) => (k === "HH" || k === "mm" || k === "ss" ? "" : map[k]))
+      .replace(/\s+/g, "")
+      .replace(/-{2,}/g, "-")
+      .replace(/^-|-$/g, "");
+  }
+  return format.replace(/YYYY|MM|DD|HH|mm|ss/g, (k) => map[k]);
+}
+
 // 三块面板各自的高度：价格占主，成交量/MACD 各约两成
 const priceH = computed(() => Math.max(170, Math.round(props.height * 0.56)));
 const volH = computed(() => Math.max(72, Math.round(props.height * 0.22)));
@@ -132,6 +190,9 @@ let priceChart: Chart | null = null;
 let volChart: Chart | null = null;
 let macdChart: Chart | null = null;
 let ro: ResizeObserver | null = null;
+
+// 价格面板「自适应全部数据」时的 barSpace 基准，用于缩放工具栏的「重置」一键还原。
+const fitBarSpace = ref<number | null>(null);
 
 // 红涨绿跌（A股惯例）：涨=红、跌=绿，颜色取自 @/utils/colors（与 CYQ 筹码直方图同源）
 const TRANSPARENT = "rgba(0,0,0,0)";
@@ -189,7 +250,7 @@ function styleFor(kind: Kind) {
     xAxis: {
       show: showXAxis,
       axisLine: { show: showXAxis, color: axisColor },
-      tickText: { show: showXAxis, color: tickColor },
+      tickText: { show: showXAxis, color: tickColor, size: 11 },
       tickLine: { show: showXAxis, color: axisColor },
     },
     yAxis: {
@@ -275,7 +336,7 @@ function registerSync(c: Chart) {
 
 // 挂载单个面板实例
 function mountPanel(kind: Kind, node: HTMLElement): Chart | null {
-  const c = init(node);
+  const c = init(node, { customApi: { formatDate } });
   if (!c) return null;
   // 关键：双指捏合缩放。浏览器默认 touch-action 会拦截双指手势（视为页面缩放），
   // 必须显式设为 none，把所有触摸手势交给 klinecharts 自行处理，否则 pinch 不生效。
@@ -292,7 +353,12 @@ function mountPanel(kind: Kind, node: HTMLElement): Chart | null {
       e.preventDefault();
       e.stopImmediatePropagation();
       const rect = node.getBoundingClientRect();
-      c.zoomAtCoordinate(e.deltaY < 0 ? 1.1 : 0.9, {
+      // klinecharts 的 zoom(scale) 实现为 barSpace += scale*(barSpace/10)：
+      // scale 为正 → 放大，为负 → 缩小（原生滚轮也是 scroll up=正=放大）。
+      // 故上滚(deltaY<0)放大、下滚(deltaY>0)缩小；并按幅度缩放让触控板更顺滑。
+      // 此前代码缩小侧传 0.9（正值）→ 实际仍放大，造成「只能放大不能缩小」。
+      const step = (e.deltaY < 0 ? 1 : -1) * Math.min(1, Math.abs(e.deltaY) / 100);
+      c.zoomAtCoordinate(step, {
         x: e.clientX - rect.left,
         y: e.clientY - rect.top,
       });
@@ -319,8 +385,27 @@ function mountPanel(kind: Kind, node: HTMLElement): Chart | null {
     c.setPaneOptions({ id: "candle_pane", height: 0, minHeight: 0 });
   }
   c.applyNewData(buildData());
+  // 价格面板初次灌数据后，记录自适应基准（供「重置」还原；量/MACD 经 OnZoom 联动）
+  // 注：klinecharts v9.7 类型把 getBarSpace() 标为 number，但运行时返回 {bar,...}，故兼容取值。
+  if (kind === "price") {
+    const bs = c.getBarSpace() as unknown as { bar?: number };
+    fitBarSpace.value = typeof bs === "number" ? bs : (bs.bar as number);
+  }
   registerSync(c);
   return c;
+}
+
+// 缩放工具栏（＋/－/重置）：触屏与无障碍兜底，PC 滚轮与双指捏合仍可用。
+// 仅在价格面板操作，经既有的 OnZoom 订阅自动联动量/MACD 面板。
+function zoomBy(step: number) {
+  if (!priceChart || !priceEl.value) return;
+  const rect = priceEl.value.getBoundingClientRect();
+  priceChart.zoomAtCoordinate(step, { x: rect.width / 2, y: rect.height / 2 });
+}
+function resetZoom() {
+  if (!priceChart) return;
+  if (fitBarSpace.value != null) priceChart.setBarSpace(fitBarSpace.value);
+  priceChart.scrollToRealTime();
 }
 
 function setup() {
@@ -337,6 +422,11 @@ function refreshData() {
   priceChart?.applyNewData(data);
   volChart?.applyNewData(data);
   macdChart?.applyNewData(data);
+  // 数据长度变化会改变自适应基准，重记以便「重置」仍贴合当前数据
+  if (priceChart) {
+    const bs = priceChart.getBarSpace() as unknown as { bar?: number };
+    fitBarSpace.value = typeof bs === "number" ? bs : (bs.bar as number);
+  }
   if (priceChart && props.mode === "kline") {
     const chip = computeChipFor();
     try {
@@ -422,6 +512,7 @@ onBeforeUnmount(() => {
 }
 /* 每个子图是一张独立面板卡片：底色略深一档、细边框、圆角，块间留空 → 清晰的板块感 */
 .kc-panel {
+  position: relative;
   background: var(--card-2);
   border: 1rpx solid var(--border);
   border-radius: 16rpx;
@@ -442,5 +533,48 @@ onBeforeUnmount(() => {
   width: 100%;
   /* 背景透明，露出面板底色（var(--card-2)），由主题 CSS 控制明暗 */
   background: transparent;
+}
+/* 缩放工具栏：浮于价格面板右上角，毛玻璃底、纵向三键（－ / 重置 / ＋）。
+   触屏与无障碍兜底，滚轮与双指捏合仍为主交互；z-index 高于 canvas。 */
+.kc-zoom {
+  position: absolute;
+  top: 16rpx;
+  right: 16rpx;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  padding: 6rpx;
+  border-radius: 14rpx;
+  background: var(--glass, rgba(255, 255, 255, 0.62));
+  border: 1rpx solid var(--border);
+  box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8rpx);
+}
+.kc-zoom__btn {
+  width: 64rpx;
+  height: 64rpx;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36rpx;
+  line-height: 1;
+  color: var(--text);
+  border-radius: 10rpx;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+  user-select: none;
+}
+.kc-zoom__btn:active {
+  background: var(--primary);
+  color: #fff;
+  transform: scale(0.94);
+}
+.kc-zoom__btn:focus-visible {
+  outline: 2rpx solid var(--primary);
+  outline-offset: 2rpx;
 }
 </style>

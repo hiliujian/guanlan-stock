@@ -4,45 +4,10 @@
    - 颜色、间距、圆角、字号、阴影、动效 全部用 CSS 变量统一
    - 适配：rpx 在手机/小程序按屏宽缩放；H5 桌面用 .app-shell 限制最大宽度
    ============================================================ */
-/* 默认（深色）主题变量：定义在 :root，所有元素继承；页面 <html> 默认深色 */
+/* 默认（浅色）主题变量：定义在 :root，所有元素继承；页面 <html> 默认浅色。
+   与 theme.ts 的 JS 默认（readStored() 无存储时返回 "light"）保持一致，避免首屏深色闪烁。
+   红涨绿跌颜色与中国习惯保持一致，不随主题变化。 */
 :root {
-  --bg: #05080f;
-  --bg-2: #0a1322;
-  --card: rgba(255, 255, 255, 0.06);
-  --card-2: rgba(255, 255, 255, 0.04);
-  --primary: #07c160;
-  --primary-dark: #06a454;
-  --up: #ff5b5b;
-  --down: #1fd874;
-  --text: #eaf0fb;
-  --text-2: #aab4c8;
-  --text-3: #6b7689;
-  --border: rgba(255, 255, 255, 0.10);
-  --radius: 20rpx;
-  --radius-sm: 12rpx;
-  --shadow: 0 12rpx 34rpx rgba(0, 0, 0, 0.45);
-  --shadow-up: 0 8rpx 28rpx rgba(7, 193, 96, 0.30);
-  --gap: 16rpx;
-  --glass-blur: 22rpx;
-  /* 跨主题专用表面（深浅色各自一套，避免硬编码导致切主题不彻底） */
-  --tabbar-bg: rgba(8, 13, 24, 0.72);
-  --tabbar-border: rgba(255, 255, 255, 0.10);
-  --tabbar-shadow: 0 -6rpx 24rpx rgba(0, 0, 0, 0.45);
-  --sticky-bg: rgba(5, 8, 15, 0.6);
-  --sticky-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.35);
-  --suggest-bg: rgba(10, 16, 28, 0.86);
-  --suggest-shadow: 0 14rpx 30rpx rgba(0, 0, 0, 0.4);
-  --shell-shadow: 0 0 60rpx rgba(0, 0, 0, 0.5);
-  /* 统一动效参数：全站缓动曲线与入场时长集中管理，避免各组件硬编码导致风格漂移 */
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --dur-fast: 0.25s;
-  --dur: 0.32s;
-  --dur-slow: 0.42s;
-  --dur-slower: 0.5s;
-}
-
-/* 浅色主题：<html class="theme-light"> 时覆盖变量（红涨绿跌与中国习惯保持一致，不随主题变） */
-:root.theme-light {
   --bg: #eef1f6;
   --bg-2: #ffffff;
   --card: rgba(255, 255, 255, 0.72);
@@ -61,6 +26,7 @@
   --shadow-up: 0 8rpx 28rpx rgba(7, 193, 96, 0.22);
   --gap: 16rpx;
   --glass-blur: 18rpx;
+  /* 跨主题专用表面（深浅色各自一套，避免硬编码导致切主题不彻底） */
   --tabbar-bg: rgba(255, 255, 255, 0.82);
   --tabbar-border: rgba(20, 30, 50, 0.10);
   --tabbar-shadow: 0 -6rpx 24rpx rgba(20, 30, 50, 0.12);
@@ -69,6 +35,43 @@
   --suggest-bg: rgba(255, 255, 255, 0.94);
   --suggest-shadow: 0 14rpx 30rpx rgba(20, 30, 50, 0.14);
   --shell-shadow: 0 0 60rpx rgba(20, 30, 50, 0.12);
+  /* 统一动效参数：全站缓动曲线与入场时长集中管理，避免各组件硬编码导致风格漂移 */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 0.25s;
+  --dur: 0.32s;
+  --dur-slow: 0.42s;
+  --dur-slower: 0.5s;
+}
+
+/* 深色主题：<html class="theme-dark"> 时覆盖变量（由 theme.ts 的 setTheme('dark') 切换）。
+   其余颜色（红涨绿跌、主色、动效）不随主题变化。 */
+:root.theme-dark {
+  --bg: #05080f;
+  --bg-2: #0a1322;
+  --card: rgba(255, 255, 255, 0.06);
+  --card-2: rgba(255, 255, 255, 0.04);
+  --primary: #07c160;
+  --primary-dark: #06a454;
+  --up: #ff5b5b;
+  --down: #1fd874;
+  --text: #eaf0fb;
+  --text-2: #aab4c8;
+  --text-3: #6b7689;
+  --border: rgba(255, 255, 255, 0.10);
+  --radius: 20rpx;
+  --radius-sm: 12rpx;
+  --shadow: 0 12rpx 34rpx rgba(0, 0, 0, 0.45);
+  --shadow-up: 0 8rpx 28rpx rgba(7, 193, 96, 0.30);
+  --gap: 16rpx;
+  --glass-blur: 22rpx;
+  --tabbar-bg: rgba(8, 13, 24, 0.72);
+  --tabbar-border: rgba(255, 255, 255, 0.10);
+  --tabbar-shadow: 0 -6rpx 24rpx rgba(0, 0, 0, 0.45);
+  --sticky-bg: rgba(5, 8, 15, 0.6);
+  --sticky-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.35);
+  --suggest-bg: rgba(10, 16, 28, 0.86);
+  --suggest-shadow: 0 14rpx 30rpx rgba(0, 0, 0, 0.4);
+  --shell-shadow: 0 0 60rpx rgba(0, 0, 0, 0.5);
 }
 
 page,
@@ -84,7 +87,8 @@ body {
 view,
 text,
 button,
-input {
+input,
+uni-view {
   box-sizing: border-box;
 }
 
@@ -98,12 +102,15 @@ textarea {
 .app-shell {
   max-width: 480px;
   margin: 0 auto;
+  box-sizing: border-box;
   min-height: 100vh;
   background: transparent;
   position: relative;
   z-index: 1;
   box-shadow: var(--shell-shadow);
-  /* 自定义导航（navigationStyle:custom）后，顶部从状态栏下开始，避免被刘海/状态栏遮挡 */
+  /* 自定义导航（navigationStyle:custom）后，顶部从状态栏下开始，避免被刘海/状态栏遮挡。
+     必须是 border-box：否则 content-box 下 padding-top(安全区) 会叠加在 100vh 之上，
+     使页面总高 = 100vh + 安全区 → 超出视口出现滚动条，且安全区呈现为顶部空白。 */
   padding-top: env(safe-area-inset-top);
 }
 
@@ -310,8 +317,10 @@ textarea {
 /* 与主流小程序一致：登录注册为单独页面，自带返回按钮与品牌区，背景复用全局纵深。 */
 .auth-page {
   position: relative;
+  box-sizing: border-box;
   min-height: 100vh;
-  /* 自定义导航后顶部从状态栏下开始，避免被刘海 / 状态栏遮挡 */
+  /* 自定义导航后顶部从状态栏下开始，避免被刘海 / 状态栏遮挡。
+     border-box：避免 content-box 下 padding-top 叠加在 100vh 之上导致溢出滚动。 */
   padding-top: env(safe-area-inset-top);
 }
 /* 关键修复：uni-app H5 框架对所有 <view>(uni-view) 强制 overflow:hidden，
@@ -325,7 +334,10 @@ textarea {
 .auth-content {
   position: relative;
   z-index: 1;
-  min-height: 100vh;
+  /* 父级 .auth-page 已是 border-box + min-height:100vh + padding-top:env(safe-area-inset-top)。
+     此处必须减去安全区，否则子级再要一个 100vh 会超出父级内容框 safe-area 高度 → 二次溢出滚动条 + 顶部空白。
+     配合 border-box，padding(130rpx/96rpx) 已含在内，居中区域 = (100vh - 安全区) - 上下预留。 */
+  min-height: calc(100vh - env(safe-area-inset-top));
   display: flex;
   flex-direction: column;
   justify-content: center; /* 观澜 + 输入框整体垂直居中 */
