@@ -8,12 +8,20 @@ import { getSupabase } from "@/api/supabase";
 import { translateSupabaseError } from "@/api/auth";
 import { userState } from "./user";
 
+/** 价格预警配置：高于 / 低于某价触发（任一为 null 表示该方向不监控） */
+export interface PriceAlert {
+  above?: number | null;
+  below?: number | null;
+}
+
 export interface WatchItem {
   id?: string;
   code: string;
   market: string;
   name: string;
   note: string;
+  group?: string; // 分组名，'' = 默认分组
+  alerts?: PriceAlert; // 价格预警配置
   created_at?: string;
 }
 
@@ -61,6 +69,8 @@ async function loadCloud(userId: string) {
       market: d.market,
       name: d.name,
       note: d.note || "",
+      group: d.group_name || "",
+      alerts: parseAlerts(d.alerts),
       created_at: d.created_at,
     }));
   }
@@ -128,6 +138,7 @@ export async function initWatchlist() {
 }
 
 export async function addWatch(item: WatchItem): Promise<{ ok: boolean; error?: string }> {
+  const grp = item.group || "";
   if (state.mode === "cloud" && userState.userId) {
     const sb = getSupabase()!;
     const { error } = await sb.from("watchlists").insert({
@@ -136,15 +147,110 @@ export async function addWatch(item: WatchItem): Promise<{ ok: boolean; error?: 
       market: item.market,
       name: item.name,
       note: item.note || "",
+      group_name: grp,
     });
     if (error) return { ok: false, error: translateSupabaseError(error.message) };
     await loadCloud(userState.userId);
   } else {
-    const next = [item, ...state.items.filter((i) => !(i.code === item.code && i.market === item.market))];
+    const next = [
+      { ...item, group: grp },
+      ...state.items.filter((i) => !(i.code === item.code && i.market === item.market)),
+    ];
     state.items = next;
     saveLocal(next);
   }
   return { ok: true };
+}
+
+// 仅保留有限、合法的预警数值；非数 / 空 → null（关闭该方向）
+function parseAlerts(raw: any): PriceAlert | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const above = typeof raw.above === "number" && isFinite(raw.above) ? raw.above : null;
+  const below = typeof raw.below === "number" && isFinite(raw.below) ? raw.below : null;
+  if (above == null && below == null) return undefined;
+  return { above, below };
+}
+// 出库→入库的预警字段归一（写入 DB 的 jsonb；列定义 NOT NULL，故空配置返回 {} 而非 null）
+function toAlertJson(a?: PriceAlert): any {
+  if (!a) return {};
+  const above = typeof a.above === "number" && isFinite(a.above) ? a.above : null;
+  const below = typeof a.below === "number" && isFinite(a.below) ? a.below : null;
+  if (above == null && below == null) return {};
+  return { above, below };
+}
+
+/** 将某只自选移动到其它分组（云：按 id 更新 group_name；本地：打补丁并重存） */
+export async function setItemGroup(code: string, market: string, group: string): Promise<void> {
+  await patchItem(code, market, { group_name: group || "" });
+  if (state.mode !== "cloud") {
+    state.items = state.items.map((i) =>
+      i.code === code && i.market === market ? { ...i, group: group || "" } : i
+    );
+    saveLocal(state.items);
+  }
+}
+
+/** 设置某只自选的价格预警（传 undefined 即清空） */
+export async function setAlerts(code: string, market: string, alerts?: PriceAlert): Promise<void> {
+  const json = toAlertJson(alerts);
+  await patchItem(code, market, { alerts: json });
+  if (state.mode !== "cloud") {
+    state.items = state.items.map((i) =>
+      i.code === code && i.market === market ? { ...i, alerts: parseAlerts(json) } : i
+    );
+    saveLocal(state.items);
+  }
+}
+
+// 通用补丁：云模式按 id 更新指定列，本地模式直接在内存数组打补丁（patchItem 负责）
+async function patchItem(code: string, market: string, patch: Record<string, any>): Promise<void> {
+  const target = state.items.find((i) => i.code === code && i.market === market);
+  if (!target) return;
+  if (state.mode === "cloud" && userState.userId && target.id) {
+    const sb = getSupabase()!;
+    const { error } = await sb.from("watchlists").update(patch).eq("id", target.id);
+    if (error) {
+      uni.showToast({ title: translateSupabaseError(error.message), icon: "none" });
+      return;
+    }
+    await loadCloud(userState.userId);
+  }
+  // 本地模式由调用方同步到 state.items（避免重复逻辑）；此处仅占位
+}
+
+/** 重命名分组（含「默认」外的所有同名项） */
+export async function renameGroup(oldName: string, newName: string): Promise<void> {
+  if (!oldName || !newName || oldName === newName) return;
+  const grp = newName || "";
+  if (state.mode === "cloud" && userState.userId) {
+    const sb = getSupabase()!;
+    await sb
+      .from("watchlists")
+      .update({ group_name: grp })
+      .eq("user_id", userState.userId)
+      .eq("group_name", oldName);
+    await loadCloud(userState.userId);
+  } else {
+    state.items = state.items.map((i) => (i.group === oldName ? { ...i, group: grp } : i));
+    saveLocal(state.items);
+  }
+}
+
+/** 删除分组：组内项回退到默认分组 */
+export async function deleteGroup(name: string): Promise<void> {
+  if (!name) return;
+  if (state.mode === "cloud" && userState.userId) {
+    const sb = getSupabase()!;
+    await sb
+      .from("watchlists")
+      .update({ group_name: "" })
+      .eq("user_id", userState.userId)
+      .eq("group_name", name);
+    await loadCloud(userState.userId);
+  } else {
+    state.items = state.items.map((i) => (i.group === name ? { ...i, group: "" } : i));
+    saveLocal(state.items);
+  }
 }
 
 export async function removeWatch(code: string, market: string): Promise<void> {

@@ -109,6 +109,17 @@ create policy "avatars_auth_insert" on storage.objects for insert to authenticat
 drop policy if exists "avatars_owner_delete" on storage.objects;
 create policy "avatars_owner_delete" on storage.objects for delete to authenticated using (bucket_id = 'avatars' and owner = auth.uid());
 
+-- 1.6 社区配图存储桶（限制 2MB，仅登录用户可传自己的；公开可读用于帖子展示）
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('post-images', 'post-images', true, 2097152)
+on conflict (id) do nothing;
+drop policy if exists "post_images_public_read" on storage.objects;
+create policy "post_images_public_read" on storage.objects for select using (bucket_id = 'post-images');
+drop policy if exists "post_images_auth_insert" on storage.objects;
+create policy "post_images_auth_insert" on storage.objects for insert to authenticated with check (bucket_id = 'post-images' and owner = auth.uid());
+drop policy if exists "post_images_owner_delete" on storage.objects;
+create policy "post_images_owner_delete" on storage.objects for delete to authenticated using (bucket_id = 'post-images' and owner = auth.uid());
+
 
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║ 2. 社区核心表                                                 ║

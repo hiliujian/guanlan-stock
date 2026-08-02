@@ -164,16 +164,16 @@ const displayPosts = computed(() => {
 });
 
 // ---------------- 发布 ----------------
-async function onText(content: string, topic?: Topic) {
+async function onText(content: string, topic?: Topic, images?: string[]) {
   try {
-    await publishText(content, topic);
+    await publishText(content, topic, images);
   } catch (e: any) {
     uni.showToast({ title: e?.message || "发布失败，请稍后再试", icon: "none" });
   }
 }
-async function onCard(card: PostCardData) {
+async function onCard(card: PostCardData, images?: string[]) {
   try {
-    await publishCard(card);
+    await publishCard(card, images);
   } catch (e: any) {
     uni.showToast({ title: e?.message || "发布失败，请稍后再试", icon: "none" });
   }

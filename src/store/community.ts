@@ -24,16 +24,16 @@ export function useCommunity() {
     }
   }
 
-  async function publishText(content: string, topic?: Topic): Promise<CommunityPost | null> {
+  async function publishText(content: string, topic?: Topic, images?: string[]): Promise<CommunityPost | null> {
     const trimmed = content.trim();
     if (!trimmed) return null;
-    const p = await communityRepo.create({ type: "text", content: trimmed, topic });
+    const p = await communityRepo.create({ type: "text", content: trimmed, topic, images });
     posts.value = [p, ...posts.value];
     return p;
   }
 
-  async function publishCard(card: PostCard): Promise<CommunityPost | null> {
-    const p = await communityRepo.create({ type: "card", card });
+  async function publishCard(card: PostCard, images?: string[]): Promise<CommunityPost | null> {
+    const p = await communityRepo.create({ type: "card", card, images });
     posts.value = [p, ...posts.value];
     return p;
   }

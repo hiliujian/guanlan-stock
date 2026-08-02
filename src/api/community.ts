@@ -76,6 +76,7 @@ export interface CommunityPost {
   createdAt: number;
   content?: string;
   card?: PostCard;
+  images?: string[]; // 帖子配图 URL 数组（DB: images text[]）
   likes: number;
   likedByMe: boolean;
   replies: Reply[];
@@ -107,8 +108,8 @@ export const communityRepo = {
 
   async create(
     input:
-      | { type: "text"; content: string; topic?: Topic }
-      | { type: "card"; card: PostCard }
+      | { type: "text"; content: string; topic?: Topic; images?: string[] }
+      | { type: "card"; card: PostCard; images?: string[] }
   ): Promise<CommunityPost> {
     return createRemote(input);
   },
@@ -161,7 +162,7 @@ async function listRemote(): Promise<CommunityPost[]> {
   const { data, error } = await sb
     .from("community_posts")
     .select(
-      "id, type, author, user_id, topic, content, card, likes, created_at, replies:community_replies(id, author, content, created_at)"
+      "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, content, created_at)"
     )
     .order("created_at", { ascending: false })
     .limit(50);
@@ -177,6 +178,7 @@ async function listRemote(): Promise<CommunityPost[]> {
     createdAt: new Date(r.created_at).getTime(),
     content: r.content ?? undefined,
     card: r.card ? toClientCard(r.card) : undefined,
+    images: (r.images as string[] | undefined) || [],
     likes: r.likes ?? 0,
     likedByMe: liked.has(r.id),
     replies: (r.replies || []).map((x: any) => ({
@@ -206,8 +208,8 @@ async function loadLikedFromServer(sb: any): Promise<Set<string>> {
 
 async function createRemote(
   input:
-    | { type: "text"; content: string; topic?: Topic }
-    | { type: "card"; card: PostCard }
+    | { type: "text"; content: string; topic?: Topic; images?: string[] }
+    | { type: "card"; card: PostCard; images?: string[] }
 ): Promise<CommunityPost> {
   const sb = getSupabase();
   if (!sb) throw new Error("发布失败，请稍后再试");
@@ -218,6 +220,7 @@ async function createRemote(
     type: input.type,
     content: input.type === "text" ? input.content.trim() : null,
     card: input.type === "card" ? toStoredCard(input.card) : null,
+    images: (input.images && input.images.length ? input.images : []) as any,
     likes: 0,
   };
   const { data, error } = await sb.from("community_posts").insert(row).select().single();
@@ -232,6 +235,7 @@ async function createRemote(
     createdAt: new Date(d.created_at).getTime(),
     content: d.content ?? undefined,
     card: d.card ? toClientCard(d.card) : undefined,
+    images: (d.images as string[] | undefined) || [],
     likes: 0,
     likedByMe: false,
     replies: [],
@@ -278,7 +282,7 @@ async function addReplyRemote(id: string, content: string): Promise<CommunityPos
   const { data, error } = await sb
     .from("community_posts")
     .select(
-      "id, type, author, user_id, topic, content, card, likes, created_at, replies:community_replies(id, author, content, created_at)"
+      "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, content, created_at)"
     )
     .eq("id", id)
     .single();
@@ -294,6 +298,7 @@ async function addReplyRemote(id: string, content: string): Promise<CommunityPos
     createdAt: new Date(d.created_at).getTime(),
     content: d.content ?? undefined,
     card: d.card ? toClientCard(d.card) : undefined,
+    images: (d.images as string[] | undefined) || [],
     likes: d.likes ?? 0,
     likedByMe: liked,
     replies: (d.replies || []).map((x: any) => ({

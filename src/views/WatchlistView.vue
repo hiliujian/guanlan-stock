@@ -11,7 +11,34 @@
       <BackgroundFX />
       <view class="wl-head anim-fade-up">
         <text class="wl-title">自选股</text>
-        <text class="wl-count">{{ list.length }} 只</text>
+        <view class="wl-head-right">
+          <text class="wl-count">{{ list.length }} 只</text>
+          <text class="grp-manage" @click="openGroupManager">分组</text>
+        </view>
+      </view>
+
+      <!-- 分组筛选：全部 / 默认 / 各自定义分组 -->
+      <view class="wl-groups anim-fade-up">
+        <scroll-view class="grp-scroll" scroll-x>
+          <text :class="['grp', selectedGroup === '__all__' ? 'on' : '']" @click="selectedGroup = '__all__'">全部</text>
+          <text :class="['grp', selectedGroup === '' ? 'on' : '']" @click="selectedGroup = ''">默认</text>
+          <text
+            v-for="g in groups"
+            :key="g"
+            :class="['grp', selectedGroup === g ? 'on' : '']"
+            @click="selectedGroup = g"
+            >{{ g }}</text
+          >
+        </scroll-view>
+      </view>
+
+      <!-- 价格预警横幅：当前已触发且未忽略的预警（H5 无系统推送，仅应用内提醒） -->
+      <view v-if="alertHits.length" class="alert-banner anim-fade-up">
+        <view v-for="a in alertHits" :key="a.key" class="ab-item" @click="dismissAlert(a.key)">
+          <OutlineIcon type="bell" :size="26" color="var(--primary)" />
+          <text class="ab-txt">{{ a.text }}</text>
+          <text class="ab-x">忽略</text>
+        </view>
       </view>
 
       <view v-if="!list.length" class="empty anim-fade-up">
@@ -52,9 +79,22 @@
             <view class="wl-code-row">
               <view class="mkt-tag">{{ row.mkt }}</view>
               <text class="wl-code">{{ row.it.code }}</text>
+              <view
+                v-if="row.it.group"
+                class="grp-chip"
+                @click.stop="moveToGroup(row.it)"
+                >{{ row.it.group }}</view
+              >
             </view>
           </view>
           <view class="wl-right">
+            <view
+              class="wl-bell"
+              :class="{ on: hasAlert(row.it) }"
+              @click.stop="editAlert(row.it)"
+            >
+              <OutlineIcon type="bell" :size="26" :color="hasAlert(row.it) ? 'var(--primary)' : 'var(--text-2)'" />
+            </view>
             <text class="wl-price" :class="{ 'is-loading': row.q.loading }" :style="{ color: priceColor(row.q) }">
               {{ row.q.loading ? "--" : fmtPrice(row.q.price) }}
             </text>
@@ -64,6 +104,8 @@
           </view>
         </view>
       </view>
+
+      <text v-if="list.length && !rows.length" class="wl-hint">该分组暂无股票</text>
 
       <text v-if="list.length" class="wl-hint">左滑股票可移除自选</text>
 
@@ -76,7 +118,7 @@
 import { computed, reactive, ref, watch, onMounted, onActivated, onDeactivated, onUnmounted } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
-import { useWatchlist, removeWatch, type WatchItem } from "@/store/watchlist";
+import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, type WatchItem, type PriceAlert } from "@/store/watchlist";
 import { userState } from "@/store/user";
 import { openAuth } from "@/store/nav";
 import { fetchSnapshot } from "@/api/quote";
@@ -87,6 +129,19 @@ const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: s
 
 const wl = useWatchlist();
 const list = computed(() => wl.items as WatchItem[]);
+
+// 分组筛选：全部 / 默认(未分组) / 各自定义分组（分组名从现有自选派生，无需空分组）
+const selectedGroup = ref<string>("__all__");
+const groups = computed(() => {
+  const s = new Set<string>();
+  for (const it of list.value) if (it.group) s.add(it.group);
+  return Array.from(s).sort();
+});
+const filteredList = computed(() => {
+  if (selectedGroup.value === "__all__") return list.value;
+  if (selectedGroup.value === "") return list.value.filter((i) => !i.group);
+  return list.value.filter((i) => i.group === selectedGroup.value);
+});
 
 // 未登录且已配置后端（登录可达）时，进入本页自动跳转登录页（见 onActivated）
 const needLogin = computed(() => userState.supabaseEnabled && !userState.loggedIn);
@@ -103,7 +158,17 @@ const EMPTY: Snap = { price: 0, chg: 0, pct: 0, loading: true };
 const quotes = reactive<Record<string, Snap>>({});
 const keyOf = (it: WatchItem) => `${it.code}|${it.market}`;
 
-// 自选股实时行情：批量拉取快照（与行情页同口径），填充现价与涨跌幅
+// 价格预警：上一轮成功价格（用于穿越检测）+ 已忽略的预警 key（Vue3 对 Set 的集合响应式生效）
+const prevPrices = reactive<Record<string, number>>({});
+const dismissed = reactive<Set<string>>(new Set());
+const alertHits = ref<{ key: string; code: string; name: string; text: string }[]>([]);
+
+function hasAlert(it: WatchItem): boolean {
+  const a = it.alerts;
+  return !!(a && (a.above != null || a.below != null));
+}
+
+// 自选股实时行情：批量拉取快照（与行情页同口径），填充现价与涨跌幅，并检测价格预警穿越
 async function loadQuotes() {
   // 未登录（且已配置后端）：不拉取，交由「未登录」空态提示，避免无意义的 loading
   if (userState.supabaseEnabled && !userState.loggedIn) return;
@@ -114,11 +179,83 @@ async function loadQuotes() {
       const secid = resolveSecid(it.code, it.market as any);
       const snap = await fetchSnapshot(secid);
       quotes[k] = { ...snap, loading: false };
+      detectAlert(it, snap.price);
     } catch {
       quotes[k] = { ...EMPTY, loading: false, error: true };
     }
   });
   await Promise.allSettled(tasks);
+  refreshAlertHits();
+}
+
+// 穿越检测：与上一轮价格比较，向上突破 / 向下跌破阈值时即时 Toast（H5 无系统推送，仅应用内）
+function detectAlert(it: WatchItem, price: number) {
+  const a = it.alerts;
+  if (!a || !price) return;
+  const k = keyOf(it);
+  const prev = prevPrices[k];
+  if (prev != null && isFinite(prev)) {
+    if (a.above != null && prev < a.above && price >= a.above) {
+      uni.showToast({ title: `${it.name || it.code} 突破 ${a.above} 元`, icon: "none" });
+    }
+    if (a.below != null && prev > a.below && price <= a.below) {
+      uni.showToast({ title: `${it.name || it.code} 跌破 ${a.below} 元`, icon: "none" });
+    }
+  }
+  prevPrices[k] = price;
+}
+
+// 横幅：列出当前已处于预警区间且未被忽略的项（实时刷新时持续提示，忽略后不再弹出）
+function refreshAlertHits() {
+  const hits: { key: string; code: string; name: string; text: string }[] = [];
+  for (const it of list.value) {
+    const a = it.alerts;
+    if (!a) continue;
+    const q = quotes[keyOf(it)];
+    const price = q?.price;
+    if (!price) continue;
+    if (a.above != null && price >= a.above && !dismissed.has(keyOf(it) + "_up")) {
+      hits.push({ key: keyOf(it) + "_up", code: it.code, name: it.name || it.code, text: `${it.name || it.code} 已突破 ${a.above} 元（现价 ${price}）` });
+    }
+    if (a.below != null && price <= a.below && !dismissed.has(keyOf(it) + "_down")) {
+      hits.push({ key: keyOf(it) + "_down", code: it.code, name: it.name || it.code, text: `${it.name || it.code} 已跌破 ${a.below} 元（现价 ${price}）` });
+    }
+  }
+  alertHits.value = hits;
+}
+function dismissAlert(key: string) {
+  dismissed.add(key);
+  alertHits.value = alertHits.value.filter((h) => h.key !== key);
+}
+
+// 设置价格预警：高于 / 低于 / 清除（H5 无系统推送，触发后在自选页以横幅 + Toast 提醒）
+function editAlert(it: WatchItem) {
+  const a = it.alerts || {};
+  uni.showActionSheet({
+    itemList: ["设置高于预警", "设置低于预警", "清除预警"],
+    success: (res) => {
+      if (res.tapIndex === 2) {
+        setAlerts(it.code, it.market, undefined);
+        uni.showToast({ title: "已清除预警", icon: "none" });
+        return;
+      }
+      const dir: "above" | "below" = res.tapIndex === 0 ? "above" : "below";
+      const cur = a[dir];
+      uni.showModal({
+        title: dir === "above" ? "高于此价提醒" : "低于此价提醒",
+        editable: true,
+        placeholderText: "输入价格，如 12.5",
+        content: cur != null ? String(cur) : "",
+        success: (r) => {
+          if (!r.confirm) return;
+          const v = parseFloat(r.content ?? "");
+          const next: PriceAlert = { ...a };
+          next[dir] = isFinite(v) ? v : null;
+          setAlerts(it.code, it.market, next.above == null && next.below == null ? undefined : next);
+        },
+      });
+    },
+  });
 }
 
 // 下拉刷新：scroll-view refresher 触发，复用行情加载并收尾
@@ -175,7 +312,7 @@ function mktChar(it: WatchItem): string {
 }
 
 const rows = computed(() =>
-  list.value.map((it) => ({ it, q: quotes[keyOf(it)] || EMPTY, mkt: mktChar(it) }))
+  filteredList.value.map((it) => ({ it, q: quotes[keyOf(it)] || EMPTY, mkt: mktChar(it) }))
 );
 
 // 现价颜色：跟随涨跌（平盘用主文字色）
@@ -399,6 +536,69 @@ function doRemove(it: WatchItem) {
   removeWatch(it.code, it.market);
   uni.showToast({ title: "已移除", icon: "none" });
 }
+
+// 移动股票到其他分组（含新建分组）；分组名从现有自选派生，无需维护空分组
+function moveToGroup(it: WatchItem) {
+  const others = groups.value.filter((g) => g !== it.group);
+  const itemList = [...others, "+ 新建分组…"];
+  uni.showActionSheet({
+    itemList,
+    success: (res) => {
+      const idx = res.tapIndex;
+      if (idx < others.length) {
+        setItemGroup(it.code, it.market, others[idx]);
+      } else {
+        uni.showModal({
+          title: "新建分组",
+          editable: true,
+          placeholderText: "分组名",
+          content: "",
+        success: (r) => {
+          if (r.confirm && r.content?.trim()) setItemGroup(it.code, it.market, r.content.trim());
+        },
+        });
+      }
+    },
+  });
+}
+
+// 分组管理：重命名 / 删除（删除后组内项归入默认分组）
+function openGroupManager() {
+  if (!groups.value.length) {
+    uni.showToast({ title: "在股票上点分组名即可创建", icon: "none" });
+    return;
+  }
+  uni.showActionSheet({
+    itemList: groups.value.map((g) => `管理「${g}」`),
+    success: (res) => manageGroup(groups.value[res.tapIndex]),
+  });
+}
+function manageGroup(g: string) {
+  uni.showActionSheet({
+    itemList: ["重命名", "删除（组内项归入默认）"],
+    success: (res) => {
+      if (res.tapIndex === 0) {
+        uni.showModal({
+          title: "重命名分组",
+          editable: true,
+          content: g,
+          success: (r) => {
+            const v = r.content?.trim();
+            if (r.confirm && v && v !== g) renameGroup(g, v);
+          },
+        });
+      } else {
+        uni.showModal({
+          title: "删除分组",
+          content: `确认删除「${g}」？组内股票将归入默认分组`,
+          success: (r) => {
+            if (r.confirm) deleteGroup(g);
+          },
+        });
+      }
+    },
+  });
+}
 </script>
 
 <style scoped>
@@ -423,6 +623,98 @@ function doRemove(it: WatchItem) {
 .wl-count {
   font-size: 24rpx;
   color: var(--text-2);
+}
+.wl-head-right {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+}
+.grp-manage {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--primary);
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  background: rgba(7, 193, 96, 0.1);
+}
+
+/* 分组筛选条 */
+.wl-groups {
+  padding: 0 16rpx 4rpx;
+}
+.grp-scroll {
+  white-space: nowrap;
+  width: 100%;
+}
+.grp {
+  display: inline-block;
+  font-size: 23rpx;
+  font-weight: 600;
+  color: var(--text-2);
+  padding: 8rpx 22rpx;
+  margin-right: 12rpx;
+  border-radius: 999rpx;
+  background: var(--card-2);
+  border: 2rpx solid transparent;
+  transition: all 0.18s ease;
+}
+.grp.on {
+  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+/* 价格预警横幅 */
+.alert-banner {
+  margin: 8rpx 16rpx 4rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+.ab-item {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 14rpx;
+  background: rgba(7, 193, 96, 0.12);
+  border: 1rpx solid rgba(7, 193, 96, 0.3);
+}
+.ab-txt {
+  flex: 1;
+  font-size: 24rpx;
+  color: var(--text);
+}
+.ab-x {
+  font-size: 22rpx;
+  color: var(--text-2);
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  background: var(--card-2);
+}
+
+/* 行内分组标签（点击移动分组） */
+.grp-chip {
+  font-size: 18rpx;
+  line-height: 1;
+  padding: 4rpx 12rpx;
+  border-radius: 6rpx;
+  color: var(--primary);
+  background: rgba(7, 193, 96, 0.12);
+  border: 1rpx solid rgba(7, 193, 96, 0.3);
+}
+/* 行内预警铃铛 */
+.wl-bell {
+  flex: none;
+  width: 44rpx;
+  height: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10rpx;
+}
+.wl-bell.on {
+  /* 已设置预警：铃铛高亮，无额外背景，避免与价格列拥挤 */
 }
 
 /* 空态 */

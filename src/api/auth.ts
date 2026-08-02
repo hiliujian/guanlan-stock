@@ -201,6 +201,55 @@ export async function uploadAvatar(localPath: string): Promise<UploadResult> {
   }
 }
 
+/**
+ * 上传社区配图到 Supabase Storage 的 post-images 桶（deploy.sql 1.6 已建）。
+ * H5 下 localPath 是 blob: URL，用 fetch 取二进制；非 H5 走原生 readFileSync + base64。
+ * 内置格式 / 大小校验，错误一律中文；上传成功后返回公链。
+ */
+export async function uploadPostImage(localPath: string): Promise<UploadResult> {
+  try {
+    const sb = getSupabase();
+    if (!sb) return { url: null, error: SERVICE_UNAVAILABLE };
+    const { data: u } = await sb.auth.getUser();
+    const uid = u.user?.id;
+    if (!uid) return { url: null, error: "未登录" };
+
+    let bin: ArrayBuffer;
+    let ext: string;
+
+    if (typeof window !== "undefined" && typeof document !== "undefined") {
+      const resp = await fetch(localPath);
+      if (!resp.ok) return { url: null, error: "读取图片失败，请重试" };
+      const blob = await resp.blob();
+      if (blob.size > AVATAR_MAX_BYTES) return { url: null, error: "图片不能超过 2MB" };
+      const type = (resp.headers.get("content-type") || "").toLowerCase();
+      ext = (type.split("/")[1] || localPath.split(".").pop() || "").replace("+xml", "");
+      if (!AVATAR_ALLOWED.includes(ext)) return { url: null, error: "仅支持 JPG / PNG / WebP 格式" };
+      bin = await blob.arrayBuffer();
+    } else {
+      ext = (localPath.split(".").pop() || "").toLowerCase();
+      if (!AVATAR_ALLOWED.includes(ext)) return { url: null, error: "仅支持 JPG / PNG / WebP 格式" };
+      const fi: any = await uni.getFileInfo({ filePath: localPath });
+      const size = fi?.size;
+      if (typeof size === "number" && size > AVATAR_MAX_BYTES) return { url: null, error: "图片不能超过 2MB" };
+      const b64 = uni.getFileSystemManager().readFileSync(localPath, "base64") as string;
+      bin = uni.base64ToArrayBuffer(b64);
+    }
+
+    const fileName = `${Date.now()}.${ext}`;
+    const path = `posts/${uid}/${fileName}`;
+    const mime = `image/${ext === "jpg" ? "jpeg" : ext}`;
+    const { error } = await sb.storage
+      .from("post-images")
+      .upload(path, bin, { contentType: mime, upsert: true });
+    if (error) return { url: null, error: translateSupabaseError(error.message) };
+    const { data } = sb.storage.from("post-images").getPublicUrl(path);
+    return { url: data?.publicUrl || null };
+  } catch (e) {
+    return { url: null, error: "图片上传失败，请重试" };
+  }
+}
+
 // 服务不可用时的统一友好提示（不向用户暴露内部配置/实现细节）
 const SERVICE_UNAVAILABLE = "服务暂时不可用，请稍后再试";
 

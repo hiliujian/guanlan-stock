@@ -66,6 +66,19 @@
       </view>
     </view>
 
+    <!-- 配图网格（最多 9 张，点击预览） -->
+    <view v-if="post.images && post.images.length" class="p-imgs">
+      <image
+        v-for="(img, i) in post.images"
+        :key="i"
+        class="p-img"
+        :class="{ single: post.images!.length === 1 }"
+        :src="img"
+        mode="aspectFill"
+        @click="preview(img)"
+      />
+    </view>
+
     <!-- 操作栏：点赞 / 回复 -->
     <view class="p-actions">
       <view :class="['p-act', post.likedByMe ? 'liked' : '']" @click="$emit('like', post.id)">
@@ -154,6 +167,12 @@ function sendReply() {
   if (!v) return;
   emit("reply", props.post.id, v);
   replyText.value = "";
+}
+
+function preview(current: string) {
+  const urls = (props.post.images || []).filter(Boolean);
+  if (!urls.length) return;
+  uni.previewImage({ current, urls });
 }
 </script>
 
@@ -298,6 +317,24 @@ function sendReply() {
   font-size: 23rpx;
   color: var(--text-2);
   font-style: italic;
+}
+
+/* ---------- 配图网格 ---------- */
+.p-imgs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10rpx;
+  margin-top: 14rpx;
+}
+.p-img {
+  width: 100%;
+  height: 200rpx;
+  border-radius: 12rpx;
+  background: var(--card-2);
+}
+.p-img.single {
+  height: 360rpx;
+  grid-column: 1 / 2;
 }
 
 /* ---------- 操作栏 ---------- */

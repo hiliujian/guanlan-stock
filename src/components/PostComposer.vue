@@ -62,6 +62,19 @@
       <input class="cp-in cp-span2" v-model.number="pf.winRate" type="digit" placeholder="胜率%(可选)" />
     </view>
 
+    <!-- 配图（所有类型通用）：上传前显示本地缩略图，可删除；空时仅显示添加按钮 -->
+    <view class="cp-imgs">
+      <view v-for="(p, i) in imagePaths" :key="i" class="cp-thumb">
+        <image class="cp-thumb-img" :src="p" mode="aspectFill" />
+        <view class="cp-thumb-x" @click="removeImage(i)">
+          <OutlineIcon type="close" :size="24" color="#fff" />
+        </view>
+      </view>
+      <view v-if="imagePaths.length < MAX_IMAGES" class="cp-thumb cp-add" @click="pickImages">
+        <OutlineIcon type="camera" :size="40" color="var(--text-2)" />
+      </view>
+    </view>
+
     <!-- 底部：字数 / 发布 -->
     <view class="cp-foot">
       <text class="cp-count">{{ charCount }}/500</text>
@@ -79,10 +92,11 @@ import OutlineIcon from "./OutlineIcon.vue";
 import type { HoldingCard, OperationCard, ProfitCard, Topic } from "@/api/community";
 import { useUser } from "@/store/user";
 import { openAuth } from "@/store/nav";
+import { uploadPostImage } from "@/api/auth";
 
 const emit = defineEmits<{
-  (e: "publish-text", content: string, topic?: Topic): void;
-  (e: "publish-card", card: HoldingCard | OperationCard | ProfitCard): void;
+  (e: "publish-text", content: string, topic?: Topic, images?: string[]): void;
+  (e: "publish-card", card: HoldingCard | OperationCard | ProfitCard, images?: string[]): void;
 }>();
 
 type Mode = "text" | "holding" | "operation" | "profit";
@@ -102,6 +116,40 @@ const h = reactive<HoldingCard>({ kind: "holding", stock: "", cost: 0, shares: 0
 const o = reactive<OperationCard>({ kind: "operation", stock: "", code: "", side: "buy", price: 0, shares: 0, note: "" });
 const pf = reactive<ProfitCard>({ kind: "profit", period: "", totalReturn: 0, realized: 0, unrealized: 0, winRate: undefined });
 
+// 配图：本地临时路径（用于预览），发布时上传换取公链；所有类型通用
+const imagePaths = ref<string[]>([]);
+const MAX_IMAGES = 9;
+function pickImages() {
+  uni.chooseImage({
+    count: MAX_IMAGES - imagePaths.value.length,
+    sizeType: ["compressed"],
+    success: (res) => {
+      for (const p of res.tempFilePaths) {
+        if (imagePaths.value.length >= MAX_IMAGES) break;
+        imagePaths.value.push(p);
+      }
+    },
+  });
+}
+function removeImage(i: number) {
+  imagePaths.value.splice(i, 1);
+}
+// 上传全部配图；任一失败返回 null（保留用户输入，不发布）
+async function uploadImages(): Promise<string[] | null> {
+  if (!imagePaths.value.length) return [];
+  const urls: string[] = [];
+  for (const p of imagePaths.value) {
+    const r = uploadPostImage(p);
+    const res = await r;
+    if (!res.url) {
+      uni.showToast({ title: res.error || "图片上传失败", icon: "none" });
+      return null;
+    }
+    urls.push(res.url);
+  }
+  return urls;
+}
+
 const charCount = computed(() => (mode.value === "text" ? text.value.length : 0));
 
 const canSend = computed(() => {
@@ -112,7 +160,7 @@ const canSend = computed(() => {
   return false;
 });
 
-function send() {
+async function send() {
   // 后端已收紧为「仅登录用户可发帖」：未登录先引导登录，避免 RLS 报错
   if (!useUser().loggedIn) {
     uni.showToast({ title: "请先登录后再发布", icon: "none" });
@@ -120,21 +168,28 @@ function send() {
     return;
   }
   if (!canSend.value) return;
+  // 先上传配图（失败则保留输入不发布）
+  const uploaded = await uploadImages();
+  if (uploaded === null) return;
   if (mode.value === "text") {
     const name = topicName.value.trim();
     const topic: Topic | undefined = name ? { type: topicType.value, name } : undefined;
-    emit("publish-text", text.value, topic);
+    emit("publish-text", text.value, topic, uploaded);
     text.value = "";
     topicName.value = "";
+    imagePaths.value = [];
   } else if (mode.value === "holding") {
-    emit("publish-card", { ...h, code: h.code || undefined });
+    emit("publish-card", { ...h, code: h.code || undefined }, uploaded);
     resetHolding();
+    imagePaths.value = [];
   } else if (mode.value === "operation") {
-    emit("publish-card", { ...o, code: o.code || undefined, note: o.note || undefined });
+    emit("publish-card", { ...o, code: o.code || undefined, note: o.note || undefined }, uploaded);
     resetOperation();
+    imagePaths.value = [];
   } else {
-    emit("publish-card", { ...pf, winRate: pf.winRate || undefined });
+    emit("publish-card", { ...pf, winRate: pf.winRate || undefined }, uploaded);
     resetProfit();
+    imagePaths.value = [];
   }
   // 发布后回到文字，符合"大多数动态是聊天"的使用习惯
   mode.value = "text";
@@ -301,6 +356,48 @@ function resetProfit() {
   align-items: center;
   justify-content: space-between;
   margin-top: 16rpx;
+}
+
+/* 配图托盘 */
+.cp-imgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+.cp-thumb {
+  position: relative;
+  width: 150rpx;
+  height: 150rpx;
+  border-radius: 14rpx;
+  overflow: hidden;
+  background: var(--card-2);
+  border: 2rpx solid var(--border);
+}
+.cp-thumb-img {
+  width: 100%;
+  height: 100%;
+}
+.cp-thumb-x {
+  position: absolute;
+  top: 4rpx;
+  right: 4rpx;
+  width: 40rpx;
+  height: 40rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+}
+.cp-thumb-x:active {
+  background: rgba(0, 0, 0, 0.7);
+}
+.cp-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx dashed var(--border);
 }
 .cp-count {
   font-size: 22rpx;
