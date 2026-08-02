@@ -45,6 +45,10 @@
           </view>
           <!-- 联想面板：随搜索框向下展开，与搜索框同一张卡片，不挤占下方 UI -->
           <view v-if="suggestOpen" class="suggest">
+            <view v-if="historyMode" class="sg-head">
+              <text class="sg-head-t">最近搜索</text>
+              <text class="sg-clear" @click.stop="clearHistory">清除</text>
+            </view>
             <view
               v-for="(h, i) in suggestions"
               :key="h.code + i"
@@ -56,7 +60,7 @@
                 <text class="sg-name">{{ h.name }}</text>
                 <text class="sg-code">{{ h.code }}</text>
               </view>
-              <text class="sg-tag">{{ mktLabel(h.code) }}</text>
+              <text class="sg-tag">{{ historyMode ? "历史" : mktLabel(h.code) }}</text>
             </view>
           </view>
           </view>
@@ -121,7 +125,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated, onDeactivated, onUnmounted, watch, type Component } from "vue";
+import { ref, computed, onMounted, onActivated, onDeactivated, onUnmounted, watch, defineExpose, type Component } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import PriceText from "@/components/PriceText.vue";
 import AnalysisCard from "@/components/AnalysisCard.vue";
@@ -198,6 +202,37 @@ let suggestTimer: any = null;
 
 // 联想面板是否展开（同一卡片向下展开，与搜索框融为一体）
 const suggestOpen = computed(() => showSuggest.value && suggestions.value.length > 0);
+
+// 最近搜索历史：本地存储、去重、上限 10、可清除；空输入聚焦时作为联想展示
+const HISTORY_KEY = "stock_analyzer_search_history";
+const history = ref<SearchHit[]>([]);
+let historyMode = false;
+function loadHistory() {
+  try {
+    history.value = uni.getStorageSync(HISTORY_KEY) || [];
+  } catch {
+    history.value = [];
+  }
+}
+function pushHistory(h: SearchHit) {
+  if (!h || !h.code) return;
+  const next = [h, ...history.value.filter((x) => x.code !== h.code)].slice(0, 10);
+  history.value = next;
+  try {
+    uni.setStorageSync(HISTORY_KEY, next);
+  } catch {
+    /* ignore */
+  }
+}
+function clearHistory() {
+  history.value = [];
+  historyMode = false;
+  try {
+    uni.removeStorageSync(HISTORY_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 // 由代码推断市场标签（仅用于展示，市场实际由 resolveSecid 规则识别）
 function mktLabel(code: string): string {
@@ -407,6 +442,7 @@ async function run(forceMarket?: Market, userInitiated = true) {
     // 优先用接口返回的名字；实时接口降级（push2 不可用）时名字为空，回退到
     // 联想选择/历史记录/代码，避免头部股票名变空白。
     name.value = b.name || chosen.value?.name || name.value || curCode.value;
+    pushHistory({ code: curCode.value, name: name.value });
     preClose.value = b.preClose;
     realtime.value = b.realtime;
     // 关联资讯：先做「多维严格关联 + 时效（最近3天）」过滤，所有 scope 统一校验相关性，
@@ -478,9 +514,13 @@ function onInput() {
   const kw = code.value.trim();
   if (suggestTimer) clearTimeout(suggestTimer);
   if (!kw) {
-    suggestions.value = [];
+    // 空输入：展示最近搜索历史
+    historyMode = history.value.length > 0;
+    suggestions.value = history.value;
+    showSuggest.value = historyMode;
     return;
   }
+  historyMode = false;
   // 本地池即时出，保证输入马上有提示列表（不被网络超时拖住）
   const local = localSuggest(kw);
   suggestions.value = local;
@@ -503,7 +543,13 @@ function onInput() {
   }, 300);
 }
 function onFocus() {
-  if (suggestions.value.length) showSuggest.value = true;
+  if (!code.value.trim() && history.value.length) {
+    historyMode = true;
+    suggestions.value = history.value;
+    showSuggest.value = true;
+  } else if (suggestions.value.length) {
+    showSuggest.value = true;
+  }
 }
 function onBlur() {
   // 延迟收起，保证点击建议能被先处理
@@ -512,8 +558,10 @@ function onBlur() {
 function chooseSuggestion(h: SearchHit) {
   chosen.value = h;
   code.value = h.code;
+  historyMode = false;
   showSuggest.value = false;
   suggestions.value = [];
+  pushHistory(h);
   run();
 }
 function clearInput() {
@@ -536,6 +584,7 @@ watch(
 );
 
 onMounted(() => {
+  loadHistory();
   // 仅当从「自选」页跳转过来（带 pendingCode）时才自动搜索；
   // 否则若本地有最近查看记录则恢复该股票，保证切回行情页不丢数据、冷启动也能恢复。
   if (navState.pendingCode) {
@@ -561,6 +610,9 @@ onDeactivated(() => {
 onUnmounted(() => {
   stopTimers();
 });
+
+// 暴露给页面级下拉刷新（index.vue onPullDownRefresh 路由到此）：全量刷新图表与资讯
+defineExpose({ refresh: () => refreshFull() });
 </script>
 
 <style scoped>
@@ -685,6 +737,28 @@ onUnmounted(() => {
   max-height: 540rpx;
   overflow-y: auto;
   padding: 12rpx;
+}
+/* 最近搜索头部：标题 + 清除，轻量不抢戏 */
+.sg-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 20rpx 14rpx;
+}
+.sg-head-t {
+  font-size: 22rpx;
+  color: var(--text-3);
+  font-weight: 600;
+  letter-spacing: 1rpx;
+}
+.sg-clear {
+  font-size: 22rpx;
+  color: var(--text-2);
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+}
+.sg-clear:active {
+  background: var(--card-2);
 }
 .sg-item {
   display: flex;

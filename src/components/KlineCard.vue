@@ -7,7 +7,7 @@
 // 不抢走用户对周期的控制权。
 import StockChart from "./StockChart.vue";
 import { PERIODS, PERIOD_ORDER, type PeriodKey } from "@/utils/period";
-import { computed } from "vue";
+import { computed, ref } from "vue";
 
 const props = defineProps<{
   period: PeriodKey;
@@ -24,6 +24,16 @@ const emit = defineEmits<{
 
 const periodOrder = PERIOD_ORDER;
 const periodMeta = PERIODS;
+
+// 指标开关：均线 MA / MACD 面板，默认均开启；切换即时反映到行情图（不重建整图、保留缩放）
+const showMA = ref(true);
+const showMacd = ref(true);
+function toggleMA() {
+  showMA.value = !showMA.value;
+}
+function toggleMacd() {
+  showMacd.value = !showMacd.value;
+}
 
 // 周期分段滑动指示条：宽度按段数均分，位移按激活下标平移（纯 CSS calc，响应式）
 const indStyle = computed(() => {
@@ -55,6 +65,30 @@ function pick(p: PeriodKey) {
     >
   </view>
 
+  <!-- 指标开关：均线 / MACD，跟随图表常驻 -->
+  <view class="ind-toggles">
+    <view
+      class="it"
+      :class="{ on: showMA }"
+      role="button"
+      tabindex="0"
+      :aria-pressed="showMA"
+      @click="toggleMA"
+      @keydown.enter.prevent="toggleMA"
+      >均线</view
+    >
+    <view
+      class="it"
+      :class="{ on: showMacd }"
+      role="button"
+      tabindex="0"
+      :aria-pressed="showMacd"
+      @click="toggleMacd"
+      @keydown.enter.prevent="toggleMacd"
+      >MACD</view
+    >
+  </view>
+
   <!-- 切换周期时仅图表区转圈，分段控件保持常驻 -->
   <view v-if="loading" class="chart-loading">
     <view class="cl-spin" />
@@ -65,9 +99,18 @@ function pick(p: PeriodKey) {
     :trends="trends"
     :pre-close="preClose"
     :height="height ?? 460"
+    :show-ma="showMA"
+    :show-macd="showMacd"
   />
   <view v-else-if="period === 'm'" class="hint">暂无数据</view>
-  <StockChart v-else mode="kline" :klines="klines" :height="height ?? 460" />
+  <StockChart
+    v-else
+    mode="kline"
+    :klines="klines"
+    :height="height ?? 460"
+    :show-ma="showMA"
+    :show-macd="showMacd"
+  />
 </template>
 
 <style scoped>
@@ -80,6 +123,37 @@ function pick(p: PeriodKey) {
   margin-bottom: 12rpx;
   background: var(--card-2);
   border-radius: 999rpx;
+}
+/* 指标开关：均线 / MACD 两枚药丸 toggle，与周期分段同卡片、图表上方 */
+.ind-toggles {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 10rpx;
+}
+.it {
+  flex: none;
+  min-height: 44px;
+  padding: 0 26rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
+  border-radius: 999rpx;
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease, transform 0.1s ease;
+}
+.it:active {
+  transform: scale(0.96);
+}
+.it.on {
+  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-up);
 }
 /* 滑动指示条：跟随激活段平移（位移见 indStyle） */
 .ps-ind {

@@ -1,5 +1,12 @@
 <template>
-  <scroll-view class="view-scroll" scroll-y @scroll="onScroll">
+  <scroll-view
+    class="view-scroll"
+    scroll-y
+    :refresher-enabled="true"
+    :refresher-triggered="refreshing"
+    @refresherrefresh="onRefresh"
+    @scroll="onScroll"
+  >
     <view class="wl">
       <BackgroundFX />
       <view class="wl-head anim-fade-up">
@@ -66,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch, onMounted, onActivated } from "vue";
+import { computed, reactive, ref, watch, onMounted, onActivated, onDeactivated, onUnmounted } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import { useWatchlist, removeWatch, type WatchItem } from "@/store/watchlist";
@@ -114,6 +121,44 @@ async function loadQuotes() {
   await Promise.allSettled(tasks);
 }
 
+// 下拉刷新：scroll-view refresher 触发，复用行情加载并收尾
+const refreshing = ref(false);
+async function onRefresh() {
+  refreshing.value = true;
+  try {
+    await loadQuotesSafe();
+  } finally {
+    refreshing.value = false;
+  }
+}
+
+// 自动刷新心跳：保持自选实时价「活着」（与行情页同口径），离开页面即停
+let loadingQuotes = false;
+let pollTimer: any = null;
+const POLL_MS = 15000;
+async function loadQuotesSafe() {
+  if (loadingQuotes) return; // 上一次还在飞，跳过本次，避免堆叠请求
+  loadingQuotes = true;
+  try {
+    await loadQuotes();
+  } finally {
+    loadingQuotes = false;
+  }
+}
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(() => {
+    if (needLogin.value || !list.value.length) return;
+    loadQuotesSafe();
+  }, POLL_MS);
+}
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
 // 市场标识：沪 / 深 / 港 / 北（中性灰色小标签，经典简洁）
 const MKT_PREFIX: Record<string, string> = { sh: "沪", sz: "深", bj: "北", hk: "港", auto: "" };
 function mktChar(it: WatchItem): string {
@@ -147,26 +192,36 @@ function pctCls(q: Snap): string {
   return "flat";
 }
 
-onMounted(loadQuotes);
-// keep-alive 下返回该页不会重新挂载；每次激活：未登录则自动跳转登录页，否则刷新自选实时行情
+onMounted(() => {
+  if (!needLogin.value) loadQuotesSafe();
+});
+// keep-alive 下返回该页不会重新挂载；每次激活：未登录则自动跳转登录页，否则刷新自选实时行情并启动心跳
 onActivated(() => {
   if (needLogin.value) {
     openAuth("login");
     return;
   }
-  loadQuotes();
+  loadQuotesSafe();
+  startPolling();
 });
-// 登录后：空态消失，立即拉取自选实时行情
+onDeactivated(stopPolling);
+onUnmounted(stopPolling);
+// 登录后：空态消失，立即拉取自选实时行情并启动心跳
 watch(
   () => userState.loggedIn,
   (li) => {
-    if (li) loadQuotes();
+    if (li) {
+      loadQuotesSafe();
+      startPolling();
+    } else {
+      stopPolling();
+    }
   }
 );
 // 列表增删后重新拉取（key 串变化即触发）
 watch(
   () => list.value.map(keyOf).join(","),
-  () => loadQuotes()
+  () => loadQuotesSafe()
 );
 
 // ===== 左滑删除（iOS 风格：果冻阻尼 + 弹簧回弹；滑到底自动删除，也可点红色按钮删除）=====

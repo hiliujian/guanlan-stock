@@ -39,14 +39,14 @@
       </view>
     </section>
 
-    <section class="kc-panel">
+    <section class="kc-panel" :class="{ 'kc-panel--last': !showMacd }">
       <div class="kc-panel__hd">
         <text class="kc-panel__tag">成交量</text>
       </div>
       <div ref="volEl" class="kc-canvas" :style="{ height: volH + 'px' }"></div>
     </section>
 
-    <section class="kc-panel kc-panel--last">
+    <section v-show="showMacd" class="kc-panel kc-panel--last">
       <div class="kc-panel__hd">
         <text class="kc-panel__tag">MACD</text>
       </div>
@@ -145,8 +145,12 @@ const props = withDefaults(
     /** 分时昨收，用于把每根 K 的 open 设为昨收，从而得到正确的涨跌着色 */
     preClose?: number;
     height?: number;
+    /** 是否显示均线 MA（价格面板叠加），默认开 */
+    showMA?: boolean;
+    /** 是否显示 MACD 面板（隐藏后时间轴自动移到成交量面板），默认开 */
+    showMacd?: boolean;
   }>(),
-  { height: 440 }
+  { height: 440, showMA: true, showMacd: true }
 );
 
 // 时间轴 / 十字光标日期格式化（接管 klinecharts 默认实现）：
@@ -177,10 +181,15 @@ function formatDate(_dtf: Intl.DateTimeFormat, timestamp: number, format: string
   return format.replace(/YYYY|MM|DD|HH|mm|ss/g, (k) => map[k]);
 }
 
-// 三块面板各自的高度：价格占主，成交量/MACD 各约两成
+// 三块面板各自的高度：价格占主，成交量/MACD 各约两成；隐藏 MACD 时其高度归零、
+// 量能面板自动顶上补足，保证总高 = props.height 不变形
 const priceH = computed(() => Math.max(170, Math.round(props.height * 0.56)));
-const volH = computed(() => Math.max(72, Math.round(props.height * 0.22)));
-const macdH = computed(() => Math.max(80, props.height - priceH.value - volH.value));
+const volH = computed(() =>
+  props.showMacd
+    ? Math.max(72, Math.round(props.height * 0.22))
+    : Math.max(72, props.height - priceH.value)
+);
+const macdH = computed(() => (props.showMacd ? Math.max(80, props.height - priceH.value - volH.value) : 0));
 
 const priceEl = ref<HTMLElement | null>(null);
 const volEl = ref<HTMLElement | null>(null);
@@ -204,7 +213,8 @@ type Kind = "price" | "vol" | "macd";
 function styleFor(kind: Kind) {
   const intraday = props.mode === "intraday";
   const hideCandle = kind !== "price";
-  const showXAxis = kind === "macd";
+  // 时间轴仅在最底面板显示：MACD 可见时落在 MACD 面板；隐藏后自动移到成交量面板
+  const showXAxis = kind === "macd" ? props.showMacd : kind === "vol" ? !props.showMacd : false;
   const gridColor = isDark.value ? "#1c2026" : "#eef1f5";
   const axisColor = isDark.value ? "#33383f" : "#d8d8d8";
   const tickColor = isDark.value ? "#8b929e" : "#8a8a8a";
@@ -371,8 +381,10 @@ function mountPanel(kind: Kind, node: HTMLElement): Chart | null {
     if (props.mode === "intraday") {
       c.createIndicator("AVP", true, { id: "candle_pane" });
     } else {
-      c.createIndicator("MA", true, { id: "candle_pane" });
-      c.overrideIndicator({ name: "MA", calcParams: [5, 10, 20, 60] });
+      if (props.showMA) {
+        c.createIndicator("MA", true, { id: "candle_pane" });
+        c.overrideIndicator({ name: "MA", calcParams: [5, 10, 20, 60] });
+      }
       const chip = computeChipFor();
       if (chip) {
         c.createIndicator("CYQ", true, { id: "candle_pane" });
@@ -410,10 +422,13 @@ function resetZoom() {
 
 function setup() {
   destroyAll();
-  if (!priceEl.value || !volEl.value || !macdEl.value) return;
+  if (!priceEl.value || !volEl.value) return;
   priceChart = mountPanel("price", priceEl.value);
   volChart = mountPanel("vol", volEl.value);
-  macdChart = mountPanel("macd", macdEl.value);
+  // MACD 关闭时不创建该面板（时间轴已自动移到成交量面板）
+  if (props.showMacd && macdEl.value) {
+    macdChart = mountPanel("macd", macdEl.value);
+  }
 }
 
 // 切换股票 / 周期刷新：重灌数据（指标自动重算），并刷新价格面板的筹码分布
@@ -476,7 +491,7 @@ onMounted(async () => {
     });
     if (priceEl.value) ro.observe(priceEl.value);
     if (volEl.value) ro.observe(volEl.value);
-    if (macdEl.value) ro.observe(macdEl.value);
+    if (macdEl.value && props.showMacd) ro.observe(macdEl.value);
   }
 });
 
@@ -489,6 +504,28 @@ watch(
 // 周期切换（日K ↔ 分时）需要更换蜡烛类型与指标 → 整图重建
 watch(
   () => props.mode,
+  () => setup()
+);
+
+// 指标开关：MA 动态增删（保留缩放态，不重建）；MACD 涉及面板结构与时间轴归属 → 重建整图
+watch(
+  () => props.showMA,
+  (on) => {
+    if (!priceChart) return;
+    try {
+      if (on) {
+        priceChart.createIndicator("MA", true, { id: "candle_pane" });
+        priceChart.overrideIndicator({ name: "MA", calcParams: [5, 10, 20, 60] });
+      } else {
+        priceChart.removeIndicator("candle_pane", "MA");
+      }
+    } catch (e) {
+      /* 指标尚未就绪时忽略 */
+    }
+  }
+);
+watch(
+  () => props.showMacd,
   () => setup()
 );
 

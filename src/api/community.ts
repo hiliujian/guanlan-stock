@@ -188,13 +188,20 @@ async function listRemote(): Promise<CommunityPost[]> {
   }));
 }
 
-/** 取当前用户点过赞的帖子 id 集合（服务端权威；未登录则为空集） */
+// 当前用户点赞集合的内存缓存：listRemote 每次加载都会用到，避免「每次列表刷新都多发一次
+// community_likes 查询」。uid 变化时（登录 / 登出）自动失效重拉；点赞切换后就地更新单条。
+let likedCache: { uid: string; ids: Set<string> } | null = null;
+
+/** 取当前用户点过赞的帖子 id 集合（服务端权威；未登录则为空集）。带会话内缓存。 */
 async function loadLikedFromServer(sb: any): Promise<Set<string>> {
   const { data: u } = await sb.auth.getUser();
   const uid = u.user?.id;
   if (!uid) return new Set();
+  if (likedCache && likedCache.uid === uid) return likedCache.ids;
   const { data } = await sb.from("community_likes").select("post_id").eq("user_id", uid);
-  return new Set((data || []).map((x: any) => x.post_id as string));
+  const ids = new Set<string>((data || []).map((x: any) => x.post_id as string));
+  likedCache = { uid, ids };
+  return ids;
 }
 
 async function createRemote(
@@ -240,6 +247,12 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
   if (error || !data) return null;
   const d = (data as any[])[0];
   if (!d) return null;
+  const liked = !!d.liked_by_me;
+  // 同步点赞缓存：就地更新单条，避免下次列表加载重复拉取 liked 集合
+  if (likedCache) {
+    if (liked) likedCache.ids.add(id);
+    else likedCache.ids.delete(id);
+  }
   // 点赞态以 RPC 返回的 liked_by_me 为准（服务端已写入 community_likes）
   return {
     id: d.id,
@@ -250,7 +263,7 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
     content: d.content ?? undefined,
     card: d.card ? toClientCard(d.card) : undefined,
     likes: d.likes ?? 0,
-    likedByMe: !!d.liked_by_me,
+    likedByMe: liked,
     replies: [],
   };
 }
@@ -261,7 +274,35 @@ async function addReplyRemote(id: string, content: string): Promise<CommunityPos
   await sb
     .from("community_replies")
     .insert({ post_id: id, author: getMyName(), content: content.trim() });
-  return listRemote().then((list) => list.find((p) => p.id === id) || null);
+  // 仅重查该帖（含最新回复数与点赞态），避免 listRemote 整表 + liked 集合二次拉取
+  const { data, error } = await sb
+    .from("community_posts")
+    .select(
+      "id, type, author, user_id, topic, content, card, likes, created_at, replies:community_replies(id, author, content, created_at)"
+    )
+    .eq("id", id)
+    .single();
+  if (error || !data) return null;
+  const d = data as any;
+  const liked = likedCache ? likedCache.ids.has(id) : false;
+  return {
+    id: d.id,
+    type: d.type,
+    author: d.author,
+    userId: d.user_id || null,
+    topic: d.topic || undefined,
+    createdAt: new Date(d.created_at).getTime(),
+    content: d.content ?? undefined,
+    card: d.card ? toClientCard(d.card) : undefined,
+    likes: d.likes ?? 0,
+    likedByMe: liked,
+    replies: (d.replies || []).map((x: any) => ({
+      id: x.id,
+      author: x.author,
+      content: x.content,
+      createdAt: new Date(x.created_at).getTime(),
+    })),
+  };
 }
 
 async function removeRemote(id: string): Promise<void> {

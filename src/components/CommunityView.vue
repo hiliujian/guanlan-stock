@@ -67,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated, watch } from "vue";
+import { ref, computed, onMounted, onActivated, watch, defineExpose } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import PostComposer from "./PostComposer.vue";
 import PostCard from "./PostCard.vue";
@@ -194,6 +194,9 @@ watch(
     if (li && !posts.value.length) load();
   }
 );
+
+// 暴露给页面级下拉刷新（index.vue onPullDownRefresh 路由到此）：重载社区帖子列表
+defineExpose({ refresh: load });
 </script>
 
 <style scoped>

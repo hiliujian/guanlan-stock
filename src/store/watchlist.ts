@@ -66,12 +66,25 @@ async function loadCloud(userId: string) {
   }
 }
 
+// 当前活跃的 Realtime channel（保活引用，避免多次 initWatchlist 堆叠多个订阅）
+let realtimeChannel: any = null;
+
 function subscribeRealtime(userId: string) {
   const sb = getSupabase();
   if (!sb) return;
+  // 先清掉旧 channel，避免重复 init 时堆叠多个订阅导致重复回调
+  if (realtimeChannel) {
+    try {
+      sb.removeChannel(realtimeChannel);
+    } catch {
+      /* ignore */
+    }
+    realtimeChannel = null;
+  }
   // 小程序端实时依赖 WebSocket，环境不支持时静默降级（手动刷新即可）
   try {
-    sb.channel("watchlists-changes")
+    realtimeChannel = sb
+      .channel("watchlists-changes")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "watchlists", filter: `user_id=eq.${userId}` },
@@ -80,6 +93,19 @@ function subscribeRealtime(userId: string) {
       .subscribe();
   } catch (e) {
     /* ignore */
+  }
+}
+
+/** 取消自选 Realtime 订阅（登出 / 切到本地模式 / 应用卸载时调用，防止 channel 泄漏） */
+export function unsubscribeWatchlistRealtime() {
+  const sb = getSupabase();
+  if (sb && realtimeChannel) {
+    try {
+      sb.removeChannel(realtimeChannel);
+    } catch {
+      /* ignore */
+    }
+    realtimeChannel = null;
   }
 }
 
@@ -94,6 +120,7 @@ export async function initWatchlist() {
     await loadCloud(userState.userId);
     subscribeRealtime(userState.userId);
   } else {
+    unsubscribeWatchlistRealtime();
     state.mode = "local";
     state.items = loadLocal();
   }

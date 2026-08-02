@@ -2,7 +2,7 @@
   <view class="app-shell">
     <transition name="tab-fade" mode="out-in">
       <keep-alive>
-        <component :is="currentComp" :key="current" @open-market="onOpenMarket" />
+        <component :is="currentComp" :key="current" ref="tabRef" @open-market="onOpenMarket" />
       </keep-alive>
     </transition>
 
@@ -14,6 +14,7 @@
 
 <script setup lang="ts">
 import { ref, computed, markRaw, onMounted, watch } from "vue";
+import { onPullDownRefresh } from "@dcloudio/uni-app";
 import MarketView from "@/views/MarketView.vue";
 import WatchlistView from "@/views/WatchlistView.vue";
 import CommunityView from "@/components/CommunityView.vue";
@@ -28,6 +29,8 @@ import { handleCallback } from "@/store/authFlow";
 const current = ref(0);
 const comps = markRaw([MarketView, WatchlistView, CommunityView, ProfileView]);
 const currentComp = computed(() => comps[current.value]);
+// 持有当前激活 tab 的组件实例，供页面级下拉刷新路由到对应 refresh 方法
+const tabRef = ref<any>(null);
 useUser(); // 初始化用户态（含登录态监听），无需持有返回值
 
 // 与 navTab 双向同步：其他页（如「我的」菜单）调用 goTab 时切换到对应 Tab
@@ -44,6 +47,20 @@ initWatchlist();
 onMounted(() => {
   // 处理邮件确认回调：若以确认链接打开应用，自动验证并进入已登录态
   handleCallback();
+});
+
+// 页面级下拉刷新（index 是注册 page，可触发 onPullDownRefresh）：
+// - 行情 tab(0)：路由到 MarketView.refresh()（全量刷新图表+资讯）
+// - 自选 tab(1)：自选用内部 scroll-view 的 refresher 自行处理，这里跳过避免双触发
+// - 社区 tab(2)：路由到 CommunityView.refresh()（重载帖子列表）
+// - 我的 tab(3)：无刷新目标，直接收尾
+onPullDownRefresh(async () => {
+  try {
+    if (current.value === 0 && tabRef.value?.refresh) await tabRef.value.refresh();
+    else if (current.value === 2 && tabRef.value?.refresh) await tabRef.value.refresh();
+  } finally {
+    uni.stopPullDownRefresh();
+  }
 });
 
 function onChange(i: number) {
