@@ -822,6 +822,16 @@ defineExpose({ refresh: () => refreshFull() });
   box-shadow: 0 4rpx 14rpx rgba(7, 193, 96, 0.28);
   transition: transform 0.12s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
+/* 搜索按钮：覆盖全局 .btn-primary 的药丸(999rpx)/88rpx，恢复长扁低位样式。
+   避免高按钮把整行搜索框撑高；min-height:0 抵消 UA 默认最小高度跨浏览器膨胀 */
+.btn-primary.go {
+  min-height: 0;
+  height: 60rpx;
+  line-height: 60rpx;
+  padding: 0 26rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+}
 /* 点击/按压态：轻微回弹 + 加深绿，给出明确反馈 */
 .go:active:not(:disabled) {
   transform: scale(0.93);

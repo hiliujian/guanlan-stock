@@ -133,6 +133,9 @@ uni-button {
   line-height: normal;
   color: inherit;
   -webkit-tap-highlight-color: transparent;
+  /* 抵消部分 WebView/iOS 给原生 <button> 施加的 UA 默认最小高度，
+     否则按钮会被悄悄撑高、跨浏览器"一致变高"；显式归零后 height 才在所有浏览器都生效 */
+  min-height: 0;
 }
 button::after,
 uni-button::after {

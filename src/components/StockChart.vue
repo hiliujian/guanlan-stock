@@ -8,7 +8,7 @@
       </div>
       <div ref="priceEl" class="kc-canvas" :style="{ height: priceH + 'px' }"></div>
       <!-- 缩放工具栏：滚轮/捏合之外的显式入口，触屏与无障碍兜底 -->
-      <view class="kc-zoom" role="group" aria-label="图表缩放">
+      <view v-show="zoomVisible" class="kc-zoom" role="group" aria-label="图表缩放">
         <view
           class="kc-zoom__btn"
           role="button"
@@ -337,7 +337,20 @@ function alignZoom(src: Chart) {
       if (Math.abs(cur - bs) > 0.01) c.setBarSpace(bs);
     }
   }
+  bumpZoom();
   syncing = false;
+}
+
+// 缩放工具栏：默认隐藏，仅在用户缩放（滚轮 / 捏合 / 点按 ±或重置）时短暂显现，
+// 停止操作 1.8s 后自动收起，避免长期遮挡图表视图。
+const zoomVisible = ref(false);
+let zoomHideTimer: ReturnType<typeof setTimeout> | null = null;
+function bumpZoom() {
+  zoomVisible.value = true;
+  if (zoomHideTimer) clearTimeout(zoomHideTimer);
+  zoomHideTimer = setTimeout(() => {
+    zoomVisible.value = false;
+  }, 1800);
 }
 function registerSync(c: Chart) {
   c.subscribeAction(ActionType.OnScroll, () => alignScroll(c));
@@ -410,11 +423,13 @@ function mountPanel(kind: Kind, node: HTMLElement): Chart | null {
 // 缩放工具栏（＋/－/重置）：触屏与无障碍兜底，PC 滚轮与双指捏合仍可用。
 // 仅在价格面板操作，经既有的 OnZoom 订阅自动联动量/MACD 面板。
 function zoomBy(step: number) {
+  bumpZoom();
   if (!priceChart || !priceEl.value) return;
   const rect = priceEl.value.getBoundingClientRect();
   priceChart.zoomAtCoordinate(step, { x: rect.width / 2, y: rect.height / 2 });
 }
 function resetZoom() {
+  bumpZoom();
   if (!priceChart) return;
   if (fitBarSpace.value != null) priceChart.setBarSpace(fitBarSpace.value);
   priceChart.scrollToRealTime();
@@ -575,14 +590,14 @@ onBeforeUnmount(() => {
    触屏与无障碍兜底，滚轮与双指捏合仍为主交互；z-index 高于 canvas。 */
 .kc-zoom {
   position: absolute;
-  top: 16rpx;
-  right: 16rpx;
+  top: 12rpx;
+  right: 12rpx;
   z-index: 5;
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
-  padding: 6rpx;
-  border-radius: 14rpx;
+  gap: 6rpx;
+  padding: 4rpx;
+  border-radius: 12rpx;
   background: var(--glass, rgba(255, 255, 255, 0.62));
   border: 1rpx solid var(--border);
   box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.12);
@@ -590,14 +605,14 @@ onBeforeUnmount(() => {
   -webkit-backdrop-filter: blur(8rpx);
 }
 .kc-zoom__btn {
-  width: 64rpx;
-  height: 64rpx;
-  min-width: 44px;
-  min-height: 44px;
+  width: 52rpx;
+  height: 52rpx;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 36rpx;
+  font-size: 28rpx;
   line-height: 1;
   color: var(--text);
   border-radius: 10rpx;
