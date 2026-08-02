@@ -31,9 +31,15 @@ const EDGE_FN = "guanlan-quote-proxy";
 async function requestViaSupabase(full: string): Promise<string> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase 未配置");
-  const { data, error } = await sb.functions.invoke(EDGE_FN, {
-    body: { url: full },
-  });
+  // ⚠️ 外层超时兜底：东方财富在 TLS 层封锁 Supabase 海外云 IP 时，functions.invoke
+  // 既不 resolve 也不 reject（信号/连接挂起），且 invoke 不吃 AbortSignal，单纯传
+  // signal 无效。故用 withTimeout 在外层用 Promise.race 强制 6s 超时抛错，让上层
+  // requestEmJson 在 H5 端快速回退 JSONP/直连，避免「已配置 Supabase 的部署（如
+  // Vercel）行情首请求卡死几十秒」这一生产级问题。
+  const { data, error } = await withTimeout(
+    sb.functions.invoke(EDGE_FN, { body: { url: full } }),
+    6000
+  );
   if (error) throw new Error(error.message || "行情代理请求失败");
   const text = typeof data === "string" ? data : JSON.stringify(data ?? null);
   if (looksLikeHtml(text)) throw new Error("行情代理返回非 JSON 响应");
@@ -87,16 +93,19 @@ function reliableProxies(full: string): string[] {
 // 客户端请求硬超时：单个取数请求超过该时长即中断，避免「分析中」卡死。
 const FETCH_TIMEOUT = 8000;
 
-// 竞速兜底：给任意 Promise 加一个「最迟 ms 毫秒」的硬上限，超时即返回 fallback，
-// 不 reject（避免单个慢源把整条 Promise.all 拖挂）。用于资金流等「非关键路径」数据，
-// 使其绝不会阻塞主行情链路超过阈值。
-function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
-  return new Promise<T>((resolve) => {
+// 竞速兜底：给任意 Promise 加一个「最迟 ms 毫秒」的硬上限。
+//   · 传 fallback：超时/失败均 resolve(fallback)（不 reject），用于资金流等「非关键
+//     路径」数据，绝不会阻塞主行情链路；
+//   · 不传 fallback：超时即 reject（让上层 catch 走降级通道），用于行情代理等对
+//     可用性敏感、需在超时后快速回退的路径。
+function withTimeout<T>(p: Promise<T>, ms: number, fallback?: T): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
     let done = false;
     const timer = setTimeout(() => {
       if (done) return;
       done = true;
-      resolve(fallback);
+      if (fallback !== undefined) resolve(fallback);
+      else reject(new Error("请求超时"));
     }, ms);
     p.then(
       (v) => {
@@ -105,11 +114,11 @@ function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
         clearTimeout(timer);
         resolve(v);
       },
-      () => {
+      (e) => {
         if (done) return;
         done = true;
         clearTimeout(timer);
-        resolve(fallback);
+        resolve(fallback !== undefined ? (fallback as T) : e);
       }
     );
   });
