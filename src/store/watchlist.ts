@@ -269,7 +269,3 @@ export async function removeWatch(code: string, market: string): Promise<void> {
 export function isWatched(code: string, market: string): boolean {
   return state.items.some((i) => i.code === code && i.market === market);
 }
-
-export function clearLocal() {
-  saveLocal([]);
-}

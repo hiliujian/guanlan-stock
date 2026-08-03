@@ -33,8 +33,6 @@ const state = reactive<UserState>({
   supabaseEnabled: isSupabaseConfigured,
 });
 
-let unsub: (() => void) | null = null;
-
 async function loadProfile(userId: string) {
   const sb = getSupabase();
   if (!sb) return;
@@ -64,7 +62,7 @@ export function useUser() {
     state.ready = true;
     state.supabaseEnabled = isSupabaseConfigured;
     if (isSupabaseConfigured) {
-      unsub = onAuthChange(async (user) => {
+      onAuthChange(async (user) => {
         if (user) {
           state.loggedIn = true;
           state.userId = user.id;
@@ -109,12 +107,6 @@ export async function syncSession(): Promise<boolean> {
     return true;
   }
   return false;
-}
-
-export function disposeUser() {
-  if (unsub) unsub();
-  unsub = null;
-  state.ready = false;
 }
 
 export { state as userState };

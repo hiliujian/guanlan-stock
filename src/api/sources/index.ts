@@ -15,16 +15,22 @@
 import type { PeriodKey, Kline } from "@/utils/period";
 import type { RawRealtime } from "./types";
 import { raceProviders, type Attempt } from "./types";
+import { withTimeout } from "@/api/transport";
 import {
   emRealtime,
   emKline,
   emTrend,
   emFlow,
   emSearch,
+  fetchEMBreadth,
+  fetchEMIndustry,
+  fetchEMIndustryBoards,
+  type IndexBreadth,
+  type IndustryBoard,
 } from "./eastmoney";
 import { txRealtime, txKline, txTrend, txSearch } from "./tencent";
 import { sinaRealtime, sinaKline, sinaTrend, sinaSearch } from "./sina";
-import { emNews, searchByKeyword } from "./news";
+import { searchByKeyword } from "./news";
 import { codeFromSecid } from "@/utils/period";
 import type { NewsItem } from "@/utils/newsSentiment";
 
@@ -174,8 +180,36 @@ export function getSearch(keyword: string) {
   return raceProviders(attempts, "搜索");
 }
 
-export { getActiveSource } from "./types";
+// 指数市场宽度（涨跌家数）：仅东财提供，超时/失败返回 null，由 analyze 降级为「暂无数据」。
+export function getIndexBreadth(secid: string): Promise<IndexBreadth | null> {
+  return withTimeout(fetchEMBreadth(secid).catch(() => null), 3000, null);
+}
+
+// 个股所属行业（f100）：仅东财提供，超时/失败返回 null，sector 维度自动缺省。
+export function getStockIndustry(secid: string): Promise<string | null> {
+  return withTimeout(fetchEMIndustry(secid).catch(() => null), 3000, null);
+}
+
+// 行业板块列表（长期缓存，整包只拉一次）：把行业名映射到板块指数 secid。
+let _boardCache: { t: number; data: IndustryBoard[] } | null = null;
+const BOARD_TTL = 60 * 60 * 1000;
+export function getIndustryBoards(): Promise<IndustryBoard[]> {
+  if (_boardCache && Date.now() - _boardCache.t < BOARD_TTL) {
+    return Promise.resolve(_boardCache.data);
+  }
+  return withTimeout(fetchEMIndustryBoards().catch(() => [] as IndustryBoard[]), 4000, [] as IndustryBoard[]).then(
+    (boards: IndustryBoard[]) => {
+      if (boards && boards.length) {
+        // 模块级缓存（非 TTL Map，避免与行情缓存混用）
+        (_boardCache as any) = { t: Date.now(), data: boards };
+      }
+      return boards || [];
+    }
+  );
+}
+
 export type { NewsItem } from "@/utils/newsSentiment";
+export type { IndexBreadth, IndustryBoard } from "./eastmoney";
 
 // 关联资讯：并行取「个股关联」与「全市场/行业」，合并去重并按时间倒序。
 // 仅东方财富一家稳定提供结构化资讯列表（腾讯/新浪无同等免费接口），

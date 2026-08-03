@@ -64,9 +64,14 @@
      <h2 style="margin:0 0 12px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">【观澜】您的验证码</h2>
      <p style="margin:0 0 12px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">您好，您正在使用「观澜」进行身份验证，本次验证码为：</p>
      <p style="font-size:32px;font-weight:700;letter-spacing:6px;color:#16a34a;margin:0 0 12px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">{{ .Token }}</p>
-     <p style="margin:0 0 12px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">验证码有效期 10 分钟，请勿转发或告知他人。</p>
+     <p style="margin:0 0 12px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">验证码有效期 5 分钟，请勿转发或告知他人。</p>
      <p style="margin:0;color:#888;font-size:13px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">若非本人操作，请忽略本邮件。</p>
      ```
+
+   - **步骤 D（有效期必须对齐 5 分钟）**：邮件文案已改为「5 分钟」，但**服务端实际有效期需单独设置**，否则用户拿到码后服务端仍可能在更长时间内放行，造成「邮件说 5 分钟、实际更久」的不一致。请在 Supabase 将邮箱验证码有效期设为 **300 秒（5 分钟）**：
+     - **Supabase 云控制台**：Auth → Providers → Email，找到「Email OTP 有效期 / OTP expiry」并设为 `300`（若无该字段，用下方环境变量方式）。
+     - **自托管 / 环境变量**：设置 `GOTRUE_MAILER_OTP_EXPIRY=300`（单位秒），重启 Auth 服务生效。
+     - 前端已按 60s 做重发冷却（`register.vue` 的 `startCountdown()`），与 5 分钟有效期组合即：发码后 60s 内不可重发、码本身 5 分钟内可验。
 
    - 校验：触发一次「注册发码」或「忘记密码发码」，邮箱应收到**纯数字验证码**邮件，
      主题为中文「【观澜】您的验证码」；前端填码即可通过 `verifyOtp` 验证。

@@ -14,6 +14,7 @@
   --card-2: rgba(20, 30, 50, 0.03);
   --primary: #07c160;
   --primary-dark: #06a454;
+  --primary-soft: rgba(7, 193, 96, 0.12);
   --up: #ff5b5b;
   --down: #1fd874;
   --text: #16202e;
@@ -52,6 +53,7 @@
   --card-2: rgba(255, 255, 255, 0.04);
   --primary: #07c160;
   --primary-dark: #06a454;
+  --primary-soft: rgba(7, 193, 96, 0.18);
   --up: #ff5b5b;
   --down: #1fd874;
   --text: #eaf0fb;
@@ -571,9 +573,13 @@ textarea {
   margin: -6rpx 0 14rpx 4rpx;
   word-break: break-all;
 }
-/* 主 CTA：在表单内占满宽度、内容居中、去除 uni 默认边框 */
+/* 主 CTA：在表单内占满宽度、内容居中、去除 uni 默认边框。
+   覆盖全局 .btn-primary 的 88rpx 药丸高度，压到 72rpx 更紧凑（登录/注册/重设三页共用） */
 .auth-submit {
   width: 100%;
+  height: 72rpx;
+  line-height: 72rpx;
+  font-size: 28rpx;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -13,8 +13,6 @@
 // 熔断机制：某数据源连续失败达到阈值即「熔断」一段时间，期间直接跳过，避免
 // 每次请求都白等 8s 超时；冷却结束后自动恢复探测，实现自愈。
 // =====================================================================
-import type { Kline, Trend, PeriodKey } from "@/utils/period";
-
 // ---- 归一化数据类型（各 provider 返回统一结构，便于上层无差别消费） ----
 export interface RawRealtime {
   name: string;
@@ -29,8 +27,6 @@ export interface RawRealtime {
   time: string;
 }
 
-export type RawKline = Kline;
-export type RawTrend = Trend;
 export type FlowMap = Record<string, number>;
 
 export interface SearchHit {
@@ -76,12 +72,6 @@ function isProviderDead(id: string): boolean {
   return false;
 }
 
-// 记录「当前接口最近一次由哪家数据源成功返回」，便于上层展示数据来源。
-const activeSource: Record<string, string> = {};
-export function getActiveSource(label: string): string | undefined {
-  return activeSource[label];
-}
-
 // ---- 并发首胜：同时发起所有数据源，谁先返回有效数据就用谁 ----
 // 与「顺序逐个尝试」相比，首胜能显著降低首选源变慢（而非挂掉）时的等待时间；
 // 落败的请求在后台自然结束，其成功/失败结果仍会被健康监测捕获，故健康状态可自愈。
@@ -121,7 +111,6 @@ export async function raceProviders<T>(
           }
           settled = true;
           markProviderOk(a.id);
-          activeSource[label] = a.id;
           resolve(r);
         })
         .catch((e) => {

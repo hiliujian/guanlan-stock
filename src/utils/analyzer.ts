@@ -241,7 +241,78 @@ function chip(klines: Kline[], winDays: number) {
     vals.push(+(sm[i] / smTotal * 100).toFixed(2));
     colors.push(p <= cur ? DOWN : UP);
   }
-  return { cats, vals, colors, avgCost, peakPrice, profitRatio, cur, minP, maxP };
+  // 成本分布分位数：累计成交量 5%/10%/25%/50%/75%/90%/95% 对应的价格位
+  // 用于 UI 展示「90% 筹码区间」——即 5%~95% 分位，比 minP/maxP（极端值）更有实战意义。
+  const percentiles: Record<string, number> = {};
+  const targets = [5, 10, 25, 50, 75, 90, 95];
+  let cumulative = 0;
+  let ti = 0;
+  for (let i = 0; i < B && ti < targets.length; i++) {
+    const prevC = cumulative;
+    cumulative += sm[i];
+    while (ti < targets.length && cumulative / smTotal * 100 >= targets[ti]) {
+      const t = targets[ti] / 100;
+      const pLo = prevC / smTotal;
+      const pHi = cumulative / smTotal;
+      const f = pHi !== pLo ? (t - pLo) / (pHi - pLo) : 0;
+      const p = minP + (i + f) * step;
+      percentiles[String(targets[ti])] = +p.toFixed(2);
+      ti++;
+    }
+  }
+  return { cats, vals, colors, avgCost, peakPrice, profitRatio, cur, minP, maxP, percentiles };
+}
+
+// ---------------- 今日盘中走势（A 股特有：涨停/跌停/炸板）----------------
+// A 股涨跌停是极强的短线信号：
+//   · 封涨停：多头极强，次日溢价概率高
+//   · 炸板（曾封涨停但打开）：多空分歧剧烈，短期波动风险大
+//   · 封跌停：空头极强，次日继续下跌概率高
+//   · 跌停开板：恐慌释放，可能迎来反弹
+//
+// 涨跌停阈值推断：通过历史 K 线最大涨跌幅推断所属板块（无股票代码时的可靠方案）
+//   · 主板（60xxxx/00xxxx）：±10%
+//   · 科创板（688xxx）/创业板（300xxx）：±20%
+//   · 北交所（8xxxxx）：±30%
+//   · ST 股票：±5%（无法仅凭涨跌幅精确识别，保守用 ±10% 兜底）
+function inferLimitPct(klines: Kline[]): number {
+  const lookback = Math.min(60, klines.length);
+  let maxAbsPct = 0;
+  for (let i = Math.max(1, klines.length - lookback + 1); i < klines.length; i++) {
+    const pre = klines[i - 1].close;
+    if (!pre) continue;
+    const pct = Math.abs((klines[i].close - pre) / pre);
+    if (pct > maxAbsPct) maxAbsPct = pct;
+  }
+  if (maxAbsPct >= 0.25) return 0.30; // 北交所
+  if (maxAbsPct >= 0.15) return 0.20; // 科创板/创业板
+  return 0.10; // 主板
+}
+
+function detectLimitMove(klines: Kline[]) {
+  const len = klines.length;
+  if (len < 2) {
+    return { pct: 0, isLimitUp: false, isLimitDown: false, isBrokenLimitUp: false, isBrokenLimitDown: false, limitPct: 0.10 };
+  }
+  const last = klines[len - 1];
+  const prev = klines[len - 2];
+  const preClose = prev.close;
+  if (!preClose) {
+    return { pct: 0, isLimitUp: false, isLimitDown: false, isBrokenLimitUp: false, isBrokenLimitDown: false, limitPct: 0.10 };
+  }
+  const pct = (last.close - preClose) / preClose;
+  const limitPct = inferLimitPct(klines);
+  // 涨跌停价（A 股按 preClose × (1±limitPct) 四舍五入到分）
+  const limitUpPrice = Math.round(preClose * (1 + limitPct) * 100) / 100;
+  const limitDownPrice = Math.round(preClose * (1 - limitPct) * 100) / 100;
+  // 封板判定：收盘价达到涨跌停价（允许 0.01 元误差，应对浮点精度）
+  const isLimitUp = Math.abs(last.close - limitUpPrice) < 0.011 && pct > 0;
+  const isLimitDown = Math.abs(last.close - limitDownPrice) < 0.011 && pct < 0;
+  // 炸板：最高价触及涨停价但收盘未封住（仅当涨跌幅 > 5% 时认定，避免普通波动误判）
+  const isBrokenLimitUp = !isLimitUp && last.high >= limitUpPrice - 0.011 && pct > 0.05;
+  // 跌停开板：最低价触及跌停价但收盘未封住
+  const isBrokenLimitDown = !isLimitDown && last.low <= limitDownPrice + 0.011 && pct < -0.05;
+  return { pct, isLimitUp, isLimitDown, isBrokenLimitUp, isBrokenLimitDown, limitPct };
 }
 
 // ---------------- 主分析 ----------------
@@ -259,6 +330,7 @@ export interface ChipResult {
   cur: number;
   minP: number;
   maxP: number;
+  percentiles: Record<string, number>; // 5/10/25/50/75/90/95 分位成本价
 }
 export interface AnalysisResult {
   price: number;
@@ -297,6 +369,7 @@ export interface AnalysisResult {
   kdjCross: "gold" | "dead" | null;
   kdjState: string;
   rNow: number;
+  rsiValid: boolean; // RSI 是否有真实数据（K 线不足时为 false，UI 应显示"暂无数据"）
   scoreReasons: { label: string; delta: number }[];
   stage: string;
   stageText: string;
@@ -323,6 +396,8 @@ export interface AnalysisResult {
   bollLower: (number | null)[];
   bollPctB: (number | null)[];
   bollBw: (number | null)[];
+  bollBwNow: number;       // 当前带宽值（近 20 日中位数归一化后 0~1 相对位置，简化展示用）
+  bollSqueeze: boolean;    // 带宽挤压：当前 < 近 120 日 15% 分位，预示即将变盘
   bias6: number;
   bias12: number;
   bias24: number;
@@ -332,6 +407,9 @@ export interface AnalysisResult {
   obvTrend: string;
   turnAvg: number;
   turnState: string;
+  // ---- 筹码分布 · 成本结构（CYQ，成交量加权近似）：新增到分析主链路，
+  //      之前仅 StockChart 图表叠加独立计算，评分/结论/风险完全没用到，严重遗漏 ----
+  chip: ChipResult | null;
   // ---- 突破/跌破 + 直白买卖信号（支撑产品卖点：何时买卖 / 支撑压力突破）----
   breakout: boolean; // 已有效突破压力（仅当压力来自明确 pivot 拐点）
   breakdown: boolean; // 已有效跌破支撑（仅当支撑来自明确 pivot 拐点）
@@ -350,6 +428,37 @@ export interface AnalysisResult {
   newsBear: number; // 偏空条目数
   newsCatalysts: string[]; // 命中利好关键词
   newsRisks: string[]; // 命中利空关键词
+  // ---- 大盘 · 市场环境（beta 感知：个股信号胜率随大盘环境显著变化）----
+  marketEnv: {
+    indexName: string; // 大盘名称（上证/深证/创业板指，按板块匹配）
+    indexTrend: string; // 大盘趋势文字（上涨趋势 / 震荡偏强 / 震荡 / 震荡偏弱 / 下跌趋势）
+    indexAdx: number; // 大盘 ADX（趋势强度）
+    alignScore: number; // 与大盘方向协同得分：同向+6， 中性0，反向-6
+    alignText: string; // "顺大盘上涨" / "逆势回调" 等自然语言描述
+    breadthScore: number; // 市场情绪（涨跌家数映射）±5
+    breadthText: string; // "市场情绪偏多" / "普跌环境" 等
+    mktVolText: string; // "大盘缩量" / "大盘放量" / "量能正常"
+    idxVolRatio: number; // 大盘量比（VMA5/VMA20）：<0.7 缩量，>1.3 放量
+    // 行业板块维度：让市场环境不止看宽基指数，还看个股所属行业 beta（如兆易创新→半导体）
+    sectorName?: string; // 行业名，如「半导体及元件」
+    sectorTrend?: string; // 行业趋势文字（同 indexTrend）
+    sectorAlignScore?: number; // 个股与行业方向协同得分：同向+4，反向-4，中性0
+    sectorAlignText?: string; // "顺行业上涨" / "逆行业回调" 等自然语言
+    // 仓位建议（由大盘环境 + 行业协同综合推导，服务于量化仓位调控）
+    positionAdvice: string; // "建议轻仓避险（≤20%）" / "可积极配置（60%–80%）" / "暂无数据" 等
+    positionPct: number; // 建议上限仓位百分比（0 = 暂无数据）
+    positionBasis: string; // 推导依据自然语言
+  };
+  // ---- 今日盘中走势（A 股特有：涨停/跌停/炸板，实时反映当日异动）----
+  intradayMove: {
+    pct: number; // 今日涨跌幅
+    isLimitUp: boolean; // 封涨停
+    isLimitDown: boolean; // 封跌停
+    isBrokenLimitUp: boolean; // 炸板（曾封涨停但打开）
+    isBrokenLimitDown: boolean; // 跌停开板
+    limitPct: number; // 涨跌停阈值（0.10/0.20/0.30）
+    label: string; // "今日封涨停" / "今日炸板" / ""（无特殊走势）
+  };
 }
 
 // 主力净流入（近 N 个交易日累计）：与图表周期解耦。
@@ -366,13 +475,31 @@ function flowSumByDays(flowMap: Record<string, number>, n: number): FlowSummary 
   return { sum: s / 1e8, has: dates.length > 0 };
 }
 
+// 大盘 · 市场环境上下文：由调用方（行情页 / 报告页）获取相关指数日 K 后传入，
+// 未提供时 analyze 会返回「暂无数据」占位对象（marketEnv 永不为 null），不影响个股分析本身。
+export interface MarketContext {
+  indexKlines: Kline[];    // 匹配该股票所在板块的大盘指数日 K（上证/深证/创业板）
+  indexName: string;       // 大盘名称，例如"上证指数"、"创业板指"
+  upCount?: number;        // 当日上涨家数（市场宽度）
+  downCount?: number;      // 当日下跌家数
+  limitUp?: number;        // 当日涨停数
+  limitDown?: number;      // 当日跌停数
+  // 个股所属行业板块上下文：让市场环境分析纳入行业 beta（如兆易创新→半导体）
+  sector?: {
+    name: string;       // 行业名
+    secid: string;      // 行业板块指数 secid
+    klines: Kline[];    // 行业指数日 K
+  } | null;
+}
+
 export function analyze(
   klines: Kline[],
   flowMap: Record<string, number> = {},
   news?: NewsSignal | null,
   // 换手率按「日频」口径计算，与图表周期解耦：周/月 K 视图下若仍用当期 K 线平均，
   // 会拿周线/月线的区间换手率去平均，数字严重失真。传入日 K 序列即可恒为「近 20 日日均」。
-  dailyKlines?: Kline[]
+  dailyKlines?: Kline[],
+  market?: MarketContext | null
 ): AnalysisResult {
   // 边界条件：样本过少时任何指标都无意义，直接抛清晰错误交由上层提示，
   // 避免后续 klines[len-1] 等越界访问产生 NaN/崩溃（此前空 K 线会静默崩在 Math.min 上）。
@@ -446,6 +573,33 @@ export function analyze(
   // 背离需价格与 OBV 反向，这里仅表达 OBV 相对自身均线的强弱）。
   const obvTrend = obvUp ? "量能配合(OBV上行)" : "量能走弱(OBV下行)";
 
+  // 筹码分布 · 成本结构（CYQ）：用近 120 交易日的成交量做 Volume-Profile 近似，
+  // 得到平均成本、密集峰、获利盘比例三个核心维度，是支撑/压力和主力行为的重要参考。
+  // 样本不足时返回 null，由 UI 显示「暂无数据」。
+  const chipR = klines.length >= 20 ? chip(klines, 120) : null;
+
+  // 布林带宽挤压（Squeeze）检测：带宽收缩到近 120 日的 15% 分位以下，
+  // 是布林带最有价值的信号之一——波动率压缩到极限后必然扩张，预示即将变盘。
+  let bollSqueeze = false;
+  let bollBwNow = 0;
+  {
+    const bw = bo.bandwidth;
+    const lo = Math.max(0, bw.length - 120);
+    const vals: number[] = [];
+    for (let i = lo; i < bw.length; i++) {
+      const v = bw[i];
+      if (typeof v === "number" && isFinite(v)) vals.push(v);
+    }
+    if (vals.length >= 20) {
+      const sorted = vals.slice().sort((a, b) => a - b);
+      const p15 = sorted[Math.max(0, Math.floor(sorted.length * 0.15))];
+      const p50 = sorted[Math.floor(sorted.length * 0.5)];
+      const last = vals[vals.length - 1];
+      bollBwNow = p50 ? last / p50 : 1; // 相对中值位置：<0.6 偏窄, >1.6 偏宽
+      bollSqueeze = last <= p15; // 处于近 120 日最窄 15%
+    }
+  }
+
   // ADX 趋势强度分级（业界通用阈值）
   const adxNow = adx[len - 1];
   const pdiNow = pDI[len - 1];
@@ -487,10 +641,13 @@ export function analyze(
       trend = "shake"; trendText = "震荡整理"; strength = "中";
     }
   } else if (pdiNow > mdiNow) {
-    if (adxNow >= 40) { trend = "up"; trendText = "上涨趋势"; strength = "强"; }
+    // ADX≥25 即为有效趋势（Wilder 标准），≥40 为强趋势。
+    // 原 40 阈值过高，导致 A 股大量 25-40 区间的真实趋势被判为「震荡偏强」，
+    // 评分少 10 分（+8 vs +18），系统性低估趋势动能。
+    if (adxNow >= 25) { trend = "up"; trendText = "上涨趋势"; strength = adxNow >= 40 ? "强" : "中"; }
     else { trend = "shake_up"; trendText = "震荡偏强"; strength = "偏强"; }
   } else {
-    if (adxNow >= 40) { trend = "down"; trendText = "下跌趋势"; strength = "弱"; }
+    if (adxNow >= 25) { trend = "down"; trendText = "下跌趋势"; strength = adxNow >= 40 ? "弱" : "中"; }
     else { trend = "shake_down"; trendText = "震荡偏弱"; strength = "偏弱"; }
   }
 
@@ -508,8 +665,11 @@ export function analyze(
   const topZone = pv120.highs.length ? Math.max(...pv120.highs) : resistance;
   const distSup = (price - support) / price;
   const distRes = (resistance - price) / price;
+  // nearTop 阈值 7%（原 4%）：A 股强势股常沿 5 日线运行，距高点 2-3% 是正常状态，
+  // 4% 阈值导致主升浪中 reduce 恒为 true，过早提示减仓错过后续涨幅。放宽至 7%
+  // 仅在真正接近阶段顶部时才预警。
   const nearBottom = price <= bottomZone * 1.05;
-  const nearTop = price >= topZone * 0.96;
+  const nearTop = price >= topZone * 0.93;
   const nearSup = distSup < 0.05;
   const nearRes = distRes < 0.05;
 
@@ -535,7 +695,11 @@ export function analyze(
   if (jLast > 100 || kLast > 80) kdjState = "超买";
   else if (jLast < 0 || kLast < 20) kdjState = "超卖";
 
-  const rNow = r12[len - 1] as number;
+  // rNow 兜底：若 K 线长度不足以计算 RSI(12)，r12[len-1] 为 null。
+  // 用 50 (中性) 兜底，避免后续 toFixed / 数值比较报错；rsiValid 标记让 UI 显示"暂无数据"。
+  const rNowRaw = r12[len - 1];
+  const rsiValid = typeof rNowRaw === "number" && isFinite(rNowRaw);
+  const rNow = rsiValid ? (rNowRaw as number) : 50;
 
   let stage: string;
   let stageText: string;
@@ -581,26 +745,103 @@ export function analyze(
     trend === "up" ? "多头趋势" : trend === "shake_up" ? "震荡偏强" : trend === "shake_down" ? "震荡偏弱" : trend === "down" ? "空头趋势" : "横向整理",
     trendDelta
   );
-  // 位置因子：改用「价格相对 20 周期均线的偏离」做均值回归倾斜，
-  // 取代旧逻辑用 120 日极点（nearTop/nearBottom）——后者会让创新高的强势股恒为
-  // nearTop 而被固定扣分，对趋势跟随不公平。偏离 >15% 视为超买回撤风险（轻微扣），
-  // <-15% 视为超卖反弹机会（轻微加），否则中性。
+  // 位置因子：「价格相对 20 周期均线的偏离」做均值回归倾斜。
+  // A 股主板有 ±10% 涨跌停（科创板 ±20%），15% 偏离在主板永远达不到，
+  // 改为 8% 触发：偏离 >8% 视为超买回撤风险（轻微扣），<-8% 视为超卖反弹机会（轻微加）。
   const distMa20 = ma20_now ? (price - ma20_now) / ma20_now : 0;
-  const posDelta = distMa20 > 0.15 ? -6 : distMa20 < -0.15 ? 6 : 0;
+  const posDelta = distMa20 > 0.08 ? -6 : distMa20 < -0.08 ? 6 : 0;
   score += posDelta;
   addReason(
-    distMa20 > 0.15 ? "偏离均线偏高" : distMa20 < -0.15 ? "偏离均线偏低" : "均线附近",
+    distMa20 > 0.08 ? "偏离均线偏高" : distMa20 < -0.08 ? "偏离均线偏低" : "均线附近",
     posDelta
   );
-  const flowDelta = f5.sum > 0 ? 10 : f5.has && f5.sum < 0 ? -10 : 0;
+  // 资金流：从二元改进为分档——避免 0.01 亿与 50 亿同得 10 分。
+  // 按 A 股主力净流入量级分 4 档（中小板到大盘股的日常成交规模覆盖）。
+  let flowDelta = 0;
+  let flowLabel = "资金无数据";
+  if (f5.has) {
+    const s = f5.sum;
+    if (s > 5) { flowDelta = 12; flowLabel = "主力大幅净流入"; }
+    else if (s > 0.5) { flowDelta = 8; flowLabel = "主力净流入"; }
+    else if (s > 0) { flowDelta = 4; flowLabel = "主力微量流入"; }
+    else if (s > -0.5) { flowDelta = -4; flowLabel = "主力微量流出"; }
+    else if (s > -5) { flowDelta = -8; flowLabel = "主力净流出"; }
+    else { flowDelta = -12; flowLabel = "主力大幅净流出"; }
+  }
   score += flowDelta;
-  addReason(f5.has ? (f5.sum > 0 ? "主力净流入" : "主力净流出") : "资金无数据", flowDelta);
-  const rsiDelta = rNow < 30 ? 8 : rNow >= 30 && rNow <= 55 ? 5 : rNow > 70 && rNow <= 80 ? -8 : rNow > 80 ? -15 : 0;
+  addReason(flowLabel, flowDelta);
+  // RSI：50 为多空平衡。原 30-55 给 +5 (含 30-50 偏弱区间) 过于乐观。
+  // 拆成 4 档：<35 超卖反弹 +6, 35-50 中性偏弱 +2, 50-70 中性 0, 70-80 偏高 -6, >80 严重超买 -14。
+  const rsiDelta = rNow < 35 ? 6 : rNow < 50 ? 2 : rNow <= 70 ? 0 : rNow <= 80 ? -6 : -14;
   score += rsiDelta;
-  addReason(rNow > 80 ? "RSI超买" : rNow < 30 ? "RSI超卖" : rNow > 70 ? "RSI偏高" : "RSI中性", rsiDelta);
-  const macdDelta = macdCross === "gold" ? 6 : macdCross === "dead" ? -6 : 0;
+  addReason(rNow > 80 ? "RSI超买" : rNow > 70 ? "RSI偏高" : rNow < 35 ? "RSI超卖" : rNow < 50 ? "RSI偏弱" : "RSI中性", rsiDelta);
+  // MACD：除金叉/死叉（近期动量转折）外，加上 DIF 与 DEA 的静态状态（柱状图正负），
+  // 避免一只强势股 MACD 红柱持续放大，只因金叉发生在 9 天前就得 0 分。
+  const dif = m.dif[len - 1] as number;
+  const dea = m.dea[len - 1] as number;
+  const macdBar = dif - dea; // 柱状图值（注意：原始 MACD 定义是 (dif-dea)×2，这里符号判断即可）
+  let macdDelta = 0;
+  let macdReasonLabel = "MACD持平";
+  if (macdCross === "gold") { macdDelta = 6; macdReasonLabel = "MACD金叉"; }
+  else if (macdCross === "dead") { macdDelta = -6; macdReasonLabel = "MACD死叉"; }
+  else if (dif > dea && macdBar > 0) { macdDelta = 3; macdReasonLabel = "MACD红柱放大"; }
+  else if (dif > dea) { macdDelta = 2; macdReasonLabel = "MACD多头排列"; }
+  else if (dif < dea && macdBar < 0) { macdDelta = -3; macdReasonLabel = "MACD绿柱放大"; }
+  else if (dif < dea) { macdDelta = -2; macdReasonLabel = "MACD空头排列"; }
   score += macdDelta;
-  addReason(macdCross === "gold" ? "MACD金叉" : macdCross === "dead" ? "MACD死叉" : "MACD持平", macdDelta);
+  addReason(macdReasonLabel, macdDelta);
+
+  // ---------------- 乖离率 BIAS 评分（均值回归因子：价格偏离均线过远必然回归） ----------------
+  // A 股有涨跌停限制，偏离度阈值与成熟市场不同；按三周期分档：
+  //   · BIAS(12)  > 12% → 短期超买回撤压力（扣 3）
+  //   · BIAS(12)  < -12% → 短期超卖反弹机会（加 3）
+  //   · BIAS(24)  > 20% → 中期超买，主升浪末端风险（扣 5）
+  //   · BIAS(24)  < -20% → 中期超卖，恐慌见底信号（加 5）
+  {
+    let biasDelta = 0;
+    if (bias24 > 20) biasDelta = -5;
+    else if (bias24 < -20) biasDelta = 5;
+    else if (bias12 > 12) biasDelta = -3;
+    else if (bias12 < -12) biasDelta = 3;
+    const biasLabel =
+      bias24 > 20 ? "BIAS(24)超买" :
+      bias24 < -20 ? "BIAS(24)超卖" :
+      bias12 > 12 ? "BIAS(12)超买" :
+      bias12 < -12 ? "BIAS(12)超卖" : "乖离正常";
+    score += biasDelta;
+    addReason(biasLabel, biasDelta);
+  }
+
+  // ---------------- 筹码结构（CYQ）评分：成本分布是 A 股主力行为与支撑压力的核心参考 ----------------
+  // 三大独立维度叠加，每项上限 ±5：
+  //   · 获利盘：>85% 多数人浮盈易获利回吐（扣 5）；<20% 割肉盘出清抛压轻（加 5）
+  //   · 相对密集峰：现价低于密集峰 >8% → 下方是成本密集区强支撑（加 3）；
+  //                 现价高于密集峰 >8% → 上方是套牢密集区强压力（扣 3）；
+  //   · 相对成本重心：高于成本重心（+8% 以上）扣 2；低于（-8% 以上）加 2
+  if (chipR) {
+    let chipDelta = 0;
+    const chipLabels: string[] = [];
+    const pr = chipR.profitRatio;
+    if (pr > 0.85) { chipDelta -= 5; chipLabels.push("获利盘过高"); }
+    else if (pr < 0.20) { chipDelta += 5; chipLabels.push("获利盘稀少"); }
+    const distPeak = chipR.peakPrice ? (price - chipR.peakPrice) / chipR.peakPrice : 0;
+    if (distPeak < -0.08) { chipDelta += 3; chipLabels.push("密集峰强支撑"); }
+    else if (distPeak > 0.08) { chipDelta -= 3; chipLabels.push("密集峰强压力"); }
+    const distAvg = chipR.avgCost ? (price - chipR.avgCost) / chipR.avgCost : 0;
+    if (distAvg < -0.08) { chipDelta += 2; chipLabels.push("低于成本重心"); }
+    else if (distAvg > 0.08) { chipDelta -= 2; chipLabels.push("高于成本重心"); }
+    score += chipDelta;
+    if (chipDelta !== 0) addReason(chipLabels.join("+") || "筹码结构中性", chipDelta);
+  }
+
+  // ---------------- 布林带宽挤压（Squeeze）：收缩极限后必扩张，提示变盘风险 ----------------
+  // 挤压本身无方向性（既可能向上变盘也可能向下），不作为多空评分的加减项，
+  // 但它是非常有价值的"即将波动"信号，直接加入 risks 和阶段描述。
+  // 带宽极度扩张（bollBwNow > 2.2）意味着近期波动已经剧烈放大，后续收敛概率高，扣 2 分。
+  if (bollBwNow > 2.2) {
+    score -= 2;
+    addReason("布林带宽极度扩张", -2);
+  }
   score = Math.max(5, Math.min(95, Math.round(score)));
 
   // ---------------- 资讯情绪因子（协同参与综合评分） ----------------
@@ -638,8 +879,10 @@ export function analyze(
 
   const watch = !(nearTop && rNow > 75) && trend !== "down";
   const build = (nearBottom || (trend === "up" && price <= ma20[len - 1]! * 1.02)) && rNow < 70 && !nearTop;
-  const add = trend === "up" && Math.abs(price - ma20[len - 1]!) / ma20[len - 1]! < 0.03 && f5.sum > 0 && rNow < 75;
   const reduce = nearTop || rNow > 78 || (ma60Last != null && price > ma60Last * 1.5 && f10.sum < 0);
+  // add 必须排除 reduce 条件（nearTop / RSI超买 / 远离MA60+资金流出），
+  // 否则「可加仓」与「建议减仓」同时亮起，给用户矛盾信号。
+  const add = !reduce && trend === "up" && Math.abs(price - ma20[len - 1]!) / ma20[len - 1]! < 0.03 && f5.sum > 0 && rNow < 75;
 
   // 买入区间仅在价格接近支撑（或距支撑 8% 内）时有意义；远离支撑的上涨趋势中
   // 给出围绕支撑的买点会误导，故置 NaN，由 UI 显示「—」。
@@ -660,6 +903,15 @@ export function analyze(
   if (deepDd) risks.push(`近 120 日最大回撤达 ${(mdd * 100).toFixed(2)}%，历史持股体验波动剧烈。`);
   // 资讯面风险：把量化出的利空关键词作为消息面风险提示（最多取 2 条，避免淹没技术风险）
   for (const r of newsRisks.slice(0, 2)) risks.push("资讯面：" + r);
+  // 筹码结构风险：获利盘过高 → 获利回吐压力；现价远高于密集峰 → 套牢盘密集抛压
+  if (chipR) {
+    if (chipR.profitRatio > 0.9) risks.push(`筹码获利盘高达 ${(chipR.profitRatio * 100).toFixed(0)}%，浮盈盘集中易引发获利回吐。`);
+    if (chipR.peakPrice && price > chipR.peakPrice * 1.1) risks.push(`现价已远离筹码密集峰（${chipR.peakPrice.toFixed(2)}），上方套牢盘抛压逐步显现。`);
+  }
+  // 中期乖离率超买：BIAS24 > 20% 已经是主升浪末端、非理性追涨区间，属于高风险信号
+  if (bias24 > 20) risks.push(`中期乖离率 BIAS(24) 达 ${bias24.toFixed(2)}%，价格已严重偏离中长期均线，追高风险极大。`);
+  // 布林带挤压：波动率压缩到极限，「即将变盘」本身是独立的风险（方向不明朗）
+  if (bollSqueeze) risks.push("布林带进入极度收敛区间，波动率将向中枢回归，近期可能出现方向性选择，注意变盘风险。");
   if (reduce && risks.length === 0) risks.push("综合指标偏谨慎，建议以观望为主。");
   if (risks.length === 0) risks.push("暂无显著风险信号，但仍需关注量能与大盘环境。");
 
@@ -686,6 +938,12 @@ export function analyze(
   } else {
     banner = "📈 价格站上短期均线，处于偏强运行阶段。";
   }
+  // 布林带挤压（收敛）：波动率压缩到近 120 日 15% 分位以下，是独立的「即将变盘」信号，
+  // 优先级高于常规趋势描述，直接覆盖 banner（若当前不是更高优先级的 bad）。
+  if (bollSqueeze && bannerCls !== "bad") {
+    banner = "⚡ 布林带极度收敛，近期将选择方向，关注量能配合再决定加减仓。";
+    bannerCls = "warn";
+  }
   // 资讯偏空（情绪分 ≤ -30）且当前横幅尚未标红时，以警示色提示消息面风险，
   // 让「重大利空新闻」能直接反映在顶部横幅，与技术风险形成合力提醒。
   if (news && news.score <= -30 && bannerCls !== "bad") {
@@ -696,10 +954,13 @@ export function analyze(
   // ---------------- 突破 / 跌破 判定 ----------------
   // 仅当支撑/压力来自明确的 pivot 拐点（非近60日极值兜底）才判定，
   // 避免创阶段新高/新低时把"极值"误判为被突破/跌破。
+  // 量能确认：A 股假突破/假跌破频发，无量突破可靠性极低。
+  //   · 突破要求 VMA5/VMA20 > 1.0（近期放量，确认资金真实参与）
+  //   · 跌破要求 VMA5/VMA20 > 0.9（至少接近均量，排除无量假跌破）
   const supportFromPivot = below.length > 0;
   const resistanceFromPivot = above.length > 0;
-  const breakdown = supportFromPivot && price < support * 0.985; // 低于支撑约1.5% → 有效破位
-  const breakout = resistanceFromPivot && price > resistance * 1.015; // 高于压力约1.5% → 有效突破
+  const breakdown = supportFromPivot && price < support * 0.985 && volRatio > 0.9;
+  const breakout = resistanceFromPivot && price > resistance * 1.015 && volRatio > 1.0;
 
   // 走势预测（基于当前位置 + 趋势 + 量能的形态判断，非确定性预测）
   let sigType = "区间震荡";
@@ -738,12 +999,12 @@ export function analyze(
       reason: `价格接近压力 ${resistance.toFixed(2)}，且出现${rNow > 72 ? "RSI超买" : macdCross === "dead" ? "MACD死叉" : "资金净流出"}等滞涨信号`,
       confirm: "若放量强势突破压力则转强可持有；否则易遇阻回落，应减仓",
     };
-  } else if (nearSup && (rNow < 35 || macdCross === "gold" || build || (f5.has && f5.sum > 0))) {
+  } else if (nearSup && (rNow < 40 || macdCross === "gold" || build || (f5.has && f5.sum > 0))) {
     signal = {
       level: "buy",
       label: "买点",
       text: "临近支撑且出现企稳信号，可逢低关注",
-      reason: `价格接近支撑 ${support.toFixed(2)}，且出现${rNow < 35 ? "RSI超卖" : macdCross === "gold" ? "MACD金叉" : "资金净流入"}等企稳信号`,
+      reason: `价格接近支撑 ${support.toFixed(2)}，且出现${rNow < 40 ? "RSI超卖" : macdCross === "gold" ? "MACD金叉" : "资金净流入"}等企稳信号`,
       confirm: "若放量站上支撑则确认止跌，可在买入区间内建仓；跌破则转弱观望",
     };
   } else if (trend === "up" && add) {
@@ -777,6 +1038,267 @@ export function analyze(
       text: "多空僵持，等待方向明朗",
       reason: "区间震荡，支撑与压力均未有效突破",
       confirm: "放量突破压力或跌破支撑后，再顺势而为",
+    };
+  }
+
+  // ---------------- 今日盘中走势（A 股特有：涨停/跌停/炸板实时反映当日异动）----------------
+  // 涨跌停是 A 股最强的短线方向信号：封涨停=多头极强、封跌停=空头极强、
+  // 炸板=多空分歧剧烈、跌停开板=恐慌释放。这些当日异动应直接覆盖短线操作建议。
+  const intraday = detectLimitMove(klines);
+  let moveLabel = "";
+  if (intraday.isLimitUp) moveLabel = "今日封涨停";
+  else if (intraday.isBrokenLimitUp) moveLabel = "今日炸板";
+  else if (intraday.isLimitDown) moveLabel = "今日封跌停";
+  else if (intraday.isBrokenLimitDown) moveLabel = "今日跌停开板";
+
+  // 涨跌停对综合评分的影响（短线极强的方向信号）：
+  //   · 封涨停：多头极强，次日溢价概率高 → +10
+  //   · 炸板：多空分歧剧烈，短期波动风险大 → -8
+  //   · 封跌停：空头极强，次日继续下跌概率高 → -10
+  //   · 跌停开板：恐慌释放，可能迎来反弹 → +4
+  let intradayDelta = 0;
+  let intradayReasonLabel = "";
+  if (intraday.isLimitUp) { intradayDelta = 10; intradayReasonLabel = "封涨停（多头极强）"; }
+  else if (intraday.isBrokenLimitUp) { intradayDelta = -8; intradayReasonLabel = "炸板（多空分歧）"; }
+  else if (intraday.isLimitDown) { intradayDelta = -10; intradayReasonLabel = "封跌停（空头极强）"; }
+  else if (intraday.isBrokenLimitDown) { intradayDelta = 4; intradayReasonLabel = "跌停开板（恐慌释放）"; }
+  if (intradayDelta !== 0) {
+    score = Math.max(5, Math.min(95, score + intradayDelta));
+    addReason(intradayReasonLabel, intradayDelta);
+  }
+
+  // 涨跌停信号覆盖：极端盘中走势直接决定短线操作建议
+  if (intraday.isLimitUp) {
+    signal = {
+      level: "hold",
+      label: "持有",
+      text: "今日封涨停，多头情绪极强，已持有者持有为主",
+      reason: `收盘封涨停（+${(intraday.pct * 100).toFixed(2)}%），买盘远超卖盘`,
+      confirm: "次日高开不破今日收盘价则强势延续；低开破板则及时止盈",
+    };
+  } else if (intraday.isLimitDown) {
+    signal = {
+      level: "sell",
+      label: "卖点",
+      text: "今日封跌停，空头情绪极强，建议减仓回避",
+      reason: `收盘封跌停（${(intraday.pct * 100).toFixed(2)}%），卖盘远超买盘`,
+      confirm: "次日撬板放量可考虑短线博反弹；继续一字跌停则观望",
+    };
+  } else if (intraday.isBrokenLimitUp) {
+    signal = {
+      level: "sell",
+      label: "卖点",
+      text: "今日炸板，多空分歧剧烈，注意波动风险",
+      reason: `盘中触及涨停但未封住，收涨 ${(intraday.pct * 100).toFixed(2)}%，高位抛压显现`,
+      confirm: "次日不能反包今日高点则转弱减仓；放量反包则重新走强",
+    };
+    risks.push("今日炸板（曾封涨停但打开），多空分歧剧烈，短期波动风险大。");
+  } else if (intraday.isBrokenLimitDown) {
+    signal = {
+      level: "watch",
+      label: "关注",
+      text: "今日跌停开板，恐慌有所释放，关注是否企稳",
+      reason: `盘中触及跌停但打开，收跌 ${(intraday.pct * 100).toFixed(2)}%，恐慌盘释放`,
+      confirm: "次日缩量企稳可短线关注反弹；继续放量下跌则仍需回避",
+    };
+  }
+
+  const intradayMove: AnalysisResult["intradayMove"] = {
+    pct: intraday.pct,
+    isLimitUp: intraday.isLimitUp,
+    isLimitDown: intraday.isLimitDown,
+    isBrokenLimitUp: intraday.isBrokenLimitUp,
+    isBrokenLimitDown: intraday.isBrokenLimitDown,
+    limitPct: intraday.limitPct,
+    label: moveLabel,
+  };
+
+  // ---------------- 大盘 · 市场环境（beta 感知：同向协同/逆势过滤） ----------------
+  // A 股个股与大盘相关性极高：大盘下跌中任何个股买入信号胜率显著下降。
+  // 提供接口则叠加协同分（±6）+ 市场情绪分（±5）；未提供时走「暂无数据」占位对象，不影响既有评分。
+  let marketEnv: AnalysisResult["marketEnv"];
+  if (market && market.indexKlines && market.indexKlines.length >= 30) {
+    const idxClose = market.indexKlines.map((k) => k.close);
+    const idxMa20 = ma(idxClose, 20);
+    const idxLen = market.indexKlines.length;
+    const idxMa20Now = idxMa20[idxLen - 1] as number;
+    const idxMa20Prev = (idxMa20[Math.max(0, idxLen - 21)] as number) || idxMa20Now;
+    const idxSlope = idxMa20Now ? (idxMa20Now - idxMa20Prev) / idxMa20Prev : 0;
+    const idxHigh = market.indexKlines.map((k) => k.high);
+    const idxLow = market.indexKlines.map((k) => k.low);
+    const idx = dmi(idxHigh, idxLow, idxClose, 14);
+    const idxAdx = idx.adx[idxLen - 1];
+    const idxPdi = idx.pDI[idxLen - 1];
+    const idxMdi = idx.mDI[idxLen - 1];
+    let idxTrend: string;
+    if (idxAdx < 20) {
+      if (idxSlope > 0.004) idxTrend = "震荡偏强";
+      else if (idxSlope < -0.004) idxTrend = "震荡偏弱";
+      else idxTrend = "区间震荡";
+    } else if (idxPdi > idxMdi) {
+      idxTrend = idxAdx >= 25 ? "上涨趋势" : "震荡偏强";
+    } else {
+      idxTrend = idxAdx >= 25 ? "下跌趋势" : "震荡偏弱";
+    }
+    // 同向协同：个股 up + 大盘上涨趋势 → +6；个股 up + 大盘下跌 → -6；反之亦然
+    let alignScore = 0;
+    let alignText = "与大盘方向一致";
+    const stockUp = trend === "up" || trend === "shake_up";
+    const stockDown = trend === "down" || trend === "shake_down";
+    const marketUp = idxTrend === "上涨趋势" || idxTrend === "震荡偏强";
+    const marketDown = idxTrend === "下跌趋势" || idxTrend === "震荡偏弱";
+    if (stockUp && marketUp) { alignScore = 6; alignText = "顺大盘上涨，氛围支撑做多"; }
+    else if (stockDown && marketDown) { alignScore = 6; alignText = "顺大盘回调，弱市不宜抄底"; }
+    else if (stockUp && marketDown) { alignScore = -6; alignText = "逆势上涨，需警惕补跌风险"; }
+    else if (stockDown && marketUp) { alignScore = -6; alignText = "逆势回调，若大盘企稳或率先反弹"; }
+    // 市场情绪（涨跌家数 + 涨停/跌停比）映射 ±5 分
+    let breadthScore = 0;
+    let breadthText = "暂无数据";
+    if (market.upCount != null && market.downCount != null) {
+      const total = market.upCount + market.downCount || 1;
+      const upRatio = market.upCount / total;
+      if (upRatio > 0.7) { breadthScore = 5; breadthText = "普涨行情，情绪偏多"; }
+      else if (upRatio > 0.55) { breadthScore = 3; breadthText = "涨多跌少，情绪尚可"; }
+      else if (upRatio < 0.3) { breadthScore = -5; breadthText = "普跌行情，情绪低迷"; }
+      else if (upRatio < 0.45) { breadthScore = -3; breadthText = "跌多跌少，情绪偏弱"; }
+      else { breadthScore = 0; breadthText = "涨跌参半，情绪中性"; }
+    }
+    // 大盘量能：VMA5/VMA20。<0.7 缩量（上涨无量存疑/下跌抛压减弱），
+    // >1.3 放量（上涨量价配合/下跌恐慌蔓延）。结合大盘趋势方向打分。
+    const idxVol = market.indexKlines.map((k) => k.vol);
+    const idxVma5 = ma(idxVol, 5);
+    const idxVma20 = ma(idxVol, 20);
+    const idxVolRatio =
+      idxVma5[idxLen - 1] && idxVma20[idxLen - 1]
+        ? (idxVma5[idxLen - 1] as number) / (idxVma20[idxLen - 1] as number)
+        : 1;
+    let mktVolText = "量能正常";
+    let volScore = 0;
+    if (idxVolRatio < 0.7) {
+      mktVolText = "大盘缩量";
+      // 缩量 + 上涨：量价背离，上涨持续性存疑 → 扣分
+      // 缩量 + 下跌：抛压减弱，下跌动能衰减 → 轻微加分
+      if (marketUp) volScore = -3;
+      else if (marketDown) volScore = 2;
+    } else if (idxVolRatio > 1.3) {
+      mktVolText = "大盘放量";
+      // 放量 + 上涨：量价配合，资金真实参与 → 加分
+      // 放量 + 下跌：恐慌蔓延，跌势加速 → 扣分
+      if (marketUp) volScore = 3;
+      else if (marketDown) volScore = -3;
+    }
+
+    // 行业板块维度：个股所属行业指数趋势 + 个股与行业协同（±4）。
+    // 与宽基指数同理，但更贴近个股自身 beta——兆易创新涨而半导体板块跌，说明是个股独立行情，
+    // 结论与量化依据需把「行业逆风」考虑进去，避免只看大盘误判。
+    let sectorName: string | undefined;
+    let sectorTrend: string | undefined;
+    let sectorAlignScore = 0;
+    let sectorAlignText = "";
+    const sector = market.sector;
+    if (sector && sector.klines && sector.klines.length >= 30) {
+      sectorName = sector.name;
+      const sClose = sector.klines.map((k) => k.close);
+      const sMa20 = ma(sClose, 20);
+      const sLen = sClose.length;
+      const sMaNow = sMa20[sLen - 1] as number;
+      const sMaPrev = (sMa20[Math.max(0, sLen - 21)] as number) || sMaNow;
+      const sSlope = sMaNow ? (sMaNow - sMaPrev) / sMaNow : 0;
+      const sHigh = sector.klines.map((k) => k.high);
+      const sLow = sector.klines.map((k) => k.low);
+      const s = dmi(sHigh, sLow, sClose, 14);
+      const sAdx = s.adx[sLen - 1];
+      const sPdi = s.pDI[sLen - 1];
+      const sMdi = s.mDI[sLen - 1];
+      if (sAdx < 20) {
+        if (sSlope > 0.004) sectorTrend = "震荡偏强";
+        else if (sSlope < -0.004) sectorTrend = "震荡偏弱";
+        else sectorTrend = "区间震荡";
+      } else if (sPdi > sMdi) {
+        sectorTrend = sAdx >= 25 ? "上涨趋势" : "震荡偏强";
+      } else {
+        sectorTrend = sAdx >= 25 ? "下跌趋势" : "震荡偏弱";
+      }
+      const sUp = sectorTrend === "上涨趋势" || sectorTrend === "震荡偏强";
+      const sDown = sectorTrend === "下跌趋势" || sectorTrend === "震荡偏弱";
+      if (stockUp && sUp) { sectorAlignScore = 4; sectorAlignText = "顺行业上涨，板块共振做多"; }
+      else if (stockDown && sDown) { sectorAlignScore = 4; sectorAlignText = "顺行业回调，板块同步走弱"; }
+      else if (stockUp && sDown) { sectorAlignScore = -4; sectorAlignText = "逆行业上涨，板块逆风需警惕"; }
+      else if (stockDown && sUp) { sectorAlignScore = -4; sectorAlignText = "逆行业回调，板块企稳或率先反弹"; }
+    }
+
+    // 仓位建议：由大盘趋势 + 市场情绪 + 行业协同综合推导，服务于量化仓位调控。
+    // 大盘/行业环境决定可承担的风险敞口——这是「大盘趋势对仓位调控的影响」的落地点。
+    let positionAdvice = "";
+    let positionPct = 0;
+    let positionBasis = "";
+    if (idxTrend === "下跌趋势" || breadthScore <= -3) {
+      positionPct = 20;
+      positionAdvice = "建议轻仓避险（≤20%）";
+      positionBasis = "大盘下跌趋势 / 市场情绪低迷，系统性风险偏高";
+    } else if (sectorAlignScore <= -4) {
+      positionPct = 30;
+      positionAdvice = "建议控仓（≤30%）";
+      positionBasis = "个股与所属行业逆风，板块 beta 不利";
+    } else if (idxTrend === "上涨趋势" && breadthScore >= 3 && sectorAlignScore >= 4) {
+      positionPct = 70;
+      positionAdvice = "可积极配置（60%–80%）";
+      positionBasis = "大盘上行 + 情绪偏多 + 行业共振，顺势环境";
+    } else if (idxTrend === "上涨趋势" || (breadthScore >= 3 && sectorAlignScore >= 0)) {
+      positionPct = 55;
+      positionAdvice = "可适度加仓（50%–60%）";
+      positionBasis = "大盘偏强、情绪尚可，顺势但需留有余地";
+    } else {
+      positionPct = 40;
+      positionAdvice = "建议中性仓位（30%–50%）";
+      positionBasis = "大盘区间震荡、情绪中性，等待方向确认";
+    }
+
+    score = Math.max(5, Math.min(95, score + alignScore + breadthScore + volScore + sectorAlignScore));
+    if (alignScore !== 0) addReason("大盘" + idxTrend + (alignScore > 0 ? "：协同加分" : "：逆势扣分"), alignScore);
+    if (breadthScore !== 0) addReason(breadthText, breadthScore);
+    if (volScore !== 0) addReason(mktVolText + (volScore > 0 ? "：量能配合" : "：量能背离"), volScore);
+    if (sectorAlignScore !== 0) addReason((sectorName || "行业") + sectorAlignText, sectorAlignScore);
+    marketEnv = {
+      indexName: market.indexName,
+      indexTrend: idxTrend,
+      indexAdx: idxAdx,
+      alignScore,
+      alignText,
+      breadthScore,
+      breadthText,
+      mktVolText,
+      idxVolRatio,
+      sectorName,
+      sectorTrend,
+      sectorAlignScore,
+      sectorAlignText,
+      positionAdvice,
+      positionPct,
+      positionBasis,
+    };
+    // 市场环境极差时直接升级风险等级（大盘下跌趋势 或 市场情绪低迷 或 行业逆风）
+    if (idxTrend === "下跌趋势" || breadthScore <= -3 || sectorAlignScore <= -4) riskLevel = riskLevel === "低" ? "中" : riskLevel === "中" ? "高" : riskLevel;
+  } else {
+    // 指数K线缺失（取数失败/不足30根/港股等跳过）：优雅降级，整张卡片仍渲染，
+    // 缺失维度显示「暂无数据」，不再因上游一次取数失败就把整个板块被 v-if 抹掉（request B-2 暂无数据统一）。
+    marketEnv = {
+      indexName: market?.indexName || "大盘",
+      indexTrend: "暂无数据",
+      indexAdx: 0,
+      alignScore: 0,
+      alignText: "暂无数据",
+      breadthScore: 0,
+      breadthText: "暂无数据",
+      mktVolText: "暂无数据",
+      idxVolRatio: 0,
+      sectorName: undefined,
+      sectorTrend: undefined,
+      sectorAlignScore: 0,
+      sectorAlignText: "",
+      positionAdvice: "暂无数据",
+      positionPct: 0,
+      positionBasis: "",
     };
   }
 
@@ -817,6 +1339,7 @@ export function analyze(
     kdjCross,
     kdjState,
     rNow,
+    rsiValid,
     scoreReasons,
     stage,
     stageText,
@@ -842,6 +1365,8 @@ export function analyze(
     bollLower: bo.lower,
     bollPctB: bo.pctB,
     bollBw: bo.bandwidth,
+    bollBwNow,
+    bollSqueeze,
     bias6,
     bias12,
     bias24,
@@ -851,6 +1376,7 @@ export function analyze(
     obvTrend,
     turnAvg,
     turnState,
+    chip: chipR,
     breakout,
     breakdown,
     sigType,
@@ -861,6 +1387,8 @@ export function analyze(
     newsBear,
     newsCatalysts,
     newsRisks,
+    marketEnv,
+    intradayMove,
   };
 }
 

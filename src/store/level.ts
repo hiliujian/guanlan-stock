@@ -47,7 +47,3 @@ function clampLevel(level: number): number {
 export function levelMeta(level: number): LevelMeta {
   return TIERS[clampLevel(level)] ?? TIERS[0];
 }
-
-export function bandOf(level: number): Band {
-  return levelMeta(level).band;
-}

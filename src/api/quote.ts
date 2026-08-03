@@ -13,7 +13,7 @@
 // =====================================================================
 import type { Kline, Trend, PeriodKey } from "@/utils/period";
 import type { RawRealtime, SearchHit, FlowMap } from "@/api/sources/types";
-import { getRealtime, getKline, getTrend, getFlow, getSearch, getNews } from "@/api/sources";
+import { getRealtime, getKline, getTrend, getFlow, getSearch, getNews, getIndexBreadth, getStockIndustry, getIndustryBoards, type IndustryBoard } from "@/api/sources";
 import { withTimeout } from "@/api/transport";
 import type { NewsItem } from "@/utils/newsSentiment";
 
@@ -99,7 +99,38 @@ export async function searchStocks(keyword: string): Promise<SearchHit[]> {
   }
 }
 
-// 批量预取结果：一次联网拿到全部 K线周期 + 分时 + 资金流，供「切换周期不重新联网」缓存用。
+// 根据股票代码自动匹配对应大盘指数（行业/板块指数暂不细分，按市场主指数兜底）
+//   688xxx/300xxx/301xxx → 创业板指(399006)
+//   沪A(6xxxxx)           → 上证指数(000001)
+//   深A(0xxxxx 非创业板)  → 深证成指(399001)
+//   北A(4/8/9xxxxx)       → 北证50(899050)
+//   港股                  → 恒生指数(HSI，本地联想兜底；接口无则忽略)
+function resolveIndexForStock(code: string): { secid: string; name: string } | null {
+  const c = (code || "").trim();
+  if (/^\d{5}$/.test(c)) return null; // 港股：主指数代码不匹配 getKline 口径，跳过避免报错
+  if (/^(688|300|301)/.test(c)) return { secid: "0.399006", name: "创业板指" };
+  if (/^6/.test(c)) return { secid: "1.000001", name: "上证指数" };
+  if (/^0/.test(c)) return { secid: "0.399001", name: "深证成指" };
+  if (/^[489]/.test(c)) return { secid: "0.899050", name: "北证50" };
+  return { secid: "1.000300", name: "沪深300" }; // 兜底
+}
+
+// 把个股行业名（东财 f100，如「半导体及元件」）映射到行业板块指数。
+// 东财行业板块名与 f100 不一定逐字相等（如 f100「半导体」对应板块「半导体及元件」），
+// 故采用三级匹配：精确 → 板块名包含行业名 → 行业名包含板块名，命中即取首个。
+function matchIndustryBoard(boards: IndustryBoard[], industry: string): IndustryBoard | null {
+  if (!industry || !boards.length) return null;
+  const ind = industry.trim();
+  const exact = boards.find((b) => b.name === ind);
+  if (exact) return exact;
+  const a = boards.find((b) => b.name.includes(ind) && ind.length >= 2);
+  if (a) return a;
+  const b = boards.find((x) => ind.includes(x.name) && x.name.length >= 2);
+  if (b) return b;
+  return null;
+}
+
+// 批量预取结果：一次联网拿到全部 K线周期 + 分时 + 资金流 + 对应大盘指数K线，供「切换周期不重新联网」缓存用。
 export interface QuoteBundle {
   klines: Record<PeriodKey, Kline[]>; // d/w/M/y 四周期；m 为空（分时视图复用 d 做分析）
   trends: Trend[]; // 分时（m 周期用）
@@ -113,6 +144,20 @@ export interface QuoteBundle {
     high: number;
     low: number;
     time: string;
+  } | null;
+  // 对应大盘指数上下文：已按市场自动匹配，直接传给 analyze 的 market 参数即可生效 beta 感知
+  marketCtx: {
+    indexKlines: Kline[];
+    indexName: string;
+    upCount?: number; // 大盘(匹配指数)当日上涨家数（市场宽度 / 市场情绪）
+    downCount?: number; // 当日下跌家数
+    // 个股所属行业板块上下文：让「大盘·市场环境」不止看宽基指数，还看行业 beta。
+    // 任一环节失败均为 null，analyze 自动降级，行业维度缺省不影响其它评分。
+    sector?: {
+      name: string; // 行业名，如「半导体及元件」
+      secid: string; // 行业板块指数 secid，如 90.BK1036
+      klines: Kline[]; // 行业指数日 K（>=30 根才参与）
+    } | null;
   } | null;
 }
 
@@ -157,7 +202,23 @@ export async function fetchBundle(secid: string): Promise<QuoteBundle> {
   const hit = cget<QuoteBundle>(ck, 30_000);
   if (hit) return hit;
 
-  const [rt, d, w, M, y, trend, flow] = await Promise.all([
+  // 解析对应大盘指数（按代码自动匹配市场主指数，beta 感知前提）
+  const pureCode = secid.split(".")[1] || secid;
+  const idx = resolveIndexForStock(pureCode);
+  // 指数K线：与股票数据并行拉取，给 3s 硬超时兜底，失败不影响主流程（marketCtx 为 null 时 analyze 自动降级）
+  const indexPromise = idx
+    ? withTimeout(getKline(idx.secid, "d").catch(() => [] as Kline[]), 3000, [] as Kline[])
+    : Promise.resolve([] as Kline[]);
+  // 指数市场宽度（涨跌家数，用于市场情绪）：并行拉取，超时/失败返回 null
+  const breadthPromise = idx
+    ? withTimeout(getIndexBreadth(idx.secid).catch(() => null), 3000, null)
+    : Promise.resolve(null);
+  // 个股所属行业：并行拉取，超时/失败返回 null
+  const industryPromise = withTimeout(getStockIndustry(secid).catch(() => null), 3000, null);
+  // 行业板块列表（长期缓存，首拉后复用）：用于把行业名映射到板块指数 secid
+  const boardsPromise = withTimeout(getIndustryBoards().catch(() => [] as IndustryBoard[]), 4000, [] as IndustryBoard[]);
+
+  const [rt, d, w, M, y, trend, flow, idxKlines, breadth, industry, boards] = await Promise.all([
     getRealtime(secid).catch(() => null),
     getKline(secid, "d").catch(() => [] as Kline[]),
     getKline(secid, "w").catch(() => [] as Kline[]),
@@ -165,9 +226,12 @@ export async function fetchBundle(secid: string): Promise<QuoteBundle> {
     getKline(secid, "y").catch(() => [] as Kline[]),
     getTrend(secid).catch(() => ({ trends: [] as Trend[] })),
     withTimeout(getFlow(secid).catch(() => ({}) as FlowMap), 3500, {} as FlowMap),
+    indexPromise,
+    breadthPromise,
+    industryPromise,
+    boardsPromise,
   ]);
   if (!rt) throw new Error("实时行情获取失败，请稍后重试");
-
   const klines: Record<PeriodKey, Kline[]> = {
     d: d || [],
     w: w || [],
@@ -175,6 +239,31 @@ export async function fetchBundle(secid: string): Promise<QuoteBundle> {
     y: y || [],
     m: [], // 分时视图复用日 K 做分析，见 MarketView.applyPeriod
   };
+  // marketCtx：仅当成功拉到 >=30 根指数K线时才传入（analyzer 内部已有长度兜底，这里提前过滤掉明显空值）
+  let marketCtx: QuoteBundle["marketCtx"] = null;
+  if (idx && idxKlines && idxKlines.length >= 30) {
+    marketCtx = {
+      indexKlines: idxKlines,
+      indexName: idx.name,
+      upCount: breadth?.up,
+      downCount: breadth?.down,
+    };
+    // 行业板块上下文：把行业名映射到板块指数 secid 并拉取其日 K（>=30 根才纳入）。
+    // 任一环节失败/不匹配 → sector 为 null，analyze 自动降级，不影响宽基指数维度的评分。
+    if (industry && boards.length) {
+      const board = matchIndustryBoard(boards, industry);
+      if (board) {
+        const sk = await withTimeout(
+          getKline(board.secid, "d").catch(() => [] as Kline[]),
+          3000,
+          [] as Kline[]
+        );
+        if (sk.length >= 30) {
+          marketCtx.sector = { name: industry, secid: board.secid, klines: sk };
+        }
+      }
+    }
+  }
   const bundle: QuoteBundle = {
     klines,
     trends: trend.trends || [],
@@ -189,6 +278,7 @@ export async function fetchBundle(secid: string): Promise<QuoteBundle> {
       low: rt.low,
       time: rt.time,
     },
+    marketCtx,
   };
   cset(ck, bundle);
   return bundle;

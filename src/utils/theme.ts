@@ -35,9 +35,3 @@ export function setTheme(t: ThemeMode) {
   if (typeof localStorage !== "undefined") localStorage.setItem(KEY, t);
   apply();
 }
-
-export function toggleTheme() {
-  setTheme(theme.value === "dark" ? "light" : "dark");
-}
-
-export { theme };

@@ -16,6 +16,9 @@ const props = defineProps<{
   klines: any[];
   height?: number;
   loading?: boolean;
+  /** 实时最新价（与头部同源 5s 快照），分时模式同步到走势图最后一根，确保与卡片一致 */
+  livePrice?: number;
+  livePreClose?: number;
 }>();
 
 const emit = defineEmits<{
@@ -67,6 +70,8 @@ function pick(p: PeriodKey) {
     :height="height ?? 460"
     :show-ma="true"
     :show-macd="true"
+    :live-price="livePrice"
+    :live-pre-close="livePreClose"
   />
   <view v-else-if="period === 'm'" class="hint">暂无数据</view>
   <StockChart
@@ -106,8 +111,11 @@ function pick(p: PeriodKey) {
   position: relative;
   z-index: 1;
   flex: 1;
-  /* 触摸目标 ≥44px（移动端可达性规范），用固定 px 保证任意屏都不缩水 */
-  min-height: 44px;
+  /* 高度与搜索按钮统一为 60rpx（固定 height，避免 UA 默认最小高度膨胀导致两者不一致）；
+     flex 居中保证文字垂直对齐，滑动指示条 .ps-ind(top/bottom:6rpx) 自动跟随 */
+  height: 60rpx;
+  line-height: 60rpx;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -119,12 +127,13 @@ function pick(p: PeriodKey) {
   transition: color 0.2s ease, background 0.15s ease, transform 0.1s ease;
 }
 .ps:active {
-  background: var(--primary-soft, rgba(99, 102, 241, 0.12));
+  background: var(--primary-soft);
   transform: scale(0.96);
 }
 .ps.active {
   color: #fff;
   font-weight: 600;
+  letter-spacing: 0.5rpx;
 }
 /* 切换周期时的图表区加载态：居中转圈，不替换整张卡片（控件常驻） */
 .chart-loading {
@@ -146,6 +155,6 @@ function pick(p: PeriodKey) {
   padding: 40rpx 0;
   text-align: center;
   font-size: 24rpx;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 </style>

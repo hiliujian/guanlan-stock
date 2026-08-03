@@ -16,31 +16,29 @@
 
       <!-- 搜索条（与联想列表融为一体的面板） -->
       <view class="search-bar anim-fade-up">
-        <view class="glass glass--lg search-unit" :class="{ open: suggestOpen }">
+        <view class="glass glass--lg search-unit" :class="{ open: suggestOpen, focused }">
           <view class="search-box">
-            <OutlineIcon type="search" :size="28" color="var(--text-2)" />
-            <input
-              class="si"
-              v-model="code"
-              type="text"
-              placeholder="输入代码或名称"
-              placeholder-class="ph"
-              confirm-type="search"
-              @input="onInput"
-              @focus="onFocus"
-              @blur="onBlur"
-              @confirm="run()"
-            />
-            <OutlineIcon
-              v-if="code"
-              type="close"
-              :size="28"
-              color="var(--text-2)"
-              @click="clearInput"
-            />
+            <view class="si-field">
+              <OutlineIcon type="search" :size="26" color="var(--text-2)" />
+              <input
+                class="si"
+                v-model="code"
+                type="text"
+                placeholder="输入代码或名称"
+                placeholder-class="ph"
+                confirm-type="search"
+                @input="onInput"
+                @focus="onFocus"
+                @blur="onBlur"
+                @confirm="run()"
+              />
+              <view v-if="code" class="si-clear" role="button" aria-label="清除" @click="clearInput">
+                <OutlineIcon type="close" :size="22" color="var(--text-2)" />
+              </view>
+            </view>
             <button class="btn-primary go" :disabled="loading" @click="run()">
               <view v-if="loading" class="spinner" />
-              <text class="go-t">{{ loading ? "分析中" : "搜索" }}</text>
+              <text>{{ loading ? "分析中" : "搜索" }}</text>
             </button>
           </view>
           <!-- 联想面板：随搜索框向下展开，与搜索框同一张卡片，不挤占下方 UI -->
@@ -125,7 +123,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated, onDeactivated, onUnmounted, watch, defineExpose, type Component } from "vue";
+import { ref, computed, onMounted, onActivated, onDeactivated, onUnmounted, watch, type Component } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import PriceText from "@/components/PriceText.vue";
 import AnalysisCard from "@/components/AnalysisCard.vue";
@@ -141,7 +139,7 @@ import {
   type PeriodKey,
   type Market,
 } from "@/utils/period";
-import { analyze, type AnalysisResult } from "@/utils/analyzer";
+import { analyze, type AnalysisResult, type MarketContext } from "@/utils/analyzer";
 import { scoreNews, filterNews, type NewsSignal } from "@/utils/newsSentiment";
 import { visibleMarketCards, type MarketCardMeta, type CardId } from "@/utils/cardLayout";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
@@ -166,7 +164,6 @@ const newsSig = ref<NewsSignal | null>(null);
 // 星星状态直接读自选 store（响应式）：在自选页增删后，行情页（keep-alive 常驻）自动同步，
 // 不再依赖 run()/switchPeriod() 里的手动赋值。
 const watched = computed(() => isWatched(curCode.value, curMarket.value));
-const errMsg = ref("");
 const realtime = ref<{ price: number; preClose: number; open?: number; high?: number; low?: number; time?: string } | null>(null);
 
 // 卡片渲染注册表：新增分析卡只需在此加一项（comp + props 工厂），
@@ -181,6 +178,10 @@ const CARD_RENDERERS: Record<CardId, { comp: Component; props: () => Record<stri
       klines: klines.value,
       height: 460,
       loading: switching.value,
+      // 实时最新价/昨收（与头部同源 5s 实时快照）：分时模式同步到走势图最后一根，
+      // 确保「股票卡片头部」与「实时走势图」显示的最新净值完全同步、同源、实时更新。
+      livePrice: realtime.value?.price ?? lastTrendPrice.value,
+      livePreClose: realtime.value?.preClose ?? preClose.value,
       onPick: switchPeriod,
     }),
   },
@@ -199,9 +200,12 @@ const suggestions = ref<SearchHit[]>([]);
 const showSuggest = ref(false);
 const chosen = ref<SearchHit | null>(null);
 let suggestTimer: any = null;
+let blurTimer: any = null;
 
 // 联想面板是否展开（同一卡片向下展开，与搜索框融为一体）
 const suggestOpen = computed(() => showSuggest.value && suggestions.value.length > 0);
+// 输入框是否获得焦点：驱动搜索框「聚焦激活态」绿色高亮，让控件活起来
+const focused = ref(false);
 
 // 最近搜索历史：本地存储、去重、上限 10、可清除；空输入聚焦时作为联想展示
 const HISTORY_KEY = "stock_analyzer_search_history";
@@ -246,9 +250,17 @@ function mktLabel(code: string): string {
 
 const user = useUser();
 
-// 头部展示「实时价」（东方财富实时行情），未拿到实时价时回退到分析用的收盘价
+// 分时序列最新价（与走势图同源）：头部实时价的回退来源，确保头部与走势图永远同一数值
+const lastTrendPrice = computed(() => {
+  if (period.value !== "m" || !trends.value.length) return null;
+  const p = (trends.value[trends.value.length - 1] as any)?.price;
+  return typeof p === "number" && isFinite(p) ? p : null;
+});
+// 头部展示「实时价」（东方财富实时行情，5s 刷新）；
+// 分时视图下若实时快照暂不可用，回退到分时序列最新点（与走势图同源），
+// 而非分析用日K收盘价——避免出现「头部=日K收盘、走势图=分时最新」的二次不一致。
 const dispPrice = computed(() =>
-  realtime.value?.price ?? (result.value ? result.value.last.close : 0)
+  realtime.value?.price ?? (period.value === "m" ? lastTrendPrice.value : null) ?? (result.value ? result.value.last.close : 0)
 );
 const chg = computed(() => dispPrice.value - preClose.value);
 // 涨跌幅格式化为两位小数，避免出现 0.07575757575757576% 这种超长小数
@@ -304,7 +316,7 @@ function loadLastViewed(): boolean {
     period.value = v.period || "d";
     code.value = v.code;
     chosen.value = { code: v.code, name: v.name || "" };
-    run(v.market || "auto", false); // 自动恢复历史查看，不弹窗
+    run(v.market || "auto"); // 自动恢复历史查看
     return true;
   } catch {
     return false;
@@ -340,7 +352,18 @@ function applyPeriod(p: PeriodKey) {
   }
   // 资金流（主力净流入）按日期累计，与图表周期解耦：分时/日/周/月视图都展示同一组
   // 「近 5/10/20 日」数据。此前分时视图强行传 {} 会导致「主力净流入 暂无数据」，已移除。
-  result.value = analyze(klines.value, b.flowMap, newsSig.value, b.klines.d);
+  // 大盘环境 beta 感知：fetchBundle 已按股票代码自动匹配对应主指数并拉取 K线，
+  // 直接透传 marketCtx 即可让「大盘 · 市场环境」面板与协同评分生效。
+  const marketCtx: MarketContext | null = b.marketCtx
+    ? {
+        indexKlines: b.marketCtx.indexKlines,
+        indexName: b.marketCtx.indexName,
+        upCount: b.marketCtx.upCount,
+        downCount: b.marketCtx.downCount,
+        sector: b.marketCtx.sector,
+      }
+    : null;
+  result.value = analyze(klines.value, b.flowMap, newsSig.value, b.klines.d, marketCtx);
 }
 
 // 全量刷新：重新预取并覆盖缓存（每 ~60s，交易时段），随后从新缓存刷新当前视图
@@ -387,6 +410,14 @@ function stopTimers() {
     clearInterval(tickTimer);
     tickTimer = null;
   }
+  if (suggestTimer) {
+    clearTimeout(suggestTimer);
+    suggestTimer = null;
+  }
+  if (blurTimer) {
+    clearTimeout(blurTimer);
+    blurTimer = null;
+  }
 }
 
 // 行情图卡片标题固定为「行情图」；具体周期（分时/日K/周K…）由卡片内分段控件展示，
@@ -400,8 +431,7 @@ function cardTitle(c: MarketCardMeta): string {
 // 分析报告独立成卡），无需再折叠。周期切换轴已并入「行情图」卡片内部（见 KlineCard）。
 const displayCards = visibleMarketCards;
 
-async function run(forceMarket?: Market, userInitiated = true) {
-  errMsg.value = "";
+async function run(forceMarket?: Market) {
   const kw = code.value.trim();
   if (!kw) {
     uni.showToast({ title: "请输入股票代码或名称", icon: "none" });
@@ -469,8 +499,8 @@ async function switchPeriod(p: PeriodKey) {
   switching.value = true;
   try {
     if (!bundle.value) {
-      // 极端情况（缓存未建立），回退到单次预取（内部调用，不弹窗）
-      await run(undefined, false);
+      // 极端情况（缓存未建立），回退到单次预取（内部调用）
+      await run(undefined);
       return;
     }
     applyPeriod(p); // 纯本地，瞬时切换，无联网等待
@@ -543,6 +573,7 @@ function onInput() {
   }, 300);
 }
 function onFocus() {
+  focused.value = true;
   if (!code.value.trim() && history.value.length) {
     historyMode = true;
     suggestions.value = history.value;
@@ -552,8 +583,13 @@ function onFocus() {
   }
 }
 function onBlur() {
-  // 延迟收起，保证点击建议能被先处理
-  setTimeout(() => (showSuggest.value = false), 200);
+  // 延迟收起，保证点击建议能被先处理；同时解锁聚焦高亮
+  if (blurTimer) clearTimeout(blurTimer);
+  blurTimer = setTimeout(() => {
+    focused.value = false;
+    showSuggest.value = false;
+    blurTimer = null;
+  }, 200);
 }
 function chooseSuggestion(h: SearchHit) {
   chosen.value = h;
@@ -692,34 +728,74 @@ defineExpose({ refresh: () => refreshFull() });
 .search-bar {
   position: relative;
   z-index: 20;
-  margin-bottom: 0;
 }
-/* 搜索单元：搜索框 + 联想面板 共用同一张卡片，向下展开即「融为一体」 */
+/* 搜索单元：搜索框 + 联想面板共用同一张玻璃卡片，向下展开融为一体 */
 .search-unit {
   position: relative;
-  /* 玻璃拟态（含 28rpx 圆角）由全局 .glass.glass--lg 提供 */
-  transition: box-shadow 0.2s ease;
+  /* 玻璃拟态（28rpx 圆角 + 底色/边框/阴影/模糊）由全局 .glass.glass--lg 提供 */
+  transition: box-shadow var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
   overflow: visible;
 }
-/* 展开联想时：顶部圆角保留、底部直角，与下方面板无缝衔接 + 绿色高亮 */
+/* 聚焦态：卡片边框轻微着色（主要激活指示由 .si-field 描边承担，避免双重高亮） */
+.search-unit.focused {
+  border-color: rgba(7, 193, 96, 0.4);
+}
+/* 展开联想：底部直角与联想面板无缝衔接 */
 .search-unit.open {
+  border-color: rgba(7, 193, 96, 0.4);
   border-radius: 28rpx 28rpx 0 0;
-  box-shadow: var(--shadow), 0 0 0 4rpx rgba(7, 193, 96, 0.12);
 }
 .search-box {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  padding: 12rpx 12rpx 12rpx 26rpx;
+  padding: 10rpx 10rpx;
   background: transparent;
+}
+/* 输入区：内凹药丸，与按钮形成「凹陷输入 + 凸起按钮」的视觉层次 */
+.si-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  min-width: 0;
+  height: 60rpx;
+  padding: 0 16rpx;
+  background: var(--card-2);
+  border-radius: 999rpx;
+  border: 2rpx solid transparent;
+  transition: border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+/* 聚焦态：输入区描边转为主题色，内凹感更强 */
+.search-unit.focused .si-field {
+  border-color: var(--primary);
+  background: var(--card);
+}
+/* 展开联想：输入区保持激活描边 */
+.search-unit.open .si-field {
+  border-color: var(--primary);
 }
 .si {
   flex: 1;
   min-width: 0;
+  height: 100%;
   font-size: 28rpx;
 }
-.ph {
-  color: var(--text-2);
+/* 清除键：圆形次表面按钮 */
+.si-clear {
+  flex: none;
+  width: 36rpx;
+  height: 36rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--card);
+  transition: background var(--dur-fast) var(--ease-out), transform 0.1s var(--ease-out);
+}
+.si-clear:active {
+  background: var(--primary-soft);
+  transform: scale(0.9);
 }
 /* 联想面板：随搜索框向下展开，同一卡片底色，不挤占下方 UI（绝对浮层） */
 .suggest {
@@ -803,55 +879,54 @@ defineExpose({ refresh: () => refreshFull() });
   flex: none;
   font-size: 20rpx;
   color: var(--primary);
-  background: rgba(7, 193, 96, 0.1);
-  border-radius: 8rpx;
+  background: var(--primary-soft);
+  border-radius: var(--radius-sm);
   padding: 4rpx 12rpx;
 }
-.go {
-  flex: 0 0 auto;
-  /* 触摸目标 ≥44px；高度用 min-height 自适应内容，避免固定 rpx 在窄屏缩水 */
-  min-height: 44px;
-  padding: 0 30rpx;
-  font-size: 27rpx;
-  font-weight: 600;
-  margin-left: 6rpx;
-  display: flex;
+/* 搜索按钮：微信绿药丸，与 .si-field 等高（68rpx），凸起于内凹输入区。
+   显式锁定 color:#fff——uni-app <button type="default"> 运行时会注入黑色字体，
+   且 :disabled 态可能进一步覆盖，必须在每个状态单独声明白色 */
+.btn-primary.go {
+  flex: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10rpx;
-  box-shadow: 0 4rpx 14rpx rgba(7, 193, 96, 0.28);
-  transition: transform 0.12s ease, background 0.2s ease, box-shadow 0.2s ease;
-}
-/* 搜索按钮：覆盖全局 .btn-primary 的药丸(999rpx)/88rpx，恢复长扁低位样式。
-   避免高按钮把整行搜索框撑高；min-height:0 抵消 UA 默认最小高度跨浏览器膨胀 */
-.btn-primary.go {
+  gap: 8rpx;
   min-height: 0;
   height: 60rpx;
   line-height: 60rpx;
-  padding: 0 26rpx;
-  border-radius: 12rpx;
+  padding: 0 28rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 50%), var(--primary);
+  color: #fff;
+  box-shadow: 0 4rpx 14rpx rgba(7, 193, 96, 0.28);
   font-size: 26rpx;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+  transition: transform 0.12s var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
 }
-/* 点击/按压态：轻微回弹 + 加深绿，给出明确反馈 */
-.go:active:not(:disabled) {
-  transform: scale(0.93);
+/* 聚焦联动：按钮轻微提亮 */
+.search-unit.focused .btn-primary.go {
+  box-shadow: 0 6rpx 18rpx rgba(7, 193, 96, 0.36);
+}
+/* 按压态：轻微回弹 + 加深绿 + 收紧投影 */
+.btn-primary.go:active:not(:disabled) {
+  transform: scale(0.95);
   background: var(--primary-dark);
-  box-shadow: 0 2rpx 8rpx rgba(6, 164, 84, 0.34);
+  color: #fff;
+  box-shadow: 0 2rpx 8rpx rgba(6, 164, 84, 0.24);
 }
-/* 加载中：保持绿色 + 转圈，不灰显、不崩溃。
-   关键：仅改变背景色（加深绿），阴影与「搜索」常态保持一致，避免样式错位 */
-.go:disabled,
-.go[disabled] {
+/* 加载中：保持绿色 + 转圈，不灰显 */
+.btn-primary.go:disabled,
+.btn-primary.go[disabled] {
   opacity: 1;
   background: var(--primary-dark);
-  box-shadow: 0 4rpx 14rpx rgba(7, 193, 96, 0.28);
-}
-.go-t {
   color: #fff;
+  box-shadow: 0 4rpx 14rpx rgba(7, 193, 96, 0.2);
 }
 .spinner {
-  width: 26rpx;
-  height: 26rpx;
+  width: 24rpx;
+  height: 24rpx;
   border: 3rpx solid rgba(255, 255, 255, 0.4);
   border-top-color: #fff;
   border-radius: 50%;
@@ -941,13 +1016,6 @@ defineExpose({ refresh: () => refreshFull() });
   font-weight: 600;
 }
 
-.btn-primary {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10rpx;
-  border-radius: 999rpx;
-}
 .bottom-pad {
   /* 留出底部导航栏高度，避免末尾内容被 tab 栏遮挡 */
   height: 140rpx;

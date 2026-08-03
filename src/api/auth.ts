@@ -101,7 +101,7 @@ export async function verifySignupCode(email: string, code: string): Promise<Aut
 
 /**
  * 在已验证的会话中重设密码（OTP 验证通过、会话建立后调用）。
- * 需要当前存在有效会话：若直接进入本页且未验证，hasSession() 会拦截并提示先验证。
+ * 需要当前存在有效会话：若直接进入本页且未验证，会拦截并提示先验证。
  */
 export async function updatePassword(newPassword: string): Promise<AuthResult> {
   const sb = getSupabase();
@@ -109,14 +109,6 @@ export async function updatePassword(newPassword: string): Promise<AuthResult> {
   const { error } = await sb.auth.updateUser({ password: newPassword });
   if (error) return { ok: false, error: translateSupabaseError(error.message) };
   return { ok: true };
-}
-
-/** 检查当前是否已存在有效会话（供等待页跨标签轮询） */
-export async function hasSession(): Promise<boolean> {
-  const sb = getSupabase();
-  if (!sb) return false;
-  const { data } = await sb.auth.getSession();
-  return !!data.session;
 }
 
 /** 生成随机用户名（如「观澜847291」），注册后自动分配，用户可后续修改 */

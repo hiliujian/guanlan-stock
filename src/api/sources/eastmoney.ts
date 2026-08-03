@@ -197,3 +197,85 @@ export const emSearch = {
     }
   },
 };
+
+// 指数市场宽度（涨跌家数）：用于「市场情绪」量化。仅东财 push2 提供，腾讯/新浪无此字段。
+// 行业指数(如创业板指)的 f104/f105 即该板块成分股的涨跌家数，是比全市场更贴合个股的
+// 情绪代理；若拉取失败，analyze 自动降级为「暂无数据」，不影响其它评分。
+export interface IndexBreadth {
+  up: number; // 上涨家数
+  down: number; // 下跌家数
+  limitUp: number; // 涨停家数
+  limitDown: number; // 跌停家数
+}
+export async function fetchEMBreadth(secid: string): Promise<IndexBreadth | null> {
+  const url =
+    "https://push2.eastmoney.com/api/qt/stock/get" +
+    "?secid=" +
+    secid +
+    "&fields=f104,f105,f128,f136";
+  try {
+    const text = await requestEmJson(url);
+    const data = JSON.parse(text)?.data;
+    if (!data) return null;
+    const num = (k: string) => (data[k] != null && data[k] !== "" ? Number(data[k]) : 0);
+    return { up: num("f104"), down: num("f105"), limitUp: num("f128"), limitDown: num("f136") };
+  } catch {
+    return null;
+  }
+}
+
+// 个股所属行业（f100）：用于把「行业板块」纳入大盘·市场环境分析（如兆易创新→半导体）。
+export async function fetchEMIndustry(secid: string): Promise<string | null> {
+  const url =
+    "https://push2.eastmoney.com/api/qt/stock/get" +
+    "?secid=" +
+    secid +
+    "&fields=f100,f58";
+  try {
+    const text = await requestEmJson(url);
+    const data = JSON.parse(text)?.data;
+    const name = data?.f100 || "";
+    return name ? String(name).trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface IndustryBoard {
+  secid: string; // 如 90.BK1036
+  name: string; // 如 半导体及元件
+}
+// 申万/东财行业板块列表（一次拉全，长期缓存）：把行业名映射到板块指数 secid，
+// 以便后续拉取该板块指数 K 线、计算「个股与行业协同」。
+export async function fetchEMIndustryBoards(): Promise<IndustryBoard[]> {
+  const out: IndustryBoard[] = [];
+  let pn = 1;
+  const pz = 500;
+  // 最多翻 5 页，覆盖全部行业/概念板块
+  for (let page = 1; page <= 5; page++) {
+    const url =
+      "https://push2.eastmoney.com/api/qt/clist/get" +
+      "?pn=" +
+      pn +
+      "&pz=" +
+      pz +
+      "&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:2" +
+      "&fields=f12,f13,f14";
+    try {
+      const text = await requestEmJson(url);
+      const rows: any[] = JSON.parse(text)?.data?.diff || [];
+      if (!rows.length) break;
+      for (const r of rows) {
+        const name = r.f14 ? String(r.f14).trim() : "";
+        const code = r.f12 ? String(r.f12).trim() : "";
+        const mkt = r.f13 != null ? String(r.f13) : "90";
+        if (name && code) out.push({ secid: mkt + "." + code, name });
+      }
+      if (rows.length < pz) break;
+      pn++;
+    } catch {
+      break;
+    }
+  }
+  return out;
+}

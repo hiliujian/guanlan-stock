@@ -13,7 +13,7 @@
 // 腾讯 / 新浪）的自动降级由 src/api/sources 在「数据源」层面处理。两层叠加，
 // 既保证「单家数据源挂了能换一家」，又保证「某传输通道不通能换通道」。
 // =====================================================================
-import { isSupabaseConfigured } from "@/config/app";
+import { isSupabaseConfigured, config as appConfig } from "@/config/app";
 import { getSupabase } from "@/api/supabase";
 
 const UA =
@@ -280,7 +280,7 @@ function requestGlobalVar(
 // - 未配置（本地模式）：优先 JSONP(cb) 绕开 CORS（无需代理，最稳），失败再回退
 //   requestText（同源 / 私有代理 / 公共代理）。小程序无 script 注入，直接走 requestText。
 async function requestEmJson(full: string): Promise<string> {
-  if (isSupabaseConfigured) {
+  if (isSupabaseConfigured && appConfig.USE_EDGE_FUNCTIONS) {
     try {
       return await requestViaSupabase(full);
     } catch (e) {

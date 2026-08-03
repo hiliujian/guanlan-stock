@@ -67,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated, watch, defineExpose } from "vue";
+import { ref, computed, onActivated, watch } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import PostComposer from "./PostComposer.vue";
 import PostCard from "./PostCard.vue";

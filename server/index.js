@@ -21,41 +21,6 @@ const { execFile } = require("child_process");
 // 静态根目录：按优先级查找已构建产物（h5out > webapp > dist/build/h5）
 function resolveRoot() {
   const dirs = [
-    path.resolve(__dirname, "..", "h5out37"),
-    path.resolve(__dirname, "..", "h5out36"),
-    path.resolve(__dirname, "..", "h5out35"),
-    path.resolve(__dirname, "..", "h5out34"),
-    path.resolve(__dirname, "..", "h5out33"),
-    path.resolve(__dirname, "..", "h5out32"),
-    path.resolve(__dirname, "..", "h5out31"),
-    path.resolve(__dirname, "..", "h5out30"),
-    path.resolve(__dirname, "..", "h5out29"),
-    path.resolve(__dirname, "..", "h5out28"),
-    path.resolve(__dirname, "..", "h5out27"),
-    path.resolve(__dirname, "..", "h5out26"),
-    path.resolve(__dirname, "..", "h5out25"),
-    path.resolve(__dirname, "..", "h5out24"),
-    path.resolve(__dirname, "..", "h5out23"),
-    path.resolve(__dirname, "..", "h5out22"),
-    path.resolve(__dirname, "..", "h5out21"),
-    path.resolve(__dirname, "..", "h5out20"),
-    path.resolve(__dirname, "..", "h5out19"),
-    path.resolve(__dirname, "..", "h5out18"),
-    path.resolve(__dirname, "..", "h5out17"),
-    path.resolve(__dirname, "..", "h5out16"),
-    path.resolve(__dirname, "..", "h5out15"),
-    path.resolve(__dirname, "..", "h5out14"),
-    path.resolve(__dirname, "..", "h5out13"),
-    path.resolve(__dirname, "..", "h5out12"),
-    path.resolve(__dirname, "..", "h5out11"),
-    path.resolve(__dirname, "..", "h5out10"),
-    path.resolve(__dirname, "..", "h5out9"),
-    path.resolve(__dirname, "..", "h5out8"),
-    path.resolve(__dirname, "..", "h5out7"),
-    path.resolve(__dirname, "..", "h5out6"),
-    path.resolve(__dirname, "..", "h5out4"),
-    path.resolve(__dirname, "..", "h5out3"),
-    path.resolve(__dirname, "..", "h5out2"),
     path.resolve(__dirname, "..", "h5out"),
     path.resolve(__dirname, "..", "webapp"),
     path.resolve(__dirname, "..", "dist", "build", "h5"),
@@ -209,7 +174,187 @@ async function proxyRequest(req, res, prefix) {
   }
 }
 
-const server = http.createServer((req, res) => {
+// =====================================================================
+// 通知公告系统（JSON 文件存储，零依赖）
+// 数据文件：server/data/announcements.json
+// API：
+//   GET    /api/announcements          获取当前生效的公告（公开）
+//   GET    /api/announcements/admin     获取全部公告（管理）
+//   POST   /api/announcements           创建公告
+//   PUT    /api/announcements/:id       更新公告
+//   DELETE /api/announcements/:id       删除公告
+// =====================================================================
+const ANNOUNCEMENT_FILE = path.join(__dirname, "data", "announcements.json");
+
+function ensureAnnouncementFile() {
+  const dir = path.dirname(ANNOUNCEMENT_FILE);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(ANNOUNCEMENT_FILE)) fs.writeFileSync(ANNOUNCEMENT_FILE, "[]", "utf-8");
+}
+
+function readAnnouncements() {
+  ensureAnnouncementFile();
+  try {
+    return JSON.parse(fs.readFileSync(ANNOUNCEMENT_FILE, "utf-8"));
+  } catch {
+    return [];
+  }
+}
+
+function writeAnnouncements(list) {
+  ensureAnnouncementFile();
+  fs.writeFileSync(ANNOUNCEMENT_FILE, JSON.stringify(list, null, 2), "utf-8");
+}
+
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+// 获取当前生效的公告（公开接口）：active=true 且在时间范围内
+function getActiveAnnouncements() {
+  const now = Date.now();
+  return readAnnouncements().filter((a) => {
+    if (!a.active) return false;
+    if (a.startAt && new Date(a.startAt).getTime() > now) return false;
+    if (a.endAt && new Date(a.endAt).getTime() < now) return false;
+    return true;
+  });
+}
+
+// 解析请求体（JSON）
+function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      try {
+        const raw = Buffer.concat(chunks).toString("utf-8");
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch (e) {
+        reject(e);
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function sendJson(res, status, data) {
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  });
+  res.end(JSON.stringify(data));
+}
+
+async function handleAnnouncements(req, res) {
+  const url = req.url.split("?")[0];
+  const method = req.method;
+
+  // CORS 预检
+  if (method === "OPTIONS") {
+    sendJson(res, 204, {});
+    return true;
+  }
+
+  // GET /api/announcements/admin — 获取全部公告（管理）
+  if (method === "GET" && url === "/api/announcements/admin") {
+    sendJson(res, 200, { code: 0, data: readAnnouncements() });
+    return true;
+  }
+
+  // GET /api/announcements — 获取当前生效的公告（公开）
+  if (method === "GET" && url === "/api/announcements") {
+    sendJson(res, 200, { code: 0, data: getActiveAnnouncements() });
+    return true;
+  }
+
+  // POST /api/announcements — 创建公告
+  if (method === "POST" && url === "/api/announcements") {
+    try {
+      const body = await parseBody(req);
+      const list = readAnnouncements();
+      const now = new Date().toISOString();
+      const ann = {
+        id: genId(),
+        title: String(body.title || "").trim(),
+        content: String(body.content || "").trim(),
+        images: Array.isArray(body.images) ? body.images.filter(Boolean) : [],
+        type: body.type || "modal", // modal | banner | toast
+        position: body.position || "center", // top | center | bottom（modal 有效）
+        pages: Array.isArray(body.pages) ? body.pages : ["*"], // * = 所有页面
+        priority: Number(body.priority) || 0,
+        active: body.active !== false,
+        startAt: body.startAt || null,
+        endAt: body.endAt || null,
+        dismissKey: body.dismissKey || "once", // once | always | session
+        link: body.link || "", // 可选：点击跳转链接
+        createdAt: now,
+        updatedAt: now,
+      };
+      list.push(ann);
+      writeAnnouncements(list);
+      sendJson(res, 200, { code: 0, data: ann });
+    } catch (e) {
+      sendJson(res, 400, { code: 1, msg: "创建失败：" + e.message });
+    }
+    return true;
+  }
+
+  // PUT /api/announcements/:id — 更新公告
+  const putMatch = method === "PUT" && url.match(/^\/api\/announcements\/(.+)$/);
+  if (putMatch) {
+    try {
+      const id = putMatch[1];
+      const body = await parseBody(req);
+      const list = readAnnouncements();
+      const idx = list.findIndex((a) => a.id === id);
+      if (idx < 0) {
+        sendJson(res, 404, { code: 1, msg: "公告不存在" });
+        return true;
+      }
+      const updated = {
+        ...list[idx],
+        ...body,
+        id: list[idx].id, // id 不可改
+        updatedAt: new Date().toISOString(),
+      };
+      list[idx] = updated;
+      writeAnnouncements(list);
+      sendJson(res, 200, { code: 0, data: updated });
+    } catch (e) {
+      sendJson(res, 400, { code: 1, msg: "更新失败：" + e.message });
+    }
+    return true;
+  }
+
+  // DELETE /api/announcements/:id — 删除公告
+  const delMatch = method === "DELETE" && url.match(/^\/api\/announcements\/(.+)$/);
+  if (delMatch) {
+    const id = delMatch[1];
+    const list = readAnnouncements();
+    const idx = list.findIndex((a) => a.id === id);
+    if (idx < 0) {
+      sendJson(res, 404, { code: 1, msg: "公告不存在" });
+      return true;
+    }
+    list.splice(idx, 1);
+    writeAnnouncements(list);
+    sendJson(res, 200, { code: 0, msg: "已删除" });
+    return true;
+  }
+
+  return false;
+}
+
+const server = http.createServer(async (req, res) => {
+  // 通知公告 API
+  if (req.url.startsWith("/api/announcements")) {
+    const handled = await handleAnnouncements(req, res);
+    if (handled) return;
+  }
+
   for (const prefix of Object.keys(UPSTREAM)) {
     // 精确匹配前缀后跟 "/" 或 "?"，避免 "/em" 误捕获 "/rt..." 等长前缀路径
     if (req.url === prefix || req.url.startsWith(prefix + "/") || req.url.startsWith(prefix + "?")) {

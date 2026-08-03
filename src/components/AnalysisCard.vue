@@ -25,7 +25,7 @@ withDefaults(
 
 <style scoped>
 .analysis-card {
-  padding: 14rpx 18rpx 16rpx;
+  padding: 16rpx 18rpx;
   border: 1rpx solid var(--border);
   backdrop-filter: blur(var(--glass-blur)) saturate(150%);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);

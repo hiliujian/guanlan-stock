@@ -87,23 +87,6 @@ export interface Trend {
   avg: number;
 }
 
-export function parseKline(s: string): Kline {
-  const a = s.split(",");
-  return {
-    date: a[0],
-    open: +a[1],
-    close: +a[2],
-    high: +a[3],
-    low: +a[4],
-    vol: +a[5],
-    amount: +a[6],
-    amp: +a[7],
-    pct: +a[8],
-    chg: +a[9],
-    turnover: +a[10],
-  };
-}
-
 export function parseTrend(s: string): Trend {
   const a = s.split(",");
   return {

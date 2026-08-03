@@ -8,6 +8,9 @@
 
     <AppTabBar :current="current" @change="onChange" />
 
+    <!-- 通知公告：根据当前 tab 匹配公告的 pages 字段，展示弹窗/横幅/轻提示 -->
+    <AnnouncementOverlay :current-page="pageKey" />
+
     <AuthCallback />
   </view>
 </template>
@@ -21,6 +24,7 @@ import CommunityView from "@/components/CommunityView.vue";
 import ProfileView from "@/views/ProfileView.vue";
 import AppTabBar from "@/components/AppTabBar.vue";
 import AuthCallback from "@/components/AuthCallback.vue";
+import AnnouncementOverlay from "@/components/AnnouncementOverlay.vue";
 import { useUser } from "@/store/user";
 import { initWatchlist } from "@/store/watchlist";
 import { openInMarket, navTab, goTab } from "@/store/nav";
@@ -29,6 +33,9 @@ import { handleCallback } from "@/store/authFlow";
 const current = ref(0);
 const comps = markRaw([MarketView, WatchlistView, CommunityView, ProfileView]);
 const currentComp = computed(() => comps[current.value]);
+// 当前 tab 对应的页面标识，供 AnnouncementOverlay 匹配公告的 pages 字段
+const pageKeys = ["market", "watchlist", "community", "profile"];
+const pageKey = computed(() => pageKeys[current.value] || "*");
 // 持有当前激活 tab 的组件实例，供页面级下拉刷新路由到对应 refresh 方法
 const tabRef = ref<any>(null);
 useUser(); // 初始化用户态（含登录态监听），无需持有返回值

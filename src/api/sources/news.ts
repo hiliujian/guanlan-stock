@@ -14,7 +14,6 @@
 //   处理，不阻断行情主流程）。
 // =====================================================================
 import { requestEmJson } from "@/api/transport";
-import { codeFromSecid } from "@/utils/period";
 import type { NewsItem, NewsScope } from "@/utils/newsSentiment";
 
 interface RawHit {
@@ -135,14 +134,3 @@ export async function searchByKeyword(keyword: string): Promise<NewsItem[]> {
     return [];
   }
 }
-
-export const emNews = {
-  id: "eastmoney-news-search",
-  // 始终返回数组（失败/无数据返回 []），便于上层直接展开合并，不引入 null 分支。
-  // 历史兼容：scope=stock 用代码作关键词取个股新闻；scope=market 用「A股」取市场动态。
-  async fetch(secid: string, scope: NewsScope): Promise<NewsItem[]> {
-    const code = codeFromSecid(secid);
-    const keyword = scope === "stock" ? code : "A股";
-    return searchByKeyword(keyword);
-  },
-};

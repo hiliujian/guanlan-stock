@@ -35,7 +35,7 @@
           </view>
         </template>
       </AuthField>
-      <text v-if="sent && !errors.code" class="auth-sent-tip">验证码已发送至 {{ maskedEmail }}</text>
+      <text v-if="sent && !errors.code" class="auth-sent-tip">验证码已发送至 {{ maskedEmail }}（5 分钟内有效）</text>
 
       <!-- 密码 + 可见性切换 -->
       <AuthField
