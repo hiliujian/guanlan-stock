@@ -45,6 +45,7 @@ supabase/.temp/
 
 # ---- Editor directories and files ----
 .idea
+.trae
 *.suo
 *.ntvs*
 *.njsproj
