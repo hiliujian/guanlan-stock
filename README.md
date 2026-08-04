@@ -14,7 +14,8 @@
 - **智能分析**：趋势 / 支撑压力 / 主力建仓区 / 量能 / 资金 / 筹码 / MACD / KDJ / RSI，输出白话报告（当前状态、关注 / 建仓 / 加仓 / 减仓、买入区间、风险提示）。
 - **多周期**：分时 / 日 K / 周 K / 月 K / 年 K。
 - **打开即用**：默认游客模式，行情分析与本地自选立即可用；点击头像弹窗登录 / 注册（Supabase），登录后自选与资料云端同步。
-- **跨端行情**：统一 `fetchQuote` 入口，**单一数据源东方财富**（实时行情 / K 线 / 分时 / 主力净流入 全部来自东方财富官方 web 接口），经代理获取，**不再使用东方财富 JSONP**（避免 H5 / iframe 下被浏览器禁止跨域 `<script>` 注入而失败）。
+- **跨端行情**：统一 `fetchQuote` 入口，**多源冗余 + 通道降级**（详见下方「行情数据源」）。数据源优先级与菜单显隐**可配置**（Supabase `app_config` 远程下发，改库即生效、无需发版）。
+- **前后端分离**：登录 / 自选 / 社区 / 公告 / 系统配置全部落在 Supabase（PostgreSQL + Auth + Storage + Edge Functions）；行情与资金流经 **Edge Function 服务端转发**（东财已验证可访问），彻底移除本地 Node 后端。
 
 ---
 
@@ -23,7 +24,8 @@
 ```
 stock-analyzer-uni/
 ├─ src/
-│  ├─ config/app.ts          # 运行期配置（Supabase URL/KEY、是否走 Edge 代理）
+│  ├─ config/app.ts          # 运行期配置：Supabase URL/KEY、USE_EDGE_FUNCTIONS、本地默认菜单/数据源
+│  ├─ config/remote.ts       # 从 Supabase app_config 表拉取远程配置（菜单显隐 / 数据源顺序）
 │  ├─ utils/                 # 纯业务逻辑（跨端，零平台依赖）
 │  │  ├─ analyzer.ts         #   分析引擎（指标 + 综合研判 + 白话报告）
 │  │  ├─ chart.ts            #   图表配置构建器（转 uCharts 配置）
@@ -31,50 +33,70 @@ stock-analyzer-uni/
 │  │  ├─ colors.ts / format.ts
 │  ├─ api/                   # 数据 / 服务隔离层
 │  │  ├─ supabase.ts         #   Supabase 客户端（H5 原生 / 小程序 uni.request 垫片）
-│  │  ├─ quote.ts            #   跨端行情（东方财富单源：实时/K线/分时/资金流，经代理）
+│  │  ├─ quote.ts            #   跨端行情统一入口
+│  │  ├─ sources/            #   数据源层：多源注册表 + 并发首胜 + 熔断降级
+│  │  │  ├─ index.ts         #     注册表（东财/腾讯/新浪/代理）按配置组装取数链
+│  │  │  ├─ eastmoney.ts / tencent.ts / sina.ts / proxy.ts
+│  │  │  ├─ transport.ts     #     传输层降级（直连/JSONP/Edge Function/公共代理）
+│  │  ├─ announcement.ts     #   公告（Supabase announcements 表）
 │  │  ├─ auth.ts             #   登录 / 注册 / 资料更新 / 头像上传
 │  ├─ store/                 # 响应式状态（Vue reactive，跨端通用）
+│  │  ├─ appConfig.ts        #   运行时配置合成（本地默认 + 远程覆盖）
 │  │  ├─ user.ts             #   用户态 + 资料 + 会话订阅
 │  │  ├─ watchlist.ts        #   自选股（云端 / 本地降级 + Realtime）
-│  │  ├─ nav.ts              #   UI 桥接（登录弹窗、跳转行情）
+│  │  ├─ nav.ts              #   UI 桥接（底部导航 key、登录弹窗、跳转行情）
 │  ├─ components/            # 跨端 UI 组件
 │  │  ├─ OutlineIcon.vue     #   线条图标封装（uni-icons）
 │  │  ├─ PriceText.vue / AnalysisCard.vue / KlineChart.vue
-│  │  ├─ ReportView.vue / AuthModal.vue / AppTabBar.vue
-│  ├─ views/                 # 三个页面视图
-│  │  ├─ MarketView.vue / WatchlistView.vue / ProfileView.vue
-│  ├─ pages/index/index.vue  # 壳页：底部导航 + 三视图切换 + 认证弹窗
+│  │  ├─ ReportView.vue / AuthModal.vue / AppTabBar.vue（tabs 由系统配置下发）
+│  ├─ views/                 # 四个页面视图（Market / Watchlist / Community / Profile）
+│  ├─ pages/index/index.vue  # 壳页：底部导航（按配置显隐）+ 视图切换 + 认证弹窗
 │  ├─ styles/global.css      # 全局设计系统（颜色 / 间距 / 圆角 / 动效）
 │  ├─ App.vue / main.ts
 ├─ uni_modules/              # 跨端组件（qiun-data-charts、uni-icons，已 vendored）
 ├─ supabase/
-│  ├─ schema.sql            # 建表 / RLS / 触发器 / 存储桶 / Realtime
-│  └─ functions/get-quote/  # 可选 Edge Function 行情代理
+│  ├─ deploy.sql            # 建表 / RLS / 存储桶 / Realtime（公告、系统配置、社区等）
+│  ├─ DEPLOY.md             # Supabase 部署指引（SQL + Edge Function + 环境变量）
+│  └─ functions/guanlan-quote-proxy/  # Edge Function：行情 / 资金流服务端转发
 └─ manifest.json / pages.json / vite.config.ts
 ```
 
 ---
 
-## 📡 行情数据源（官方门户接口）
+## 📡 行情数据源（多源冗余，可配置）
 
-**数据链路**：交易所（上交所 / 深交所 / 港交所）是行情的源头 → 数据商（东方财富、同花顺、腾讯、新浪等）通过授权行情源 / 镜像拿到数据 → 再以各自的 **web API** 对外提供。本项目直接调用这些**交易所授权门户的官方 web 接口**，不走东方财富 JSONP。
+**数据链路**：交易所（上交所 / 深交所 / 港交所）是行情的源头 → 数据商（东方财富、腾讯、新浪等）通过授权行情源 / 镜像拿到数据 → 再以各自的 **web API** 对外提供。本项目对每类数据接入多家相互独立的上游源，做 **并发首胜 + 自动降级**（某源连续失败 3 次熔断 60s 后自愈），单家源故障不影响整页。
 
-| 数据 | 接口（均为东方财富） | 说明 |
-| --- | --- | --- |
-| 实时行情 | `push2.eastmoney.com/api/qt/stock/get` | 最新价/昨收/开/高/低/名称/时间；价格按市场精度缩放（A 股×100、港股×1000） |
-| K 线（日/周/月/年） | `push2his.eastmoney.com/api/qt/stock/kline/get` | 无 CORS，经代理获取 |
-| 分时 | `push2his.eastmoney.com/api/qt/stock/trends2/get` | 无 CORS，经代理获取 |
-| 主力净流入（资金流） | `push2his.eastmoney.com/api/qt/stock/fflow/kline/get` | 无 CORS，经代理获取 |
+**默认优先级（可在 Supabase `app_config` 的 `sources` 字段改，无需发版）**：
 
-**为什么不再用 JSONP**：部署到 H5（iframe / 静态托管）后，浏览器出于安全会**禁止跨域 `<script>` 注入**，JSONP 直接失败（即之前「行情接口请求失败(JSONP)」的根因）。改为统一的 `fetch` + 代理后，任何环境都不会再出现该问题。
+| 数据 | 首选 | 次选 | 兜底 | 说明 |
+| --- | --- | --- | --- | --- |
+| 实时行情 | 东方财富 | 腾讯证券 | 新浪财经 | 三级冗余 |
+| K 线 | 东方财富 | 腾讯证券 | 新浪财经(日K) | 东财额外提供换手率(f61)，采用时优先 |
+| 分时 | 东方财富 | 腾讯证券 | 新浪财经 | 三级冗余 |
+| 资金流 | 东方财富 | Edge 代理(新浪) | — | 主力净流入仅东财免费开放；东财不可达经 Edge Function 转发新浪 |
+| 搜索 | 东方财富 | 腾讯证券 | 新浪财经 | 三级冗余 |
+| 资讯 | 东方财富 | — | — | 结构化资讯独一家，不可达则返回空列表 |
 
 **请求通道（自动选择，按优先级）**：
-1. 同源代理路径 `/rt`（实时）`/em`（K 线 / 分时 / 资金流）：开发期由 Vite 代理（`vite.config.ts`）、生产期由自带的 Node 代理服务（`server/index.js`）承接，浏览器同域请求，无跨域问题；
-2. 若同源路径不可用（如纯静态托管没有后端），自动回退到公共 CORS 代理（codetabs → allorigins → corsproxy.io）。
+1. **Supabase Edge Function**（`guanlan-quote-proxy`）服务端转发（东财已验证可访问），H5 与小程序统一走此通道，规避 CORS 与小程序域名白名单；
+2. 直连（带 UA/Referer）→ JSONP → 公共 CORS 代理，逐级回退；
+3. 本地开发另有 Vite 同源代理 `/rt /em /search` 直连东财调试用。
 
-> 东方财富全部接口返回 **UTF-8**，前端用 `TextDecoder('utf-8')` 解码；实时行情价格按市场精度缩放（A 股×100、港股×1000），已在 `quote.ts` 的 `emPriceScale` 中处理。
+> 东方财富接口返回 UTF-8；新浪资金流返回 GBK（已由 Edge Function 转码）。实时行情价格按市场精度缩放（A 股×100、港股×1000），已在 `sources/eastmoney.ts` 的 `emPriceScale` 中处理。
 
-> **前端无需手动选择沪/深/港/京**：输入股票代码（或名称）即按规则自动识别市场（`period.ts` 的 `resolveSecid` auto 模式：5 位→港股 116.、6 开头→沪 1.、0/3 开头→深 0.、4/8/9 开头→北交所 0.）并立即开始分析；同时提供东方财富搜索接口的代码/名称联想（网络不可用时自动隐藏，回退到规则识别）。自选股以 `secid` 反推的 `code`/`market` 存储。
+> **前端无需手动选择沪/深/港/京**：输入股票代码（或名称）即按规则自动识别市场（`period.ts` 的 `resolveSecid` auto 模式）并立即开始分析；同时提供东方财富搜索接口的代码/名称联想。自选股以 `secid` 反推的 `code`/`market` 存储。
+
+## ⚙️ 系统配置（菜单 / 数据源远程下发）
+
+所有业务级配置存在 Supabase `app_config` 表（key/value jsonb，RLS 公开读 / 仅 service_role 可写）。前端启动时拉取并与本地默认合并，组件自动响应。
+
+| 字段 | 类型 | 作用 |
+| --- | --- | --- |
+| `menus` | `{market,watch,community,profile: boolean}` | 底部导航显隐（关闭则入口一并隐藏） |
+| `sources` | `{realtime,kline,trend,flow,search,news: SourceId[]}` | 每类数据的数据源优先级列表 |
+
+新增配置项（如 `features` / `theme`）无需改表，直接在 `app_config` 加 key 即可。
 
 ---
 
@@ -99,38 +121,22 @@ npm run build:mp-weixin   # 产物在 dist/build/mp-weixin
 npm run dev:app / npm run build:app
 ```
 
-### 自带行情代理 + 静态服务（推荐用于 H5 部署）
-
-`server/index.js` 零依赖（仅 Node 内置模块）：一边托管打包后的 H5，一边把 `/tencent` `/sina` `/em`
-代理到对应的官方门户接口（服务端 fetch，浏览器同域调用，彻底规避跨域与 JSONP）。
-
-```bash
-npm run build:h5                 # 先构建产物到 dist/build/h5
-PORT=8787 node server/index.js   # 启动后访问 http://localhost:8787
-```
-
-部署到服务器时，把前端的环境变量 `VITE_API_PROXY` 指向该地址，前端即走同源代理；
-不配则自动回退到公共 CORS 代理。
-
-> **出网策略（实测）**：服务端优先**直连**上游（腾讯 / 新浪 / 东方财富均验证可用）；
-> 直连偶发失败时自动回退到 `curl`（会读取系统 `HTTPS_PROXY`，兼顾公司 / 沙箱代理场景）。
-> 已**废弃 `https-proxy-agent` 依赖**——实测东方财富经其 CONNECT 隧道会稳定 `socket hang up`，
-> 而直连与 `curl` 均稳定返回数据。
+> 后端（登录 / 自选云同步 / 社区 / 公告 / 配置）与行情代理均由 **Supabase** 承载，
+> 前端可静态托管在任意平台（Vercel / Netlify / 对象存储等），无需自建服务器。
 
 > 注：在受限沙箱环境里 `vite` 依赖优化 / `uni` 清理产物时会触发批量删除被拦截而中断，
 > 属环境限制；在本地普通机器上 `npm run dev:h5` 可正常运行。生产构建（`build:h5`）不受影响。
 
 ---
 
-## 🔧 Supabase 配置（可选，不配也能分析）
+## 🔧 Supabase 配置（不配也能分析，配了功能完整）
 
-1. 在 `src/config/app.ts` 填入 `SUPABASE_URL` 与 `SUPABASE_ANON_KEY`（或用环境变量
-   `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` 注入）。
-2. 在 Supabase 控制台 SQL Editor 执行 `supabase/schema.sql`。
-3. 若希望小程序端走代理（规避域名白名单）：`USE_EDGE_FUNCTIONS=true`，
-   并部署 `supabase/functions/get-quote`（`supabase functions deploy get-quote`）。
+1. 在 `.env`（或 `.env.local`）填入 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_ANON_KEY`。
+2. 在 Supabase 控制台 SQL Editor 执行 `supabase/deploy.sql`（幂等，可重复执行）。
+3. 部署行情/资金流 Edge Function：`npx supabase functions deploy guanlan-quote-proxy`
+   （更多细节见 `supabase/DEPLOY.md`）。
 
-未配置时：登录不可用，但行情分析、本地自选（Storage 降级）完全可用。
+未配置时：登录 / 自选云同步 / 社区 / 公告不可用，但行情分析（本地默认配置）与本地自选完全可用。
 
 ---
 

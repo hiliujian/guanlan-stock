@@ -24,6 +24,7 @@ export interface RawRealtime {
   low: number;
   vol: number; // 成交量（手）
   amount: number; // 成交额（元）
+  turnover?: number; // 换手率（%），仅东财 / 腾讯实时提供，新浪无此字段
   time: string;
 }
 

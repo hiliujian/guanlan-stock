@@ -1,46 +1,42 @@
 <template>
   <view class="tabbar">
     <view
-      v-for="(t, i) in tabs"
+      v-for="t in tabs"
       :key="t.key"
-      :class="['tab', current === i ? 'active' : '']"
-      @click="onTap(i)"
+      :class="['tab', current === t.key ? 'active' : '']"
+      @click="onTap(t.key)"
     >
       <view class="tab-icon-wrap">
-        <OutlineIcon :type="current === i ? t.iconActive : t.icon" :size="44" :color="iconColor(i)" />
+        <OutlineIcon :type="current === t.key ? t.iconActive : t.icon" :size="44" :color="iconColor(t)" />
       </view>
-      <text class="tab-label" :style="{ color: labelColor(i) }">{{ t.label }}</text>
+      <text class="tab-label" :style="{ color: labelColor(t) }">{{ t.label }}</text>
     </view>
   </view>
 </template>
 
 <script setup lang="ts">
 import OutlineIcon from "./OutlineIcon.vue";
+import type { TabKey } from "@/config/app";
 
-interface Tab {
-  key: string;
+export interface TabDef {
+  key: TabKey;
   label: string;
   icon: string;
   iconActive: string;
 }
-const tabs: Tab[] = [
-  { key: "market", label: "行情", icon: "bars", iconActive: "bars" },
-  { key: "watch", label: "自选", icon: "star", iconActive: "star-filled" },
-  { key: "community", label: "社区", icon: "chatbubble", iconActive: "chatbubble" },
-  { key: "profile", label: "我的", icon: "person", iconActive: "person" },
-];
 
-const props = defineProps<{ current: number }>();
-const emit = defineEmits<{ (e: "change", index: number): void }>();
+// tabs 由上层按系统配置（menus 显隐）传入，组件本身不感知模块开关
+const props = defineProps<{ tabs: TabDef[]; current: TabKey }>();
+const emit = defineEmits<{ (e: "change", key: TabKey): void }>();
 
-function onTap(i: number) {
-  if (i !== props.current) emit("change", i);
+function onTap(key: TabKey) {
+  if (key !== props.current) emit("change", key);
 }
-function iconColor(i: number) {
-  return i === props.current ? "var(--primary)" : "var(--text-2)";
+function iconColor(t: TabDef) {
+  return t.key === props.current ? "var(--primary)" : "var(--text-2)";
 }
-function labelColor(i: number) {
-  return i === props.current ? "var(--primary)" : "var(--text-2)";
+function labelColor(t: TabDef) {
+  return t.key === props.current ? "var(--primary)" : "var(--text-2)";
 }
 </script>
 

@@ -33,8 +33,8 @@ _ucharts_src
 _uniui_src
 
 # ---- Local preview server & auxiliary helpers (not part of the uni-app build) ----
-# 注意：server/（行情代理+静态服务）与 supabase/（DB schema + Edge Function）属于「后端」，
-# 已按需求纳入版本库（前后端同仓）；仅 webapp（旧构建产物）仍排除。
+# 后端已统一迁移至 Supabase（deploy.sql + Edge Function，纳入版本库）；
+# 本地 Node 代理服务 server/ 已废弃删除。webapp（旧构建产物）仍排除。
 webapp
 
 # ---- 本地临时 / scratch / 开发期产物（不入库） ----

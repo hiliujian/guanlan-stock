@@ -1,21 +1,24 @@
 // =====================================================================
 // 数据源注册表：按「数据接口」装配多个相互独立的上游源，并交 raceProviders
-// 做并发首胜 + 自动降级。优先级从左到右（首选 → 兜底）。
+// 做并发首胜 + 自动降级（熔断阈值 3 次 / 冷却 60s 自愈）。
 //
-//   · 实时行情：东方财富 → 腾讯证券 → 新浪财经
-//   · K 线    ：东方财富 → 腾讯证券 → 新浪财经(仅日K)
-//   · 分时    ：东方财富 → 腾讯证券 → 新浪财经(1分钟近似)
-//   · 资金流  ：东方财富（注：主力净流入为东财独占免费数据，腾讯/新浪不开放，
-//               故仅东财一家；若东财不可用则优雅降级为空，不影响整体页面）
-//   · 搜索    ：东方财富 → 腾讯证券 → 新浪财经
+// 每类数据的优先级顺序由系统配置（app_config.sources）驱动：
+//   · 实时行情：东财 → 腾讯 → 新浪   · 分时：东财 → 腾讯 → 新浪
+//   · K 线    ：东财 → 腾讯 → 新浪(仅日K)
+//   · 资金流  ：东财（含换手率口径）→ 代理（新浪逐日主力净流入）
+//   · 搜索    ：东财 → 腾讯 → 新浪   · 资讯：东财（结构化资讯独一家）
+// 改顺序 / 停用某源 → 直接改数据库 app_config 的 sources 字段，无需发版。
 //
-// 各数据源内部的取值动作通过 transport 层再做「通道降级」（同源/直连/JSONP/代理），
-// 两层叠加，确保「单家源挂」或「某通道不通」都不会导致整页取数失败。
+// 各数据源内部的取值动作通过 transport 层再做「通道降级」（同源/直连/JSONP/Edge
+// Function/代理），两层叠加，确保「单家源挂」或「某通道不通」都不会导致整页取数失败。
 // =====================================================================
 import type { PeriodKey, Kline } from "@/utils/period";
 import type { RawRealtime } from "./types";
 import { raceProviders, type Attempt } from "./types";
 import { withTimeout } from "@/api/transport";
+import { sourceOrder } from "@/store/appConfig";
+import type { DataKind, SourceId } from "@/config/app";
+import { proxyFlow } from "./proxy";
 import {
   emRealtime,
   emKline,
@@ -33,6 +36,35 @@ import { sinaRealtime, sinaKline, sinaTrend, sinaSearch } from "./sina";
 import { searchByKeyword } from "./news";
 import { codeFromSecid } from "@/utils/period";
 import type { NewsItem } from "@/utils/newsSentiment";
+
+// ---------------- 数据源注册表 ----------------
+// 所有 provider 按「数据接口」分组、以 SourceId 为键注册。每类数据的优先级顺序由系统
+// 配置（app_config.sources）的 sourceOrder(kind) 读取；默认东财 → 腾讯 → 新浪三级冗余。
+// 新增数据源只需在此注册 + 在 app_config 配置顺序，无需改动取数链路。
+// 注：资讯(News)为东财搜索索引的内联实现（getNews / searchByKeyword），不走注册表。
+// ProviderLike 刻意宽松（与历史 Attempt<any> 风格一致）：真实返回类型由各 provider
+// 各自契约保证，注册表只约束「有 id（熔断标识）+ 有 fetch」的结构。
+type ProviderLike = { id: string; fetch(...args: any[]): Promise<any> };
+const PROVIDERS: Record<DataKind, Partial<Record<SourceId, ProviderLike>>> = {
+  realtime: { eastmoney: emRealtime, tencent: txRealtime, sina: sinaRealtime },
+  kline: { eastmoney: emKline, tencent: txKline, sina: sinaKline },
+  trend: { eastmoney: emTrend, tencent: txTrend, sina: sinaTrend },
+  flow: { eastmoney: emFlow, proxy: proxyFlow },
+  search: { eastmoney: emSearch, tencent: txSearch, sina: sinaSearch },
+  news: {},
+};
+
+// 按系统配置取出某类数据的有序 provider 列表（已过滤未注册/被配置禁用的源）
+function orderedProviders(kind: DataKind): ProviderLike[] {
+  return sourceOrder(kind)
+    .map((id) => PROVIDERS[kind][id])
+    .filter((p): p is ProviderLike => !!p);
+}
+
+// 将 provider 链包装为 raceProviders 的尝试列表（id 用于熔断计数与日志）
+function chainFor(providers: ProviderLike[], run: (p: ProviderLike) => Promise<any>): Attempt<any>[] {
+  return providers.map((p) => ({ id: p.id, run: () => run(p) }));
+}
 
 // ---------------- K 线 / 实时行情 数据清洗 ----------------
 // 上游源偶发会返回「坏棒」：如开/收/高/低错位、或某字段为离群值（例如某根 open 比
@@ -100,12 +132,22 @@ function cleanRealtime(rt: RawRealtime): RawRealtime {
 }
 
 export function getRealtime(secid: string) {
-  const attempts: Attempt<any>[] = [
-    { id: emRealtime.id, run: () => emRealtime.fetch(secid) },
-    { id: txRealtime.id, run: () => txRealtime.fetch(secid) },
-    { id: sinaRealtime.id, run: () => sinaRealtime.fetch(secid) },
-  ];
-  return raceProviders(attempts, "实时行情").then((r) => cleanRealtime(r as RawRealtime));
+  return raceProviders(
+    chainFor(orderedProviders("realtime"), (p) => p.fetch(secid)),
+    "实时行情"
+  ).then((r) => cleanRealtime(r as RawRealtime));
+}
+
+// 换手率锚定：实时换手率仅东财(f168) / 腾讯(a[38]) 提供，新浪无此字段。当竞速胜出的
+// 实时源不含换手率（如东财被阻断时新浪抢先胜出），上层可用此函数单独向腾讯取一次
+// 含换手率的实时快照，用于反推流通股本、估算缺失的日 K 换手率。
+export async function fetchTurnoverAnchor(secid: string): Promise<RawRealtime | null> {
+  try {
+    const rt = await txRealtime.fetch(secid);
+    return rt && (rt.turnover || 0) > 0 && (rt.vol || 0) > 0 ? rt : null;
+  } catch {
+    return null;
+  }
 }
 
 // K 线缓存：东方财富是唯一稳定提供「换手率(f61)」的源，且易被频控。缓存「含真实换手率」
@@ -118,31 +160,68 @@ const KLINE_TTL = 5 * 60 * 1000;
 export function getKline(secid: string, period: PeriodKey) {
   // 东方财富是唯一稳定提供「换手率(f61) / 成交额」的源；腾讯、新浪的 K 线接口不含这两个
   // 字段（解析时硬编码为 0）。若按纯并发首胜，腾讯/新浪常因响应更快抢先胜出，导致换手率
-  // 恒为 0、量能失真。因此：并发等待东财与「腾讯/新浪」降级两组，优先选用含真实换手率的
-  // 东财结果；仅当东财不可用才退回降级组（此时换手率本就无数据，由展示层标注「暂无」）。
+  // 恒为 0、量能失真。因此：优先选用含真实换手率的东财结果；仅当东财不可用才退回降级组
+  // （此时换手率本就无数据，由展示层标注「暂无」）。
+  // 但绝不能再用 Promise.all 等「最慢者」——东财被封锁时其多通道重试可耗时数秒，会把外层
+  // 对大盘指数K线的 3s 硬超时拖挂成空，导致「大盘·市场环境」整卡暂无数据。改为：降级组先
+  // 胜出时，再给东财 ~700ms 短窗口（成功时东财通常 <500ms 返回），窗口内东财到货则优先
+  // 采用（保换手率），否则立即用降级组，绝不让慢失败阻塞主链路。
   const key = secid + "|" + period;
   const now = Date.now();
   const cached = klineCache.get(key);
   if (cached && now - cached.t < KLINE_TTL && cached.data.some((k) => (k.turnover || 0) > 0)) {
     return Promise.resolve(cached.data);
   }
-  const emP = emKline
-    .fetch(secid, period)
-    .then((r) => (r && r.length ? r : null))
-    .catch(() => null);
+  // 东财是否仍被配置在 K 线链路：在则并行优先尝试（保换手率），并从降级组剔除；
+  // 未配置则直接全链竞速（东财独占的换手率随之缺省，由展示层标注「暂无」）。
+  const hasEM = sourceOrder("kline").includes("eastmoney");
+  const emP = hasEM
+    ? emKline
+        .fetch(secid, period)
+        .then((r) => (r && r.length ? r : null))
+        .catch(() => null)
+    : Promise.resolve(null);
   const fbP = raceProviders(
-    [
-      { id: txKline.id, run: () => txKline.fetch(secid, period) },
-      { id: sinaKline.id, run: () => sinaKline.fetch(secid, period) },
-    ],
+    chainFor(
+      orderedProviders("kline").filter((p) => !hasEM || p.id !== emKline.id),
+      (p) => p.fetch(secid, period)
+    ),
     "K线"
   )
     .then((r) => (r && r.length ? r : null))
     .catch(() => null);
-  return Promise.all([emP, fbP]).then(([em, fb]) => {
+  const graceMs = 700;
+  return new Promise<{ src: "em" | "fb"; k: Kline[] } | null>((resolve) => {
+    let em: Kline[] | null | undefined; // undefined = 东财仍在途
+    let fb: Kline[] | null | undefined;
+    let ended = false;
+    const end = (v: { src: "em" | "fb"; k: Kline[] } | null) => {
+      if (!ended) {
+        ended = true;
+        resolve(v);
+      }
+    };
+    emP.then((r) => {
+      em = r;
+      if (r && r.length) end({ src: "em", k: r });
+      else if (fb !== undefined) end(fb && fb.length ? { src: "fb", k: fb } : null);
+      // fb 仍在途：由 fbP 分支收尾，避免东财慢失败拖住整个链路
+    });
+    fbP.then((r) => {
+      fb = r;
+      if (r && r.length) {
+        if (em == null) {
+          // 降级组已胜出、东财仍在途 → 给短窗口优先（保换手率），超时即用降级组
+          setTimeout(() => {
+            if (em == null || !(em && em.length)) end({ src: "fb", k: r });
+          }, graceMs);
+        } else if (!(em && em.length)) end({ src: "fb", k: r });
+      } else if (em != null && !(em && em.length)) end(null);
+    });
+  }).then((winner) => {
     const hasTurn = (a: Kline[] | null | undefined) => !!a && a.some((k) => (k.turnover || 0) > 0);
-    const chosen = hasTurn(em) ? em! : (fb || em || []);
-    const data = normalizeKlines(chosen);
+    if (!winner) return cached && hasTurn(cached.data) ? cached.data : ([] as Kline[]);
+    const data = normalizeKlines(winner.k);
     if (hasTurn(data)) {
       klineCache.set(key, { t: now, data });
     } else if (cached && hasTurn(cached.data)) {
@@ -154,30 +233,17 @@ export function getKline(secid: string, period: PeriodKey) {
 }
 
 export function getTrend(secid: string) {
-  const attempts: Attempt<any>[] = [
-    { id: emTrend.id, run: () => emTrend.fetch(secid) },
-    { id: txTrend.id, run: () => txTrend.fetch(secid) },
-    { id: sinaTrend.id, run: () => sinaTrend.fetch(secid) },
-  ];
-  return raceProviders(attempts, "分时");
+  return raceProviders(chainFor(orderedProviders("trend"), (p) => p.fetch(secid)), "分时");
 }
 
 export function getFlow(secid: string) {
-  // 资金流仅东方财富稳定提供（主力净流入），腾讯/新浪不开放该数据；
-  // 若东财不可用，返回空 Map，由上层 graceful 处理，不阻断行情主流程。
-  const attempts: Attempt<any>[] = [
-    { id: emFlow.id, run: () => emFlow.fetch(secid) },
-  ];
-  return raceProviders(attempts, "资金流");
+  // 资金流：按配置顺序竞速（默认东财主站 → 代理通道）。东财不可达时落到代理
+  // （Edge Function 转发新浪逐日主力净流入，规避浏览器 CORS），主力净流入不再恒为暂无。
+  return raceProviders(chainFor(orderedProviders("flow"), (p) => p.fetch(secid)), "资金流");
 }
 
 export function getSearch(keyword: string) {
-  const attempts: Attempt<any>[] = [
-    { id: emSearch.id, run: () => emSearch.fetch(keyword) },
-    { id: txSearch.id, run: () => txSearch.fetch(keyword) },
-    { id: sinaSearch.id, run: () => sinaSearch.fetch(keyword) },
-  ];
-  return raceProviders(attempts, "搜索");
+  return raceProviders(chainFor(orderedProviders("search"), (p) => p.fetch(keyword)), "搜索");
 }
 
 // 指数市场宽度（涨跌家数）：仅东财提供，超时/失败返回 null，由 analyze 降级为「暂无数据」。

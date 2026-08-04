@@ -120,6 +120,53 @@ create policy "post_images_auth_insert" on storage.objects for insert to authent
 drop policy if exists "post_images_owner_delete" on storage.objects;
 create policy "post_images_owner_delete" on storage.objects for delete to authenticated using (bucket_id = 'post-images' and owner = auth.uid());
 
+-- 1.7 通知公告表（公告运营用：前端只读展示，写入仅服务端 service_role / SQL 管理）
+--     字段与 server/data/announcements.json 的旧格式一一对应；前端 src/api/announcement.ts 直连本表。
+create table if not exists public.announcements (
+  id          uuid primary key default gen_random_uuid(),
+  title       text not null,
+  content     text not null default '',
+  images      text[] not null default '{}',
+  type        text not null default 'modal' check (type in ('modal','banner','toast')),
+  position    text not null default 'center' check (position in ('top','center','bottom')),
+  pages       text[] not null default '{*}',            -- 在哪些页面显示，['*'] = 所有页面
+  priority    integer not null default 0,               -- 优先级，数字越大越优先
+  active      boolean not null default true,
+  start_at    timestamptz,                              -- 生效起始时间（null = 不限）
+  end_at      timestamptz,                              -- 生效截止时间（null = 不限）
+  dismiss_key text not null default 'once' check (dismiss_key in ('once','always','session')),
+  link        text not null default '',                 -- 可选跳转链接
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+create index if not exists idx_announcements_window on public.announcements (active, start_at, end_at);
+alter table public.announcements enable row level security;
+-- 读：所有人可见（前端用 anon key 查询）；写：无任何 anon/authenticated 策略 → 仅 service_role 可写
+drop policy if exists "announcements_select" on public.announcements;
+create policy "announcements_select" on public.announcements for select using (true);
+
+-- 1.8 系统配置表（运行时远端配置：菜单显隐 / 数据源顺序 / 功能开关）
+--     前端 src/config/remote.ts 启动时拉取并合成「本地默认 + 远程覆盖」；
+--     value 用 jsonb，随时新增配置项（如 features / theme）无需 ALTER 表。
+create table if not exists public.app_config (
+  key        text primary key,
+  value      jsonb not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.app_config enable row level security;
+-- 读：所有人可见（前端 anon 拉取）；写：仅 service_role（控制台 SQL / 服务端脚本）
+drop policy if exists "app_config_select" on public.app_config;
+create policy "app_config_select" on public.app_config for select using (true);
+
+-- 可选：默认写入「菜单显隐」示例配置（社区 / 自选默认开启；关闭只需置 false 后更新）。
+-- 前端未建表 / 无此 key 时全部走本地默认，故示例注释掉即可，需要时取消注释执行。
+/*
+insert into public.app_config (key, value) values
+('menus', '{"market":true,"watch":true,"community":true,"profile":true}'::jsonb),
+('sources', '{"realtime":["eastmoney","tencent","sina"],"kline":["eastmoney","tencent","sina"],"trend":["eastmoney","tencent","sina"],"flow":["eastmoney","proxy"],"search":["eastmoney","tencent","sina"],"news":["eastmoney"]}'::jsonb)
+on conflict (key) do nothing;
+*/
+
 
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║ 2. 社区核心表                                                 ║

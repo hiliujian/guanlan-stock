@@ -160,7 +160,11 @@ export const sinaSearch = {
           const parts = entry.split(",");
           if (parts.length < 4) return;
           const code = normalizeCode(parts[2] || "");
-          const name = parts[0] || parts[4] || "";
+          // 新浪格式：`符号,市场类型,代码,符号,名称,...`（如 "sz399006,11,399006,sz399006,创业板指,..."）。
+          // parts[0] 有时是带前缀的代码（如 sh600009 / sz399006），直接当名称会显示成 secid；
+          // 真正的中文名稳定位于 parts[4]（部分条目 parts[6] 也重复名称）。故优先取 parts[4]/[6]，
+          // 仅在其为空时回退 parts[0]，避免联想列表出现「sz399006」这类怪名。
+          const name = parts[4] || parts[6] || parts[0] || "";
           if (code) hits.push({ code, name });
         });
       return hits.length ? hits : null;

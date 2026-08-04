@@ -27,6 +27,7 @@ function parseTencentRealtime(s: string): RawRealtime | null {
     low: num(a[34]),
     vol: num(a[36]), // 成交量（手）
     amount: num(a[37]) * 10000, // 成交额（万元 -> 元）
+    turnover: num(a[38]), // 换手率（%），如 0.29 表示 0.29%
     time: a[30] || "",
   };
 }

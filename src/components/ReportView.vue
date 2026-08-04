@@ -6,17 +6,8 @@
       <text class="banner-text">{{ a.banner }}</text>
     </view>
 
-    <!-- 今日盘中异动（A 股特有：涨停/跌停/炸板，实时反映当日极端走势） -->
-    <view v-if="a.intradayMove.label" :class="['intraday-alert', intradayCls]">
-      <OutlineIcon :type="intradayIcon" :size="30" />
-      <view class="ia-body">
-        <text class="ia-label">{{ a.intradayMove.label }}</text>
-        <text class="ia-pct">今日 {{ (a.intradayMove.pct >= 0 ? '+' : '') + (a.intradayMove.pct * 100).toFixed(2) }}%</text>
-      </view>
-    </view>
-
     <!-- 直白操作信号（核心卖点：什么时候买 / 什么时候卖）
-         信号头部 + 触发/确认详情上下拼接为一张连通卡片，共享圆角阴影与色条 -->
+         信号头部 + 盘中异动警示 + 触发/确认详情上下拼接为一张连通卡片，共享圆角阴影与色条 -->
     <view :class="['signal-card', signalCls]">
       <view class="signal">
         <view class="sig-main">
@@ -24,6 +15,14 @@
           <text class="sig-text">{{ a.signal.text }}</text>
         </view>
         <view class="sig-type">{{ a.sigType }}</view>
+      </view>
+      <!-- 今日盘中异动（A 股特有：涨停/跌停/炸板/跌停开板，实时警示，紧随买卖信号） -->
+      <view v-if="a.intradayMove.label" :class="['sig-alert', intradayCls]">
+        <view class="sa-live" />
+        <text class="sa-label">{{ a.intradayMove.label }}</text>
+        <text class="sa-pct" :style="{ color: intradayPctColor }">{{ intradayPctText }}</text>
+        <view class="sa-spacer" />
+        <text class="sa-sub">{{ intradaySub }}</text>
       </view>
       <view class="sig-detail">
         <view class="sd-row">
@@ -250,11 +249,13 @@
       <view class="metric-grid">
         <view class="metric">
           <text class="m-k">{{ a.marketEnv.indexName }}</text>
-          <text class="m-v" :style="{ color: marketIdxColor }">{{ a.marketEnv.indexTrend }}</text>
+          <text class="m-v" :style="{ color: indexDisplayColor }">
+            {{ a.marketEnv.indexTrendDisplay }}
+          </text>
         </view>
         <view class="metric">
           <text class="m-k">大盘趋势强度(ADX)</text>
-          <text class="m-v" :style="{ color: marketIdxColor }">{{ marketIdxStrength }}</text>
+          <text class="m-v" :style="{ color: indexDisplayColor }">{{ marketIdxStrength }}</text>
         </view>
         <view class="metric">
           <text class="m-k">个股与大盘协同</text>
@@ -279,7 +280,7 @@
           </view>
           <view class="metric">
             <text class="m-k">行业趋势</text>
-            <text class="m-v" :style="{ color: sectorTrendColor }">{{ a.marketEnv.sectorTrend }}</text>
+            <text class="m-v" :style="{ color: sectorDisplayColor }">{{ a.marketEnv.sectorTrendDisplay }}</text>
           </view>
           <view class="metric">
             <text class="m-k">个股与行业协同</text>
@@ -376,27 +377,33 @@ const bannerIcon = computed(() => {
   // 用 star-filled 代替 medal，避免与"技术面评分"面板的 medal 图标重复。
   return "star-filled";
 });
-// 操作信号卡片着色：买(绿) / 卖(红) / 持有(蓝) / 关注(橙) / 观望(灰)
+// 操作信号卡片着色（A股约定：买/看涨=红 var(--up)、卖/看跌=绿 var(--down)、持有(蓝)/关注(橙)/观望(灰)）
 const signalCls = computed(() => {
   const l = a.value.signal.level;
   return l === "buy" ? "buy" : l === "sell" ? "sell" : l === "hold" ? "hold" : l === "watch" ? "watch" : "wait";
 });
+// 技术评分着色（A股约定：高分=看多强=利好=红、低分=看空弱=利空=绿、中分橙）
 const scoreColor = computed(() => {
   const s = a.value.score;
-  if (s >= 70) return "var(--primary)";
+  if (s >= 70) return "var(--up)";
   if (s >= 45) return "#ff9f1c";
-  return "var(--up)";
+  return "var(--down)";
 });
+// 风险等级着色（A股约定：低风险=利好=红、高风险=利空=绿、中风险橙）
 const riskColor = computed(() => {
   const r = a.value.riskLevel;
-  if (r === "低") return "var(--primary)";
+  if (r === "低") return "var(--up)";
   if (r === "中") return "#ff9f1c";
-  return "var(--up)";
+  return "var(--down)";
 });
 
 // ---------------- 大盘环境派生 ----------------
-const marketIdxColor = computed(() => {
-  const t = a.value.marketEnv?.indexTrend || "";
+// 合成唯一结论的着色：今日动能定性（超跌反弹/修复企稳/反转信号=偏多；见顶信号=偏空；回踩/调整=中性）+ 中期趋势
+const indexDisplayColor = computed(() => {
+  const t = a.value.marketEnv?.indexTrendDisplay || "";
+  if (t === "超跌反弹" || t === "修复企稳" || t === "反转信号") return "var(--up)";
+  if (t === "见顶信号") return "var(--down)";
+  if (t === "正常回踩" || t === "阶段调整") return "var(--text-2)";
   if (t === "上涨趋势" || t === "震荡偏强") return "var(--up)";
   if (t === "下跌趋势" || t === "震荡偏弱") return "var(--down)";
   return "var(--text-2)";
@@ -430,9 +437,12 @@ const mktVolColor = computed(() => {
   if (env.mktVolText === "大盘放量") return env.indexTrend === "上涨趋势" || env.indexTrend === "震荡偏强" ? "var(--up)" : "var(--down)";
   return "var(--text-2)";
 });
-// 行业板块维度着色：行业趋势用涨跌色；个股与行业协同红/绿/灰
-const sectorTrendColor = computed(() => {
-  const t = a.value.marketEnv?.sectorTrend || "";
+// 行业板块维度着色：合成唯一结论（行业今日动能定性 + 中期行业趋势）同口径着色
+const sectorDisplayColor = computed(() => {
+  const t = a.value.marketEnv?.sectorTrendDisplay || "";
+  if (t === "超跌反弹" || t === "修复企稳" || t === "反转信号") return "var(--up)";
+  if (t === "见顶信号") return "var(--down)";
+  if (t === "正常回踩" || t === "阶段调整") return "var(--text-2)";
   if (t === "上涨趋势" || t === "震荡偏强") return "var(--up)";
   if (t === "下跌趋势" || t === "震荡偏弱") return "var(--down)";
   return "var(--text-2)";
@@ -443,7 +453,7 @@ const sectorAlignColor = computed(() => {
   if (s < 0) return "var(--down)";
   return "var(--text-2)";
 });
-// 仓位建议着色：积极(≥55%)绿、防御(≤30%)红、中性灰——与「顺势多/逆势少」的风险预算一致
+// 仓位建议着色（A股约定：积极(≥55%)=看多=红、防御(≤30%)=看空=绿、中性灰——与「顺势多/逆势少」的风险预算一致）
 const positionColor = computed(() => {
   const pct = a.value.marketEnv?.positionPct || 0;
   const advice = a.value.marketEnv?.positionAdvice || "";
@@ -452,20 +462,32 @@ const positionColor = computed(() => {
   if (pct <= 30) return "var(--down)";
   return "var(--text-2)";
 });
-// 今日盘中异动样式与图标
+// 今日盘中异动样式（A股约定：涨=红 var(--up)、跌=绿 var(--down)）
 const intradayCls = computed(() => {
   const m = a.value.intradayMove;
-  if (m.isLimitUp) return "ok";
-  if (m.isLimitDown || m.isBrokenLimitUp) return "bad";
-  if (m.isBrokenLimitDown) return "warn";
+  if (m.isLimitUp || m.isBrokenLimitDown || m.isBigUp) return "up"; // 封涨停 / 跌停开板(转强) / 今日大涨 → 红
+  if (m.isLimitDown || m.isBrokenLimitUp || m.isBigDown) return "down"; // 封跌停 / 炸板(转弱) / 今日大跌 → 绿
   return "";
 });
-const intradayIcon = computed(() => {
+// 盘中异动副文案：依据走势标记给出简洁的盘中解读（补充主标签，一眼看懂发生了什么）
+const intradaySub = computed(() => {
   const m = a.value.intradayMove;
-  if (m.isLimitUp) return "fire";
-  if (m.isLimitDown) return "arrow-down";
-  if (m.isBrokenLimitUp) return "flag";
-  return "info";
+  if (m.isLimitUp) return "强势封板";
+  if (m.isLimitDown) return "弱势封板";
+  if (m.isBrokenLimitUp) return "曾封涨停后打开";
+  if (m.isBrokenLimitDown) return "跌停打开·恐慌释放";
+  if (m.isBigUp) return "放量大涨，短线动能强";
+  if (m.isBigDown) return "放量急跌，注意风险";
+  return "";
+});
+// 今日涨跌幅展示文本（+14.04%）
+const intradayPctText = computed(() => {
+  const p = a.value.intradayMove.pct * 100;
+  return (p >= 0 ? "+" : "") + p.toFixed(2) + "%";
+});
+// 异动涨跌幅着色（A股：涨=红、跌=绿）
+const intradayPctColor = computed(() => {
+  return a.value.intradayMove.pct >= 0 ? "var(--up)" : "var(--down)";
 });
 
 // ---------------- 多维研判派生 ----------------
@@ -576,12 +598,14 @@ const bollPctBText = computed(() => {
 const bollColor = computed(() => {
   const v = a.value.bollPctB[a.value.bollPctB.length - 1];
   if (v == null) return "var(--r-ink)";
-  return v > 1 || v < 0 ? "var(--up)" : "var(--r-ink)";
+  if (v > 1) return "var(--up)"; // 触上轨·超买 → 红
+  if (v < 0) return "var(--down)"; // 触下轨·超卖 → 绿
+  return "var(--r-ink)";
 });
 const volAnnText = computed(() => (a.value.volAnn * 100).toFixed(2) + "%");
 const mddText = computed(() => (a.value.maxDrawdown * 100).toFixed(2) + "%");
 const mddColor = computed(() =>
-  a.value.maxDrawdown > 0.35 ? "var(--up)" : a.value.maxDrawdown > 0.2 ? "#ff9f1c" : "var(--r-ink)"
+  a.value.maxDrawdown > 0.35 ? "var(--down)" : a.value.maxDrawdown > 0.2 ? "#ff9f1c" : "var(--r-ink)"
 );
 const atrPctText = computed(() => a.value.atrPct.toFixed(2) + "%");
 const turnText = computed(() => {
@@ -700,9 +724,11 @@ const conclusion = computed(() => {
   );
   // 大盘环境：在结论里单列一段，让 beta 感知直接体现在总览文字里
   if (r.marketEnv) {
-    let envText = `大盘环境：${r.marketEnv.indexName} 处于${r.marketEnv.indexTrend}，个股与大盘${r.marketEnv.alignText}；市场情绪${r.marketEnv.breadthText}，${r.marketEnv.mktVolText}（${r.marketEnv.idxVolRatio.toFixed(2)}倍均量）。`;
+    let envText = `大盘环境：${r.marketEnv.indexName} 呈现${r.marketEnv.indexTrendDisplay}`;
+    if (r.marketEnv.indexMoveBasis) envText += `（依据：${r.marketEnv.indexMoveBasis}）`;
+    envText += `，个股与大盘${r.marketEnv.alignText}；市场情绪${r.marketEnv.breadthText}，${r.marketEnv.mktVolText}（${r.marketEnv.idxVolRatio.toFixed(2)}倍均量）。`;
     if (r.marketEnv.sectorName) {
-      envText += ` 行业层面：所属「${r.marketEnv.sectorName}」${r.marketEnv.sectorTrend || "趋势不明"}，个股与行业${r.marketEnv.sectorAlignText || "无明显协同"}。`;
+      envText += ` 行业层面：所属「${r.marketEnv.sectorName}」${r.marketEnv.sectorTrendDisplay || "趋势不明"}${r.marketEnv.sectorMoveBasis ? "（依据：" + r.marketEnv.sectorMoveBasis + "）" : ""}，个股与行业${r.marketEnv.sectorAlignText || "无明显协同"}。`;
     }
     if (r.marketEnv.positionAdvice && r.marketEnv.positionAdvice !== "暂无数据") {
       envText += ` 仓位层面：${r.marketEnv.positionAdvice}（依据：${r.marketEnv.positionBasis}）。`;
@@ -793,62 +819,52 @@ function openNews(it: NewsItem) {
   margin-bottom: 18rpx;
 }
 .banner.ok {
-  background: rgba(7, 193, 96, 0.1);
-  color: var(--primary-dark);
+  background: rgba(255, 91, 91, 0.1);
+  color: var(--up);
 }
 .banner.warn {
   background: rgba(255, 159, 28, 0.12);
   color: #c87f00;
 }
 .banner.bad {
-  background: rgba(250, 81, 81, 0.1);
-  color: var(--up);
+  background: rgba(31, 216, 116, 0.1);
+  color: var(--down);
 }
 .banner-text {
   flex: 1;
 }
 
-/* 今日盘中异动提示（涨停/跌停/炸板/跌停开板） */
-.intraday-alert {
+/* 今日盘中异动警示条（内嵌于信号卡片：涨停/跌停/炸板/跌停开板）
+   A股约定：涨=红(var(--up)=#ff5b5b)、跌=绿(var(--down)=#1fd874)。 */
+.sig-alert {
   display: flex;
   align-items: center;
-  gap: 14rpx;
-  padding: 16rpx 22rpx;
-  border-radius: var(--radius-sm);
-  margin-bottom: 18rpx;
-  border-left: 8rpx solid var(--border);
-  transition: background var(--dur-fast) var(--ease-out);
-}
-.intraday-alert .ia-body {
-  display: flex;
-  align-items: baseline;
-  gap: 16rpx;
-  flex: 1;
-}
-.intraday-alert .ia-label {
-  font-size: 28rpx;
-  font-weight: 700;
-}
-.intraday-alert .ia-pct {
+  gap: 12rpx;
+  padding: 12rpx 24rpx;
+  border-top: 1rpx solid var(--r-edge);
   font-size: 24rpx;
-  font-weight: 600;
+}
+.sig-alert.up { background: rgba(255, 91, 91, 0.08); color: var(--up); }
+.sig-alert.down { background: rgba(31, 216, 116, 0.1); color: var(--down); }
+/* 实时脉冲圆点：让「盘中」语义一目了然 */
+.sa-live {
+  flex: none;
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: currentColor;
   opacity: 0.85;
+  animation: sa-pulse 1.6s var(--ease-out) infinite;
 }
-.intraday-alert.ok {
-  background: rgba(7, 193, 96, 0.1);
-  color: var(--primary-dark);
-  border-left-color: var(--primary);
+@keyframes sa-pulse {
+  0% { box-shadow: 0 0 0 0 currentColor; }
+  70% { box-shadow: 0 0 0 12rpx transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
 }
-.intraday-alert.bad {
-  background: rgba(250, 81, 81, 0.1);
-  color: var(--up);
-  border-left-color: var(--up);
-}
-.intraday-alert.warn {
-  background: rgba(255, 159, 28, 0.12);
-  color: #c87f00;
-  border-left-color: #ff9f1c;
-}
+.sig-alert .sa-label { font-weight: 700; }
+.sig-alert .sa-pct { font-weight: 800; font-size: 26rpx; }
+.sa-spacer { flex: 1; }
+.sa-sub { font-size: 21rpx; opacity: 0.8; }
 
 .score-row {
   display: flex;
@@ -920,12 +936,14 @@ function openNews(it: NewsItem) {
   margin-bottom: 16rpx;
 }
 
-/* 多维研判：2 列网格 */
+/* 多维研判：2 列网格
+   卡片内部分隔线统一为 1rpx 发丝线（与 .score-divider / .sig-alert / .decision 等
+   卡片内分隔保持一致，避免 2rpx 造成的「粗细不一」观感）。 */
 .metric-grid {
   display: grid;
   /* 2 列布局适配手机屏宽；奇数 metric 时让最后一格跨满整行，避免右下角空缺 */
   grid-template-columns: 1fr 1fr;
-  gap: 2rpx;
+  gap: 1rpx;
   background: var(--border);
   border-radius: var(--radius-sm);
   overflow: hidden;
@@ -954,6 +972,13 @@ function openNews(it: NewsItem) {
   color: var(--r-ink);
   letter-spacing: 0.3rpx;
   text-align: center;
+}
+/* 空值兜底：任何指标值为空都统一显示「暂无数据」，并沿用项目统一空态色（--text-2）。
+   覆盖「多维技术研判 / 筹码 / 波动与风险 / 大盘·市场环境」等所有 .m-v，避免空白留空。 */
+.m-v:empty::before {
+  content: "暂无数据";
+  color: var(--text-2);
+  font-weight: 500;
 }
 
 /* 评分依据 */
@@ -1035,12 +1060,12 @@ function openNews(it: NewsItem) {
   transform: scale(0.96);
 }
 .dec-item.ok {
-  background: rgba(7, 193, 96, 0.1);
-  color: var(--primary-dark);
+  background: rgba(250, 81, 81, 0.1);
+  color: var(--up);
 }
 .dec-item.warn {
-  background: rgba(255, 159, 28, 0.12);
-  color: #c87f00;
+  background: rgba(31, 216, 116, 0.12);
+  color: var(--down);
 }
 .dec-item.wait {
   background: var(--card-2);
@@ -1076,9 +1101,9 @@ function openNews(it: NewsItem) {
   margin-bottom: 16rpx;
   overflow: hidden;
 }
-/* 色条贯穿整张卡片（头部 + 详情），与之前拼接前视觉一致 */
-.signal-card.buy { border-left: 8rpx solid var(--primary); }
-.signal-card.sell { border-left: 8rpx solid var(--up); }
+/* 色条贯穿整张卡片（头部 + 详情），A股约定：买(看涨)=红 var(--up)、卖(看跌)=绿 var(--down) */
+.signal-card.buy { border-left: 8rpx solid var(--up); }
+.signal-card.sell { border-left: 8rpx solid var(--down); }
 .signal-card.hold { border-left: 8rpx solid #3b82f6; }
 .signal-card.watch { border-left: 8rpx solid #ff9f1c; }
 .signal-card.wait { border-left: 8rpx solid var(--border); }
@@ -1088,15 +1113,15 @@ function openNews(it: NewsItem) {
   justify-content: space-between;
   padding: 20rpx 24rpx;
 }
-.signal-card.buy .signal { background: rgba(7, 193, 96, 0.12); }
-.signal-card.sell .signal { background: rgba(250, 81, 81, 0.1); }
+.signal-card.buy .signal { background: rgba(250, 81, 81, 0.1); }
+.signal-card.sell .signal { background: rgba(31, 216, 116, 0.12); }
 .signal-card.hold .signal { background: rgba(59, 130, 246, 0.1); }
 .signal-card.watch .signal { background: rgba(255, 159, 28, 0.12); }
 .signal-card.wait .signal { background: var(--card-2); }
 .sig-main { display: flex; flex-direction: column; gap: 6rpx; flex: 1; min-width: 0; }
 .sig-label { font-size: 38rpx; font-weight: 800; line-height: 1.1; }
-.signal-card.buy .sig-label { color: var(--primary-dark); }
-.signal-card.sell .sig-label { color: var(--up); }
+.signal-card.buy .sig-label { color: var(--up); }
+.signal-card.sell .sig-label { color: var(--down); }
 .signal-card.hold .sig-label { color: #2563eb; }
 .signal-card.watch .sig-label { color: #c87f00; }
 .signal-card.wait .sig-label { color: var(--r-ink); }
@@ -1120,11 +1145,11 @@ function openNews(it: NewsItem) {
 .sd-k { flex: none; font-size: 23rpx; color: var(--text-2); width: 128rpx; }
 .sd-v { flex: 1; font-size: 24rpx; color: var(--r-ink); line-height: 1.6; }
 
-/* 关键价位状态徽标 */
+/* 关键价位状态徽标（A股约定：已突破/上涨=红 var(--up)、已跌破/下跌=绿 var(--down)） */
 .lv-right { display: flex; align-items: center; gap: 12rpx; }
 .lv-tag { font-size: 20rpx; padding: 4rpx 12rpx; border-radius: 8rpx; font-weight: 600; }
-.lv-tag.ok { color: var(--primary-dark); background: rgba(7, 193, 96, 0.12); }
-.lv-tag.bad { color: var(--up); background: rgba(250, 81, 81, 0.12); }
+.lv-tag.ok { color: var(--up); background: rgba(250, 81, 81, 0.12); }
+.lv-tag.bad { color: var(--down); background: rgba(31, 216, 116, 0.12); }
 .lv-tag.warn { color: #c87f00; background: rgba(255, 159, 28, 0.14); }
 
 .risks {

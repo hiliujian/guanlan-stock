@@ -27,9 +27,10 @@
         <view v-else class="pf-login-btn">登录 / 注册</view>
       </view>
 
-      <!-- 数据概览：点击可跳转对应 Tab -->
+      <!-- 数据概览：点击可跳转对应 Tab（入口随系统配置显隐） -->
       <view class="pf-stats card anim-fade-up" :style="{ animationDelay: '40ms' }">
         <view
+          v-if="isTabEnabled('watch')"
           class="pf-stat"
           hover-class="pf-stat-hover"
           role="button"
@@ -39,8 +40,9 @@
           <text class="pf-stat-num">{{ watchCount }}</text>
           <text class="pf-stat-lab">自选股</text>
         </view>
-        <view class="pf-divider" />
+        <view v-if="isTabEnabled('watch') && isTabEnabled('community')" class="pf-divider" />
         <view
+          v-if="isTabEnabled('community')"
           class="pf-stat"
           hover-class="pf-stat-hover"
           role="button"
@@ -50,8 +52,9 @@
           <text class="pf-stat-num">{{ postCount }}</text>
           <text class="pf-stat-lab">我的帖子</text>
         </view>
-        <view class="pf-divider" />
+        <view v-if="isTabEnabled('community')" class="pf-divider" />
         <view
+          v-if="isTabEnabled('community')"
           class="pf-stat"
           hover-class="pf-stat-hover"
           role="button"
@@ -134,6 +137,7 @@ import { useUser } from "@/store/user";
 import { openAuth, goTab } from "@/store/nav";
 import { useWatchlist } from "@/store/watchlist";
 import { useCommunity } from "@/store/community";
+import { isTabEnabled } from "@/store/appConfig";
 import { getMyName } from "@/store/identity";
 import { avatarGradient, avatarChar as avatarCharFn } from "@/utils/avatar";
 import { signOut } from "@/api/auth";
@@ -176,14 +180,11 @@ interface MenuItem {
 const menuGroups = computed(() => {
   const groups: { title: string; items: MenuItem[] }[] = [];
   if (user.loggedIn) {
-    groups.push({
-      title: "我的",
-      items: [
-        { icon: "person", label: "个人资料", act: "edit" },
-        { icon: "star", label: "我的自选", act: "watch" },
-        { icon: "chatbubble", label: "我的帖子", act: "posts" },
-      ],
-    });
+    const mine: MenuItem[] = [{ icon: "person", label: "个人资料", act: "edit" }];
+    // 「我的自选 / 我的帖子」入口随系统配置显隐（关闭对应模块则隐藏入口）
+    if (isTabEnabled("watch")) mine.push({ icon: "star", label: "我的自选", act: "watch" });
+    if (isTabEnabled("community")) mine.push({ icon: "chatbubble", label: "我的帖子", act: "posts" });
+    groups.push({ title: "我的", items: mine });
   }
   const common: MenuItem[] = [];
   if (!user.loggedIn) common.push({ icon: "person", label: "个人资料", act: "login" });
@@ -203,10 +204,10 @@ function goSettings() {
   uni.navigateTo({ url: "/pages/settings/settings" });
 }
 function goWatch() {
-  goTab(1);
+  goTab("watch");
 }
 function goCommunity() {
-  goTab(2);
+  goTab("community");
 }
 function feedback() {
   const email = "support@guanlan.app";

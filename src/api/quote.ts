@@ -13,7 +13,7 @@
 // =====================================================================
 import type { Kline, Trend, PeriodKey } from "@/utils/period";
 import type { RawRealtime, SearchHit, FlowMap } from "@/api/sources/types";
-import { getRealtime, getKline, getTrend, getFlow, getSearch, getNews, getIndexBreadth, getStockIndustry, getIndustryBoards, type IndustryBoard } from "@/api/sources";
+import { getRealtime, getKline, getTrend, getFlow, getSearch, getNews, getIndexBreadth, getStockIndustry, getIndustryBoards, fetchTurnoverAnchor, type IndustryBoard } from "@/api/sources";
 import { withTimeout } from "@/api/transport";
 import type { NewsItem } from "@/utils/newsSentiment";
 
@@ -149,6 +149,9 @@ export interface QuoteBundle {
   marketCtx: {
     indexKlines: Kline[];
     indexName: string;
+    // 大盘指数当日实时快照：区分「中期趋势（indexKlines 派生）」与「今日实际涨跌」，
+    // 让大盘环境面板实时反映今天指数方向（如创业板指今日 +2%）。
+    indexRealtime?: { price: number; preClose: number } | null;
     upCount?: number; // 大盘(匹配指数)当日上涨家数（市场宽度 / 市场情绪）
     downCount?: number; // 当日下跌家数
     // 个股所属行业板块上下文：让「大盘·市场环境」不止看宽基指数，还看行业 beta。
@@ -189,6 +192,33 @@ export async function fetchSnapshot(secid: string): Promise<SnapResult> {
   return snap;
 }
 
+// 换手率补齐：东财 K 线自带 f61 换手率，无需处理；当东财不可达、日 K 降级到腾讯/新浪
+// （turnover 恒为 0）时，用「实时换手率 + 当日成交量」反推流通股本（手），再按每日成交量
+// 换算各日换手率，保证「近 N 日平均换手率」可正常展示，不再恒为「暂无数据」。
+// 兜底仅发生在东财不可用且竞速实时源也不含换手率的场景，正常环境走真实换手率，零影响。
+async function ensureDailyTurnover(
+  daily: Kline[],
+  rt: RawRealtime | null,
+  secid: string
+): Promise<Kline[]> {
+  if (!daily || daily.length < 20) return daily;
+  if (daily.some((k) => (k.turnover || 0) > 0)) return daily;
+  let turnover = rt?.turnover || 0;
+  let vol = rt?.vol || 0;
+  if (!(turnover > 0) || !(vol > 0)) {
+    // 竞速胜出的实时源不含换手率（如新浪）→ 单独向腾讯取一次做锚定
+    const anchor = await fetchTurnoverAnchor(secid);
+    if (anchor) {
+      turnover = anchor.turnover || 0;
+      vol = anchor.vol || 0;
+    }
+  }
+  if (!(turnover > 0) || !(vol > 0)) return daily;
+  const floatHands = (vol * 100) / turnover; // 流通股本（手）= 当日成交量(手) ÷ 当日换手率(%)
+  if (!(floatHands > 0)) return daily;
+  return daily.map((k) => ({ ...k, turnover: (k.vol * 100) / floatHands }));
+}
+
 // 批量预取：并行拿到实时 + 四个 K线周期 + 分时 + 资金流，单次联网即可支撑
 // 所有周期的瞬间切换（缓存于 MarketView）。任一家源失败由 sources 层自动降级。
 //
@@ -209,6 +239,16 @@ export async function fetchBundle(secid: string): Promise<QuoteBundle> {
   const indexPromise = idx
     ? withTimeout(getKline(idx.secid, "d").catch(() => [] as Kline[]), 3000, [] as Kline[])
     : Promise.resolve([] as Kline[]);
+  // 指数当日实时快照（今日涨跌幅）：与 K 线并行，失败/超时不影响大盘面板（显示暂无数据）
+  const indexRealtimePromise = idx
+    ? withTimeout(
+        getRealtime(idx.secid)
+          .then((rt) => (rt ? { price: rt.price, preClose: rt.preClose } : null))
+          .catch(() => null),
+        3000,
+        null
+      )
+    : Promise.resolve(null);
   // 指数市场宽度（涨跌家数，用于市场情绪）：并行拉取，超时/失败返回 null
   const breadthPromise = idx
     ? withTimeout(getIndexBreadth(idx.secid).catch(() => null), 3000, null)
@@ -218,7 +258,7 @@ export async function fetchBundle(secid: string): Promise<QuoteBundle> {
   // 行业板块列表（长期缓存，首拉后复用）：用于把行业名映射到板块指数 secid
   const boardsPromise = withTimeout(getIndustryBoards().catch(() => [] as IndustryBoard[]), 4000, [] as IndustryBoard[]);
 
-  const [rt, d, w, M, y, trend, flow, idxKlines, breadth, industry, boards] = await Promise.all([
+  const [rt, d, w, M, y, trend, flow, idxKlines, idxRealtime, breadth, industry, boards] = await Promise.all([
     getRealtime(secid).catch(() => null),
     getKline(secid, "d").catch(() => [] as Kline[]),
     getKline(secid, "w").catch(() => [] as Kline[]),
@@ -227,13 +267,16 @@ export async function fetchBundle(secid: string): Promise<QuoteBundle> {
     getTrend(secid).catch(() => ({ trends: [] as Trend[] })),
     withTimeout(getFlow(secid).catch(() => ({}) as FlowMap), 3500, {} as FlowMap),
     indexPromise,
+    indexRealtimePromise,
     breadthPromise,
     industryPromise,
     boardsPromise,
   ]);
   if (!rt) throw new Error("实时行情获取失败，请稍后重试");
+  // 东财不可达时日 K 无换手率 → 用实时换手率反推流通股本估算（见 ensureDailyTurnover）
+  const daily = await ensureDailyTurnover(d || [], rt, secid);
   const klines: Record<PeriodKey, Kline[]> = {
-    d: d || [],
+    d: daily,
     w: w || [],
     M: M || [],
     y: y || [],
@@ -245,6 +288,7 @@ export async function fetchBundle(secid: string): Promise<QuoteBundle> {
     marketCtx = {
       indexKlines: idxKlines,
       indexName: idx.name,
+      indexRealtime: idxRealtime,
       upCount: breadth?.up,
       downCount: breadth?.down,
     };
@@ -259,7 +303,16 @@ export async function fetchBundle(secid: string): Promise<QuoteBundle> {
           [] as Kline[]
         );
         if (sk.length >= 30) {
-          marketCtx.sector = { name: industry, secid: board.secid, klines: sk };
+          // 行业指数今日实时快照（与宽基指数同口径）：让板块也能结合「当日实时」合成唯一走势结论；
+          // 取数失败/超时降级为 null，analyzer 自动回退到仅用中期趋势，不影响其它维度。
+          const sRealtime = await withTimeout(
+            getRealtime(board.secid)
+              .then((rt) => (rt ? { price: rt.price, preClose: rt.preClose } : null))
+              .catch(() => null),
+            3000,
+            null
+          );
+          marketCtx.sector = { name: industry, secid: board.secid, klines: sk, realtime: sRealtime };
         }
       }
     }

@@ -198,7 +198,8 @@ export const emSearch = {
   },
 };
 
-// 指数市场宽度（涨跌家数）：用于「市场情绪」量化。仅东财 push2 提供，腾讯/新浪无此字段。
+// 指数市场宽度（涨跌家数）：用于「市场情绪」量化。push2 主站被封锁时，用 push2delay
+// 的 ulist 接口（实测返回真实涨跌家数，支持 cb JSONP 且带 Access-Control-Allow-Origin:*）。
 // 行业指数(如创业板指)的 f104/f105 即该板块成分股的涨跌家数，是比全市场更贴合个股的
 // 情绪代理；若拉取失败，analyze 自动降级为「暂无数据」，不影响其它评分。
 export interface IndexBreadth {
@@ -209,15 +210,15 @@ export interface IndexBreadth {
 }
 export async function fetchEMBreadth(secid: string): Promise<IndexBreadth | null> {
   const url =
-    "https://push2.eastmoney.com/api/qt/stock/get" +
-    "?secid=" +
+    "https://push2delay.eastmoney.com/api/qt/ulist.np/get" +
+    "?fltt=2&secids=" +
     secid +
     "&fields=f104,f105,f128,f136";
   try {
     const text = await requestEmJson(url);
-    const data = JSON.parse(text)?.data;
-    if (!data) return null;
-    const num = (k: string) => (data[k] != null && data[k] !== "" ? Number(data[k]) : 0);
+    const diff = JSON.parse(text)?.data?.diff?.[0];
+    if (!diff) return null;
+    const num = (k: string) => (diff[k] != null && diff[k] !== "" ? Number(diff[k]) : 0);
     return { up: num("f104"), down: num("f105"), limitUp: num("f128"), limitDown: num("f136") };
   } catch {
     return null;

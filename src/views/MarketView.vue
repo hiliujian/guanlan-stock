@@ -358,12 +358,20 @@ function applyPeriod(p: PeriodKey) {
     ? {
         indexKlines: b.marketCtx.indexKlines,
         indexName: b.marketCtx.indexName,
+        indexRealtime: b.marketCtx.indexRealtime,
         upCount: b.marketCtx.upCount,
         downCount: b.marketCtx.downCount,
         sector: b.marketCtx.sector,
       }
     : null;
-  result.value = analyze(klines.value, b.flowMap, newsSig.value, b.klines.d, marketCtx);
+  result.value = analyze(
+    klines.value,
+    b.flowMap,
+    newsSig.value,
+    b.klines.d,
+    marketCtx,
+    secid.value ? codeFromSecid(secid.value) : undefined
+  );
 }
 
 // 全量刷新：重新预取并覆盖缓存（每 ~60s，交易时段），随后从新缓存刷新当前视图

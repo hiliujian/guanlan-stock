@@ -6,26 +6,24 @@
 //   - 服务端取数可规避浏览器跨域，也便于集中管控与限流。
 //
 // 协议：POST { supabase_url }/functions/v1/guanlan-quote-proxy
-//       请求体：{ "url": "<东方财富完整接口 URL>" }
-//       响应体：原样透传东方财富返回的 JSON（不做二次结构转换，
+//       请求体：{ "url": "<完整接口 URL>", "encoding": "utf-8" | "gbk" }
+//       响应体：原样透传上游返回的文本（不做二次结构转换，
 //              前端按原有逻辑解析，避免两端结构漂移）。
+//       encoding 缺省 utf-8；新浪资金流等 GBK 接口传 "gbk" 由服务端解码。
 //
-// 安全：仅放行 *.eastmoney.com / *.eastmoney.com.cn 域名，杜绝 SSRF。
+// 安全：仅放行 *.eastmoney.com / *.eastmoney.com.cn / 新浪行情白名单，杜绝 SSRF。
 //
 // 部署：supabase functions deploy guanlan-quote-proxy
 // =====================================================================
 import "https://deno.land/std@0.196.0/dotenv/mod.ts";
 
-// 东方财富对服务端请求会做 UA / Referer 校验，缺失则直接掐断 TLS 连接。
+// 对服务端请求会做 UA / Referer 校验，缺失则直接掐断 TLS 连接。
 // 这里伪装成浏览器，避免被反爬拦截。
-const EM_HEADERS: Record<string, string> = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  "Referer": "https://quote.eastmoney.com/",
-  "Accept": "*/*",
-};
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const EM_REFERER = "https://quote.eastmoney.com/";
+const SINA_REFERER = "https://finance.sina.com.cn/";
 
-// 仅允许转发到东方财富官方域名，避免被当成开放代理（SSRF 防护）。
+// 仅允许转发到白名单域名，避免被当成开放代理（SSRF 防护）。
 const ALLOWED_HOSTS = [
   "push2.eastmoney.com",
   "push2his.eastmoney.com",
@@ -35,6 +33,10 @@ const ALLOWED_HOSTS = [
   "quote.eastmoney.com",
   "datacenter.eastmoney.com",
   "push2delay.eastmoney.com",
+  // 资金流降级源：新浪（服务端转发规避浏览器 CORS，见 src/api/sources/proxy.ts）
+  "vip.stock.finance.sina.com.cn",
+  "finance.sina.com.cn",
+  "hq.sinajs.cn",
 ];
 
 function isAllowedHost(host: string): boolean {
@@ -88,12 +90,20 @@ Deno.serve(async (req: Request) => {
     return bad(403, "仅允许 http/https 协议");
   }
   if (!isAllowedHost(parsed.hostname)) {
-    return bad(403, "仅允许转发到东方财富域名");
+    return bad(403, "仅允许转发到白名单行情域名");
   }
 
+  // 上游编码：缺省 UTF-8；新浪资金流等接口为 GBK，需服务端解码后再透传
+  const encoding = payload?.encoding === "gbk" ? "gbk" : "utf-8";
+  // Referer 随目标主机自适应：东财要求 quote 域，新浪要求 finance 域
+  const referer = parsed.hostname.includes("sina.com.cn") ? SINA_REFERER : EM_REFERER;
+
   try {
-    const upstream = await fetch(target, { headers: EM_HEADERS });
-    const text = await upstream.text();
+    const upstream = await fetch(target, {
+      headers: { "User-Agent": UA, Referer: referer, Accept: "*/*" },
+    });
+    const buf = await upstream.arrayBuffer();
+    const text = new TextDecoder(encoding).decode(buf);
     return new Response(text, {
       status: upstream.status,
       headers: {

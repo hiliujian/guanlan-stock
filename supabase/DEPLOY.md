@@ -1,7 +1,7 @@
 # 观澜 · Supabase 后端部署指南
 
 本目录已提供**一键建库脚本** `deploy.sql` 与**环境变量样例** `.env.example`。
-前端在填入凭据后会自动切换为 Supabase 后端（`USE_REMOTE = true`），UI 无需改动。
+前端在填入凭据后自动启用 Supabase 后端（登录 / 自选云同步 / 社区 / 公告 / 系统配置），UI 无需改动。
 
 > 沙箱内无 Supabase CLI / Docker，无法替你在云端建项目或直连执行 SQL；
 > 以下步骤在 **Supabase 控制台（网页）** 操作，约 5 分钟完成。
@@ -25,8 +25,10 @@
 3. 点击 **Run**（或 Ctrl/Cmd + Enter）。
 
 脚本是幂等的（`if not exists` / `drop ... if exists`），可重复执行。它会：
-- 建 `profiles` / `watchlists` / `community_posts` / `community_replies` / `community_likes` 五张表；
-- 开启 RLS 并配置行级安全策略；
+- 建 `profiles` / `watchlists` / `community_posts` / `community_replies` / `community_likes` 五张业务表；
+- 建 `announcements`（公告，前端按时间窗 + priority 读取）与 `app_config`（key/value jsonb 系统配置，
+  前端启动时拉取菜单显隐 / 数据源顺序，改库即生效、无需发版）；
+- 开启 RLS 并配置行级安全策略（公开数据读，写仅 service_role / 登录用户）；
 - 注册「新用户自动建 profile」触发器；
 - 创建 `avatars` 公开存储桶（限 2MB）；
 - 创建 `toggle_post_like(p_post_id)` 点赞切换函数（计数由触发器维护，前端无法伪造）；
@@ -119,8 +121,38 @@
 npx supabase functions deploy guanlan-quote-proxy
 ```
 
-> 前端接入本函数属于「统一后端」的后续收尾步骤（当前行情层仍走 dev 代理 / 公共代理仅供测试）。
-> 一旦接入，生产环境不再直连东方财富；本地 `vite.config.ts` 的 dev 代理仅用于未部署函数时的本地调试。
+> 前端接入本函数属于「统一后端」的既定架构：一旦接入，H5 与小程序都经 Edge Function 拿行情/资金流，
+> 不再直连数据源；本地 `vite.config.ts` 的 `/em /rt /search` dev 代理仅用于本地调试。
+
+> **统一开关（2026-08-04 起）**：`VITE_USE_EDGE_FUNCTIONS`（默认 `true`）同时控制行情与资金流走
+> Edge Function。函数已支持 `encoding: "gbk"` 并放行新浪白名单（`vip.stock.finance.sina.com.cn` 等），
+> 可服务端转发新浪逐日主力净流入，规避浏览器 CORS。**东财经 Supabase 已验证可访问**，
+> 无需再像早期版本那样为了资金流单独开 `VITE_USE_EDGE_FLOW`（该开关已移除）。
+> 改过函数后需重新部署：`npx supabase functions deploy guanlan-quote-proxy`。
+
+---
+
+## 六·补 系统配置下发（菜单 / 数据源，改库即生效）
+
+`app_config` 表（key/value jsonb，公开读 / 仅 service_role 可写）是前端运行时配置的唯一来源。
+前端启动时 `src/store/appConfig.ts` 拉取并**与本地默认合成**，组件自动响应。写配置只需在
+**SQL Editor** 执行 `upsert`（改动立即生效，无需重新部署前端）：
+
+```sql
+-- 关闭「社区」与「自选」底部导航（菜单项入口一并隐藏）
+insert into public.app_config (key, value) values
+('menus', '{"market":true,"watch":false,"community":false,"profile":true}'::jsonb)
+on conflict (key) do update set value = excluded.value;
+
+-- 换数据源：实时行情改为「腾讯 → 新浪」（东财停用，需等东财源从注册表摘除则编辑前端或直接留空该位）
+insert into public.app_config (key, value) values
+('sources', '{"realtime":["tencent","sina"],"kline":["tencent","sina"],"trend":["tencent","sina"],"flow":["proxy"],"search":["tencent","sina"],"news":["eastmoney"]}'::jsonb)
+on conflict (key) do update set value = excluded.value;
+```
+
+> 规则：`menus` 各 key 值为 `false` 时对应 Tab 及其入口（ProfileView 自选/帖子入口）整体隐藏；
+> `sources` 每类数据只从列表里的源取数（按序首胜，熔断自动降级），源标识取值见
+> `src/config/app.ts` 的 `SourceId`。新增配置项（如 `features` / `theme`）直接加 key 即可，无需改表。
 
 ---
 
@@ -238,8 +270,11 @@ curl -X POST 'https://<ref>.supabase.co/functions/v1/guanlan-quote-proxy' \
 返回一段 JSON（含 `klines` / `flowMap` 字段）就说明部署成功。
 函数里已写好 CORS 头（`Access-Control-Allow-Origin: *`），H5 前端直连不会被跨域拦。
 
-> ⚠️ **实测硬约束（2026-08-01）**：函数能部署、能运行，但东方财富（`push2his.eastmoney.com`）会在 TLS 层**掐断来自 Supabase 海外云（AWS Sydney，及其他海外地域）的 IP**——调用返回 500 `peer closed connection without sending TLS close_notify`。已用临时诊断函数确认 Supabase 出口本身正常（github/postman 均 200），唯独东方财富被封；加浏览器 `User-Agent`/`Referer`、换 Supabase 地域均无效。
-> 后果：**H5 端浏览器（用户中国 IP）直连东方财富仍可用**（`VITE_USE_EDGE_FUNCTIONS=false`）；但**微信小程序因域名白名单必须走代理，而本代理被东方财富封锁，小程序暂无法经此函数拿 A 股行情**。若小程序要拿 A 股行情，需把行情代理搬到有中国/HK 线路的服务器，或换用「海外云可达」的付费 A 股数据源——详见项目 memory 的「Edge Function guanlan-quote-proxy」章节。
+> ⚠️ **早期结论已推翻（2026-08-04）**：此前的「东财会掐断 Supabase 海外云 IP」的实测约束，
+> 已由用户在中国网络下实测验证 **东财经 Supabase Edge Function 可以访问**，故 `VITE_USE_EDGE_FUNCTIONS`
+> 默认开启、Edge Function 作为行情/资金流统一入口。若你的 Supabase 项目位于特定地域仍遇到 TLS 层
+> 掐断（500 `peer closed connection without sending TLS close_notify`），优先换一个地域重开项目，
+> 或临时把 `VITE_USE_EDGE_FUNCTIONS=false` 回退到 H5 直连（小程序需另配中国/HK 线路的代理）。
 
 ### 步骤 5（可选）：如果以后函数要调第三方 API key
 

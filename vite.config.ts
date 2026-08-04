@@ -12,13 +12,9 @@ export default defineConfig({
     port: 8888,
     strictPort: true,
     proxy: {
-      // 通知公告 API：代理到本地 Node 后端（server/index.js，默认 8787）
-      "/api": {
-        target: "http://localhost:8787",
-        changeOrigin: true,
-      },
       // 东方财富 K 线 / 资金流 / 分时：本地开发走 Vite 同源代理，绕开 CORS，
       // 确保换手率(f61) 等字段可靠到达，不依赖 JSONP / 公共代理。
+      // （公告 / 资金流代理已迁移至 Supabase Edge Function，无需本地后端）
       "/em": {
         target: "https://push2his.eastmoney.com",
         changeOrigin: true,
