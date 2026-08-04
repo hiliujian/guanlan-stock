@@ -158,11 +158,11 @@ alter table public.app_config enable row level security;
 drop policy if exists "app_config_select" on public.app_config;
 create policy "app_config_select" on public.app_config for select using (true);
 
--- 可选：默认写入「菜单显隐」示例配置（社区 / 自选默认开启；关闭只需置 false 后更新）。
+-- 可选：默认写入「菜单显隐」示例配置（社区默认关闭；要开启改回 true 后更新）。
 -- 前端未建表 / 无此 key 时全部走本地默认，故示例注释掉即可，需要时取消注释执行。
 /*
 insert into public.app_config (key, value) values
-('menus', '{"market":true,"watch":true,"community":true,"profile":true}'::jsonb),
+('menus', '{"market":true,"watch":true,"community":false,"profile":true}'::jsonb),
 ('sources', '{"realtime":["eastmoney","tencent","sina"],"kline":["eastmoney","tencent","sina"],"trend":["eastmoney","tencent","sina"],"flow":["eastmoney","proxy"],"search":["eastmoney","tencent","sina"],"news":["eastmoney"]}'::jsonb)
 on conflict (key) do nothing;
 */

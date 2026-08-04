@@ -160,6 +160,7 @@ export interface QuoteBundle {
       name: string; // 行业名，如「半导体及元件」
       secid: string; // 行业板块指数 secid，如 90.BK1036
       klines: Kline[]; // 行业指数日 K（>=30 根才参与）
+      realtime?: { price: number; preClose: number } | null; // 行业指数当日实时快照（结合今日实时合成板块唯一走势结论）
     } | null;
   } | null;
 }

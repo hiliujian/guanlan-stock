@@ -34,7 +34,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   menus: {
     market: true,
     watch: true,
-    community: true,
+    community: false, // 社区暂关闭：菜单显隐由系统配置驱动，模块本身未移除（改回 true 即恢复）
     profile: true,
   },
   // 三级冗余：第一级东财 → 第二级腾讯 → 第三级新浪；
