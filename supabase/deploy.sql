@@ -495,3 +495,12 @@ drop policy if exists "community_likes_delete" on public.community_likes;
 create policy "community_likes_delete" on public.community_likes
   for delete to authenticated using (true);
 
+-- ╔══════════════════════════════════════════════════════════════╗
+-- ║ 99. 生产库幂等兜底补丁（非破坏性，可重复执行）                  ║
+-- ╚══════════════════════════════════════════════════════════════╝
+-- 上方 1.1 用「DROP + CREATE」重建 profiles（含 exp 列），但会清空数据，
+-- 生产库 / 已 populated 的库不能这么跑。若某张早期旧 profiles 表缺 exp 列
+-- （等级体系会恒显默认等级），用下方语句非破坏性地补齐，绝不丢数据。
+-- 全新库走 DROP + CREATE 已含 exp，本段为冗余安全网；ADD COLUMN IF NOT EXISTS 幂等。
+alter table public.profiles add column if not exists exp integer not null default 0;
+
