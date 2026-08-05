@@ -10,7 +10,7 @@
       <input
         class="auth-input"
         :value="modelValue"
-        :type="inputType"
+        type="text"
         :password="masked"
         :placeholder="placeholder"
         :disabled="disabled"
@@ -45,7 +45,6 @@ const props = defineProps<{
   modelValue: string;
   icon?: string;
   placeholder?: string;
-  type?: "text" | "number";
   password?: boolean;
   showToggle?: boolean;
   maxlength?: number;
@@ -62,7 +61,6 @@ const revealed = ref(false);
 const masked = computed(() =>
   props.showToggle ? !revealed.value : !!props.password
 );
-const inputType = computed(() => (props.type === "number" ? "number" : "text"));
 
 function onInput(e: any) {
   const v = (e?.detail?.value ?? "") as string;

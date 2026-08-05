@@ -28,7 +28,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   menus: {
     market: true,
     watch: true,
-    community: false, // 社区暂关闭：菜单显隐由系统配置驱动，模块本身未移除（改回 true 即恢复）
+    community: true, // 社区已开启：底部导航显示「社区」Tab；模块本身未移除，改回 false 可隐藏
     profile: true,
   },
 };

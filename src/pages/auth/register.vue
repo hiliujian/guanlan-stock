@@ -17,9 +17,8 @@
       <AuthField
         icon="locked"
         v-model="code"
-        type="number"
         :maxlength="6"
-        placeholder="验证码"
+        placeholder="6 位邮箱验证码"
         :error="errors.code"
         @input="errors.code = ''"
       >
@@ -35,7 +34,7 @@
           </view>
         </template>
       </AuthField>
-      <text v-if="sent && !errors.code" class="auth-sent-tip">验证码已发送至 {{ maskedEmail }}（5 分钟内有效）</text>
+      <text v-if="sent && !errors.code" class="auth-sent-tip">验证码已发送至 {{ maskedEmail }}</text>
 
       <!-- 密码 + 可见性切换 -->
       <AuthField
@@ -158,7 +157,7 @@ async function submit() {
   errors.code = "";
   errors.password = "";
   const e = email.value.trim();
-  const c = code.value.replace(/\D/g, "");
+  const c = code.value.trim();
   const p = password.value;
   if (!e || !EMAIL_RE.test(e)) {
     errors.email = "请输入有效的邮箱地址";
@@ -169,7 +168,7 @@ async function submit() {
     return;
   }
   if (c.length !== 6) {
-    errors.code = "请输入完整的 6 位验证码";
+    errors.code = "请输入完整的 6 位数字验证码";
     return;
   }
   if (p.length < 6) {

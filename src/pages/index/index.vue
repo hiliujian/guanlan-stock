@@ -2,7 +2,12 @@
   <view class="app-shell">
     <transition name="tab-fade" mode="out-in">
       <keep-alive>
-        <component :is="currentComp" :key="currentKey" ref="tabRef" @open-market="onOpenMarket" />
+        <component
+        :is="currentComp"
+        :key="currentKey"
+        ref="tabRef"
+        v-on="currentKey === 'watch' ? { 'open-market': onOpenMarket } : {}"
+      />
       </keep-alive>
     </transition>
 

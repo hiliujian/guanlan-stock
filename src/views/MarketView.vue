@@ -124,6 +124,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onActivated, onDeactivated, onUnmounted, watch, type Component } from "vue";
+// 声明可接收的 open-market 监听（父级 pages/index 在 watch 激活时的动态 <component> 绑定，
+// 经 KeepAlive 可能透传到本组件）：声明后 Vue 按自定义事件处理，避免 extraneous 告警。
+defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import PriceText from "@/components/PriceText.vue";
 import AnalysisCard from "@/components/AnalysisCard.vue";

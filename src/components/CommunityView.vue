@@ -68,6 +68,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onActivated, watch } from "vue";
+// 声明可接收的 open-market 监听（父级 pages/index 动态 <component> + KeepAlive 可能透传），
+// 声明后 Vue 按自定义事件处理，避免 extraneous 告警。本组件自身不触发该事件。
+defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
 import OutlineIcon from "./OutlineIcon.vue";
 import PostComposer from "./PostComposer.vue";
 import PostCard from "./PostCard.vue";

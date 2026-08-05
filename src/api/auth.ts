@@ -121,6 +121,23 @@ export async function signOut(): Promise<void> {
   if (sb) await sb.auth.signOut();
 }
 
+/**
+ * 注销账号（删除用户）：客户端 SDK 无权删除 auth.users，必须经服务端 Edge Function
+ * （guanlan-delete-account，使用 service_role）代为删除，并先清理 profiles / watchlists
+ * 等业务数据。调用时自动携带当前用户会话（Bearer），函数内仅能删除调用者自身。
+ */
+export async function deleteAccount(): Promise<AuthResult> {
+  const sb = getSupabase();
+  if (!sb) return { ok: false, error: BACKEND_NOT_CONFIGURED };
+  const { data, error } = await sb.functions.invoke("guanlan-delete-account");
+  if (error) return { ok: false, error: translateSupabaseError(error.message) };
+  const body = data as { ok?: boolean; error?: string } | null;
+  if (!body || body.ok !== true) {
+    return { ok: false, error: body?.error || "注销失败，请稍后再试" };
+  }
+  return { ok: true };
+}
+
 export interface ProfilePatch {
   display_name?: string;
   username?: string;

@@ -1,0 +1,53 @@
+# ---- Logs ----
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ---- Dependencies ----
+node_modules
+.DS_Store
+*.local
+
+# ---- Local env (含 Supabase anon key，虽前端可公开但勿入库) ----
+.env
+.env.*
+!.env.example
+
+# ---- Build outputs (NOT project source) ----
+dist
+dist_bak_old
+dist_old_*
+h5out/
+h5out*/
+
+# ---- Temp / scratch / library reference copies (each has its own .git) ----
+_s.html
+_v.html
+test_ucharts.mjs
+selftest
+_ucharts_src
+_uniui_src
+
+# ---- Local preview server & auxiliary helpers (not part of the uni-app build) ----
+# 后端已统一迁移至 Supabase（deploy.sql + Edge Function，纳入版本库）；
+# 本地 Node 代理服务 server/ 已废弃删除。webapp（旧构建产物）仍排除。
+webapp
+
+# ---- 本地临时 / scratch / 开发期产物（不入库） ----
+Microsoft/
+dist_trash_*/
+tmp/
+supabase/.temp/
+
+# ---- Editor directories and files ----
+.idea
+.trae
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

@@ -31,9 +31,9 @@
           <text class="fl">昵称</text>
           <input v-model="displayName" class="fi" placeholder="昵称" placeholder-class="ph" maxlength="20" />
         </view>
-        <view class="field">
+        <view class="field read">
           <text class="fl">用户名</text>
-          <input v-model="username" class="fi" placeholder="选填" placeholder-class="ph" maxlength="20" />
+          <text class="fr">{{ username || "—" }}</text>
         </view>
         <view class="field read">
           <text class="fl">邮箱</text>
@@ -129,7 +129,6 @@ async function save() {
   try {
     const r = await updateProfile({
       display_name: displayName.value.trim(),
-      username: username.value.trim(),
       bio: bio.value.trim(),
     });
     if (!r.ok) {

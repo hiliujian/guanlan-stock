@@ -38,6 +38,7 @@ create table if not exists public.profiles (
   bio          text not null default '',
   avatar_url   text not null default '',
   level        integer not null default 0,                -- 用户等级序号（0=新手散户，对应前端 TIERS 下标）；由后端维护，前端只读展示
+  exp          integer not null default 0,                -- 用户经验值（等级体系 expMin 对应所需经验）；由后端维护，前端用于展示与升级进度
   -- 扩展预留（接入登录后按需启用，以下均为可选、带默认值，不影响现有逻辑）
   website      text not null default '',
   location     text not null default '',

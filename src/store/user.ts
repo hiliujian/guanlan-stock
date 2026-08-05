@@ -13,6 +13,7 @@ interface Profile {
   bio: string;
   avatar_url: string;
   level?: number; // 用户等级序号（0=新手散户）；由后端维护，前端只读
+  exp?: number; // 用户经验值；由后端维护，缺省 0
 }
 
 interface UserState {
@@ -45,6 +46,7 @@ async function loadProfile(userId: string) {
       bio: data.bio || "",
       avatar_url: data.avatar_url || "",
       level: typeof data.level === "number" ? data.level : 0,
+      exp: typeof data.exp === "number" ? data.exp : 0,
     };
     // 注册后触发器建出的 profile 默认 username 为空：自动分配一个随机用户名，
     // 用户可在「我的 → 个人资料」中修改。

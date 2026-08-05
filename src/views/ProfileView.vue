@@ -1,5 +1,6 @@
 <template>
-  <scroll-view class="view-scroll" scroll-y>
+  <view class="pf-root">
+    <scroll-view class="view-scroll" scroll-y>
     <view class="pf">
       <BackgroundFX />
 
@@ -17,18 +18,20 @@
           <text v-else class="pf-avatar-char" :style="{ background: avatarBg }">{{ avatarChar }}</text>
         </view>
         <view class="pf-id">
-          <text class="pf-name">{{ nameText }}</text>
-          <text class="pf-sub">{{ subText }}</text>
-          <view v-if="user.loggedIn" class="pf-level">
-            <LevelTag :level="userLevel" />
+          <view class="pf-name-row">
+            <text class="pf-name">{{ nameText }}</text>
+            <view v-if="user.loggedIn" class="pf-lvtag" @click.stop="goLevel" role="button" aria-label="查看我的等级">
+              <LevelTag :level="userLevel" />
+            </view>
           </view>
+          <text class="pf-sub">{{ subText }}</text>
         </view>
         <OutlineIcon v-if="user.loggedIn" type="arrow-right" :size="34" color="var(--text-2)" />
         <view v-else class="pf-login-btn">登录 / 注册</view>
       </view>
 
-      <!-- 数据概览：点击可跳转对应 Tab（入口随系统配置显隐） -->
-      <view class="pf-stats card anim-fade-up" :style="{ animationDelay: '40ms' }">
+      <!-- 数据概览：仅登录后展示（自选股 / 我的帖子 / 赞过 均为用户私有数据） -->
+      <view v-if="showStats" class="pf-stats card anim-fade-up" :style="{ animationDelay: '40ms' }">
         <view
           v-if="isTabEnabled('watch')"
           class="pf-stat"
@@ -124,6 +127,7 @@
     variant="danger"
     @confirm="confirmLogout"
   />
+  </view>
 
 </template>
 
@@ -145,6 +149,11 @@ import { signOut } from "@/api/auth";
 const user = useUser();
 const watch = useWatchlist();
 const { posts: communityPosts, load: loadCommunity } = useCommunity();
+
+// 声明可接收的自定义事件：父级（pages/index）在 watch 激活时向动态组件绑定 open-market，
+// KeepAlive 缓存其它视图后仍可能把该监听透传到本组件。声明为 emit 后 Vue 按自定义事件
+// 处理（而非尝试继承到 DOM 根节点），避免「extraneous non-emits」告警。本视图自身从不触发。
+defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
 
 const nameText = computed(() =>
   user.loggedIn ? user.profile?.display_name || user.profile?.username || user.email || "我" : "点击登录 / 注册"
@@ -172,22 +181,32 @@ onMounted(() => {
   if (user.loggedIn) loadCommunity();
 });
 
+// —— 权限边界：登录态可见性规则（集中定义，便于审查） ——
+// 仅登录后展示：数据概览卡（自选股 / 我的帖子 / 赞过 均为用户私有数据，未登录无意义）。
+//   卡内子项仍各自受 watch / community 功能开关约束，故整体需「已登录 且 至少开启一个相关 Tab」才显示。
+// 无需登录即可访问：顶部个人卡片（同时充当登录引导）、「通用」菜单（设置 / 意见反馈）。
+//   （未登录不再在菜单内提供「个人资料」入口，登录引导统一由顶部个人卡片承担，
+//    避免与「个人资料=仅登录功能」的权限边界冲突。）
+// 其余菜单（「我的」组、退出登录）已在下方以 user.loggedIn 控制，未登录不会渲染任何仅限登录入口。
+const showStats = computed(
+  () => user.loggedIn && (isTabEnabled("watch") || isTabEnabled("community"))
+);
+
 interface MenuItem {
   icon: string;
   label: string;
-  act: "edit" | "watch" | "posts" | "settings" | "feedback" | "login";
+  act: "edit" | "settings" | "feedback" | "security";
 }
 const menuGroups = computed(() => {
   const groups: { title: string; items: MenuItem[] }[] = [];
   if (user.loggedIn) {
-    const mine: MenuItem[] = [{ icon: "person", label: "个人资料", act: "edit" }];
-    // 「我的自选 / 我的帖子」入口随系统配置显隐（关闭对应模块则隐藏入口）
-    if (isTabEnabled("watch")) mine.push({ icon: "star", label: "我的自选", act: "watch" });
-    if (isTabEnabled("community")) mine.push({ icon: "chatbubble", label: "我的帖子", act: "posts" });
+    const mine: MenuItem[] = [
+      { icon: "person", label: "个人资料", act: "edit" },
+      { icon: "shield", label: "账号安全", act: "security" },
+    ];
     groups.push({ title: "我的", items: mine });
   }
   const common: MenuItem[] = [];
-  if (!user.loggedIn) common.push({ icon: "person", label: "个人资料", act: "login" });
   common.push({ icon: "gear", label: "设置", act: "settings" });
   common.push({ icon: "mail", label: "意见反馈", act: "feedback" });
   groups.push({ title: "通用", items: common });
@@ -202,6 +221,12 @@ function goEdit() {
 }
 function goSettings() {
   uni.navigateTo({ url: "/pages/settings/settings" });
+}
+function goSecurity() {
+  uni.navigateTo({ url: "/pages/profile/security" });
+}
+function goLevel() {
+  uni.navigateTo({ url: "/pages/profile/level" });
 }
 function goWatch() {
   goTab("watch");
@@ -230,11 +255,8 @@ function onMenu(act: MenuItem["act"]) {
     case "edit":
       goEdit();
       break;
-    case "watch":
-      goWatch();
-      break;
-    case "posts":
-      goCommunity();
+    case "security":
+      goSecurity();
       break;
     case "settings":
       goSettings();
@@ -242,19 +264,19 @@ function onMenu(act: MenuItem["act"]) {
     case "feedback":
       feedback();
       break;
-    case "login":
-      openAuth("login");
-      break;
   }
 }
 </script>
 
 <style scoped>
+.pf-root {
+  height: 100%;
+}
 .view-scroll {
   height: 100%;
 }
 .pf {
-  padding: 24rpx 24rpx 0;
+  padding: 20rpx 24rpx 0;
 }
 
 /* 顶部个人卡片：轻微渐变营造纵深，不用纯色平铺 */
@@ -262,7 +284,7 @@ function onMenu(act: MenuItem["act"]) {
   display: flex;
   align-items: center;
   gap: 24rpx;
-  padding: 36rpx 28rpx;
+  padding: 24rpx;
   background: linear-gradient(135deg, rgba(12, 110, 220, 0.16), rgba(12, 110, 220, 0.04) 60%, transparent);
 }
 .pf-head-hover {
@@ -302,8 +324,20 @@ function onMenu(act: MenuItem["act"]) {
   flex: 1;
   min-width: 0;
 }
+.pf-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  min-width: 0;
+}
+.pf-lvtag {
+  flex: none;
+  margin-left: 0;
+  align-self: center;
+}
 .pf-name {
-  display: block;
+  flex: none;
+  max-width: calc(100% - 150rpx);
   font-size: 38rpx;
   font-weight: 700;
   color: var(--text);
@@ -320,9 +354,6 @@ function onMenu(act: MenuItem["act"]) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.pf-level {
-  margin-top: 14rpx;
-}
 .pf-login-btn {
   flex: none;
   padding: 14rpx 28rpx;
@@ -337,8 +368,8 @@ function onMenu(act: MenuItem["act"]) {
 .pf-stats {
   display: flex;
   align-items: center;
-  margin-top: 20rpx;
-  padding: 28rpx 0;
+  margin-top: 16rpx;
+  padding: 18rpx 24rpx;
 }
 .pf-stat {
   flex: 1;
@@ -369,7 +400,10 @@ function onMenu(act: MenuItem["act"]) {
 
 /* 菜单分组 */
 .pf-group {
-  margin-top: 28rpx;
+  margin-top: 16rpx;
+}
+.pf-group .card {
+  padding: 12rpx 24rpx 18rpx;
 }
 .pf-group-title {
   display: block;
@@ -377,14 +411,14 @@ function onMenu(act: MenuItem["act"]) {
   font-weight: 600;
   color: var(--text-2);
   letter-spacing: 1rpx;
-  margin: 0 8rpx 12rpx;
+  margin: 0 6rpx 6rpx;
 }
 .pf-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 96rpx;
-  padding: 0 24rpx;
+  min-height: 80rpx;
+  padding: 0;
   border-top: 1rpx solid var(--border);
   transition: background 0.18s ease;
 }
@@ -425,12 +459,12 @@ function onMenu(act: MenuItem["act"]) {
   background: rgba(229, 72, 77, 0.12);
 }
 .pf-hint {
-  margin-top: 28rpx;
+  margin-top: 16rpx;
   text-align: center;
   font-size: 24rpx;
   color: var(--text-2);
 }
 .bottom-pad {
-  height: 140rpx;
+  height: 80rpx;
 }
 </style>

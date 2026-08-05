@@ -72,6 +72,9 @@ const ICONS: Record<string, { body: string; filled?: boolean }> = {
   },
   person: { body: '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>' },
   locked: { body: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>' },
+  shield: {
+    body: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><polyline points="9 12 11 14 15 9.5"/>',
+  },
   fire: {
     body: '<path d="M12 3c1 3 4 4 4 8a4 4 0 0 1-8 0c0-1 .4-2 1-3 .3 1.5 1.5 1.8 1.5 1.8S10 6 12 3z"/><path d="M12 21a6 6 0 0 0 6-6c0-2-1-3-2-4 0 2-2 3-2 3s3 1 3 4a4 4 0 0 1-8 0c0-2 1-3 2-4 0 2-2 3-2 3s3 1 3 4a6 6 0 0 0 0 0z" opacity="0"/>',
   },
