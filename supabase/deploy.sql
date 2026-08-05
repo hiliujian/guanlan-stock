@@ -170,25 +170,18 @@ end;
 $$;
 grant execute on function public.is_username_taken(text) to anon, authenticated;
 
--- 1.4.3 邮箱是否已注册（security definer，供注册页区分"新用户注册"与"已注册改密码"）
---   直接查 auth.users（OTP 创建用户即写入），邮箱 lower 归一化比较；
---   返回 true 表示该邮箱已存在账号。与 is_username_taken 配合，从源头避免
---   注册流程误触发 Supabase 的 same-password 校验（新用户本无旧密码）。
-create or replace function public.is_email_taken(p_email text)
-returns boolean
-language plpgsql security definer set search_path = public as $$
-declare
-  v_exists boolean;
-begin
-  select exists(
-    select 1 from auth.users
-    where lower(email) = lower(p_email)
-  ) into v_exists;
-  return coalesce(v_exists, false);
-end;
-$$;
-
-grant execute on function public.is_email_taken(text) to anon, authenticated;
+-- 1.4.3 清理历史幽灵账号（幂等，手动清理存量脏数据）
+--   旧版注册页曾用 is_email_taken() 预判邮箱是否已注册；但 OTP 发送验证码即落一条
+--   「已确认并有密码」的账号，导致该函数无法靠字段区分幽灵与真实账号、误拦新注册。
+--   2026-08 起注册页已改为「直接走验证码流程、用 Supabase 返回信号区分」，不再调用
+--   is_email_taken()（该函数已移除）。此处仅提供一次性清理旧数据的语句。
+--   这些账号永远无法登录，删除是安全的；依赖其 profiles / watchlists 空壳行会随
+--   FK on delete cascade 一并清除。已确认邮箱或已设密码的真实账号绝不受影响。
+--   执行权限：SQL 编辑器 / db push 具 postgres 角色权限，可直接操作 auth.users。
+delete from auth.users
+ where email_confirmed_at is null
+   and (encrypted_password is null or encrypted_password = '')
+   and last_sign_in_at is null;
 
 -- 1.5 头像存储桶（限制 2MB，仅登录用户可传自己的）
 insert into storage.buckets (id, name, public, file_size_limit)
@@ -503,4 +496,159 @@ create policy "community_likes_delete" on public.community_likes
 -- （等级体系会恒显默认等级），用下方语句非破坏性地补齐，绝不丢数据。
 -- 全新库走 DROP + CREATE 已含 exp，本段为冗余安全网；ADD COLUMN IF NOT EXISTS 幂等。
 alter table public.profiles add column if not exists exp integer not null default 0;
+
+-- ╔══════════════════════════════════════════════════════════════╗
+-- ║ 100. 经验值 / 等级发放（修复「经验值恒为 0」）                  ║
+-- ╠══════════════════════════════════════════════════════════════╣
+-- 此前 deploy.sql 只定义了 profiles.exp / level 列与前端 EXP_SOURCES 规则，
+-- 但没有任何累加逻辑，导致经验值永远为 0。本块补齐「行为 → 加经验 → 按阈值升级」：
+--   · 完善资料 +20（一次性）     · 每日登录 +5（连登每满 7 天再 +15）
+--   · 添加自选 +3 / 只           · 发帖 +10   · 评论 +5
+--   · 点赞 +2                   · 被点赞 +3（帖子作者）
+-- 等级由累计经验自动推导（与前端 src/store/level.ts TIERS 阈值一致：
+--   0 / 100 / 300 / 600 / 1000 / 2000 / 4000）。
+-- 幂等：重复执行安全；老库直接跑本块即生效（ADD COLUMN / DROP+CREATE 兜底）。
+-- ╚══════════════════════════════════════════════════════════════╝
+
+-- 100.1 经验发放所需附加列（幂等；老库自动补齐）
+alter table public.profiles add column if not exists signin_streak        integer not null default 0;
+alter table public.profiles add column if not exists last_signin          date;
+alter table public.profiles add column if not exists profile_bonus_claimed boolean not null default false;
+
+-- 100.2 按累计经验刷新等级（阈值与前端 TIERS 一致）
+create or replace function public.refresh_level(p_user uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if p_user is null then return; end if;
+  update public.profiles p
+     set level = (
+       select max(t.lv) from (values
+         (0, 0), (1, 100), (2, 300), (3, 600), (4, 1000), (5, 2000), (6, 4000)
+       ) as t(lv, mn)
+       where t.mn <= p.exp
+     )
+   where p.id = p_user;
+end;
+$$;
+
+-- 100.3 通用经验发放：累加 exp 并自动刷新等级，返回最新 exp
+create or replace function public.grant_exp(p_user uuid, p_amount integer)
+returns integer language plpgsql security definer set search_path = public as $$
+begin
+  if p_user is null or p_amount is null or p_amount <= 0 then
+    return coalesce((select exp from public.profiles where id = p_user), 0);
+  end if;
+  update public.profiles set exp = exp + p_amount where id = p_user;
+  perform public.refresh_level(p_user);
+  return coalesce((select exp from public.profiles where id = p_user), 0);
+end;
+$$;
+
+-- 100.4 行为触发器：添加自选 / 发帖 / 评论 / 点赞（含被点赞）
+create or replace function public.exp_on_watch()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.user_id is not null then perform public.grant_exp(new.user_id, 3); end if;
+  return null;
+end;
+$$;
+drop trigger if exists trg_exp_watch on public.watchlists;
+create trigger trg_exp_watch
+  after insert on public.watchlists
+  for each row execute function public.exp_on_watch();
+
+create or replace function public.exp_on_post()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.user_id is not null then perform public.grant_exp(new.user_id, 10); end if;
+  return null;
+end;
+$$;
+drop trigger if exists trg_exp_post on public.community_posts;
+create trigger trg_exp_post
+  after insert on public.community_posts
+  for each row execute function public.exp_on_post();
+
+create or replace function public.exp_on_comment()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.user_id is not null then perform public.grant_exp(new.user_id, 5); end if;
+  return null;
+end;
+$$;
+drop trigger if exists trg_exp_comment on public.community_replies;
+create trigger trg_exp_comment
+  after insert on public.community_replies
+  for each row execute function public.exp_on_comment();
+
+create or replace function public.exp_on_like()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare v_owner uuid;
+begin
+  -- 点赞者 +2（仅登录用户）
+  if new.user_id is not null then perform public.grant_exp(new.user_id, 2); end if;
+  -- 帖子作者被赞 +3（本人不自赞不重复计）
+  select user_id into v_owner from public.community_posts where id = new.post_id;
+  if v_owner is not null and v_owner <> new.user_id then
+    perform public.grant_exp(v_owner, 3);
+  end if;
+  return null;
+end;
+$$;
+drop trigger if exists trg_exp_like on public.community_likes;
+create trigger trg_exp_like
+  after insert on public.community_likes
+  for each row execute function public.exp_on_like();
+
+-- 100.5 完善资料奖励（一次性 +20）：任意资料字段首次修改时发放并置位，防重复
+create or replace function public.exp_on_profile()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if not new.profile_bonus_claimed and (
+    new.display_name is distinct from old.display_name
+    or new.avatar_url   is distinct from old.avatar_url
+    or new.bio          is distinct from old.bio
+  ) then
+    update public.profiles set profile_bonus_claimed = true where id = new.id;
+    perform public.grant_exp(new.id, 20);
+  end if;
+  return null;
+end;
+$$;
+drop trigger if exists trg_exp_profile on public.profiles;
+create trigger trg_exp_profile
+  after update on public.profiles
+  for each row execute function public.exp_on_profile();
+
+-- 100.6 每日签到（RPC，前端登录后调用）：当日 +5；连续签到每满 7 天额外 +15
+create or replace function public.award_daily_signin()
+returns integer language plpgsql security definer set search_path = public as $$
+declare
+  v_user   uuid := auth.uid();
+  v_today  date := current_date;
+  v_last   date;
+  v_streak int;
+  v_gain   int;
+begin
+  if v_user is null then return 0; end if;
+  select last_signin, signin_streak into v_last, v_streak
+    from public.profiles where id = v_user;
+  if v_last = v_today then
+    return coalesce((select exp from public.profiles where id = v_user), 0);
+  end if;
+  if v_last = v_today - 1 then v_streak := coalesce(v_streak, 0) + 1;
+  else v_streak := 1; end if;
+  v_gain := 5;
+  if v_streak % 7 = 0 then v_gain := v_gain + 15; end if;
+  update public.profiles set signin_streak = v_streak, last_signin = v_today where id = v_user;
+  perform public.grant_exp(v_user, v_gain);
+  return coalesce((select exp from public.profiles where id = v_user), 0);
+end;
+$$;
+
+-- 100.7 兜底：为已有 auth 用户补建 profile 空壳行（幂等），保证签到等逻辑可写
+insert into public.profiles (id)
+select u.id from auth.users u
+where not exists (select 1 from public.profiles p where p.id = u.id)
+on conflict (id) do nothing;
 

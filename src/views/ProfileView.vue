@@ -14,7 +14,13 @@
         @click="onHeaderTap"
       >
         <view class="pf-avatar">
-          <image v-if="user.loggedIn && avatarUrl" :src="avatarUrl" class="pf-avatar-img" mode="aspectFill" />
+          <image
+            v-if="user.loggedIn && avatarUrl"
+            :src="avatarUrl"
+            class="pf-avatar-img"
+            mode="aspectFill"
+            @click.stop="previewAvatar"
+          />
           <text v-else class="pf-avatar-char" :style="{ background: avatarBg }">{{ avatarChar }}</text>
         </view>
         <view class="pf-id">
@@ -143,7 +149,7 @@ import { useWatchlist } from "@/store/watchlist";
 import { useCommunity } from "@/store/community";
 import { isTabEnabled } from "@/store/appConfig";
 import { getMyName } from "@/store/identity";
-import { avatarGradient, avatarChar as avatarCharFn } from "@/utils/avatar";
+import { avatarGradient, avatarChar as avatarCharFn, avatarSeed } from "@/utils/avatar";
 import { signOut } from "@/api/auth";
 
 const user = useUser();
@@ -161,7 +167,10 @@ const nameText = computed(() =>
 const subText = computed(() =>
   user.loggedIn ? user.email || "" : "登录后同步自选股与云端资料"
 );
-const avatarName = computed(() => (user.loggedIn ? nameText.value : "我"));
+// 「字」头像种子 = 用户名（固定唯一，昵称修改不改变默认头像）
+const avatarName = computed(() =>
+  user.loggedIn ? avatarSeed(user.profile?.username || "") || "我" : "我"
+);
 const avatarBg = computed(() => avatarGradient(avatarName.value));
 const avatarChar = computed(() => avatarCharFn(avatarName.value));
 const avatarUrl = computed(() => user.profile?.avatar_url || "");
@@ -215,6 +224,11 @@ const menuGroups = computed(() => {
 
 function onHeaderTap() {
   user.loggedIn ? goEdit() : openAuth("login");
+}
+// 头像点击放大预览（仅已上传图片头像时可预览；"字"头像无可预览的图片资源）
+function previewAvatar() {
+  if (!avatarUrl.value) return;
+  uni.previewImage({ current: avatarUrl.value, urls: [avatarUrl.value] });
 }
 function goEdit() {
   uni.navigateTo({ url: "/pages/profile/edit" });

@@ -51,3 +51,6 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.sw?
+
+# ---- Tool / agent working directories ----
+.workbuddy/

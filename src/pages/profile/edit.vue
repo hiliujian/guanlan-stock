@@ -12,83 +12,48 @@
     </view>
 
     <scroll-view class="ep-scroll" scroll-y>
-      <!-- 头像 -->
-      <view class="ep-avatar-wrap card anim-fade-up">
-        <view class="ep-avatar" hover-class="ep-avatar-hover" @click="chooseAvatar" role="button" aria-label="上传头像">
-          <image v-if="avatarUrl" :src="avatarUrl" class="ep-avatar-img" mode="aspectFill" />
-          <text v-else class="ep-avatar-char" :style="{ background: avatarBg }">{{ ch }}</text>
+      <!-- 头像（点击更换）：居中展示 -->
+      <view class="card ep-hero anim-fade-up">
+        <view class="ep-avatar" hover-class="ep-av-hover" @click="chooseAvatar" role="button" aria-label="更换头像">
+          <image v-if="avatarUrl" :src="avatarUrl" class="ep-av-img" mode="aspectFill" />
+          <text v-else class="ep-av-char" :style="{ background: avatarBg }">{{ ch }}</text>
           <view class="ep-cam">
-            <OutlineIcon v-if="!uploading" type="camera" :size="22" color="#fff" />
+            <OutlineIcon v-if="!uploading" type="camera" :size="20" color="#fff" />
             <view v-else class="ep-spin" />
           </view>
         </view>
-        <text class="ep-avatar-tip">点击上传头像（JPG / PNG / WebP，不超过 2MB）</text>
+        <text class="ep-hero-tip">点击头像可更换</text>
       </view>
 
-      <!-- 资料表单 -->
-      <view class="form card anim-fade-up" :style="{ animationDelay: '60ms' }">
-        <view class="field">
-          <text class="fl">昵称</text>
-          <input v-model="displayName" class="fi" placeholder="昵称" placeholder-class="ph" maxlength="20" />
-        </view>
-        <view class="field read">
-          <text class="fl">用户名</text>
-          <text class="fr">{{ username || "—" }}</text>
-        </view>
-        <view class="field read ep-email" @click="startEmailEdit" role="button" aria-label="修改邮箱">
-          <text class="fl">邮箱</text>
-          <text class="fr">{{ user.email || "—" }}</text>
-          <text class="fr-edit">修改</text>
+      <!-- 基本资料（含保存按钮） -->
+      <view class="card ep-card anim-fade-up" :style="{ animationDelay: '60ms' }">
+        <text class="ep-group-title">基本资料</text>
+
+        <view class="ep-field">
+          <text class="ep-fl">昵称</text>
+          <input v-model="displayName" class="ep-fi" placeholder="输入昵称" placeholder-class="ep-ph" maxlength="20" />
         </view>
 
-        <!-- 邮箱修改面板（内联展开）：新邮箱 + 验证码，需新邮箱收码校验 -->
-        <view v-if="editingEmail" class="ec-panel">
-          <AuthField
-            icon="mail"
-            v-model="newEmail"
-            placeholder="新邮箱"
-            :error="emailErrors.newEmail"
-            @input="onNewEmailInput" @blur="validateNewEmail"
-          >
-            <template #suffix>
-              <view
-                class="auth-suffix"
-                :class="{ disabled: emailCountdown > 0 || emailSending }"
-                role="button"
-                :aria-disabled="emailCountdown > 0 || emailSending"
-                @click="sendEmailCode"
-              >
-                {{ emailCountdown > 0 ? emailCountdown + "s" : "发送验证码" }}
-              </view>
-            </template>
-          </AuthField>
-          <AuthField
-            icon="locked"
-            v-model="emailCode"
-            :maxlength="6"
-            placeholder="邮箱验证码"
-            :error="emailErrors.code"
-            @input="emailErrors.code = ''"
+        <!-- 用户名：唯一且不可修改；空则保持空白展示，不隐藏、不加占位 -->
+        <view class="ep-field read">
+          <text class="ep-fl">用户名</text>
+          <text class="ep-fr">{{ username }}</text>
+        </view>
+
+        <view class="ep-field col">
+          <text class="ep-fl">个人简介</text>
+          <textarea
+            v-model="bio"
+            class="ep-ta"
+            placeholder="选填，介绍一下自己"
+            placeholder-class="ep-ph"
+            maxlength="200"
           />
-          <view v-if="emailServerErr" class="auth-server-err">{{ emailServerErr }}</view>
-          <button
-            :class="['btn-primary', 'auth-submit', (emailSaving || emailDone) ? 'is-disabled' : '']"
-            :disabled="emailSaving || emailDone"
-            @click="confirmEmailChange"
-          >
-            <view v-if="emailSaving" class="btn-spin" />
-            <text v-if="emailDone">修改成功 ✓</text>
-            <text v-else-if="emailSaving">验证中…</text>
-            <text v-else>验证并修改</text>
-          </button>
-          <button class="ec-cancel" @click="cancelEmailEdit">取消</button>
+          <text class="ep-count">{{ bio.length }}/200</text>
         </view>
-        <view class="field col">
-          <text class="fl">个人简介</text>
-          <textarea v-model="bio" class="ta" placeholder="选填，介绍一下自己" placeholder-class="ph" maxlength="200" />
-        </view>
-        <button class="btn-primary save" :disabled="saving" @click="save">
-          {{ saving ? "保存中…" : "保存资料" }}
+
+        <button class="btn-primary ep-save" :disabled="saving" @click="save">
+          <text>{{ saving ? "保存中…" : "保存资料" }}</text>
         </button>
       </view>
 
@@ -98,13 +63,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onUnmounted } from "vue";
+import { ref, computed, watch } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
-import AuthField from "@/components/AuthField.vue";
-import { useUser, refreshProfile, syncSession } from "@/store/user";
-import { updateProfile, uploadAvatar, requestEmailChange, verifyEmailChange, EMAIL_RE } from "@/api/auth";
-import { avatarGradient, avatarChar } from "@/utils/avatar";
+import { useUser, refreshProfile } from "@/store/user";
+import { updateProfile, uploadAvatar } from "@/api/auth";
+import { avatarGradient, avatarChar, avatarSeed } from "@/utils/avatar";
 
 const user = useUser();
 
@@ -115,22 +79,11 @@ const saving = ref(false);
 const avatarUrl = ref("");
 const uploading = ref(false);
 
-// —— 邮箱修改（内联面板）——
-const editingEmail = ref(false);
-const newEmail = ref("");
-const emailCode = ref("");
-const emailSending = ref(false);
-const emailSent = ref(false);
-const emailSaving = ref(false);
-const emailDone = ref(false);
-const emailServerErr = ref("");
-const emailCountdown = ref(0);
-let emailTimer: any = null;
-const emailErrors = reactive<{ newEmail: string; code: string }>({ newEmail: "", code: "" });
-
-const avatarName = computed(() => displayName.value || username.value || user.email || "我");
-const avatarBg = computed(() => avatarGradient(avatarName.value));
-const ch = computed(() => avatarChar(avatarName.value));
+// 默认头像（底色 + 首字）以「不变身份」为种子：昵称修改不改变，
+// 仅当用户自行上传图片头像时才替换。
+const seedName = computed(() => avatarSeed(username.value) || "我");
+const avatarBg = computed(() => avatarGradient(seedName.value));
+const ch = computed(() => avatarChar(seedName.value));
 
 watch(
   () => [user.loggedIn, user.profile],
@@ -204,146 +157,6 @@ async function save() {
     saving.value = false;
   }
 }
-
-function startEmailEdit() {
-  newEmail.value = "";
-  emailCode.value = "";
-  emailErrors.newEmail = "";
-  emailErrors.code = "";
-  emailServerErr.value = "";
-  emailSent.value = false;
-  emailDone.value = false;
-  editingEmail.value = true;
-}
-
-function cancelEmailEdit() {
-  editingEmail.value = false;
-  if (emailTimer) {
-    clearInterval(emailTimer);
-    emailTimer = null;
-  }
-  emailCountdown.value = 0;
-}
-
-function startEmailCountdown() {
-  emailCountdown.value = 120;
-  emailTimer = setInterval(() => {
-    emailCountdown.value -= 1;
-    if (emailCountdown.value <= 0) {
-      clearInterval(emailTimer);
-      emailTimer = null;
-    }
-  }, 1000);
-}
-
-function validateNewEmail() {
-  const e = newEmail.value.trim();
-  if (!e) {
-    emailErrors.newEmail = "";
-    return;
-  }
-  if (!EMAIL_RE.test(e)) {
-    emailErrors.newEmail = "请输入有效的邮箱地址";
-    return;
-  }
-  if (user.email && e.toLowerCase() === (user.email || "").toLowerCase()) {
-    emailErrors.newEmail = "新邮箱不能与当前邮箱相同";
-    return;
-  }
-  emailErrors.newEmail = "";
-}
-
-// 发送验证码后用户仍可修改新邮箱：一旦改动则旧验证码作废，重置发送/倒计时状态，允许重新发送
-function onNewEmailInput() {
-  emailErrors.newEmail = "";
-  if (emailSent.value) {
-    emailSent.value = false;
-    emailCode.value = "";
-    if (emailTimer) {
-      clearInterval(emailTimer);
-      emailTimer = null;
-    }
-    emailCountdown.value = 0;
-  }
-}
-
-async function sendEmailCode() {
-  if (emailCountdown.value > 0 || emailSending.value) return;
-  emailServerErr.value = "";
-  emailErrors.newEmail = "";
-  const e = newEmail.value.trim();
-  if (!e || !EMAIL_RE.test(e)) {
-    emailErrors.newEmail = "请输入有效的邮箱地址";
-    return;
-  }
-  if (user.email && e.toLowerCase() === (user.email || "").toLowerCase()) {
-    emailErrors.newEmail = "新邮箱不能与当前邮箱相同";
-    return;
-  }
-  emailSending.value = true;
-  try {
-    const r = await requestEmailChange(e);
-    if (!r.ok) {
-      emailServerErr.value = r.error || "发送失败，请稍后重试";
-      return;
-    }
-    emailSent.value = true;
-    startEmailCountdown();
-  } catch (err: any) {
-    emailServerErr.value = err?.message || "操作失败，请重试";
-  } finally {
-    emailSending.value = false;
-  }
-}
-
-async function confirmEmailChange() {
-  emailServerErr.value = "";
-  emailErrors.newEmail = "";
-  emailErrors.code = "";
-  const e = newEmail.value.trim();
-  const c = emailCode.value.trim();
-  if (!e || !EMAIL_RE.test(e)) {
-    emailErrors.newEmail = "请输入有效的邮箱地址";
-    return;
-  }
-  if (!c) {
-    emailErrors.code = "请输入邮箱验证码";
-    return;
-  }
-  if (c.length !== 6) {
-    emailErrors.code = "请输入完整的邮箱验证码";
-    return;
-  }
-  emailSaving.value = true;
-  try {
-    const r = await verifyEmailChange(e, c);
-    if (!r.ok) {
-      emailErrors.code = r.error || "验证码错误或已过期";
-      return;
-    }
-    emailDone.value = true;
-    // 邮箱已变更：刷新会话中的邮箱 + 资料，使页面与 store 同步
-    await syncSession().catch(() => {});
-    await refreshProfile().catch(() => {});
-    uni.showToast({ title: "邮箱已更新", icon: "success" });
-    setTimeout(() => {
-      editingEmail.value = false;
-      if (emailTimer) {
-        clearInterval(emailTimer);
-        emailTimer = null;
-      }
-      emailCountdown.value = 0;
-    }, 900);
-  } catch (err: any) {
-    emailServerErr.value = err?.message || "操作失败，请重试";
-  } finally {
-    emailSaving.value = false;
-  }
-}
-
-onUnmounted(() => {
-  if (emailTimer) clearInterval(emailTimer);
-});
 </script>
 
 <style scoped>
@@ -397,35 +210,39 @@ onUnmounted(() => {
   padding: 24rpx 24rpx 0;
 }
 
-.ep-avatar-wrap {
+/* 头像卡：头像居中展示（紧凑留白） */
+.ep-hero {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 16rpx;
-  padding: 40rpx 24rpx;
+  padding: 30rpx 24rpx 26rpx;
+  background: linear-gradient(135deg, rgba(7, 193, 96, 0.16), rgba(7, 193, 96, 0.04) 60%, transparent);
 }
 .ep-avatar {
   position: relative;
-  width: 152rpx;
-  height: 152rpx;
+  flex: none;
+  width: 148rpx;
+  height: 148rpx;
   border-radius: 50%;
   background: var(--card-2);
-  border: 1rpx solid var(--border);
+  border: 3rpx solid var(--card);
+  box-shadow: 0 0 0 6rpx rgba(7, 193, 96, 0.16), 0 10rpx 24rpx rgba(0, 0, 0, 0.22);
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8rpx 22rpx rgba(0, 0, 0, 0.25);
+  transition: transform 0.18s ease;
 }
-.ep-avatar-hover {
+.ep-av-hover {
   transform: scale(0.97);
 }
-.ep-avatar-img {
+.ep-av-img {
   width: 100%;
   height: 100%;
   border-radius: 50%;
 }
-.ep-avatar-char {
+.ep-av-char {
   width: 100%;
   height: 100%;
   display: flex;
@@ -437,95 +254,85 @@ onUnmounted(() => {
 }
 .ep-cam {
   position: absolute;
-  right: 4rpx;
-  bottom: 4rpx;
-  width: 48rpx;
-  height: 48rpx;
+  right: 6rpx;
+  bottom: 6rpx;
+  width: 52rpx;
+  height: 52rpx;
   border-radius: 50%;
   background: var(--primary);
   display: flex;
   align-items: center;
   justify-content: center;
   border: 3rpx solid #fff;
+  box-shadow: 0 4rpx 10rpx rgba(7, 193, 96, 0.4);
 }
 .ep-spin {
-  width: 28rpx;
-  height: 28rpx;
+  width: 26rpx;
+  height: 26rpx;
   border: 4rpx solid rgba(255, 255, 255, 0.4);
   border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
-.ep-avatar-tip {
+.ep-hero-tip {
+  display: block;
   font-size: 22rpx;
   color: var(--text-2);
 }
 
-.form {
-  padding: 10rpx 24rpx;
+/* 基本资料表单：分组 + 分行，与「账号安全」视觉一致 */
+.ep-card {
   margin-top: 20rpx;
+  padding: 8rpx 26rpx 10rpx;
 }
-.field {
+.ep-group-title {
+  display: block;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: 1rpx;
+  margin: 12rpx 2rpx 4rpx;
+}
+.ep-field {
   display: flex;
   align-items: center;
   gap: 20rpx;
-  padding: 22rpx 0;
+  padding: 26rpx 0;
   border-bottom: 1rpx solid var(--border);
 }
-.field.col {
+.ep-field.col {
   flex-direction: column;
   align-items: stretch;
-  gap: 12rpx;
+  gap: 14rpx;
 }
-.field.read {
+.ep-field.read {
   color: var(--text-2);
 }
-.ep-email {
-  cursor: pointer;
+.ep-field:last-child {
+  border-bottom: none;
 }
-.fr-edit {
-  margin-left: 16rpx;
-  font-size: 26rpx;
-  color: var(--primary);
-  flex-shrink: 0;
-}
-.ec-panel {
-  margin: 12rpx 0 20rpx;
-  padding: 20rpx 18rpx;
-  background: var(--card-2);
-  border-radius: var(--radius-sm);
-}
-.ec-cancel {
-  margin-top: 16rpx;
-  background: transparent;
-  font-size: 26rpx;
-  color: var(--text-2);
-  line-height: 1.8;
-}
-.ec-cancel::after {
-  border: none;
-}
-.fl {
+.ep-fl {
+  flex: none;
   width: 130rpx;
   font-size: 28rpx;
   color: var(--text-2);
-  flex-shrink: 0;
 }
-.fi {
+.ep-fi {
   flex: 1;
   font-size: 28rpx;
   text-align: right;
   color: var(--text);
 }
-.fr {
+.ep-fr {
   flex: 1;
   font-size: 28rpx;
   text-align: right;
   color: var(--text-2);
 }
-.ta {
+.ep-ta {
   width: 100%;
-  min-height: 150rpx;
+  box-sizing: border-box;
+  min-height: 140rpx;
   font-size: 28rpx;
   line-height: 1.6;
   background: var(--card-2);
@@ -533,11 +340,20 @@ onUnmounted(() => {
   padding: 16rpx;
   color: var(--text);
 }
-.ph {
+.ep-count {
+  align-self: flex-end;
+  font-size: 20rpx;
+  color: var(--text-2);
+  margin-top: -6rpx;
+}
+.ep-ph {
   color: var(--text-2);
 }
-.save {
-  margin-top: 28rpx;
+
+/* 保存按钮：位于基本资料卡片底部，上下留白均衡 */
+.ep-save {
+  width: 100%;
+  margin: 30rpx 0 22rpx;
 }
 .bottom-pad {
   height: 60rpx;

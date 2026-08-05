@@ -4,7 +4,7 @@
 // =====================================================================
 import { reactive, readonly } from "vue";
 import { getSupabase, isSupabaseConfigured } from "@/api/supabase";
-import { onAuthChange, updateProfile } from "@/api/auth";
+import { onAuthChange, updateProfile, awardDailySignin } from "@/api/auth";
 
 interface Profile {
   id: string;
@@ -65,6 +65,10 @@ export function useUser() {
           state.loggedIn = true;
           state.userId = user.id;
           state.email = user.email ?? null;
+          await loadProfile(user.id);
+          // 每日登录签到：发放经验后刷新资料，让「我的-等级」立即展示最新 exp / level
+          // （后端 award_daily_signin RPC 幂等，当日已签到则不重复发放）
+          await awardDailySignin();
           await loadProfile(user.id);
         } else {
           state.loggedIn = false;

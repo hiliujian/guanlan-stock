@@ -80,7 +80,7 @@ import { getMyName, setMyName } from "@/store/identity";
 import { userState } from "@/store/user";
 import { updateProfile } from "@/api/auth";
 import { refreshProfile } from "@/store/user";
-import { avatarGradient, avatarChar, topicColor } from "@/utils/avatar";
+import { avatarGradient, avatarChar, avatarSeed, topicColor } from "@/utils/avatar";
 import type { CommunityPost, PostCard as PostCardData, Topic } from "@/api/community";
 
 const { posts, loading, load, publishText, publishCard, like, reply, remove } = useCommunity();
@@ -92,8 +92,15 @@ const needLogin = computed(() => userState.supabaseEnabled && !userState.loggedI
 // getMyName 已内置账号优先逻辑：登录后用账号资料，未登录回退本地。
 // 这里包一层 computed，登录态/资料变化时自动重算；头像为按昵称生成的「字」头像。
 const myName = computed(() => getMyName());
-const myAvatarBg = computed(() => avatarGradient(myName.value));
-const myChar = computed(() => avatarChar(myName.value));
+// 「字」头像种子 = 用户名（固定唯一）：已登录时昵称修改不改变默认头像；
+// 未登录沿用本地昵称（本地昵称亦即其身份）。
+const mySeed = computed(() =>
+  userState.loggedIn && userState.userId
+    ? avatarSeed(userState.profile?.username || "") || "我"
+    : myName.value
+);
+const myAvatarBg = computed(() => avatarGradient(mySeed.value));
+const myChar = computed(() => avatarChar(mySeed.value));
 
 function isMine(p: CommunityPost): boolean {
   // 已登录：按账号 id 判定（帖子创建时已写入 userId）

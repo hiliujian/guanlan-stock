@@ -15,6 +15,7 @@
   --primary: #07c160;
   --primary-dark: #06a454;
   --primary-soft: rgba(7, 193, 96, 0.12);
+  --danger: #e5484d;
   --up: #ff5b5b;
   --down: #1fd874;
   --text: #16202e;
@@ -54,6 +55,7 @@
   --primary: #07c160;
   --primary-dark: #06a454;
   --primary-soft: rgba(7, 193, 96, 0.18);
+  --danger: #e5484d;
   --up: #ff5b5b;
   --down: #1fd874;
   --text: #eaf0fb;
@@ -193,44 +195,34 @@ textarea {
   margin-bottom: var(--gap);
 }
 
-/* 主按钮（统一微信绿，跨端一致） */
+/* 主按钮（统一形状：微信绿 / 危险红共用同一紧凑药丸，仅换色，避免多套尺寸重复）
+   全站主 CTA（登录 / 注册 / 重设密码 / 保存资料 / 注销账号 等）只维护这一处形状：
+   高度 72rpx 的紧凑药丸；危险按钮 .btn-danger 仅覆盖背景色，形状由本组继承。 */
+.btn-primary,
+.btn-danger {
+  border: none;
+  border-radius: 999rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  height: 72rpx;
+  line-height: 72rpx;
+  text-align: center;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
 .btn-primary {
   background: var(--primary);
   color: #fff;
-  border: none;
-  border-radius: 999rpx;
-  font-size: 30rpx;
-  font-weight: 600;
-  height: 88rpx;
-  line-height: 88rpx;
-  text-align: center;
-  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
-.btn-primary:active {
-  transform: scale(0.97);
-  box-shadow: var(--shadow-up);
-}
-.btn-primary.is-disabled {
-  opacity: 0.5;
-}
-
-/* 危险按钮（注销/删除等）：与 .btn-primary 同尺寸、同药丸，仅换危险红，保证全局主按钮视觉一致 */
 .btn-danger {
   background: var(--danger);
   color: #fff;
-  border: none;
-  border-radius: 999rpx;
-  font-size: 30rpx;
-  font-weight: 600;
-  height: 88rpx;
-  line-height: 88rpx;
-  text-align: center;
-  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
+.btn-primary:active,
 .btn-danger:active {
   transform: scale(0.97);
   box-shadow: var(--shadow-up);
 }
+.btn-primary.is-disabled,
 .btn-danger.is-disabled {
   opacity: 0.5;
 }
@@ -603,12 +595,9 @@ textarea {
   word-break: break-all;
 }
 /* 主 CTA：在表单内占满宽度、内容居中、去除 uni 默认边框。
-   复用全局 .btn-primary 的 88rpx 药丸尺寸（不再压低高度），仅负责全宽与去边框（登录/注册/重设三页共用） */
+   形状（药丸 / 72rpx 高度 / 字号）复用全局 .btn-primary，此处只负责全宽与去边框（登录/注册/重设三页共用） */
 .auth-submit {
   width: 100%;
-  height: 88rpx;
-  line-height: 88rpx;
-  font-size: 30rpx;
   display: flex;
   align-items: center;
   justify-content: center;

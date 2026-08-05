@@ -7,6 +7,8 @@ import { getSupabase } from "./supabase";
 export interface AuthResult {
   ok: boolean;
   error?: string;
+  /** 仅在 updatePassword 中置位：新密码与账号当前密码相同，即该邮箱已注册 */
+  samePassword?: boolean;
 }
 
 export async function signIn(email: string, password: string): Promise<AuthResult> {
@@ -55,20 +57,6 @@ export async function checkUsernameAvailable(username: string): Promise<{ ok: bo
   const { data, error } = await sb.rpc("is_username_taken", { p_username: username });
   if (error) return { ok: false, available: false, error: translateSupabaseError(error.message) };
   return { ok: true, available: !(data as boolean) };
-}
-
-/**
- * 判断邮箱是否已注册（注册页用于区分"新用户注册"与"已注册改密码"，
- * 从源头避免注册流程误触发 same-password 校验）。
- * 直接查询 auth.users（OTP 创建用户即写入该表，比 profiles 更早、更可靠），
- * 邮箱做 lower 归一化比较。底层走 RPC is_email_taken（security definer，可匿名调用）。
- */
-export async function isEmailRegistered(email: string): Promise<{ ok: boolean; registered: boolean; error?: string }> {
-  const sb = getSupabase();
-  if (!sb) return { ok: false, registered: false, error: BACKEND_NOT_CONFIGURED };
-  const { data, error } = await sb.rpc("is_email_taken", { p_email: email });
-  if (error) return { ok: false, registered: false, error: translateSupabaseError(error.message) };
-  return { ok: true, registered: !!(data as boolean) };
 }
 
 /**
@@ -161,7 +149,11 @@ export async function updatePassword(newPassword: string): Promise<AuthResult> {
   const sb = getSupabase();
   if (!sb) return { ok: false, error: BACKEND_NOT_CONFIGURED };
   const { error } = await sb.auth.updateUser({ password: newPassword });
-  if (error) return { ok: false, error: translateSupabaseError(error.message) };
+  if (error) {
+    const err = error.message || "";
+    const samePassword = /(different from the old|different from the current)/i.test(err);
+    return { ok: false, error: translateSupabaseError(err), samePassword };
+  }
   return { ok: true };
 }
 
@@ -407,6 +399,19 @@ export async function updateProfile(patch: ProfilePatch): Promise<AuthResult> {
   const { error } = await sb.from("profiles").update(patch).eq("id", uid);
   if (error) return { ok: false, error: translateSupabaseError(error.message) };
   return { ok: true };
+}
+
+/**
+ * 每日登录签到（后端 RPC，见 deploy.sql §100.6）：
+ * 当日首次调用发放 +5 经验（连续登录每满 7 天再 +15），并返回最新 exp。
+ * 幂等：同一自然日重复调用不重复发放。
+ */
+export async function awardDailySignin(): Promise<number | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc("award_daily_signin");
+  if (error) return null;
+  return typeof data === "number" ? data : null;
 }
 
 export function onAuthChange(cb: (user: any | null) => void): () => void {

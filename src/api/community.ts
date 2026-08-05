@@ -257,18 +257,34 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
     if (liked) likedCache.ids.add(id);
     else likedCache.ids.delete(id);
   }
-  // 点赞态以 RPC 返回的 liked_by_me 为准（服务端已写入 community_likes）
+  // 点赞后重查完整帖（含最新回复与配图），避免 replace 时把 replies/images 覆盖为空
+  const { data: fresh, error: ferr } = await sb
+    .from("community_posts")
+    .select(
+      "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, content, created_at)"
+    )
+    .eq("id", id)
+    .single();
+  if (ferr || !fresh) return null;
+  const f = fresh as any;
   return {
-    id: d.id,
-    type: d.type,
-    author: d.author,
-    topic: d.topic || undefined,
-    createdAt: new Date(d.created_at).getTime(),
-    content: d.content ?? undefined,
-    card: d.card ? toClientCard(d.card) : undefined,
-    likes: d.likes ?? 0,
-    likedByMe: liked,
-    replies: [],
+    id: f.id,
+    type: f.type,
+    author: f.author,
+    userId: f.user_id || null,
+    topic: f.topic || undefined,
+    createdAt: new Date(f.created_at).getTime(),
+    content: f.content ?? undefined,
+    card: f.card ? toClientCard(f.card) : undefined,
+    images: (f.images as string[] | undefined) || [],
+    likes: f.likes ?? 0,
+    likedByMe: likedCache ? likedCache.ids.has(id) : liked,
+    replies: (f.replies || []).map((x: any) => ({
+      id: x.id,
+      author: x.author,
+      content: x.content,
+      createdAt: new Date(x.created_at).getTime(),
+    })),
   };
 }
 

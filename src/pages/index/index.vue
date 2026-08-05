@@ -32,7 +32,7 @@ import AuthCallback from "@/components/AuthCallback.vue";
 import AnnouncementOverlay from "@/components/AnnouncementOverlay.vue";
 import type { TabKey } from "@/config/app";
 import { enabledTabs } from "@/store/appConfig";
-import { useUser } from "@/store/user";
+import { useUser, userState } from "@/store/user";
 import { initWatchlist } from "@/store/watchlist";
 import { openInMarket, navTab, goTab } from "@/store/nav";
 import { handleCallback } from "@/store/authFlow";
@@ -82,6 +82,15 @@ watch(
 
 // 打开即用：启动即初始化用户态与自选（未登录走本地降级，无门禁）
 initWatchlist();
+
+// 关键修复：登录态恢复 / 切换（含冷启动时 Supabase 从 storage 异步恢复会话、以及登出）
+// 后，自选数据源会随之切换 cloud/local。setup 里那次 initWatchlist() 只能覆盖首帧，
+// 若当时会话尚未恢复，登录后自选会一直停留在本地/空。这里监听 loggedIn 变化重新初始化，
+// 保证「重新登录后自选与分组」从云端正常持久化恢复。
+watch(
+  () => userState.loggedIn,
+  () => initWatchlist()
+);
 
 onMounted(() => {
   // 处理邮件确认回调：若以确认链接打开应用，自动验证并进入已登录态

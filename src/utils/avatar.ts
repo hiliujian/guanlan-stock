@@ -40,6 +40,16 @@ export function avatarChar(name: string): string {
   return s.charAt(0).toUpperCase() || "?";
 }
 
+/**
+ * 「字」头像的稳定种子：唯一依赖「用户名」生成（用户名唯一、固定、不可修改，
+ * 正式环境不为空），保证默认头像底色与首字在昵称可编辑时始终不变，
+ * 仅当用户自行上传图片头像时才改变。不使用邮箱或用户 id 回退。
+ * 仅传入用户名即可；用户名为空时返回空串，由调用方兜底（如「我」）。
+ */
+export function avatarSeed(username: string): string {
+  return (username || "").trim();
+}
+
 /** 话题（股票 / 板块）标签配色：个股走主色系，板块走紫罗兰系，便于一眼区分 */
 export function topicColor(type: "stock" | "sector"): { fg: string; bg: string } {
   if (type === "sector") {

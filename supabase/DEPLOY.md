@@ -200,6 +200,27 @@ delete from storage.buckets where id = 'avatars';
   truncate table public.community_posts, public.community_replies, public.community_likes restart identity;
   ```
 
+### 方式 B1：修复注册页误判「已注册」（幽灵账号，零破坏）
+
+> **背景**：注册页「发送验证码」走 `signInWithOtp({ shouldCreateUser: true })`，首次发码即向
+> `auth.users` 写入一条账号（触发器会为其建一条带随机昵称的 profiles 空壳行）。
+> **2026-08 起已改为纯前端根治**：不再用数据库函数预判邮箱是否已注册（`is_email_taken` 已移除），
+> 注册直接走验证码流程，用 Supabase 返回的真实信号区分新/老用户（见 `src/pages/auth/register.vue`）。
+> 无需再对数据库做任何改动。如需清理历史被误建的幽灵账号，可选执行下方一次性语句
+> （仅删「未确认 + 无密码 + 从未登录」的账号，真实账号绝不受影响）：
+
+```sql
+-- 清理历史幽灵账号（未确认 + 无密码 + 从未登录，永远无法登录，删除安全；
+--    其 profiles / watchlists 空壳行随 FK on delete cascade 一并清除）
+delete from auth.users
+ where email_confirmed_at is null
+   and (encrypted_password is null or encrypted_password = '')
+   and last_sign_in_at is null;
+```
+
+> 包行上文讲述的 `is_email_taken` 旧逻辑仍有参考价值：它是「为什么不能靠 DB 字段区分」的
+> 反面教材——OTP 创建用户时即标记邮箱已确认，导致函数无法区分幽灵与真实账号、误拦新注册。
+
 ### 方式 C：整库清零（最彻底）
 
 Supabase 免费版没有「drop database」按钮，最干净的做法是 **Project Settings → Delete project**，

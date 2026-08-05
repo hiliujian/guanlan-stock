@@ -94,7 +94,6 @@ import {
   updatePassword,
   updateProfile,
   checkUsernameAvailable,
-  isEmailRegistered,
   USERNAME_RE,
   EMAIL_RE,
 } from "@/api/auth";
@@ -263,30 +262,29 @@ async function submit() {
     return;
   }
 
-  // 区分新用户注册 / 已注册账号：已注册邮箱不应走注册流程
-  // （避免复用 updateUser 设密码触发 same-password 校验误导用户），引导去登录/找回
-  const reg = await isEmailRegistered(e);
-  if (!reg.ok) {
-    serverErr.value = reg.error || "操作失败，请重试";
-    return;
-  }
-  if (reg.registered) {
-    errors.email = "该邮箱已注册，请直接登录或使用找回密码";
-    return;
-  }
-
   loading.value = true;
   try {
+    // 不依赖 is_email_taken 预判（OTP 创建用户时邮箱即被标记确认，库里无法可靠区分
+    // 幽灵与真实账号），直接走验证：以 Supabase 流程中的真实信号来区分新/老用户。
     // 1) 校验验证码 —— 通过后 Supabase 建立会话
     const v = await verifySignupCode(e, c);
     if (!v.ok) {
-      errors.code = v.error || "验证码错误或已过期";
+      // 已确认/已注册邮箱收到的是“已完成验证”错误 → 引导去登录，而非误拦新注册
+      if (/已注册|已验证|直接登录/.test(v.error || "")) {
+        errors.email = "该邮箱已注册，请直接登录或使用找回密码";
+      } else {
+        errors.code = v.error || "验证码错误或已过期";
+      }
       return;
     }
-    // 2) 设置密码（已建会话）
+    // 2) 设置密码（已建会话）；密码与账号当前密码相同说明该邮箱已注册
     const u = await updatePassword(p);
     if (!u.ok) {
-      errors.password = u.error || "密码设置失败，请重试";
+      if (u.samePassword) {
+        errors.email = "该邮箱已注册，请直接登录或使用找回密码";
+      } else {
+        errors.password = u.error || "密码设置失败，请重试";
+      }
       return;
     }
     // 3) 写入用户名（用户自填、唯一；昵称由触发器自动随机生成）

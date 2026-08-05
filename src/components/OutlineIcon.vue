@@ -127,6 +127,10 @@ const ICONS: Record<string, { body: string; filled?: boolean }> = {
   mail: {
     body: '<rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/>',
   },
+  // 编辑 / 修改（铅笔）
+  edit: {
+    body: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
+  },
   // 眼睛（显示密码）
   eye: {
     body: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',

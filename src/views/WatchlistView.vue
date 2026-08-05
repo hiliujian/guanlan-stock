@@ -9,105 +9,146 @@
   >
     <view class="wl">
       <BackgroundFX />
-      <view class="wl-head anim-fade-up">
-        <text class="wl-title">自选股</text>
-        <view class="wl-head-right">
-          <text class="wl-count">{{ list.length }} 只</text>
-          <text class="grp-manage" @click="openGroupManager">分组</text>
+      <!-- 头部：对齐社区顶部样式，标题仅「自选」 -->
+      <view class="cm-header anim-fade-up">
+        <text class="cm-brand">自选</text>
+        <view class="cm-right">
+          <view class="wl-count">
+            <text class="wl-count-num">{{ list.length }}</text>
+            <text class="wl-count-lab">只</text>
+          </view>
+          <view class="cm-me" role="button" aria-label="分组管理" @click="openGroups">
+            <OutlineIcon type="layers" :size="22" color="var(--primary)" />
+            <text>分组</text>
+          </view>
         </view>
       </view>
 
-      <!-- 分组筛选：全部 / 默认 / 各自定义分组 -->
-      <view class="wl-groups anim-fade-up">
-        <scroll-view class="grp-scroll" scroll-x>
-          <text :class="['grp', selectedGroup === '__all__' ? 'on' : '']" @click="selectedGroup = '__all__'">全部</text>
-          <text :class="['grp', selectedGroup === '' ? 'on' : '']" @click="selectedGroup = ''">默认</text>
-          <text
-            v-for="g in groups"
-            :key="g"
-            :class="['grp', selectedGroup === g ? 'on' : '']"
-            @click="selectedGroup = g"
-            >{{ g }}</text
-          >
-        </scroll-view>
-      </view>
-
-      <!-- 价格预警横幅：当前已触发且未忽略的预警（H5 无系统推送，仅应用内提醒） -->
-      <view v-if="alertHits.length" class="alert-banner anim-fade-up">
-        <view v-for="a in alertHits" :key="a.key" class="ab-item" @click="dismissAlert(a.key)">
-          <OutlineIcon type="bell" :size="26" color="var(--primary)" />
-          <text class="ab-txt">{{ a.text }}</text>
-          <text class="ab-x">忽略</text>
+      <!-- 分段：自选 / 今日热榜 / 完整热榜 -->
+      <view class="wl-seg anim-fade-up">
+        <view :class="['seg', viewMode === 'watch' ? 'on' : '']" @click="viewMode = 'watch'">
+          <OutlineIcon type="star" :size="22" :color="viewMode === 'watch' ? '#fff' : 'var(--text-2)'" />
+          <text>自选</text>
+        </view>
+        <view :class="['seg', viewMode === 'today' ? 'on' : '']" @click="viewMode = 'today'">
+          <OutlineIcon type="fire" :size="22" :color="viewMode === 'today' ? '#fff' : 'var(--text-2)'" />
+          <text>今日热榜</text>
+        </view>
+        <view :class="['seg', viewMode === 'all' ? 'on' : '']" @click="viewMode = 'all'">
+          <OutlineIcon type="bars" :size="22" :color="viewMode === 'all' ? '#fff' : 'var(--text-2)'" />
+          <text>完整热榜</text>
         </view>
       </view>
 
-      <view v-if="!list.length" class="empty anim-fade-up">
-        <OutlineIcon type="bars" :size="72" color="var(--border)" />
-        <text class="empty-t">还没有自选股</text>
-        <text class="empty-s">在「行情」页分析后点击「加入自选」即可同步到这里</text>
-      </view>
+      <!-- 热榜模式 -->
+      <RankView
+        v-if="viewMode !== 'watch'"
+        :key="rankKey"
+        :mode="rankMode"
+        @open-market="onOpenMarket"
+      />
 
-      <view
-        v-for="(row, i) in rows"
-        :key="row.it.code + row.it.market"
-        class="wl-row anim-fade-up"
-        :class="{ open: openIdx === i, removing: removingIdx === i }"
-      >
-        <!-- 左滑揭示的删除按钮：圆角红色，露出即点即删 -->
-        <view class="wl-del" @click="onDel(row.it, i)">
-          <OutlineIcon type="trash" :size="30" color="#fff" />
-          <text class="wl-del-t">删除</text>
+      <!-- 自选模式 -->
+      <template v-else>
+        <!-- 分组筛选：全部 / 默认 / 各自定义分组 + 新建分组入口 -->
+        <view class="wl-groups anim-fade-up">
+          <view class="grp-track">
+            <text :class="['grp', selectedGroup === '__all__' ? 'on' : '']" @click="selectedGroup = '__all__'">全部</text>
+            <text :class="['grp', selectedGroup === '' ? 'on' : '']" @click="selectedGroup = ''">默认</text>
+            <text
+              v-for="g in groups"
+              :key="g"
+              :class="['grp', selectedGroup === g ? 'on' : '']"
+              @click="selectedGroup = g"
+            >{{ g }}</text>
+            <view class="grp-new" role="button" aria-label="新建分组" @click="createGroupFlow">
+              <OutlineIcon type="plus" :size="20" color="var(--primary)" />
+              <text>新建</text>
+            </view>
+          </view>
         </view>
-        <!-- 可滑动行本体：左滑露出删除按钮，回弹/点击行体收起；点击跳转行情 -->
+
+        <!-- 价格预警横幅：当前已触发且未忽略的预警（H5 无系统推送，仅应用内提醒） -->
+        <view v-if="alertHits.length" class="alert-banner anim-fade-up">
+          <view v-for="a in alertHits" :key="a.key" class="ab-item glass glass--lg" @click="dismissAlert(a.key)">
+            <view class="ab-ic">
+              <OutlineIcon type="bell" :size="26" color="var(--primary)" />
+            </view>
+            <text class="ab-txt">{{ a.text }}</text>
+            <view class="ab-action">忽略</view>
+          </view>
+        </view>
+
+        <!-- 空态 -->
+        <view v-if="!list.length" class="empty-wrap anim-fade-up">
+          <view class="empty-card glass">
+            <view class="empty-ic">
+              <OutlineIcon type="star" :size="60" color="var(--primary)" />
+            </view>
+            <text class="empty-t">还没有自选股</text>
+            <text class="empty-s">在「行情」页搜索分析后点击星标加入自选，实时价格与价格预警将同步展示在这里。</text>
+            <button class="btn-primary empty-btn" @click="goPickMarket">去行情页选股</button>
+          </view>
+        </view>
+
+        <!-- 列表：左删除层 + 两行卡片 + 预警铃最右侧居中 -->
         <view
-          class="wl-item"
-          :class="{ 'no-trans': dragIdx === i, removing: removingIdx === i }"
-          :style="{ transform: 'translateX(' + (offsets[i] || 0) + 'px)' }"
-          @touchstart="onDown($event, i)"
-          @touchmove="onMove($event, i)"
-          @touchend="onUp($event, i, row.it)"
-          @mousedown="onDown($event, i)"
-          @mousemove="onMove($event, i)"
-          @mouseup="onUp($event, i, row.it)"
-          @mouseleave="onUp($event, i, row.it)"
-          @click="onItemClick(row.it, i)"
+          v-for="(row, i) in rows"
+          :key="row.it.code + row.it.market"
+          class="wl-row anim-fade-up"
+          :class="{ open: openIdx === i, removing: removingIdx === i }"
+          :style="{ animationDelay: (i % 8) * 40 + 'ms' }"
         >
-          <view class="wl-main">
-            <view class="wl-name-row">
-              <text class="wl-name">{{ row.it.name || row.it.code }}</text>
-            </view>
-            <view class="wl-code-row">
-              <view class="mkt-tag">{{ row.mkt }}</view>
-              <text class="wl-code">{{ row.it.code }}</text>
-              <view
-                v-if="row.it.group"
-                class="grp-chip"
-                @click.stop="moveToGroup(row.it)"
-                >{{ row.it.group }}</view
-              >
-            </view>
+          <view class="wl-del" @click="onDel(row.it, i)">
+            <OutlineIcon type="trash" :size="28" color="#fff" />
+            <text class="wl-del-t">删除</text>
           </view>
-          <view class="wl-right">
-            <view
-              class="wl-bell"
-              :class="{ on: hasAlert(row.it) }"
-              @click.stop="editAlert(row.it)"
-            >
-              <OutlineIcon type="bell" :size="26" :color="hasAlert(row.it) ? 'var(--primary)' : 'var(--text-2)'" />
+          <view
+            class="wl-item"
+            :class="{ 'no-trans': dragIdx === i, removing: removingIdx === i }"
+            :style="{ transform: 'translateX(' + (offsets[i] || 0) + 'px)' }"
+            @touchstart="onDown($event, i)"
+            @touchmove="onMove($event, i)"
+            @touchend="onUp($event, i, row.it)"
+            @mousedown="onDown($event, i)"
+            @mousemove="onMove($event, i)"
+            @mouseup="onUp($event, i, row.it)"
+            @mouseleave="onUp($event, i, row.it)"
+            @click="onItemClick(row.it, i)"
+          >
+            <!-- 左列：名称(+分组) / 代码(+市场标签) 两行 -->
+            <view class="wl-main">
+              <view class="wl-name-row">
+                <text class="wl-name">{{ row.it.name || row.it.code }}</text>
+                <view v-if="row.it.group" class="grp-chip" @click.stop="moveToGroup(row.it)">
+                  <OutlineIcon type="layers" :size="18" color="var(--primary)" />
+                  <text>{{ row.it.group }}</text>
+                </view>
+              </view>
+              <view class="wl-code-row">
+                <view class="mkt-tag">{{ row.mkt }}</view>
+                <text class="wl-code">{{ row.it.code }}</text>
+              </view>
             </view>
-            <text class="wl-price" :class="{ 'is-loading': row.q.loading }" :style="{ color: priceColor(row.q) }">
-              {{ row.q.loading ? "--" : fmtPrice(row.q.price) }}
-            </text>
-            <text class="wl-pct" :class="pctCls(row.q)">
-              {{ row.q.loading ? "--" : fmtPct(row.q.pct) }}
-            </text>
+            <!-- 中间：现价 / 涨跌幅 两行，右对齐 -->
+            <view class="wl-right">
+              <text class="wl-price" :class="{ 'is-loading': row.q.loading }" :style="{ color: priceColor(row.q) }">
+                {{ row.q.loading ? "--" : fmtPrice(row.q.price) }}
+              </text>
+              <text class="wl-pct" :class="pctCls(row.q)">
+                {{ row.q.loading ? "--" : fmtPct(row.q.pct) }}
+              </text>
+            </view>
+            <!-- 最右侧：预警铃铛，垂直居中 -->
+            <view class="wl-bell" :class="{ on: hasAlert(row.it) }" @tap.stop="editAlert(row.it)">
+              <OutlineIcon type="bell" :size="28" :color="hasAlert(row.it) ? 'var(--primary)' : 'var(--text-3)'" />
+            </view>
           </view>
         </view>
-      </view>
 
-      <text v-if="list.length && !rows.length" class="wl-hint">该分组暂无股票</text>
-
-      <text v-if="list.length" class="wl-hint">左滑股票可移除自选</text>
+        <text v-if="list.length && !rows.length" class="wl-hint">该分组暂无股票</text>
+        <text v-if="list.length" class="wl-hint">左滑股票可移除自选</text>
+      </template>
 
       <view class="bottom-pad" />
     </view>
@@ -118,11 +159,12 @@
 import { computed, reactive, ref, watch, onMounted, onActivated, onDeactivated, onUnmounted } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
+import RankView from "@/views/RankView.vue";
 import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, type WatchItem, type PriceAlert } from "@/store/watchlist";
 import { userState } from "@/store/user";
-import { openAuth } from "@/store/nav";
+import { openAuth, goTab } from "@/store/nav";
 import { fetchSnapshot } from "@/api/quote";
-import { resolveSecid } from "@/utils/period";
+import { resolveSecid, marketCharFor } from "@/utils/period";
 import { fmtPrice, fmtPct } from "@/utils/format";
 
 const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
@@ -130,7 +172,16 @@ const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: s
 const wl = useWatchlist();
 const list = computed(() => wl.items as WatchItem[]);
 
-// 分组筛选：全部 / 默认(未分组) / 各自定义分组（分组名从现有自选派生，无需空分组）
+// 分段：自选 / 今日热榜 / 完整热榜
+const viewMode = ref<"watch" | "today" | "all">("watch");
+// 热榜组件只接受 today / all（watch 分支不会渲染该组件）
+const rankMode = computed<"today" | "all">(() =>
+  viewMode.value === "watch" ? "all" : viewMode.value
+);
+// 下拉刷新时热榜组件重新挂载以刷新行情
+const rankKey = ref(0);
+
+// 分组筛选：全部 / 默认(未分组) / 各自定义分组（分组名从现有自选派生）
 const selectedGroup = ref<string>("__all__");
 const groups = computed(() => {
   const s = new Set<string>();
@@ -158,7 +209,7 @@ const EMPTY: Snap = { price: 0, chg: 0, pct: 0, loading: true };
 const quotes = reactive<Record<string, Snap>>({});
 const keyOf = (it: WatchItem) => `${it.code}|${it.market}`;
 
-// 价格预警：上一轮成功价格（用于穿越检测）+ 已忽略的预警 key（Vue3 对 Set 的集合响应式生效）
+// 价格预警：上一轮成功价格（用于穿越检测）+ 已忽略的预警 key
 const prevPrices = reactive<Record<string, number>>({});
 const dismissed = reactive<Set<string>>(new Set());
 const alertHits = ref<{ key: string; code: string; name: string; text: string }[]>([]);
@@ -170,7 +221,6 @@ function hasAlert(it: WatchItem): boolean {
 
 // 自选股实时行情：批量拉取快照（与行情页同口径），填充现价与涨跌幅，并检测价格预警穿越
 async function loadQuotes() {
-  // 未登录（且已配置后端）：不拉取，交由「未登录」空态提示，避免无意义的 loading
   if (userState.supabaseEnabled && !userState.loggedIn) return;
   const tasks = list.value.map(async (it) => {
     const k = keyOf(it);
@@ -258,23 +308,79 @@ function editAlert(it: WatchItem) {
   });
 }
 
-// 下拉刷新：scroll-view refresher 触发，复用行情加载并收尾
+// 空态按钮：跳转到行情 tab 选股
+function goPickMarket() {
+  goTab("market");
+}
+
+// 新建分组：命名后选择将某只现有自选并入，保证分组可持久化（避免出现空分组）
+function createGroupFlow() {
+  if (!list.value.length) {
+    uni.showToast({ title: "请先在行情页添加自选股", icon: "none" });
+    return;
+  }
+  uni.showModal({
+    title: "新建分组",
+    editable: true,
+    placeholderText: "分组名",
+    content: "",
+    success: (r) => {
+      if (!r.confirm || !r.content?.trim()) return;
+      const name = r.content.trim();
+      if (groups.value.includes(name)) {
+        uni.showToast({ title: "分组已存在", icon: "none" });
+        return;
+      }
+      const opts = list.value.map((i) => i.name || i.code);
+      uni.showActionSheet({
+        itemList: opts,
+        success: (res) => {
+          const it = list.value[res.tapIndex];
+          if (it) {
+            setItemGroup(it.code, it.market, name);
+            selectedGroup.value = name;
+          }
+          uni.showToast({ title: `已创建「${name}」`, icon: "none" });
+        },
+      });
+    },
+  });
+}
+
+// 分组管理入口：有分组才进入管理，否则提示通过股票上的分组名创建
+function openGroups() {
+  if (!groups.value.length) {
+    uni.showToast({ title: "点列表「新建」或股票上的分组名即可创建", icon: "none" });
+    return;
+  }
+  uni.showActionSheet({
+    itemList: groups.value.map((g) => `管理「${g}」`),
+    success: (res) => manageGroup(groups.value[res.tapIndex]),
+  });
+}
+
+// 下拉刷新：自选模式复载行情；热榜模式强制重挂载重新拉取
 const refreshing = ref(false);
 async function onRefresh() {
   refreshing.value = true;
   try {
-    await loadQuotesSafe();
+    if (viewMode.value === "watch") {
+      await loadQuotesSafe();
+    } else {
+      rankKey.value += 1;
+      await new Promise((r) => setTimeout(r, 300));
+    }
   } finally {
     refreshing.value = false;
   }
 }
 
-// 自动刷新心跳：保持自选实时价「活着」（与行情页同口径），离开页面即停
+// 自动刷新心跳：非后台常驻，离开页面即停
 let loadingQuotes = false;
 let pollTimer: any = null;
 const POLL_MS = 15000;
 async function loadQuotesSafe() {
-  if (loadingQuotes) return; // 上一次还在飞，跳过本次，避免堆叠请求
+  if (loadingQuotes) return;
   loadingQuotes = true;
   try {
     await loadQuotes();
@@ -285,7 +391,7 @@ async function loadQuotesSafe() {
 function startPolling() {
   if (pollTimer) return;
   pollTimer = setInterval(() => {
-    if (needLogin.value || !list.value.length) return;
+    if (needLogin.value || !list.value.length || viewMode.value !== "watch") return;
     loadQuotesSafe();
   }, POLL_MS);
 }
@@ -296,23 +402,12 @@ function stopPolling() {
   }
 }
 
-// 市场标识：沪 / 深 / 港 / 北（中性灰色小标签，经典简洁）
-const MKT_PREFIX: Record<string, string> = { sh: "沪", sz: "深", bj: "北", hk: "港", auto: "" };
-function mktChar(it: WatchItem): string {
-  let m = it.market;
-  const c = it.code;
-  if (!m || m === "auto") {
-    if (/^\d{5}$/.test(c)) m = "hk";
-    else if (/^6/.test(c)) m = "sh";
-    else if (/^[03]/.test(c)) m = "sz";
-    else if (/^[48]/.test(c)) m = "bj";
-    else m = "sh";
-  }
-  return MKT_PREFIX[m] || "股";
-}
-
 const rows = computed(() =>
-  filteredList.value.map((it) => ({ it, q: quotes[keyOf(it)] || EMPTY, mkt: mktChar(it) }))
+  filteredList.value.map((it) => ({
+    it,
+    q: quotes[keyOf(it)] || EMPTY,
+    mkt: marketCharFor(it.code, it.market),
+  }))
 );
 
 // 现价颜色：跟随涨跌（平盘用主文字色）
@@ -321,7 +416,6 @@ function priceColor(q: Snap): string {
   if (q.chg < 0) return "var(--down)";
   return "var(--text)";
 }
-// 涨跌幅文本配色：直接跟随涨跌方向（涨红 / 跌绿 / 平灰），保持简洁
 function pctCls(q: Snap): string {
   if (q.loading) return "flat";
   if (q.chg > 0) return "up";
@@ -329,10 +423,14 @@ function pctCls(q: Snap): string {
   return "flat";
 }
 
+// 统一跳转行情页（自选列表与热榜共用）
+function onOpenMarket(p: { code: string; market: string }) {
+  emit("open-market", p);
+}
+
 onMounted(() => {
   if (!needLogin.value) loadQuotesSafe();
 });
-// keep-alive 下返回该页不会重新挂载；每次激活：未登录则自动跳转登录页，否则刷新自选实时行情并启动心跳
 onActivated(() => {
   if (needLogin.value) {
     openAuth("login");
@@ -343,7 +441,6 @@ onActivated(() => {
 });
 onDeactivated(stopPolling);
 onUnmounted(stopPolling);
-// 登录后：空态消失，立即拉取自选实时行情并启动心跳
 watch(
   () => userState.loggedIn,
   (li) => {
@@ -355,31 +452,28 @@ watch(
     }
   }
 );
-// 列表增删后重新拉取（key 串变化即触发）
 watch(
   () => list.value.map(keyOf).join(","),
   () => loadQuotesSafe()
 );
 
-// ===== 左滑删除（iOS 风格：果冻阻尼 + 弹簧回弹；滑到底自动删除，也可点红色按钮删除）=====
-// 删除按钮宽度用 rpx 表达（与 CSS 的 150rpx 完全一致），再换算成 px 用于 transform，
-// 避免「逻辑 150px / 视觉 75px」错位导致滑不到位、看似删不掉。
+// ===== 左滑删除（方向锁定 + 果冻阻尼 + 回弹展开；滑到底自动删除，也可点红色按钮删除）=====
 function rpx2px(rpx: number): number {
   const w = typeof window !== "undefined" && window.innerWidth ? window.innerWidth : 375;
   return Math.round((rpx / 750) * w);
 }
-const DEL_W = rpx2px(150); // 删除按钮宽度(px)，与 .wl-del 的 150rpx 对齐
-const OPEN_TRIGGER = Math.round(DEL_W * 0.42); // 松手时左滑超过此距离即展开删除按钮
-const DELETE_TRIGGER = -DEL_W * 0.99; // 滑到完整展开(含一点阻力区)即视为「滑到底」，松手自动删除
-const dragIdx = ref(-1); // 当前正在拖动的行（拖动时取消过渡，跟手）
-const openIdx = ref(-1); // 当前已展开删除按钮的行（-1 表示无）
-const removingIdx = ref(-1); // 正在执行删除飞出动画的行
-const offsets = reactive<Record<number, number>>({}); // 各行实时横向位移(px)
-const suppressClick = ref(false); // 拖动结束后抑制误触发的 click
+const DEL_W = rpx2px(150);
+const OPEN_TRIGGER = Math.round(DEL_W * 0.42);
+const DELETE_TRIGGER = -DEL_W * 0.99;
+const dragIdx = ref(-1);
+const openIdx = ref(-1);
+const removingIdx = ref(-1);
+const offsets = reactive<Record<number, number>>({});
+const suppressClick = ref(false);
 let startX = 0;
 let startY = 0;
-let baseOffset = 0; // 手势起点时的横向位移（已展开时从 -DEL_W 起步）
-let lockDir: "" | "h" | "v" = ""; // 方向锁定：横向滑动才接管，纵向交还页面滚动
+let baseOffset = 0;
+let lockDir: "" | "h" | "v" = "";
 let lastX = 0;
 let lastT = 0;
 let lastTouch = 0;
@@ -396,24 +490,22 @@ function ptY(e: any): number {
   return e.clientY || 0;
 }
 
-// 果冻阻尼：超过完整展开(-DEL_W)或顶到原始位置(0)后施加阻力，越拉越重，像拽橡皮筋
 function withResistance(target: number): number {
-  const LEFT_MAX = -DEL_W * 1.7; // 左向最大拉出（用于「滑到底」判定）
+  const LEFT_MAX = -DEL_W * 1.7;
   if (target < -DEL_W) {
-    const over = target + DEL_W; // 负值
+    const over = target + DEL_W;
     target = -DEL_W + over * 0.32;
     if (target < LEFT_MAX) target = LEFT_MAX;
   } else if (target > 0) {
-    target = target * 0.32; // 右向（推回原位）阻尼
+    target = target * 0.32;
   }
   return target;
 }
 
-// 按下：记录起点与初始位移；过滤触摸后浏览器模拟的 mouse 事件
 function onDown(e: any, i: number) {
   const isTouch = !!e.type && e.type.indexOf("touch") === 0;
   if (isTouch) lastTouch = Date.now();
-  if (!isTouch && Date.now() - lastTouch < 600) return; // 触摸后的模拟 mouse 忽略
+  if (!isTouch && Date.now() - lastTouch < 600) return;
   activePointer = isTouch ? "touch" : "mouse";
   startX = ptX(e);
   startY = ptY(e);
@@ -425,7 +517,6 @@ function onDown(e: any, i: number) {
   dragIdx.value = i;
 }
 
-// 移动：先判定方向——横向接管并阻止页面滚动劫持；纵向直接交还滚动并退出滑动
 function onMove(e: any, i: number) {
   if (dragIdx.value !== i) return;
   const isTouch = !!e.type && e.type.indexOf("touch") === 0;
@@ -444,7 +535,7 @@ function onMove(e: any, i: number) {
     }
   }
   if (lockDir === "v") {
-    dragIdx.value = -1; // 纵向：交还页面滚动，退出滑动
+    dragIdx.value = -1;
     return;
   }
   if (lockDir === "h") {
@@ -460,7 +551,6 @@ function onMove(e: any, i: number) {
   }
 }
 
-// 抬起：滑到底(进入阻力区)或快速左滑 → 直接删除；超过 OPEN_TRIGGER → 展开按钮；否则收起
 function onUp(e: any, i: number, it: WatchItem) {
   if (dragIdx.value !== i) return;
   dragIdx.value = -1;
@@ -468,7 +558,7 @@ function onUp(e: any, i: number, it: WatchItem) {
   const x = ptX(e);
   const now = Date.now();
   const dt = Math.max(1, now - lastT);
-  const vx = (x - lastX) / dt; // 左滑为负(px/ms)
+  const vx = (x - lastX) / dt;
   const final = offsets[i] || 0;
   if (final <= DELETE_TRIGGER || (vx < -0.6 && final <= -OPEN_TRIGGER)) {
     triggerDelete(i, it);
@@ -479,7 +569,6 @@ function onUp(e: any, i: number, it: WatchItem) {
   }
 }
 
-// 展开某行：先收起其它已展开的行，再滑开本行露出删除按钮
 function openRow(i: number) {
   for (const k of Object.keys(offsets)) {
     const key = Number(k);
@@ -492,7 +581,6 @@ function closeRow(i: number) {
   offsets[i] = 0;
   if (openIdx.value === i) openIdx.value = -1;
 }
-// 滚动时收起所有展开行（拖动 / 删除动画进行中不打断）
 function closeAll() {
   if (dragIdx.value !== -1 || removingIdx.value !== -1) return;
   for (const k of Object.keys(offsets)) offsets[Number(k)] = 0;
@@ -502,7 +590,6 @@ function onScroll() {
   closeAll();
 }
 
-// 点击行体：已展开则收起（不跳转），否则跳转行情；拖动误触被 suppressClick 拦截
 function onItemClick(it: WatchItem, i: number) {
   if (openIdx.value === i) {
     closeRow(i);
@@ -515,16 +602,14 @@ function onItemClick(it: WatchItem, i: number) {
   emit("open-market", { code: it.code, market: it.market });
 }
 
-// 点击删除按钮：触发飞出 + 移除
 function onDel(it: WatchItem, i: number) {
   if (removingIdx.value === i) return;
   triggerDelete(i, it);
 }
 
-// 删除动画：行体飞出屏幕左侧并淡出，结束后真正移除数据
 function triggerDelete(i: number, it: WatchItem) {
   removingIdx.value = i;
-  offsets[i] = -DEL_W * 3; // 远超屏幕，配合过渡平滑飞出
+  offsets[i] = -DEL_W * 3;
   setTimeout(() => {
     doRemove(it);
     delete offsets[i];
@@ -537,7 +622,7 @@ function doRemove(it: WatchItem) {
   uni.showToast({ title: "已移除", icon: "none" });
 }
 
-// 移动股票到其他分组（含新建分组）；分组名从现有自选派生，无需维护空分组
+// 移动股票到其他分组（含新建分组）
 function moveToGroup(it: WatchItem) {
   const others = groups.value.filter((g) => g !== it.group);
   const itemList = [...others, "+ 新建分组…"];
@@ -553,26 +638,15 @@ function moveToGroup(it: WatchItem) {
           editable: true,
           placeholderText: "分组名",
           content: "",
-        success: (r) => {
-          if (r.confirm && r.content?.trim()) setItemGroup(it.code, it.market, r.content.trim());
-        },
+          success: (r) => {
+            if (r.confirm && r.content?.trim()) setItemGroup(it.code, it.market, r.content.trim());
+          },
         });
       }
     },
   });
 }
 
-// 分组管理：重命名 / 删除（删除后组内项归入默认分组）
-function openGroupManager() {
-  if (!groups.value.length) {
-    uni.showToast({ title: "在股票上点分组名即可创建", icon: "none" });
-    return;
-  }
-  uni.showActionSheet({
-    itemList: groups.value.map((g) => `管理「${g}」`),
-    success: (res) => manageGroup(groups.value[res.tapIndex]),
-  });
-}
 function manageGroup(g: string) {
   uni.showActionSheet({
     itemList: ["重命名", "删除（组内项归入默认）"],
@@ -608,157 +682,251 @@ function manageGroup(g: string) {
 .wl {
   padding: 4rpx 0 0;
 }
-/* 头部：标题 + 计数，简洁一行 */
-.wl-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 12rpx 24rpx 18rpx;
-}
-.wl-title {
-  font-size: 38rpx;
-  font-weight: 800;
-  letter-spacing: 1rpx;
-}
-.wl-count {
-  font-size: 24rpx;
-  color: var(--text-2);
-}
-.wl-head-right {
+
+/* ===== 头部（对齐社区） ===== */
+.cm-header {
   display: flex;
   align-items: center;
-  gap: 18rpx;
+  justify-content: space-between;
+  padding: 20rpx 24rpx 8rpx;
 }
-.grp-manage {
-  font-size: 24rpx;
+.cm-brand {
+  font-size: 48rpx;
+  font-weight: 800;
+  letter-spacing: 1rpx;
+  background: linear-gradient(135deg, var(--text), var(--text-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.cm-right {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+.wl-count {
+  display: flex;
+  align-items: baseline;
+  gap: 4rpx;
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
+}
+.wl-count-num {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+.wl-count-lab {
+  font-size: 22rpx;
+  color: var(--text-2);
+}
+.cm-me {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  font-size: 25rpx;
   font-weight: 600;
   color: var(--primary);
-  padding: 6rpx 18rpx;
+  padding: 12rpx 22rpx;
   border-radius: 999rpx;
-  background: rgba(7, 193, 96, 0.1);
+  background: var(--primary-soft);
+  transition: transform 0.15s ease;
+}
+.cm-me:active {
+  transform: scale(0.95);
 }
 
-/* 分组筛选条 */
-.wl-groups {
-  padding: 0 16rpx 4rpx;
+/* ===== 分段 ===== */
+.wl-seg {
+  display: flex;
+  gap: 10rpx;
+  margin: 16rpx 24rpx 8rpx;
+  padding: 8rpx;
+  border-radius: 999rpx;
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
 }
-.grp-scroll {
+.seg {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  font-size: 25rpx;
+  font-weight: 600;
+  color: var(--text-2);
+  padding: 14rpx 0;
+  border-radius: 999rpx;
+  transition: all 0.2s ease;
+}
+.seg.on {
+  color: #fff;
+  background: var(--primary);
+  box-shadow: var(--shadow-up);
+}
+
+/* ===== 分组筛选条 ===== */
+.wl-groups {
+  padding: 6rpx 16rpx 8rpx;
   white-space: nowrap;
-  width: 100%;
+  overflow-x: auto;
+}
+.grp-track {
+  display: inline-flex;
+  align-items: center;
+  padding: 4rpx 8rpx;
 }
 .grp {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   font-size: 23rpx;
   font-weight: 600;
   color: var(--text-2);
-  padding: 8rpx 22rpx;
-  margin-right: 12rpx;
+  padding: 10rpx 24rpx;
+  margin-right: 14rpx;
   border-radius: 999rpx;
   background: var(--card-2);
-  border: 2rpx solid transparent;
+  border: 2rpx solid var(--border);
+  white-space: nowrap;
   transition: all 0.18s ease;
 }
 .grp.on {
   color: #fff;
   background: var(--primary);
   border-color: var(--primary);
+  box-shadow: var(--shadow-up);
+}
+.grp-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  font-size: 23rpx;
+  font-weight: 600;
+  color: var(--primary);
+  padding: 10rpx 22rpx;
+  border-radius: 999rpx;
+  background: var(--card-2);
+  border: 2rpx dashed var(--primary);
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.grp-new:active {
+  background: var(--primary-soft);
 }
 
-/* 价格预警横幅 */
+/* ===== 价格预警横幅 ===== */
 .alert-banner {
   margin: 8rpx 16rpx 4rpx;
   display: flex;
   flex-direction: column;
-  gap: 10rpx;
+  gap: 12rpx;
 }
 .ab-item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  padding: 14rpx 18rpx;
-  border-radius: 14rpx;
-  background: rgba(7, 193, 96, 0.12);
-  border: 1rpx solid rgba(7, 193, 96, 0.3);
+  gap: 14rpx;
+  padding: 18rpx 18rpx 18rpx 26rpx;
+  background: linear-gradient(135deg, var(--primary-soft), transparent 62%);
+  border: 1rpx solid var(--primary-soft);
+  overflow: hidden;
+}
+.ab-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8rpx;
+  background: linear-gradient(180deg, var(--primary), rgba(7, 193, 96, 0.35));
+}
+.ab-ic {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 50%;
+  background: var(--primary-soft);
 }
 .ab-txt {
   flex: 1;
   font-size: 24rpx;
+  font-weight: 600;
   color: var(--text);
+  line-height: 1.4;
 }
-.ab-x {
+.ab-action {
+  flex: none;
   font-size: 22rpx;
-  color: var(--text-2);
-  padding: 4rpx 14rpx;
+  font-weight: 600;
+  color: var(--primary);
+  padding: 8rpx 22rpx;
   border-radius: 999rpx;
   background: var(--card-2);
+  border: 1rpx solid var(--border);
 }
 
-/* 行内分组标签（点击移动分组） */
-.grp-chip {
-  font-size: 18rpx;
-  line-height: 1;
-  padding: 4rpx 12rpx;
-  border-radius: 6rpx;
-  color: var(--primary);
-  background: rgba(7, 193, 96, 0.12);
-  border: 1rpx solid rgba(7, 193, 96, 0.3);
+/* ===== 空态 ===== */
+.empty-wrap {
+  padding: 40rpx 24rpx 0;
 }
-/* 行内预警铃铛 */
-.wl-bell {
-  flex: none;
-  width: 44rpx;
-  height: 44rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 10rpx;
-}
-.wl-bell.on {
-  /* 已设置预警：铃铛高亮，无额外背景，避免与价格列拥挤 */
-}
-
-/* 空态 */
-.empty {
+.empty-card {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 14rpx;
-  padding: 130rpx 0;
+  padding: 56rpx 40rpx;
+  margin: 0 12rpx;
+}
+.empty-ic {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6rpx;
 }
 .empty-t {
-  font-size: 30rpx;
-  color: var(--text-2);
-  font-weight: 500;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--text);
 }
 .empty-s {
   font-size: 24rpx;
   color: var(--text-2);
   text-align: center;
-  padding: 0 60rpx;
-  line-height: 1.6;
+  line-height: 1.7;
+  padding: 0 20rpx;
+}
+.empty-btn {
+  margin-top: 18rpx;
+  padding: 0 56rpx;
 }
 
-/* 行容器：圆角 + 裁切；底色即「删除」红色——静止时整张不透明卡片盖住它，
-   左滑才露出右侧红色操作区，与卡片浑然一体（红色是卡片的一部分，而非外挂按钮）。 */
+/* ===== 列表行：外层红底裁切单卡片；静止时盖住红底，左滑露出删除区 ===== */
 .wl-row {
   position: relative;
   margin: 0 16rpx 14rpx;
-  border-radius: 18rpx;
+  border-radius: 20rpx;
   overflow: hidden;
-  background: linear-gradient(135deg, #ff5b5b, #e23b3b);
-  max-height: 160rpx;
+  background: linear-gradient(135deg, #ff5b5b, #e5484d);
+  box-shadow: var(--shadow);
+  max-height: 164rpx;
   transition: max-height 0.3s ease 0.06s;
 }
 .wl-row:first-of-type {
-  margin-top: 10rpx;
+  margin-top: 12rpx;
 }
-/* 删除动画：行坍缩到 0，配合行体飞出形成顺滑的整体退场 */
 .wl-row.removing {
   max-height: 0;
 }
-
-/* 删除操作区：固定在右侧，底色由行容器（红）透出，仅承载图标 + 文字；
-   左缘为直边，与滑开的卡片右缘严丝合缝衔接，不露缝、不露线。 */
 .wl-del {
   position: absolute;
   top: 0;
@@ -776,37 +944,32 @@ function manageGroup(g: string) {
   transition: background 0.15s ease;
 }
 .wl-del:active {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.12);
 }
 .wl-del-t {
   font-size: 24rpx;
   font-weight: 600;
 }
 
-/* 行体：不透明实色卡片（完全遮盖后方红色，静止时不露红）。
-   关键点：卡片「不设自身圆角」，完全交由外层 .wl-row 的 overflow:hidden + 18rpx 裁切。
-   若卡片也设 18rpx（与行同心同半径），四角抗锯齿会在子像素缝隙漏出红底，形成
-   「四个角隐约透红」的瑕疵；去掉卡片圆角后，卡片以矩形填满行，被裁成统一圆角，
-   红底被整片盖住。左滑时卡片右缘为直边，与露出的红色平直衔接，角落不再挖红缺口。 */
 .wl-item {
   position: relative;
   z-index: 2;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 26rpx 24rpx;
+  gap: 20rpx;
+  min-height: 132rpx;
+  padding: 24rpx 22rpx;
   background: var(--bg-2);
+  border: 1rpx solid var(--border);
+  border-top: none;
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
-/* 展开时用回弹曲线（带轻微过冲），手感更「弹」；收起用上面的平滑动画 */
 .wl-row.open .wl-item {
   transition: transform 0.46s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-/* 拖动中关闭过渡，跟手 */
 .wl-item.no-trans {
   transition: none;
 }
-/* 删除飞出：行体快速滑出屏幕左侧并淡出 */
 .wl-item.removing {
   opacity: 0;
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s ease;
@@ -819,12 +982,14 @@ function manageGroup(g: string) {
 .wl-name-row {
   display: flex;
   align-items: center;
-  gap: 10rpx;
+  gap: 12rpx;
+  min-width: 0;
 }
 .wl-name {
-  font-size: 31rpx;
-  font-weight: 600;
-  max-width: 320rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--text);
+  max-width: 280rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -833,13 +998,13 @@ function manageGroup(g: string) {
   display: flex;
   align-items: center;
   gap: 10rpx;
-  margin-top: 6rpx;
+  margin-top: 10rpx;
 }
 .wl-code {
   font-size: 22rpx;
   color: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
-/* 市场标识：中性灰色小标签（沪 / 深 / 港 / 北），经典简洁 */
 .mkt-tag {
   flex: none;
   font-size: 18rpx;
@@ -850,8 +1015,27 @@ function manageGroup(g: string) {
   background: var(--card-2);
   border: 1rpx solid var(--border);
 }
+.grp-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  max-width: 160rpx;
+  font-size: 18rpx;
+  line-height: 1;
+  padding: 6rpx 12rpx;
+  border-radius: 999rpx;
+  color: var(--primary);
+  background: var(--primary-soft);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.grp-chip text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-/* 右侧：现价 + 涨跌幅，右对齐成列 */
+/* 中间列：现价 + 涨跌幅右对齐 */
 .wl-right {
   flex: none;
   display: flex;
@@ -861,9 +1045,10 @@ function manageGroup(g: string) {
   text-align: right;
 }
 .wl-price {
-  font-size: 33rpx;
+  font-size: 34rpx;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  line-height: 1.1;
 }
 .wl-price.is-loading {
   opacity: 0.5;
@@ -883,16 +1068,31 @@ function manageGroup(g: string) {
   color: var(--text-2);
 }
 
-/* 轻提示 */
+/* 最右侧：预警铃铛，垂直居中 */
+.wl-bell {
+  flex: none;
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--card-2);
+  transition: all 0.15s ease;
+}
+.wl-bell.on {
+  background: var(--primary-soft);
+}
+
+/* ===== 轻提示 ===== */
 .wl-hint {
   display: block;
   font-size: 22rpx;
   color: var(--text-2);
   text-align: center;
-  padding: 26rpx 0 0;
+  padding: 28rpx 0 0;
 }
 .bottom-pad {
-  /* 留出底部导航栏高度，避免末尾内容被 tab 栏遮挡 */
   height: 140rpx;
 }
 </style>

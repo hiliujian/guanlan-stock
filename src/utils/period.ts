@@ -62,6 +62,22 @@ export function codeFromSecid(secid: string): string {
   return secid.split(".")[1] || secid;
 }
 
+// 由代码 + 可选市场推断中文市场标签（沪 / 深 / 港 / 北），供自选 / 热榜列表共用。
+// market 明确时优先取市场；"auto" 或空则按代码规则推断。
+export function marketCharFor(code: string, market?: string): string {
+  const c = (code || "").trim();
+  const m = market || "";
+  if (m === "hk") return "港";
+  if (m === "sh") return "沪";
+  if (m === "sz") return "深";
+  if (m === "bj") return "北";
+  if (/^\d{5}$/.test(c)) return "港";
+  if (/^6/.test(c)) return "沪";
+  if (/^[03]/.test(c)) return "深";
+  if (/^[489]/.test(c)) return "北";
+  return "股";
+}
+
 export interface Kline {
   date: string;
   open: number;

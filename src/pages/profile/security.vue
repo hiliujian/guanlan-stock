@@ -19,7 +19,7 @@
         </view>
         <view class="sec-hero-body">
           <text class="sec-hero-title">账号安全</text>
-          <text class="sec-hero-sub">管理登录密码与账号状态</text>
+          <text class="sec-hero-sub">管理登录邮箱、密码与账号状态</text>
         </view>
         <view class="sec-hero-badge">
           <text class="sec-dot" />
@@ -27,14 +27,69 @@
         </view>
       </view>
 
-      <!-- 登录邮箱 -->
-      <view class="card sec-mail anim-fade-up">
-        <text class="sec-mail-lab">登录邮箱</text>
-        <text class="sec-mail-val">{{ maskedEmail }}</text>
-      </view>
-
-      <!-- 安全设置：登录密码（手风琴展开修改表单） -->
+      <!-- 账号与安全分组：登录邮箱 / 登录密码（手风琴展开修改表单） -->
       <view class="card sec-group anim-fade-up">
+        <text class="sec-group-title">账号与安全</text>
+
+        <!-- 登录邮箱 -->
+        <view class="sec-row" hover-class="sec-row-hover" role="button" aria-label="修改登录邮箱" @click="toggleMail">
+          <view class="sec-row-left">
+            <view class="sec-row-ic"><OutlineIcon type="mail" :size="28" color="var(--text-2)" /></view>
+            <view class="sec-row-text">
+              <text class="sec-row-label">登录邮箱</text>
+              <text class="sec-row-desc">{{ maskedEmail }}</text>
+            </view>
+          </view>
+          <view class="sec-row-action">
+            <OutlineIcon type="edit" :size="30" :color="mailOpen ? 'var(--primary)' : 'var(--text-2)'" />
+          </view>
+        </view>
+
+        <!-- 邮箱修改表单：新邮箱 + 验证码（发到新邮箱校验） -->
+        <view v-if="mailOpen" class="sec-form">
+          <text class="sec-form-title">更换登录邮箱</text>
+          <AuthField
+            icon="mail"
+            v-model="newEmail"
+            placeholder="新邮箱"
+            :error="errors.email"
+            @input="onNewEmailInput" @blur="validateNewEmail"
+          >
+            <template #suffix>
+              <view
+                class="auth-suffix"
+                :class="{ disabled: emailCountdown > 0 || emailSending }"
+                role="button"
+                :aria-disabled="emailCountdown > 0 || emailSending"
+                @click="sendEmailCode"
+              >
+                {{ emailCountdown > 0 ? emailCountdown + "s" : "发送验证码" }}
+              </view>
+            </template>
+          </AuthField>
+          <AuthField
+            icon="locked"
+            v-model="emailCode"
+            :maxlength="6"
+            placeholder="邮箱验证码"
+            :error="errors.ecode"
+            @input="errors.ecode = ''"
+          />
+          <view v-if="emailServerErr" class="sec-err">{{ emailServerErr }}</view>
+          <button
+            :class="['btn-primary', 'sec-submit', (emailSaving || emailDone) ? 'is-disabled' : '']"
+            :disabled="emailSaving || emailDone"
+            @click="confirmEmailChange"
+          >
+            <view v-if="emailSaving" class="btn-spin" />
+            <text v-if="emailDone">修改成功 ✓</text>
+            <text v-else-if="emailSaving">验证中…</text>
+            <text v-else>验证并修改</text>
+          </button>
+          <text class="sec-tip">验证码将发送至新邮箱，验证成功后登录邮箱立即更新。</text>
+        </view>
+
+        <!-- 登录密码 -->
         <view class="sec-row" hover-class="sec-row-hover" role="button" aria-label="修改登录密码" @click="togglePwd">
           <view class="sec-row-left">
             <view class="sec-row-ic"><OutlineIcon type="locked" :size="28" color="var(--text-2)" /></view>
@@ -44,11 +99,11 @@
             </view>
           </view>
           <view class="sec-row-action">
-            <text class="sec-row-edit">{{ pwdOpen ? "收起" : "修改" }}</text>
-            <OutlineIcon :type="pwdOpen ? 'arrow-up' : 'arrow-down'" :size="26" color="var(--text-2)" />
+            <OutlineIcon type="edit" :size="30" :color="pwdOpen ? 'var(--primary)' : 'var(--text-2)'" />
           </view>
         </view>
 
+        <!-- 密码修改表单 -->
         <view v-if="pwdOpen" class="sec-form">
           <text class="sec-form-title">修改登录密码</text>
           <AuthField
@@ -91,19 +146,19 @@
         </view>
       </view>
 
-      <!-- 危险操作区 -->
-      <view class="card sec-danger-zone anim-fade-up" :style="{ animationDelay: '60ms' }">
-        <text class="sec-danger-title">注销账号</text>
-        <text class="sec-danger-warn">注销后，账号、个人资料与自选股将被永久删除且不可恢复，请谨慎操作。</text>
-        <button
-          :class="['btn-danger', deleting ? 'is-disabled' : '']"
-          :disabled="deleting"
-          @click="askDelete"
-        >
-          <text v-if="deleting">注销中…</text>
-          <text v-else>注销账号</text>
-        </button>
-      </view>
+        <!-- 危险操作区：卡片样式与其他卡片一致（分节标题 + 内衬内容），仅按钮保留危险红 -->
+        <view class="card sec-danger-zone anim-fade-up" :style="{ animationDelay: '60ms' }">
+          <text class="sec-danger-title">注销账号</text>
+          <text class="sec-danger-warn">注销后，账号将被永久删除且不可恢复，请谨慎操作。</text>
+          <button
+            :class="['btn-danger', deleting ? 'is-disabled' : '']"
+            :disabled="deleting"
+            @click="askDelete"
+          >
+            <text v-if="deleting">注销中…</text>
+            <text v-else>注销账号</text>
+          </button>
+        </view>
 
       <view class="bottom-pad" />
     </scroll-view>
@@ -112,7 +167,7 @@
     <ConfirmDialog
       v-model="showDelete"
       title="注销账号"
-      message="确定要注销账号吗？此操作不可恢复，账号、资料与自选股将永久删除。"
+      message="确定要注销账号吗？此操作不可恢复，账号将被永久删除。"
       confirm-text="确认注销"
       cancel-text="取消"
       icon="close"
@@ -123,13 +178,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from "vue";
+import { ref, reactive, computed, onUnmounted } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import AuthField from "@/components/AuthField.vue";
-import { useUser } from "@/store/user";
-import { signIn, updatePassword, deleteAccount, signOut } from "@/api/auth";
+import { useUser, refreshProfile, syncSession } from "@/store/user";
+import {
+  signIn,
+  updatePassword,
+  deleteAccount,
+  signOut,
+  requestEmailChange,
+  verifyEmailChange,
+  EMAIL_RE,
+} from "@/api/auth";
 
 const user = useUser();
 
@@ -143,12 +206,25 @@ const maskedEmail = computed(() => {
   return `${head}${stars}@${domain}`;
 });
 
-// 手风琴：修改密码表单展开状态
+// —— 手风琴：邮箱 / 密码表单互斥展开 ——
+const mailOpen = ref(false);
 const pwdOpen = ref(false);
+function toggleMail() {
+  mailOpen.value = !mailOpen.value;
+  if (mailOpen.value && pwdOpen.value) pwdOpen.value = false;
+  if (pwdOpen.value) {
+    errors.current = "";
+    errors.npwd = "";
+    errors.confirm = "";
+    serverErr.value = "";
+  }
+  if (!mailOpen.value) resetMailState();
+}
 function togglePwd() {
   pwdOpen.value = !pwdOpen.value;
+  if (pwdOpen.value && mailOpen.value) mailOpen.value = false;
+  if (mailOpen.value) resetMailState();
   if (!pwdOpen.value) {
-    // 收起时清空错误提示，避免再次展开残留
     errors.current = "";
     errors.npwd = "";
     errors.confirm = "";
@@ -156,18 +232,150 @@ function togglePwd() {
   }
 }
 
+// —— 邮箱修改状态 ——
+const newEmail = ref("");
+const emailCode = ref("");
+const emailSending = ref(false);
+const emailSent = ref(false);
+const emailSaving = ref(false);
+const emailDone = ref(false);
+const emailServerErr = ref("");
+const emailCountdown = ref(0);
+let emailTimer: any = null;
+
+function resetMailState() {
+  if (emailTimer) {
+    clearInterval(emailTimer);
+    emailTimer = null;
+  }
+  emailCountdown.value = 0;
+  emailSent.value = false;
+}
+
+function startEmailCountdown() {
+  emailCountdown.value = 120;
+  emailTimer = setInterval(() => {
+    emailCountdown.value -= 1;
+    if (emailCountdown.value <= 0) {
+      clearInterval(emailTimer);
+      emailTimer = null;
+    }
+  }, 1000);
+}
+
+function validateNewEmail() {
+  const e = newEmail.value.trim();
+  if (!e) {
+    errors.email = "";
+    return;
+  }
+  if (!EMAIL_RE.test(e)) {
+    errors.email = "请输入有效的邮箱地址";
+    return;
+  }
+  if (user.email && e.toLowerCase() === (user.email || "").toLowerCase()) {
+    errors.email = "新邮箱不能与当前邮箱相同";
+    return;
+  }
+  errors.email = "";
+}
+
+// 发送验证码后用户仍可修改新邮箱：一旦改动则旧验证码作废，重置发送/倒计时状态
+function onNewEmailInput() {
+  errors.email = "";
+  if (emailSent.value) {
+    emailSent.value = false;
+    emailCode.value = "";
+    resetMailState();
+  }
+}
+
+async function sendEmailCode() {
+  if (emailCountdown.value > 0 || emailSending.value) return;
+  emailServerErr.value = "";
+  errors.email = "";
+  const e = newEmail.value.trim();
+  if (!e || !EMAIL_RE.test(e)) {
+    errors.email = "请输入有效的邮箱地址";
+    return;
+  }
+  if (user.email && e.toLowerCase() === (user.email || "").toLowerCase()) {
+    errors.email = "新邮箱不能与当前邮箱相同";
+    return;
+  }
+  emailSending.value = true;
+  try {
+    const r = await requestEmailChange(e);
+    if (!r.ok) {
+      emailServerErr.value = r.error || "发送失败，请稍后重试";
+      return;
+    }
+    emailSent.value = true;
+    startEmailCountdown();
+  } catch (err: any) {
+    emailServerErr.value = err?.message || "操作失败，请重试";
+  } finally {
+    emailSending.value = false;
+  }
+}
+
+async function confirmEmailChange() {
+  emailServerErr.value = "";
+  errors.email = "";
+  errors.ecode = "";
+  const e = newEmail.value.trim();
+  const c = emailCode.value.trim();
+  if (!e || !EMAIL_RE.test(e)) {
+    errors.email = "请输入有效的邮箱地址";
+    return;
+  }
+  if (!c) {
+    errors.ecode = "请输入邮箱验证码";
+    return;
+  }
+  if (c.length !== 6) {
+    errors.ecode = "请输入完整的邮箱验证码";
+    return;
+  }
+  emailSaving.value = true;
+  try {
+    const r = await verifyEmailChange(e, c);
+    if (!r.ok) {
+      errors.ecode = r.error || "验证码错误或已过期";
+      return;
+    }
+    emailDone.value = true;
+    // 邮箱已变更：刷新会话中的邮箱 + 资料，使页面与 store 同步
+    await syncSession().catch(() => {});
+    await refreshProfile().catch(() => {});
+    uni.showToast({ title: "邮箱已更新", icon: "success" });
+    setTimeout(() => {
+      mailOpen.value = false;
+      resetMailState();
+      newEmail.value = "";
+      emailCode.value = "";
+      emailDone.value = false;
+    }, 900);
+  } catch (err: any) {
+    emailServerErr.value = err?.message || "操作失败，请重试";
+  } finally {
+    emailSaving.value = false;
+  }
+}
+
+// —— 密码修改状态 ——
 const currentPwd = ref("");
 const newPwd = ref("");
 const confirmPwd = ref("");
 const saving = ref(false);
-const deleting = ref(false);
 const serverErr = ref("");
-const showDelete = ref(false);
-const errors = reactive<{ current: string; npwd: string; confirm: string }>({
-  current: "",
-  npwd: "",
-  confirm: "",
-});
+const errors = reactive<{
+  current: string;
+  npwd: string;
+  confirm: string;
+  email: string;
+  ecode: string;
+}>({ current: "", npwd: "", confirm: "", email: "", ecode: "" });
 
 function back() {
   uni.navigateBack({ delta: 1 });
@@ -208,7 +416,6 @@ async function changePassword() {
       return;
     }
     uni.showToast({ title: "密码已修改", icon: "success" });
-    // 收起表单并清空输入
     currentPwd.value = "";
     newPwd.value = "";
     confirmPwd.value = "";
@@ -220,6 +427,9 @@ async function changePassword() {
     saving.value = false;
   }
 }
+
+const deleting = ref(false);
+const showDelete = ref(false);
 
 function askDelete() {
   showDelete.value = true;
@@ -243,6 +453,10 @@ async function confirmDelete() {
     deleting.value = false;
   }
 }
+
+onUnmounted(() => {
+  if (emailTimer) clearInterval(emailTimer);
+});
 </script>
 
 <style scoped>
@@ -350,31 +564,18 @@ async function confirmDelete() {
   background: var(--primary);
 }
 
-/* 登录邮箱 */
-.sec-mail {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 26rpx 28rpx;
-  margin-top: 20rpx;
-}
-.sec-mail-lab {
-  font-size: 28rpx;
-  color: var(--text-2);
-}
-.sec-mail-val {
-  font-size: 28rpx;
-  color: var(--text);
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 安全设置分组 */
+/* 账号与安全分组：与「我的」菜单分组视觉一致（标题 + 行 + 内联表单） */
 .sec-group {
   margin-top: 20rpx;
-  padding: 8rpx 0;
+  padding: 8rpx 0 16rpx;
+}
+.sec-group-title {
+  display: block;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: 1rpx;
+  margin: 14rpx 28rpx 6rpx;
 }
 .sec-row {
   display: flex;
@@ -417,23 +618,22 @@ async function confirmDelete() {
 .sec-row-desc {
   font-size: 22rpx;
   color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 400rpx;
 }
 .sec-row-action {
   display: flex;
   align-items: center;
-  gap: 4rpx;
   flex: none;
-}
-.sec-row-edit {
-  font-size: 28rpx;
-  color: var(--primary);
-  font-weight: 600;
 }
 
 /* 内联修改表单 */
 .sec-form {
-  padding: 4rpx 28rpx 26rpx;
+  padding: 6rpx 28rpx 8rpx;
   border-top: 1rpx solid var(--border);
+  margin-top: 6rpx;
 }
 .sec-form-title {
   display: block;
@@ -458,25 +658,25 @@ async function confirmDelete() {
   line-height: 1.5;
 }
 
-/* 危险操作区：红色描边弱化，避免刺眼 */
+/* 危险操作区：卡片与「账号与安全」分组一致（分节标题 + 28rpx 内衬），仅按钮保留危险红 */
 .sec-danger-zone {
   margin-top: 20rpx;
-  padding: 28rpx;
-  border: 1rpx solid rgba(229, 72, 77, 0.32);
+  padding: 8rpx 28rpx 16rpx;
 }
 .sec-danger-title {
   display: block;
-  font-size: 30rpx;
-  font-weight: 700;
-  color: var(--danger);
-  margin-bottom: 10rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: 1rpx;
+  margin: 14rpx 0 6rpx;
 }
 .sec-danger-warn {
   display: block;
   font-size: 24rpx;
   line-height: 1.6;
   color: var(--text-2);
-  margin-bottom: 20rpx;
+  margin: 4rpx 0 24rpx;
 }
 
 .bottom-pad {
