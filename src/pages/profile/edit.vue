@@ -49,7 +49,7 @@
             placeholder="新邮箱"
             :error="emailErrors.newEmail"
             :disabled="emailSent"
-            @input="emailErrors.newEmail = ''"
+            @input="emailErrors.newEmail = ''" @blur="validateNewEmail"
           >
             <template #suffix>
               <view
@@ -63,7 +63,6 @@
               </view>
             </template>
           </AuthField>
-          <text v-if="emailSent && !emailErrors.code" class="auth-sent-tip">验证码已发送至 {{ emailMask }}</text>
           <AuthField
             icon="locked"
             v-model="emailCode"
@@ -105,7 +104,7 @@ import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import AuthField from "@/components/AuthField.vue";
 import { useUser, refreshProfile, syncSession } from "@/store/user";
-import { updateProfile, uploadAvatar, requestEmailChange, verifyEmailChange, EMAIL_RE, maskEmail } from "@/api/auth";
+import { updateProfile, uploadAvatar, requestEmailChange, verifyEmailChange, EMAIL_RE } from "@/api/auth";
 import { avatarGradient, avatarChar } from "@/utils/avatar";
 
 const user = useUser();
@@ -129,9 +128,6 @@ const emailServerErr = ref("");
 const emailCountdown = ref(0);
 let emailTimer: any = null;
 const emailErrors = reactive<{ newEmail: string; code: string }>({ newEmail: "", code: "" });
-
-// 新邮箱脱敏展示：a****@domain.com
-const emailMask = computed(() => maskEmail(newEmail.value));
 
 const avatarName = computed(() => displayName.value || username.value || user.email || "我");
 const avatarBg = computed(() => avatarGradient(avatarName.value));
@@ -231,7 +227,7 @@ function cancelEmailEdit() {
 }
 
 function startEmailCountdown() {
-  emailCountdown.value = 60;
+  emailCountdown.value = 120;
   emailTimer = setInterval(() => {
     emailCountdown.value -= 1;
     if (emailCountdown.value <= 0) {
@@ -239,6 +235,23 @@ function startEmailCountdown() {
       emailTimer = null;
     }
   }, 1000);
+}
+
+function validateNewEmail() {
+  const e = newEmail.value.trim();
+  if (!e) {
+    emailErrors.newEmail = "";
+    return;
+  }
+  if (!EMAIL_RE.test(e)) {
+    emailErrors.newEmail = "请输入有效的邮箱地址";
+    return;
+  }
+  if (user.email && e.toLowerCase() === (user.email || "").toLowerCase()) {
+    emailErrors.newEmail = "新邮箱不能与当前邮箱相同";
+    return;
+  }
+  emailErrors.newEmail = "";
 }
 
 async function sendEmailCode() {

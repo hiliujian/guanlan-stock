@@ -10,7 +10,7 @@
         placeholder="邮箱"
         :error="errors.email"
         :disabled="sent"
-        @input="errors.email = ''"
+        @input="errors.email = ''" @blur="validateEmail"
       >
         <template #suffix>
           <view
@@ -24,7 +24,6 @@
           </view>
         </template>
       </AuthField>
-      <text v-if="sent && !errors.code" class="auth-sent-tip">验证码已发送至 {{ maskedEmail }}</text>
 
       <!-- 邮箱验证码（仅输入，发送按钮已内嵌邮箱输入框） -->
       <AuthField
@@ -44,6 +43,7 @@
         show-toggle
         :error="errors.password"
         @input="errors.password = ''"
+        @blur="validatePassword"
       />
 
       <!-- 确认新密码 -->
@@ -54,6 +54,7 @@
         show-toggle
         :error="errors.confirm"
         @input="errors.confirm = ''"
+        @blur="validateConfirm"
       />
 
       <!-- 后端错误：保留用户输入，仅高亮提示，绝不清空 -->
@@ -92,7 +93,6 @@ import {
   verifyResetCode,
   updatePassword,
   EMAIL_RE,
-  maskEmail,
 } from "@/api/auth";
 import { syncSession } from "@/store/user";
 
@@ -115,11 +115,8 @@ const errors = reactive<{ email: string; code: string; password: string; confirm
 
 let timer: any = null;
 
-// 邮箱脱敏展示：a****@domain.com
-const maskedEmail = computed(() => maskEmail(email.value));
-
 function startCountdown() {
-  countdown.value = 60;
+  countdown.value = 120;
   timer = setInterval(() => {
     countdown.value -= 1;
     if (countdown.value <= 0) {
@@ -127,6 +124,25 @@ function startCountdown() {
       timer = null;
     }
   }, 1000);
+}
+
+function validateEmail() {
+  const e = email.value.trim();
+  errors.email = e && !EMAIL_RE.test(e) ? "请输入有效的邮箱地址" : "";
+}
+
+// 新密码失焦校验
+function validatePassword() {
+  if (password.value && password.value.length < 6) {
+    errors.password = "密码至少需要 6 位";
+  }
+}
+
+// 确认密码失焦校验（与“新密码”一致）
+function validateConfirm() {
+  if (confirm.value && confirm.value !== password.value) {
+    errors.confirm = "两次输入的密码不一致";
+  }
 }
 
 async function sendCode() {

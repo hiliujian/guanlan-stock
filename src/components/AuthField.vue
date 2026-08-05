@@ -18,6 +18,7 @@
         :adjust-position="true"
         placeholder-class="ph"
         @input="onInput"
+        @blur="onBlur"
       />
       <!-- 右附（发送验证码等）：内嵌在字段右侧，与输入框融为一体 -->
       <slot name="suffix" />
@@ -55,6 +56,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "update:modelValue", v: string): void;
   (e: "input"): void;
+  (e: "blur"): void;
 }>();
 
 const revealed = ref(false);
@@ -66,5 +68,9 @@ function onInput(e: any) {
   const v = (e?.detail?.value ?? "") as string;
   emit("update:modelValue", v);
   emit("input");
+}
+
+function onBlur() {
+  emit("blur");
 }
 </script>

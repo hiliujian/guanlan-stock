@@ -186,17 +186,6 @@ export const USERNAME_RE = /^[一-龥A-Za-z0-9_]{3,20}$/;
 /** 邮箱格式规则（登录 identifier / 注册 / 找回 / 邮箱修改共用，避免各处重复定义） */
 export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-/** 邮箱脱敏：a****@domain.com（找回 / 邮箱修改等场景展示用） */
-export function maskEmail(email: string): string {
-  const e = (email || "").trim();
-  const at = e.indexOf("@");
-  if (at <= 1) return e;
-  const name = e.slice(0, at);
-  const head = name.slice(0, 1);
-  const tail = name.length > 2 ? name.slice(-1) : "";
-  return `${head}****${tail ? tail + "@" : "@"}${e.slice(at + 1)}`;
-}
-
 export async function signOut(): Promise<void> {
   const sb = getSupabase();
   if (sb) await sb.auth.signOut();

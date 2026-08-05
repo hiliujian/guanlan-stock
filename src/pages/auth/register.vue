@@ -11,6 +11,7 @@
         :error="errors.username"
         :disabled="sent"
         @input="onUsernameInput"
+        @blur="validateUsername"
       />
       <text v-if="!errors.username && usernameStatus === 'checking'" class="auth-sent-tip">正在检查用户名可用性…</text>
       <text v-else-if="!errors.username && usernameStatus === 'ok'" class="auth-ok-tip">✓ 用户名可用</text>
@@ -22,7 +23,7 @@
         placeholder="邮箱"
         :error="errors.email"
         :disabled="sent"
-        @input="errors.email = ''"
+        @input="errors.email = ''" @blur="validateEmail"
       >
         <template #suffix>
           <view
@@ -36,7 +37,6 @@
           </view>
         </template>
       </AuthField>
-      <text v-if="sent && !errors.code" class="auth-sent-tip">验证码已发送至 {{ maskedEmail }}</text>
 
       <!-- 邮箱验证码（仅输入，发送按钮已内嵌邮箱输入框） -->
       <AuthField
@@ -56,6 +56,7 @@
         show-toggle
         :error="errors.password"
         @input="errors.password = ''"
+        @blur="validatePassword"
       />
 
       <!-- 后端错误兜底（保留用户输入，仅提示） -->
@@ -121,19 +122,8 @@ const errors = reactive<{ email: string; username: string; code: string; passwor
 let timer: any = null;
 let usernameTimer: any = null;
 
-// 邮箱脱敏展示：a****@domain.com
-const maskedEmail = computed(() => {
-  const e = email.value.trim();
-  const at = e.indexOf("@");
-  if (at <= 1) return e;
-  const name = e.slice(0, at);
-  const head = name.slice(0, 1);
-  const tail = name.length > 2 ? name.slice(-1) : "";
-  return `${head}****${tail ? tail + "@" : "@"}${e.slice(at + 1)}`;
-});
-
 function startCountdown() {
-  countdown.value = 60;
+  countdown.value = 120;
   timer = setInterval(() => {
     countdown.value -= 1;
     if (countdown.value <= 0) {
@@ -143,13 +133,20 @@ function startCountdown() {
   }, 1000);
 }
 
-// 用户名输入：清除错误并防抖校验是否可用（格式合法才查，空/非法直接回到 idle）
+// 用户名输入：实时格式校验 + 防抖校验是否可用（格式合法才查可用性）
 function onUsernameInput() {
-  errors.username = "";
-  usernameStatus.value = "idle";
   if (usernameTimer) clearTimeout(usernameTimer);
   const uname = username.value.trim();
-  if (!uname || !USERNAME_RE.test(uname)) return; // 格式非法不查，等待用户继续输入
+  // 格式校验优先：实时反馈，输入“12”等非法值时立即提示
+  if (uname && !USERNAME_RE.test(uname)) {
+    errors.username = "用户名须为 3-20 位中英文 / 数字 / 下划线";
+    usernameStatus.value = "idle";
+    return;
+  }
+  errors.username = "";
+  usernameStatus.value = "idle";
+  if (!uname) return; // 空值不查，等待用户继续输入
+  // 格式合法 → 查可用性
   usernameStatus.value = "checking";
   usernameTimer = setTimeout(async () => {
     const r = await checkUsernameAvailable(uname);
@@ -161,6 +158,26 @@ function onUsernameInput() {
     usernameStatus.value = r.available ? "ok" : "taken";
     if (!r.available) errors.username = "该用户名已被占用";
   }, 450);
+}
+
+// 用户名失焦兜底校验（与实时校验保持一致）
+function validateUsername() {
+  const uname = username.value.trim();
+  if (uname && !USERNAME_RE.test(uname)) {
+    errors.username = "用户名须为 3-20 位中英文 / 数字 / 下划线";
+  }
+}
+
+function validateEmail() {
+  const e = email.value.trim();
+  errors.email = e && !EMAIL_RE.test(e) ? "请输入有效的邮箱地址" : "";
+}
+
+// 密码失焦校验（提交时另有长度校验兜底）
+function validatePassword() {
+  if (password.value && password.value.length < 6) {
+    errors.password = "密码至少需要 6 位";
+  }
 }
 
 async function sendCode() {

@@ -14,6 +14,7 @@
       placeholder="用户名或邮箱"
       :error="errors.identifier"
       @input="errors.identifier = ''"
+      @blur="validateIdentifier"
     />
     <AuthField
       icon="locked"
@@ -22,6 +23,7 @@
       password
       :error="errors.password"
       @input="errors.password = ''"
+      @blur="validatePassword"
     />
 
     <!-- 后端错误：保留用户输入，仅高亮提示，绝不清空 -->
@@ -54,6 +56,24 @@ const password = ref("");
 const loading = ref(false);
 const serverErr = ref("");
 const errors = reactive<{ identifier: string; password: string }>({ identifier: "", password: "" });
+
+// 失焦校验：用户名或邮箱形态 + 密码长度（提交时另有完整兜底）
+function validateIdentifier() {
+  const id = identifier.value.trim();
+  if (!id) {
+    errors.identifier = "请输入用户名或邮箱";
+    return;
+  }
+  if (!EMAIL_RE.test(id) && !USERNAME_RE.test(id)) {
+    errors.identifier = "请输入有效的用户名或邮箱";
+  }
+}
+
+function validatePassword() {
+  if (password.value && password.value.length < 6) {
+    errors.password = "密码至少 6 位";
+  }
+}
 
 async function submit() {
   // 每次提交先清空上一次的错误，避免残留
