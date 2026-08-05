@@ -9,15 +9,28 @@
   >
     <view class="wl">
       <BackgroundFX />
-      <!-- 头部：完全对齐社区顶部样式（品牌标题 + 右侧分组 pill） -->
+      <!-- 头部：完全对齐社区顶部样式（品牌标题 + 涨跌计数 + 分组切换 pill） -->
       <view class="cm-header anim-fade-up">
         <text class="cm-brand">自选</text>
-        <view class="cm-me" role="button" aria-label="分组管理" @click="openGroups">
-          <view class="cm-avatar" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
-            <OutlineIcon type="layers" :size="24" color="#fff" />
+        <view class="cm-right">
+          <!-- 当前分组内实时涨/跌个数（随行情实时刷新） -->
+          <view class="ud-pill">
+            <view class="ud-item">
+              <OutlineIcon type="arrow-up" :size="18" color="var(--up)" />
+              <text class="ud-num up">{{ upDown.counts.up }}</text>
+            </view>
+            <view class="ud-item">
+              <OutlineIcon type="arrow-down" :size="18" color="var(--down)" />
+              <text class="ud-num down">{{ upDown.counts.down }}</text>
+            </view>
           </view>
-          <text class="cm-name">分组</text>
-          <OutlineIcon type="gear" :size="18" color="var(--text-2)" />
+          <view class="cm-me" role="button" aria-label="分组切换" @click="openGroups">
+            <view class="cm-avatar" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
+              <OutlineIcon type="layers" :size="24" color="#fff" />
+            </view>
+            <text class="cm-name">{{ upDown.currentGroup }}</text>
+            <OutlineIcon type="pulldown" :size="18" color="var(--text-2)" />
+          </view>
         </view>
       </view>
 
@@ -458,6 +471,20 @@ const rows = computed(() =>
   }))
 );
 
+// 顶部右侧：当前分组名（默认「全部」）+ 当前分组内实时涨/跌个股个数（随行情刷新）
+const upDown = computed(() => {
+  const g = selectedGroup.value;
+  const currentGroup = !g || g === "__all__" ? "全部" : g;
+  let up = 0;
+  let down = 0;
+  for (const r of rows.value) {
+    if (r.q.loading) continue;
+    if (r.q.chg > 0) up++;
+    else if (r.q.chg < 0) down++;
+  }
+  return { currentGroup, counts: { up, down } };
+});
+
 // 现价颜色：跟随涨跌（平盘用主文字色）
 function priceColor(q: Snap): string {
   if (q.chg > 0) return "var(--up)";
@@ -750,6 +777,36 @@ function manageGroup(g: string) {
   font-weight: 800;
   letter-spacing: 2rpx;
   color: var(--text);
+}
+.cm-right {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+/* 实时涨/跌个股数 pill */
+.ud-pill {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 8rpx 14rpx;
+  border-radius: 999rpx;
+  background: var(--card-2);
+}
+.ud-item {
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+}
+.ud-num {
+  font-size: 22rpx;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.ud-num.up {
+  color: var(--up);
+}
+.ud-num.down {
+  color: var(--down);
 }
 .cm-me {
   display: flex;
