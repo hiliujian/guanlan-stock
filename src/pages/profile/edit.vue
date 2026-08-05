@@ -50,14 +50,6 @@
             :error="emailErrors.newEmail"
             :disabled="emailSent"
             @input="emailErrors.newEmail = ''"
-          />
-          <AuthField
-            icon="locked"
-            v-model="emailCode"
-            :maxlength="6"
-            placeholder="新邮箱 6 位验证码"
-            :error="emailErrors.code"
-            @input="emailErrors.code = ''"
           >
             <template #suffix>
               <view
@@ -72,6 +64,14 @@
             </template>
           </AuthField>
           <text v-if="emailSent && !emailErrors.code" class="auth-sent-tip">验证码已发送至 {{ emailMask }}</text>
+          <AuthField
+            icon="locked"
+            v-model="emailCode"
+            :maxlength="6"
+            placeholder="邮箱验证码"
+            :error="emailErrors.code"
+            @input="emailErrors.code = ''"
+          />
           <view v-if="emailServerErr" class="auth-server-err">{{ emailServerErr }}</view>
           <button
             :class="['btn-primary', 'auth-submit', (emailSaving || emailDone) ? 'is-disabled' : '']"
@@ -281,11 +281,11 @@ async function confirmEmailChange() {
     return;
   }
   if (!c) {
-    emailErrors.code = "请输入验证码";
+    emailErrors.code = "请输入邮箱验证码";
     return;
   }
   if (c.length !== 6) {
-    emailErrors.code = "请输入完整的 6 位数字验证码";
+    emailErrors.code = "请输入完整的邮箱验证码";
     return;
   }
   emailSaving.value = true;

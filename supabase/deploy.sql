@@ -3,8 +3,11 @@
 -- ---------------------------------------------------------------------
 -- 适用环境：Supabase 免费版（PostgreSQL 15+）
 -- 执行位置：Supabase 控制台 → SQL Editor → 粘贴本文件全部内容 → Run
--- 幂等性：全部使用 if not exists / drop ... if exists / create or replace，
---         可重复执行，不会因"已存在"而报错。
+-- 重建策略：对全部自建表采用「drop table if exists ... cascade; create table ...」，
+--         保证无论表是否已存在，都按本文件声明的「最新结构」干净重建。
+-- ⚠️ 数据风险：本脚本会 DROP 已存在的表并重建，原有数据（用户资料 / 自选股 / 社区帖 /
+--         配置）将被清空且不可恢复。仅适用于全新库、测试库，或你已确认数据可丢的环境；
+--         重复执行会再次清空数据，请勿对生产库反复运行。
 --
 -- 本文件是唯一的建库脚本（表 / 策略 / 存储桶 / 函数 / 示例数据 全部在此）。
 -- ⚠️ 旧有的 schema.sql 与 migrations/0001_community.sql 已删除并合并进本文件，请勿再单独执行旧文件。
@@ -31,10 +34,14 @@
 -- ╚══════════════════════════════════════════════════════════════╝
 
 -- 1.1 资料表：注册后由触发器自动建一行
-create table if not exists public.profiles (
+--     ⚠️ 先 DROP 再 CREATE，确保按最新声明干净重建（含 exp / username / display_name 全部列），
+--        彻底规避「表已存在时 CREATE TABLE IF NOT EXISTS 整句跳过、缺列」的历史坑。
+--        注意：DROP 会清空现有 profiles 数据；仅适用于全新 / 测试库或已确认数据可丢。
+drop table if exists public.profiles cascade;
+create table public.profiles (
   id           uuid primary key references auth.users (id) on delete cascade,
-  display_name text not null default '',
   username     text not null default '',
+  display_name text not null default '',
   bio          text not null default '',
   avatar_url   text not null default '',
   level        integer not null default 0,                -- 用户等级序号（0=新手散户，对应前端 TIERS 下标）；由后端维护，前端只读展示
@@ -51,13 +58,15 @@ create table if not exists public.profiles (
 --   · 非空 username 必须唯一（登录时用户名/邮箱二选一校验用）
 --   · 空 username 允许多个（兼容「用户名由用户自填」之前的历史账号，以及注册瞬间未写入期）
 --   · 配合前端注册校验 + 下方 is_username_taken() RPC，双保险防重
---   · 唯一约束与 username 不可改共同保证「用户名一旦设定不可修改且唯一」
+--   · 唯一约束保证「用户名唯一」；应用层注册写入后只读，不再变更
 create unique index if not exists idx_profiles_username_unique
   on public.profiles (username)
   where username <> '';
 
 -- 1.2 自选股表
-create table if not exists public.watchlists (
+--     ⚠️ DROP + 重建（清数据）。
+drop table if exists public.watchlists cascade;
+create table public.watchlists (
   id         uuid primary key default gen_random_uuid(),
   user_id    uuid not null references auth.users (id) on delete cascade,
   code       text not null,
@@ -75,7 +84,7 @@ create index if not exists idx_watchlists_user on public.watchlists (user_id);
 
 -- 1.3 注册即建 profile 的触发器
 --   display_name 注册时自动随机生成（如「观澜741779」），用户可后续在「个人资料」修改；
---   前端注册流程会显式写入 username（用户自填、唯一、不可改），此处不处理 username。
+--   前端注册流程会显式写入 username（用户自填、唯一），此处不处理 username。
 --   兜底：若 raw_user_meta_data 未带 display_name，则自动生成随机昵称，避免空昵称。
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -185,7 +194,9 @@ create policy "post_images_owner_delete" on storage.objects for delete to authen
 
 -- 1.7 通知公告表（公告运营用：前端只读展示，写入仅服务端 service_role / SQL 管理）
 --     字段与 server/data/announcements.json 的旧格式一一对应；前端 src/api/announcement.ts 直连本表。
-create table if not exists public.announcements (
+--     ⚠️ DROP + 重建（清数据）。
+drop table if exists public.announcements cascade;
+create table public.announcements (
   id          uuid primary key default gen_random_uuid(),
   title       text not null,
   content     text not null default '',
@@ -211,7 +222,9 @@ create policy "announcements_select" on public.announcements for select using (t
 -- 1.8 系统配置表（运行时远端配置：菜单显隐 / 数据源顺序 / 功能开关）
 --     前端 src/config/remote.ts 启动时拉取并合成「本地默认 + 远程覆盖」；
 --     value 用 jsonb，随时新增配置项（如 features / theme）无需 ALTER 表。
-create table if not exists public.app_config (
+--     ⚠️ DROP + 重建（清数据）。
+drop table if exists public.app_config cascade;
+create table public.app_config (
   key        text primary key,
   value      jsonb not null,
   updated_at timestamptz not null default now()
@@ -236,7 +249,9 @@ on conflict (key) do nothing;
 -- ╚══════════════════════════════════════════════════════════════╝
 
 -- 2.1 帖子
-create table if not exists public.community_posts (
+--     ⚠️ DROP + 重建（清数据）。
+drop table if exists public.community_posts cascade;
+create table public.community_posts (
   id         uuid primary key default gen_random_uuid(),
   -- 预留：前端接入 Auth 后写入 auth.uid()；匿名阶段为 null（不强制）
   user_id    uuid references auth.users (id) on delete set null,
@@ -271,7 +286,9 @@ create index if not exists idx_posts_feed on public.community_posts (created_at 
 create index if not exists idx_posts_tags on public.community_posts using gin (tags);
 
 -- 2.2 回复（listRemote 通过 post_id 外键关联读取，资源名 community_replies）
-create table if not exists public.community_replies (
+--     ⚠️ DROP + 重建（清数据）。
+drop table if exists public.community_replies cascade;
+create table public.community_replies (
   id         uuid primary key default gen_random_uuid(),
   post_id    uuid not null references public.community_posts (id) on delete cascade,
   user_id    uuid references auth.users (id) on delete set null,
@@ -287,7 +304,9 @@ create table if not exists public.community_replies (
 create index if not exists idx_replies_post on public.community_replies (post_id, created_at);
 
 -- 2.3 点赞（真实记录；计数由触发器从本表聚合，杜绝客户端伪造）
-create table if not exists public.community_likes (
+--     ⚠️ DROP + 重建（清数据）。
+drop table if exists public.community_likes cascade;
+create table public.community_likes (
   post_id    uuid not null references public.community_posts (id) on delete cascade,
   -- 登录后为 auth.uid()；匿名阶段为占位 uuid（见 toggle_post_like）。非外键：占位 uuid 不在 auth.users 中
   user_id    uuid not null,

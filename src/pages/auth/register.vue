@@ -3,21 +3,11 @@
     <view class="card auth-form anim-rise-soft">
       <text class="auth-lead">注册后探索深度数据分析。</text>
 
-      <!-- 邮箱 -->
-      <AuthField
-        icon="mail"
-        v-model="email"
-        placeholder="邮箱"
-        :error="errors.email"
-        :disabled="sent"
-        @input="errors.email = ''"
-      />
-
-      <!-- 用户名（用户自填、唯一、注册后不可修改；昵称由系统自动生成） -->
+      <!-- 用户名（用户自填、唯一；昵称由系统自动生成） -->
       <AuthField
         icon="person"
         v-model="username"
-        placeholder="用户名（3-20 位中英文 / 数字 / 下划线，唯一不可改）"
+        placeholder="用户名（3-20 位中英文 / 数字 / 下划线）"
         :error="errors.username"
         :disabled="sent"
         @input="onUsernameInput"
@@ -25,14 +15,14 @@
       <text v-if="!errors.username && usernameStatus === 'checking'" class="auth-sent-tip">正在检查用户名可用性…</text>
       <text v-else-if="!errors.username && usernameStatus === 'ok'" class="auth-ok-tip">✓ 用户名可用</text>
 
-      <!-- 验证码 + 发送按钮（倒计时防重复） -->
+      <!-- 邮箱 + 发送验证码（主流小程序：发送按钮内嵌邮箱输入框右侧） -->
       <AuthField
-        icon="locked"
-        v-model="code"
-        :maxlength="6"
-        placeholder="6 位邮箱验证码"
-        :error="errors.code"
-        @input="errors.code = ''"
+        icon="mail"
+        v-model="email"
+        placeholder="邮箱"
+        :error="errors.email"
+        :disabled="sent"
+        @input="errors.email = ''"
       >
         <template #suffix>
           <view
@@ -47,6 +37,16 @@
         </template>
       </AuthField>
       <text v-if="sent && !errors.code" class="auth-sent-tip">验证码已发送至 {{ maskedEmail }}</text>
+
+      <!-- 邮箱验证码（仅输入，发送按钮已内嵌邮箱输入框） -->
+      <AuthField
+        icon="locked"
+        v-model="code"
+        :maxlength="6"
+        placeholder="邮箱验证码"
+        :error="errors.code"
+        @input="errors.code = ''"
+      />
 
       <!-- 密码 + 可见性切换 -->
       <AuthField
@@ -221,11 +221,11 @@ async function submit() {
     return;
   }
   if (!c) {
-    errors.code = "请输入验证码";
+    errors.code = "请输入邮箱验证码";
     return;
   }
   if (c.length !== 6) {
-    errors.code = "请输入完整的 6 位数字验证码";
+    errors.code = "请输入完整的邮箱验证码";
     return;
   }
   if (p.length < 6) {
@@ -247,7 +247,7 @@ async function submit() {
       errors.password = u.error || "密码设置失败，请重试";
       return;
     }
-    // 3) 写入用户名（用户自填、唯一不可改；昵称由触发器自动随机生成）
+    // 3) 写入用户名（用户自填、唯一；昵称由触发器自动随机生成）
     const up = await updateProfile({ username: uname });
     if (!up.ok) {
       errors.username = up.error || "用户名设置失败，请重试";

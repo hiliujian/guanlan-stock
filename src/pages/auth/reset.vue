@@ -3,7 +3,7 @@
     <view class="card auth-form anim-rise-soft">
       <text class="auth-lead">验证邮箱身份后，即可重设登录密码。</text>
 
-      <!-- 邮箱 -->
+      <!-- 邮箱 + 发送验证码（主流小程序：发送按钮内嵌邮箱输入框右侧） -->
       <AuthField
         icon="mail"
         v-model="email"
@@ -11,16 +11,6 @@
         :error="errors.email"
         :disabled="sent"
         @input="errors.email = ''"
-      />
-
-      <!-- 验证码 + 发送按钮（倒计时防重复） -->
-      <AuthField
-        icon="locked"
-        v-model="code"
-        :maxlength="6"
-        placeholder="6 位邮箱验证码"
-        :error="errors.code"
-        @input="errors.code = ''"
       >
         <template #suffix>
           <view
@@ -35,6 +25,16 @@
         </template>
       </AuthField>
       <text v-if="sent && !errors.code" class="auth-sent-tip">验证码已发送至 {{ maskedEmail }}</text>
+
+      <!-- 邮箱验证码（仅输入，发送按钮已内嵌邮箱输入框） -->
+      <AuthField
+        icon="locked"
+        v-model="code"
+        :maxlength="6"
+        placeholder="邮箱验证码"
+        :error="errors.code"
+        @input="errors.code = ''"
+      />
 
       <!-- 新密码 -->
       <AuthField
@@ -169,11 +169,11 @@ async function submit() {
     return;
   }
   if (!c) {
-    errors.code = "请输入验证码";
+    errors.code = "请输入邮箱验证码";
     return;
   }
   if (c.length !== 6) {
-    errors.code = "请输入完整的 6 位数字验证码";
+    errors.code = "请输入完整的邮箱验证码";
     return;
   }
   if (p.length < 6) {

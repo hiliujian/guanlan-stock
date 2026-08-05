@@ -41,15 +41,15 @@ async function loadProfile(userId: string) {
   if (data) {
     const profile = {
       id: data.id,
-      display_name: data.display_name || "",
       username: data.username || "",
+      display_name: data.display_name || "",
       bio: data.bio || "",
       avatar_url: data.avatar_url || "",
       level: typeof data.level === "number" ? data.level : 0,
       exp: typeof data.exp === "number" ? data.exp : 0,
     };
-    // 注意：username 由用户在注册时自填、唯一且不可修改（见 deploy.sql 部分唯一索引）。
-    // 历史空 username 不再由前端自动补随机值（避免与「不可改」语义冲突）；
+    // 注意：username 由用户在注册时自填、唯一（见 deploy.sql 部分唯一索引）。
+    // 历史空 username 不再由前端自动补随机值；
     // 新注册用户经触发器/注册流程已带 username，旧空账号保持空串、昵称优先展示即可。
     state.profile = profile;
   }
