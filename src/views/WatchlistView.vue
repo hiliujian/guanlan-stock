@@ -47,23 +47,6 @@
 
       <!-- 自选模式 -->
       <template v-else>
-        <!-- 分组筛选：默认 / 各自定义分组 + 新建分组入口（默认即展示全部，无「全部」chip） -->
-        <view class="wl-groups anim-fade-up">
-          <view class="grp-track">
-            <text :class="['grp', selectedGroup === '' ? 'on' : '']" @click="selectedGroup = ''">默认</text>
-            <text
-              v-for="g in groups"
-              :key="g"
-              :class="['grp', selectedGroup === g ? 'on' : '']"
-              @click="selectedGroup = g"
-            >{{ g }}</text>
-            <view class="grp-new" role="button" aria-label="新建分组" @click="createGroupFlow">
-              <OutlineIcon type="plus" :size="20" color="var(--primary)" />
-              <text>新建</text>
-            </view>
-          </view>
-        </view>
-
         <!-- 价格预警横幅：当前已触发且未忽略的预警（H5 无系统推送，仅应用内提醒） -->
         <view v-if="alertHits.length" class="alert-banner anim-fade-up">
           <view v-for="a in alertHits" :key="a.key" class="ab-item glass glass--lg" @click="dismissAlert(a.key)">
@@ -177,7 +160,7 @@ const rankMode = computed<"today" | "all">(() =>
 // 下拉刷新时热榜组件重新挂载以刷新行情
 const rankKey = ref(0);
 
-// 分组筛选：全部 / 默认(未分组) / 各自定义分组（分组名从现有自选派生）
+// 分组筛选：默认展示「全部」（含所有分组），通过右上角「分组」切换；分组名从现有自选派生
 const selectedGroup = ref<string>("__all__");
 const groups = computed(() => {
   const s = new Set<string>();
@@ -343,17 +326,40 @@ function createGroupFlow() {
   });
 }
 
-// 分组管理入口：分组 pill 点击后，可新建分组、将股票移入某分组、或管理既有分组（重命名/删除）
+// 分组管理入口：右上角「分组」pill 点击后，可切换分组（默认即「全部」）、新建分组、
+// 将股票移入分组、或管理既有分组（重命名/删除）
 function openGroups() {
-  const base = ["新建分组", "将股票移入分组"] as string[];
-  const manages = groups.value.map((g) => g ? `管理「${g}」` : "");
+  const items: string[] = [];
+  const acts: { kind: "all" | "group" | "new" | "move" | "manage"; g?: string }[] = [];
+  items.push("全部");
+  acts.push({ kind: "all" });
+  for (const g of groups.value) {
+    items.push(g);
+    acts.push({ kind: "group", g });
+  }
+  items.push("新建分组");
+  acts.push({ kind: "new" });
+  items.push("将股票移入分组");
+  acts.push({ kind: "move" });
+  if (groups.value.length) {
+    items.push("管理分组");
+    acts.push({ kind: "manage" });
+  }
   uni.showActionSheet({
-    itemList: [...base, ...manages.filter(Boolean)],
+    itemList: items,
     success: (res) => {
-      if (res.tapIndex === 0) return createGroupFlow();
-      if (res.tapIndex === 1) return moveStockToGroup();
-      const g = manages[res.tapIndex - base.length];
-      if (g) manageGroup(groups.value[res.tapIndex - base.length]);
+      const act = acts[res.tapIndex];
+      if (!act) return;
+      if (act.kind === "all") selectedGroup.value = "__all__";
+      else if (act.kind === "group" && act.g != null) selectedGroup.value = act.g;
+      else if (act.kind === "new") createGroupFlow();
+      else if (act.kind === "move") moveStockToGroup();
+      else {
+        uni.showActionSheet({
+          itemList: groups.value.map((g) => `管理「${g}」`),
+          success: (r2) => manageGroup(groups.value[r2.tapIndex]),
+        });
+      }
     },
   });
 }
@@ -370,7 +376,7 @@ function moveStockToGroup() {
     success: (r) => {
       const it = list.value[r.tapIndex];
       if (!it) return;
-      const targets = ["默认分组", ...groups.value];
+      const targets = ["默认", ...groups.value];
       uni.showActionSheet({
         itemList: [...targets, "新建分组…"],
         success: (r2) => {
@@ -378,7 +384,7 @@ function moveStockToGroup() {
             const grp = r2.tapIndex === 0 ? "" : groups.value[r2.tapIndex - 1];
             setItemGroup(it.code, it.market, grp);
             selectedGroup.value = grp;
-            uni.showToast({ title: `已移入${grp || "默认分组"}`, icon: "none" });
+            uni.showToast({ title: `已移入${grp || "默认"}`, icon: "none" });
           } else {
             uni.showModal({
               title: "新建分组",
@@ -800,55 +806,6 @@ function manageGroup(g: string) {
   color: #fff;
   background: var(--primary);
   box-shadow: var(--shadow-up);
-}
-
-/* ===== 分组筛选条 ===== */
-.wl-groups {
-  padding: 6rpx 16rpx 8rpx;
-  white-space: nowrap;
-  overflow-x: auto;
-}
-.grp-track {
-  display: inline-flex;
-  align-items: center;
-  padding: 4rpx 8rpx;
-}
-.grp {
-  display: inline-flex;
-  align-items: center;
-  font-size: 23rpx;
-  font-weight: 600;
-  color: var(--text-2);
-  padding: 10rpx 24rpx;
-  margin-right: 14rpx;
-  border-radius: 999rpx;
-  background: var(--card-2);
-  border: 2rpx solid var(--border);
-  white-space: nowrap;
-  transition: all 0.18s ease;
-}
-.grp.on {
-  color: #fff;
-  background: var(--primary);
-  border-color: var(--primary);
-  box-shadow: var(--shadow-up);
-}
-.grp-new {
-  display: inline-flex;
-  align-items: center;
-  gap: 4rpx;
-  font-size: 23rpx;
-  font-weight: 600;
-  color: var(--primary);
-  padding: 10rpx 22rpx;
-  border-radius: 999rpx;
-  background: var(--card-2);
-  border: 2rpx dashed var(--primary);
-  white-space: nowrap;
-  transition: all 0.15s ease;
-}
-.grp-new:active {
-  background: var(--primary-soft);
 }
 
 /* ===== 价格预警横幅 ===== */
