@@ -9,18 +9,15 @@
   >
     <view class="wl">
       <BackgroundFX />
-      <!-- 头部：对齐社区顶部样式，标题仅「自选」 -->
+      <!-- 头部：完全对齐社区顶部样式（品牌标题 + 右侧分组 pill） -->
       <view class="cm-header anim-fade-up">
         <text class="cm-brand">自选</text>
-        <view class="cm-right">
-          <view class="wl-count">
-            <text class="wl-count-num">{{ list.length }}</text>
-            <text class="wl-count-lab">只</text>
+        <view class="cm-me" role="button" aria-label="分组管理" @click="openGroups">
+          <view class="cm-avatar" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
+            <OutlineIcon type="layers" :size="24" color="#fff" />
           </view>
-          <view class="cm-me" role="button" aria-label="分组管理" @click="openGroups">
-            <OutlineIcon type="layers" :size="22" color="var(--primary)" />
-            <text>分组</text>
-          </view>
+          <text class="cm-name">分组</text>
+          <OutlineIcon type="gear" :size="18" color="var(--text-2)" />
         </view>
       </view>
 
@@ -50,10 +47,9 @@
 
       <!-- 自选模式 -->
       <template v-else>
-        <!-- 分组筛选：全部 / 默认 / 各自定义分组 + 新建分组入口 -->
+        <!-- 分组筛选：默认 / 各自定义分组 + 新建分组入口（默认即展示全部，无「全部」chip） -->
         <view class="wl-groups anim-fade-up">
           <view class="grp-track">
-            <text :class="['grp', selectedGroup === '__all__' ? 'on' : '']" @click="selectedGroup = '__all__'">全部</text>
             <text :class="['grp', selectedGroup === '' ? 'on' : '']" @click="selectedGroup = ''">默认</text>
             <text
               v-for="g in groups"
@@ -347,15 +343,61 @@ function createGroupFlow() {
   });
 }
 
-// 分组管理入口：有分组才进入管理，否则提示通过股票上的分组名创建
+// 分组管理入口：分组 pill 点击后，可新建分组、将股票移入某分组、或管理既有分组（重命名/删除）
 function openGroups() {
-  if (!groups.value.length) {
-    uni.showToast({ title: "点列表「新建」或股票上的分组名即可创建", icon: "none" });
+  const base = ["新建分组", "将股票移入分组"] as string[];
+  const manages = groups.value.map((g) => g ? `管理「${g}」` : "");
+  uni.showActionSheet({
+    itemList: [...base, ...manages.filter(Boolean)],
+    success: (res) => {
+      if (res.tapIndex === 0) return createGroupFlow();
+      if (res.tapIndex === 1) return moveStockToGroup();
+      const g = manages[res.tapIndex - base.length];
+      if (g) manageGroup(groups.value[res.tapIndex - base.length]);
+    },
+  });
+}
+
+// 将某只自选股移入指定分组（目标可选默认 / 既有分组 / 新建分组）
+function moveStockToGroup() {
+  if (!list.value.length) {
+    uni.showToast({ title: "还没有自选股", icon: "none" });
     return;
   }
+  const stocks = list.value.map((i) => `${i.name || i.code}`);
   uni.showActionSheet({
-    itemList: groups.value.map((g) => `管理「${g}」`),
-    success: (res) => manageGroup(groups.value[res.tapIndex]),
+    itemList: stocks,
+    success: (r) => {
+      const it = list.value[r.tapIndex];
+      if (!it) return;
+      const targets = ["默认分组", ...groups.value];
+      uni.showActionSheet({
+        itemList: [...targets, "新建分组…"],
+        success: (r2) => {
+          if (r2.tapIndex < targets.length) {
+            const grp = r2.tapIndex === 0 ? "" : groups.value[r2.tapIndex - 1];
+            setItemGroup(it.code, it.market, grp);
+            selectedGroup.value = grp;
+            uni.showToast({ title: `已移入${grp || "默认分组"}`, icon: "none" });
+          } else {
+            uni.showModal({
+              title: "新建分组",
+              editable: true,
+              placeholderText: "分组名",
+              content: "",
+              success: (m) => {
+                const name = m.content?.trim();
+                if (m.confirm && name) {
+                  setItemGroup(it.code, it.market, name);
+                  selectedGroup.value = name;
+                  uni.showToast({ title: `已创建「${name}」`, icon: "none" });
+                }
+              },
+            });
+          }
+        },
+      });
+    },
   });
 }
 
@@ -683,60 +725,52 @@ function manageGroup(g: string) {
   padding: 4rpx 0 0;
 }
 
-/* ===== 头部（对齐社区） ===== */
+/* ===== 头部（完全对齐社区 CommunityView） ===== */
 .cm-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20rpx 24rpx 8rpx;
+  padding: 12rpx 22rpx 14rpx;
+  background: var(--sticky-bg);
+  backdrop-filter: blur(16rpx) saturate(140%);
+  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
+  box-shadow: var(--sticky-shadow);
 }
 .cm-brand {
-  font-size: 48rpx;
+  font-size: 40rpx;
   font-weight: 800;
-  letter-spacing: 1rpx;
-  background: linear-gradient(135deg, var(--text), var(--text-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.cm-right {
-  display: flex;
-  align-items: center;
-  gap: 14rpx;
-}
-.wl-count {
-  display: flex;
-  align-items: baseline;
-  gap: 4rpx;
-  padding: 10rpx 18rpx;
-  border-radius: 999rpx;
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
-}
-.wl-count-num {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: var(--primary);
-  font-variant-numeric: tabular-nums;
-}
-.wl-count-lab {
-  font-size: 22rpx;
-  color: var(--text-2);
+  letter-spacing: 2rpx;
+  color: var(--text);
 }
 .cm-me {
   display: flex;
   align-items: center;
-  gap: 6rpx;
-  font-size: 25rpx;
-  font-weight: 600;
-  color: var(--primary);
-  padding: 12rpx 22rpx;
+  gap: 10rpx;
+  padding: 6rpx 14rpx;
   border-radius: 999rpx;
-  background: var(--primary-soft);
-  transition: transform 0.15s ease;
+  background: var(--card-2);
 }
-.cm-me:active {
-  transform: scale(0.95);
+.cm-avatar {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  overflow: hidden;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cm-name {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--text);
+  max-width: 120rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ===== 分段 ===== */
