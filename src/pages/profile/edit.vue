@@ -35,9 +35,55 @@
           <text class="fl">用户名</text>
           <text class="fr">{{ username || "—" }}</text>
         </view>
-        <view class="field read">
+        <view class="field read ep-email" @click="startEmailEdit" role="button" aria-label="修改邮箱">
           <text class="fl">邮箱</text>
           <text class="fr">{{ user.email || "—" }}</text>
+          <text class="fr-edit">修改</text>
+        </view>
+
+        <!-- 邮箱修改面板（内联展开）：新邮箱 + 验证码，需新邮箱收码校验 -->
+        <view v-if="editingEmail" class="ec-panel">
+          <AuthField
+            icon="mail"
+            v-model="newEmail"
+            placeholder="新邮箱"
+            :error="emailErrors.newEmail"
+            :disabled="emailSent"
+            @input="emailErrors.newEmail = ''"
+          />
+          <AuthField
+            icon="locked"
+            v-model="emailCode"
+            :maxlength="6"
+            placeholder="新邮箱 6 位验证码"
+            :error="emailErrors.code"
+            @input="emailErrors.code = ''"
+          >
+            <template #suffix>
+              <view
+                class="auth-suffix"
+                :class="{ disabled: emailCountdown > 0 || emailSending }"
+                role="button"
+                :aria-disabled="emailCountdown > 0 || emailSending"
+                @click="sendEmailCode"
+              >
+                {{ emailCountdown > 0 ? emailCountdown + "s" : "发送验证码" }}
+              </view>
+            </template>
+          </AuthField>
+          <text v-if="emailSent && !emailErrors.code" class="auth-sent-tip">验证码已发送至 {{ emailMask }}</text>
+          <view v-if="emailServerErr" class="auth-server-err">{{ emailServerErr }}</view>
+          <button
+            :class="['btn-primary', 'auth-submit', (emailSaving || emailDone) ? 'is-disabled' : '']"
+            :disabled="emailSaving || emailDone"
+            @click="confirmEmailChange"
+          >
+            <view v-if="emailSaving" class="btn-spin" />
+            <text v-if="emailDone">修改成功 ✓</text>
+            <text v-else-if="emailSaving">验证中…</text>
+            <text v-else>验证并修改</text>
+          </button>
+          <button class="ec-cancel" @click="cancelEmailEdit">取消</button>
         </view>
         <view class="field col">
           <text class="fl">个人简介</text>
@@ -54,11 +100,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, reactive, computed, watch, onUnmounted } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
-import { useUser, refreshProfile } from "@/store/user";
-import { updateProfile, uploadAvatar } from "@/api/auth";
+import AuthField from "@/components/AuthField.vue";
+import { useUser, refreshProfile, syncSession } from "@/store/user";
+import { updateProfile, uploadAvatar, requestEmailChange, verifyEmailChange, EMAIL_RE, maskEmail } from "@/api/auth";
 import { avatarGradient, avatarChar } from "@/utils/avatar";
 
 const user = useUser();
@@ -69,6 +116,22 @@ const bio = ref("");
 const saving = ref(false);
 const avatarUrl = ref("");
 const uploading = ref(false);
+
+// —— 邮箱修改（内联面板）——
+const editingEmail = ref(false);
+const newEmail = ref("");
+const emailCode = ref("");
+const emailSending = ref(false);
+const emailSent = ref(false);
+const emailSaving = ref(false);
+const emailDone = ref(false);
+const emailServerErr = ref("");
+const emailCountdown = ref(0);
+let emailTimer: any = null;
+const emailErrors = reactive<{ newEmail: string; code: string }>({ newEmail: "", code: "" });
+
+// 新邮箱脱敏展示：a****@domain.com
+const emailMask = computed(() => maskEmail(newEmail.value));
 
 const avatarName = computed(() => displayName.value || username.value || user.email || "我");
 const avatarBg = computed(() => avatarGradient(avatarName.value));
@@ -127,8 +190,13 @@ function chooseAvatar() {
 async function save() {
   saving.value = true;
   try {
+    const dn = displayName.value.trim();
+    if (!dn) {
+      uni.showToast({ title: "昵称不能为空", icon: "none" });
+      return;
+    }
     const r = await updateProfile({
-      display_name: displayName.value.trim(),
+      display_name: dn,
       bio: bio.value.trim(),
     });
     if (!r.ok) {
@@ -141,6 +209,115 @@ async function save() {
     saving.value = false;
   }
 }
+
+function startEmailEdit() {
+  newEmail.value = "";
+  emailCode.value = "";
+  emailErrors.newEmail = "";
+  emailErrors.code = "";
+  emailServerErr.value = "";
+  emailSent.value = false;
+  emailDone.value = false;
+  editingEmail.value = true;
+}
+
+function cancelEmailEdit() {
+  editingEmail.value = false;
+  if (emailTimer) {
+    clearInterval(emailTimer);
+    emailTimer = null;
+  }
+  emailCountdown.value = 0;
+}
+
+function startEmailCountdown() {
+  emailCountdown.value = 60;
+  emailTimer = setInterval(() => {
+    emailCountdown.value -= 1;
+    if (emailCountdown.value <= 0) {
+      clearInterval(emailTimer);
+      emailTimer = null;
+    }
+  }, 1000);
+}
+
+async function sendEmailCode() {
+  if (emailCountdown.value > 0 || emailSending.value) return;
+  emailServerErr.value = "";
+  emailErrors.newEmail = "";
+  const e = newEmail.value.trim();
+  if (!e || !EMAIL_RE.test(e)) {
+    emailErrors.newEmail = "请输入有效的邮箱地址";
+    return;
+  }
+  if (user.email && e.toLowerCase() === (user.email || "").toLowerCase()) {
+    emailErrors.newEmail = "新邮箱不能与当前邮箱相同";
+    return;
+  }
+  emailSending.value = true;
+  try {
+    const r = await requestEmailChange(e);
+    if (!r.ok) {
+      emailServerErr.value = r.error || "发送失败，请稍后重试";
+      return;
+    }
+    emailSent.value = true;
+    startEmailCountdown();
+  } catch (err: any) {
+    emailServerErr.value = err?.message || "操作失败，请重试";
+  } finally {
+    emailSending.value = false;
+  }
+}
+
+async function confirmEmailChange() {
+  emailServerErr.value = "";
+  emailErrors.newEmail = "";
+  emailErrors.code = "";
+  const e = newEmail.value.trim();
+  const c = emailCode.value.trim();
+  if (!e || !EMAIL_RE.test(e)) {
+    emailErrors.newEmail = "请输入有效的邮箱地址";
+    return;
+  }
+  if (!c) {
+    emailErrors.code = "请输入验证码";
+    return;
+  }
+  if (c.length !== 6) {
+    emailErrors.code = "请输入完整的 6 位数字验证码";
+    return;
+  }
+  emailSaving.value = true;
+  try {
+    const r = await verifyEmailChange(e, c);
+    if (!r.ok) {
+      emailErrors.code = r.error || "验证码错误或已过期";
+      return;
+    }
+    emailDone.value = true;
+    // 邮箱已变更：刷新会话中的邮箱 + 资料，使页面与 store 同步
+    await syncSession().catch(() => {});
+    await refreshProfile().catch(() => {});
+    uni.showToast({ title: "邮箱已更新", icon: "success" });
+    setTimeout(() => {
+      editingEmail.value = false;
+      if (emailTimer) {
+        clearInterval(emailTimer);
+        emailTimer = null;
+      }
+      emailCountdown.value = 0;
+    }, 900);
+  } catch (err: any) {
+    emailServerErr.value = err?.message || "操作失败，请重试";
+  } finally {
+    emailSaving.value = false;
+  }
+}
+
+onUnmounted(() => {
+  if (emailTimer) clearInterval(emailTimer);
+});
 </script>
 
 <style scoped>
@@ -276,6 +453,31 @@ async function save() {
 }
 .field.read {
   color: var(--text-2);
+}
+.ep-email {
+  cursor: pointer;
+}
+.fr-edit {
+  margin-left: 16rpx;
+  font-size: 26rpx;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+.ec-panel {
+  margin: 12rpx 0 20rpx;
+  padding: 20rpx 18rpx;
+  background: var(--card-2);
+  border-radius: var(--radius-sm);
+}
+.ec-cancel {
+  margin-top: 16rpx;
+  background: transparent;
+  font-size: 26rpx;
+  color: var(--text-2);
+  line-height: 1.8;
+}
+.ec-cancel::after {
+  border: none;
 }
 .fl {
   width: 130rpx;

@@ -7,10 +7,10 @@ const KEY = "guanlan_nick";
 
 import { userState } from "@/store/user";
 
-/** 读取我的昵称：已登录用账号用户名 / 昵称，否则回退本地昵称 */
+/** 读取我的昵称：已登录优先用昵称（display_name，用户可改），其次用户名，否则邮箱；未登录回退本地昵称 */
 export function getMyName(): string {
   if (userState.loggedIn && userState.profile) {
-    return userState.profile.username || userState.profile.display_name || userState.email || "我";
+    return userState.profile.display_name || userState.profile.username || userState.email || "我";
   }
   try {
     let n = localStorage.getItem(KEY);

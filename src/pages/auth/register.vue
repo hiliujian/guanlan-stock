@@ -13,6 +13,18 @@
         @input="errors.email = ''"
       />
 
+      <!-- 用户名（用户自填、唯一、注册后不可修改；昵称由系统自动生成） -->
+      <AuthField
+        icon="person"
+        v-model="username"
+        placeholder="用户名（3-20 位中英文 / 数字 / 下划线，唯一不可改）"
+        :error="errors.username"
+        :disabled="sent"
+        @input="onUsernameInput"
+      />
+      <text v-if="!errors.username && usernameStatus === 'checking'" class="auth-sent-tip">正在检查用户名可用性…</text>
+      <text v-else-if="!errors.username && usernameStatus === 'ok'" class="auth-ok-tip">✓ 用户名可用</text>
+
       <!-- 验证码 + 发送按钮（倒计时防重复） -->
       <AuthField
         icon="locked"
@@ -81,10 +93,16 @@ import {
   requestSignupCode,
   verifySignupCode,
   updatePassword,
+  updateProfile,
+  checkUsernameAvailable,
+  USERNAME_RE,
+  EMAIL_RE,
 } from "@/api/auth";
-import { syncSession } from "@/store/user";
+import { syncSession, refreshProfile } from "@/store/user";
 
 const email = ref("");
+const username = ref("");
+const usernameStatus = ref<"idle" | "checking" | "ok" | "taken">("idle");
 const code = ref("");
 const password = ref("");
 const loading = ref(false); // 仅注册提交（验证+设密）使用
@@ -93,15 +111,15 @@ const sent = ref(false);
 const serverErr = ref("");
 const countdown = ref(0);
 const done = ref(false);
-const errors = reactive<{ email: string; code: string; password: string }>({
+const errors = reactive<{ email: string; username: string; code: string; password: string }>({
   email: "",
+  username: "",
   code: "",
   password: "",
 });
 
 let timer: any = null;
-
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+let usernameTimer: any = null;
 
 // 邮箱脱敏展示：a****@domain.com
 const maskedEmail = computed(() => {
@@ -123,6 +141,26 @@ function startCountdown() {
       timer = null;
     }
   }, 1000);
+}
+
+// 用户名输入：清除错误并防抖校验是否可用（格式合法才查，空/非法直接回到 idle）
+function onUsernameInput() {
+  errors.username = "";
+  usernameStatus.value = "idle";
+  if (usernameTimer) clearTimeout(usernameTimer);
+  const uname = username.value.trim();
+  if (!uname || !USERNAME_RE.test(uname)) return; // 格式非法不查，等待用户继续输入
+  usernameStatus.value = "checking";
+  usernameTimer = setTimeout(async () => {
+    const r = await checkUsernameAvailable(uname);
+    if (!r.ok) {
+      // 后端/网络异常不强行拦截，交由提交时最终校验
+      usernameStatus.value = "idle";
+      return;
+    }
+    usernameStatus.value = r.available ? "ok" : "taken";
+    if (!r.available) errors.username = "该用户名已被占用";
+  }, 450);
 }
 
 async function sendCode() {
@@ -151,16 +189,35 @@ async function sendCode() {
 }
 
 async function submit() {
-  // 前端基础校验：邮箱格式 / 验证码非空 / 密码长度
+  // 前端基础校验：邮箱格式 / 用户名规则与可用性 / 验证码非空 / 密码长度
   serverErr.value = "";
   errors.email = "";
+  errors.username = "";
   errors.code = "";
   errors.password = "";
   const e = email.value.trim();
+  const uname = username.value.trim();
   const c = code.value.trim();
   const p = password.value;
   if (!e || !EMAIL_RE.test(e)) {
     errors.email = "请输入有效的邮箱地址";
+    return;
+  }
+  if (!uname) {
+    errors.username = "请设置用户名";
+    return;
+  }
+  if (!USERNAME_RE.test(uname)) {
+    errors.username = "用户名须为 3-20 位中英文 / 数字 / 下划线";
+    return;
+  }
+  if (usernameStatus.value === "taken") {
+    errors.username = "该用户名已被占用";
+    return;
+  }
+  if (usernameStatus.value !== "ok") {
+    // 尚在检查中或未查过：阻塞提交，等待校验结果
+    errors.username = "正在检查用户名，请稍候";
     return;
   }
   if (!c) {
@@ -190,8 +247,15 @@ async function submit() {
       errors.password = u.error || "密码设置失败，请重试";
       return;
     }
-    // 3) 注册完成即自动登录：验证码已建立会话、密码已写入，会话保持，
+    // 3) 写入用户名（用户自填、唯一不可改；昵称由触发器自动随机生成）
+    const up = await updateProfile({ username: uname });
+    if (!up.ok) {
+      errors.username = up.error || "用户名设置失败，请重试";
+      return;
+    }
+    // 4) 注册完成即自动登录：验证码已建立会话、密码已写入，会话保持，
     //    直接进入主应用（不再登出、不再跳登录页；user store 的 onAuthChange 已落地登录态）
+    await refreshProfile().catch(() => {});
     done.value = true;
     // 兜底主动同步一次会话，确保即使监听器尚未就绪也能拿到登录态
     await syncSession().catch(() => {});

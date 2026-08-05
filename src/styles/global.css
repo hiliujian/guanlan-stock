@@ -594,6 +594,14 @@ textarea {
   margin: -6rpx 0 14rpx 4rpx;
   word-break: break-all;
 }
+/* 用户名可用等正向提示（微信绿主色） */
+.auth-ok-tip {
+  display: block;
+  font-size: 23rpx;
+  color: var(--primary);
+  margin: -6rpx 0 14rpx 4rpx;
+  word-break: break-all;
+}
 /* 主 CTA：在表单内占满宽度、内容居中、去除 uni 默认边框。
    复用全局 .btn-primary 的 88rpx 药丸尺寸（不再压低高度），仅负责全宽与去边框（登录/注册/重设三页共用） */
 .auth-submit {

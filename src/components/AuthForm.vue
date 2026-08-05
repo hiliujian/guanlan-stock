@@ -10,10 +10,10 @@
 
     <AuthField
       icon="person"
-      v-model="email"
-      placeholder="邮箱"
-      :error="errors.email"
-      @input="errors.email = ''"
+      v-model="identifier"
+      placeholder="用户名或邮箱"
+      :error="errors.identifier"
+      @input="errors.identifier = ''"
     />
     <AuthField
       icon="locked"
@@ -41,7 +41,7 @@
 <script setup lang="ts">
 import { ref, reactive } from "vue";
 import AuthField from "./AuthField.vue";
-import { signIn } from "@/api/auth";
+import { signInByIdentifier, USERNAME_RE, EMAIL_RE } from "@/api/auth";
 import { isSupabaseConfigured } from "@/config/app";
 
 const props = defineProps<{ mode: "login" }>();
@@ -49,22 +49,29 @@ const emit = defineEmits<{
   (e: "authed"): void;
 }>();
 
-const email = ref("");
+const identifier = ref("");
 const password = ref("");
 const loading = ref(false);
 const serverErr = ref("");
-const errors = reactive<{ email: string; password: string }>({ email: "", password: "" });
+const errors = reactive<{ identifier: string; password: string }>({ identifier: "", password: "" });
 
 async function submit() {
   // 每次提交先清空上一次的错误，避免残留
   serverErr.value = "";
-  errors.email = "";
+  errors.identifier = "";
   errors.password = "";
-  const e = email.value.trim();
+  const id = identifier.value.trim();
   const p = password.value;
   // 前端校验：保留输入，字段下方内联提示
-  if (!e || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) {
-    errors.email = "请输入有效的邮箱地址";
+  // 用户名或邮箱均可：含 @ 走邮箱格式校验，否则校验用户名规则
+  if (!id) {
+    errors.identifier = "请输入用户名或邮箱";
+    return;
+  }
+  if (EMAIL_RE.test(id)) {
+    // 邮箱：格式由 Supabase 兜底，这里仅做基本形态校验
+  } else if (!USERNAME_RE.test(id)) {
+    errors.identifier = "用户名须为 3-20 位中英文 / 数字 / 下划线";
     return;
   }
   if (p.length < 6) {
@@ -73,7 +80,7 @@ async function submit() {
   }
   loading.value = true;
   try {
-    const r = await signIn(e, p);
+    const r = await signInByIdentifier(id, p);
     if (!r.ok) {
       serverErr.value = r.error || "登录失败";
       return;

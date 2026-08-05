@@ -4,7 +4,7 @@
 // =====================================================================
 import { reactive, readonly } from "vue";
 import { getSupabase, isSupabaseConfigured } from "@/api/supabase";
-import { onAuthChange, updateProfile, genRandomUsername } from "@/api/auth";
+import { onAuthChange, updateProfile } from "@/api/auth";
 
 interface Profile {
   id: string;
@@ -48,13 +48,9 @@ async function loadProfile(userId: string) {
       level: typeof data.level === "number" ? data.level : 0,
       exp: typeof data.exp === "number" ? data.exp : 0,
     };
-    // 注册后触发器建出的 profile 默认 username 为空：自动分配一个随机用户名，
-    // 用户可在「我的 → 个人资料」中修改。
-    if (!profile.username) {
-      const uname = genRandomUsername();
-      const r = await updateProfile({ username: uname });
-      if (r.ok) profile.username = uname;
-    }
+    // 注意：username 由用户在注册时自填、唯一且不可修改（见 deploy.sql 部分唯一索引）。
+    // 历史空 username 不再由前端自动补随机值（避免与「不可改」语义冲突）；
+    // 新注册用户经触发器/注册流程已带 username，旧空账号保持空串、昵称优先展示即可。
     state.profile = profile;
   }
 }
@@ -85,8 +81,9 @@ export function useUser() {
   return readonly(state);
 }
 
-export function refreshProfile() {
+export function refreshProfile(): Promise<void> {
   if (state.userId) return loadProfile(state.userId);
+  return Promise.resolve();
 }
 
 /**

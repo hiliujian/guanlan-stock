@@ -91,6 +91,8 @@ import {
   requestResetCode,
   verifyResetCode,
   updatePassword,
+  EMAIL_RE,
+  maskEmail,
 } from "@/api/auth";
 import { syncSession } from "@/store/user";
 
@@ -113,18 +115,8 @@ const errors = reactive<{ email: string; code: string; password: string; confirm
 
 let timer: any = null;
 
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-
 // 邮箱脱敏展示：a****@domain.com
-const maskedEmail = computed(() => {
-  const e = email.value.trim();
-  const at = e.indexOf("@");
-  if (at <= 1) return e;
-  const name = e.slice(0, at);
-  const head = name.slice(0, 1);
-  const tail = name.length > 2 ? name.slice(-1) : "";
-  return `${head}****${tail ? tail + "@" : "@"}${e.slice(at + 1)}`;
-});
+const maskedEmail = computed(() => maskEmail(email.value));
 
 function startCountdown() {
   countdown.value = 60;

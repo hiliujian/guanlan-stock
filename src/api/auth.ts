@@ -18,6 +18,46 @@ export async function signIn(email: string, password: string): Promise<AuthResul
 }
 
 /**
+ * 用户名或邮箱登录：identifier 可以是用户名或邮箱。
+ * - 邮箱（含 @ 且符合邮箱格式）：直接走 Supabase 原生 signInWithPassword
+ * - 用户名（规则限定为 3-20 位中英文/数字/下划线，不含 @）：
+ *   先经 RPC lookup_login_email 解析为对应邮箱，再走原生密码登录
+ * 返回 ok=false 时 error 已是中文（含「该用户名不存在」）。
+ */
+export async function signInByIdentifier(identifier: string, password: string): Promise<AuthResult> {
+  const sb = getSupabase();
+  if (!sb) return { ok: false, error: BACKEND_NOT_CONFIGURED };
+  const id = (identifier || "").trim();
+  if (!id) return { ok: false, error: "请输入用户名或邮箱" };
+  if (!password) return { ok: false, error: "请输入密码" };
+
+  let email = id;
+  // 用户名不含 @（规则限定），含 @ 且形如邮箱则按邮箱处理
+  if (!EMAIL_RE.test(id)) {
+    const { data, error } = await sb.rpc("lookup_login_email", { p_username: id });
+    if (error) return { ok: false, error: translateSupabaseError(error.message) };
+    email = (data as string) || "";
+    if (!email) return { ok: false, error: "该用户名不存在" };
+  }
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) return { ok: false, error: translateSupabaseError(error.message) };
+  return { ok: true };
+}
+
+/**
+ * 校验用户名是否可用（未被占用）。
+ * 返回 ok=false 表示网络/后端异常；ok=true 时 available 才有意义（true=可用）。
+ * 底层走 RPC is_username_taken（security definer，可匿名调用）。
+ */
+export async function checkUsernameAvailable(username: string): Promise<{ ok: boolean; available: boolean; error?: string }> {
+  const sb = getSupabase();
+  if (!sb) return { ok: false, available: false, error: BACKEND_NOT_CONFIGURED };
+  const { data, error } = await sb.rpc("is_username_taken", { p_username: username });
+  if (error) return { ok: false, available: false, error: translateSupabaseError(error.message) };
+  return { ok: true, available: !(data as boolean) };
+}
+
+/**
  * 处理邮件确认链接：链接带 token_hash + type，用 verifyOtp 完成验证并写入会话。
  * 返回 ok=false 时 error 已是中文（过期 / 已确认 / 网络等）。
  */
@@ -111,9 +151,50 @@ export async function updatePassword(newPassword: string): Promise<AuthResult> {
   return { ok: true };
 }
 
-/** 生成随机用户名（如「观澜847291」），注册后自动分配，用户可后续修改 */
-export function genRandomUsername(): string {
-  return "观澜" + Math.floor(100000 + Math.random() * 900000);
+/**
+ * 发起邮箱变更：向「新邮箱」发送 6 位验证码（需 Email Change 模板配置为 {{ .Token }}）。
+ * 前置：用户已登录。需关闭 Supabase 的「Secure email change」（否则会要求旧邮箱二次验证）。
+ * 返回 ok=false 时 error 已是中文。
+ */
+export async function requestEmailChange(newEmail: string): Promise<AuthResult> {
+  const sb = getSupabase();
+  if (!sb) return { ok: false, error: BACKEND_NOT_CONFIGURED };
+  const { error } = await sb.auth.updateUser({ email: newEmail });
+  if (error) return { ok: false, error: translateSupabaseError(error.message) };
+  return { ok: true };
+}
+
+/**
+ * 校验新邮箱验证码，完成邮箱变更：verifyOtp type=email_change 匹配 auth.users
+ * 的 email_change / email_change_token_new 列，成功后邮箱正式更新为 newEmail。
+ */
+export async function verifyEmailChange(newEmail: string, code: string): Promise<AuthResult> {
+  const sb = getSupabase();
+  if (!sb) return { ok: false, error: BACKEND_NOT_CONFIGURED };
+  const { error } = await sb.auth.verifyOtp({
+    email: newEmail,
+    token: code,
+    type: "email_change",
+  });
+  if (error) return { ok: false, error: translateSupabaseError(error.message) };
+  return { ok: true };
+}
+
+/** 用户名规则：3-20 位，仅限中英文 / 数字 / 下划线（与数据库、注册页校验保持一致） */
+export const USERNAME_RE = /^[一-龥A-Za-z0-9_]{3,20}$/;
+
+/** 邮箱格式规则（登录 identifier / 注册 / 找回 / 邮箱修改共用，避免各处重复定义） */
+export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** 邮箱脱敏：a****@domain.com（找回 / 邮箱修改等场景展示用） */
+export function maskEmail(email: string): string {
+  const e = (email || "").trim();
+  const at = e.indexOf("@");
+  if (at <= 1) return e;
+  const name = e.slice(0, at);
+  const head = name.slice(0, 1);
+  const tail = name.length > 2 ? name.slice(-1) : "";
+  return `${head}****${tail ? tail + "@" : "@"}${e.slice(at + 1)}`;
 }
 
 export async function signOut(): Promise<void> {
@@ -272,6 +353,7 @@ const AUTH_ERROR_MAP: Record<string, string> = {
   "Invalid login credentials": "邮箱或密码错误",
   "Email not confirmed": "邮箱尚未验证，请先到邮箱完成验证",
   "User already registered": "该邮箱已注册，请直接登录",
+  "reauthentication_needed": "邮箱修改需先验证当前身份，请关闭 Supabase 的 Secure email change 后重试",
   "User not found": "账号不存在，请先注册",
   "Invalid email": "邮箱格式不正确",
   "Unable to validate email address: invalid format": "邮箱格式不正确",

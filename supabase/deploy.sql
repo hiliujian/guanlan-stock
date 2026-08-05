@@ -47,6 +47,15 @@ create table if not exists public.profiles (
   created_at   timestamptz not null default now()
 );
 
+-- 1.1.1 用户名唯一索引（部分唯一索引）
+--   · 非空 username 必须唯一（登录时用户名/邮箱二选一校验用）
+--   · 空 username 允许多个（兼容「用户名由用户自填」之前的历史账号，以及注册瞬间未写入期）
+--   · 配合前端注册校验 + 下方 is_username_taken() RPC，双保险防重
+--   · 唯一约束与 username 不可改共同保证「用户名一旦设定不可修改且唯一」
+create unique index if not exists idx_profiles_username_unique
+  on public.profiles (username)
+  where username <> '';
+
 -- 1.2 自选股表
 create table if not exists public.watchlists (
   id         uuid primary key default gen_random_uuid(),
@@ -65,11 +74,20 @@ create table if not exists public.watchlists (
 create index if not exists idx_watchlists_user on public.watchlists (user_id);
 
 -- 1.3 注册即建 profile 的触发器
+--   display_name 注册时自动随机生成（如「观澜741779」），用户可后续在「个人资料」修改；
+--   前端注册流程会显式写入 username（用户自填、唯一、不可改），此处不处理 username。
+--   兜底：若 raw_user_meta_data 未带 display_name，则自动生成随机昵称，避免空昵称。
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
   insert into public.profiles (id, display_name)
-  values (new.id, coalesce(new.raw_user_meta_data ->> 'display_name', split_part(new.email, '@', 1)))
+  values (
+    new.id,
+    coalesce(
+      nullif(new.raw_user_meta_data ->> 'display_name', ''),
+      '观澜' || floor(random() * 900000 + 100000)::text
+    )
+  )
   on conflict (id) do nothing;
   return new;
 end;
@@ -78,6 +96,13 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- 1.3.1 历史空昵称回填（幂等）
+--   触发器上线前注册的旧账号 display_name 可能为空；统一补随机昵称，确保「昵称非空」
+--   （与注册时自动生成的「观澜」+6 位数字格式一致）。已非空账号不受此 UPDATE 影响。
+update public.profiles
+   set display_name = '观澜' || floor(random() * 900000 + 100000)::text
+ where display_name is null or display_name = '';
 
 -- 1.4 RLS：仅本人可读写自己的 profile / watchlist
 alter table public.profiles   enable row level security;
@@ -98,6 +123,43 @@ drop policy if exists "watchlists_update_self" on public.watchlists;
 create policy "watchlists_update_self" on public.watchlists for update using (auth.uid() = user_id);
 drop policy if exists "watchlists_delete_self" on public.watchlists;
 create policy "watchlists_delete_self" on public.watchlists for delete using (auth.uid() = user_id);
+
+-- 1.4.1 登录辅助 RPC（security definer，绕过 profiles 的 RLS「仅本人可读」）
+--   前端登录支持「用户名或邮箱」：邮箱走 Supabase 原生 signInWithPassword；
+--   用户名需先解析为对应邮箱，再走原生密码登录。profiles 无 email 列且 RLS 禁止
+--   匿名查他人，故用 security definer 函数以表属主身份读取，返回邮箱（查不到返回 null）。
+create or replace function public.lookup_login_email(p_username text)
+returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  v_email text;
+begin
+  select u.email into v_email
+  from public.profiles p
+  join auth.users u on u.id = p.id
+  where p.username = p_username
+  limit 1;
+  return v_email;
+end;
+$$;
+grant execute on function public.lookup_login_email(text) to anon, authenticated;
+
+-- 1.4.2 用户名占用校验（security definer，供注册页实时校验）
+--   返回 true 表示该用户名已被占用（含非空匹配）；空串视为未占用（不校验）。
+create or replace function public.is_username_taken(p_username text)
+returns boolean
+language plpgsql security definer set search_path = public as $$
+declare
+  v_exists boolean;
+begin
+  select exists(
+    select 1 from public.profiles
+    where username = p_username and username <> ''
+  ) into v_exists;
+  return coalesce(v_exists, false);
+end;
+$$;
+grant execute on function public.is_username_taken(text) to anon, authenticated;
 
 -- 1.5 头像存储桶（限制 2MB，仅登录用户可传自己的）
 insert into storage.buckets (id, name, public, file_size_limit)
