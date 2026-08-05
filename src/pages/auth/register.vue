@@ -86,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onUnmounted } from "vue";
+import { ref, reactive, onUnmounted } from "vue";
 import AuthShell from "@/components/AuthShell.vue";
 import AuthField from "@/components/AuthField.vue";
 import AuthAgreement from "@/components/AuthAgreement.vue";
@@ -96,6 +96,7 @@ import {
   updatePassword,
   updateProfile,
   checkUsernameAvailable,
+  isEmailRegistered,
   USERNAME_RE,
   EMAIL_RE,
 } from "@/api/auth";
@@ -247,6 +248,18 @@ async function submit() {
   }
   if (p.length < 6) {
     errors.password = "密码至少需要 6 位";
+    return;
+  }
+
+  // 区分新用户注册 / 已注册账号：已注册邮箱不应走注册流程
+  // （避免复用 updateUser 设密码触发 same-password 校验误导用户），引导去登录/找回
+  const reg = await isEmailRegistered(e);
+  if (!reg.ok) {
+    serverErr.value = reg.error || "操作失败，请重试";
+    return;
+  }
+  if (reg.registered) {
+    errors.email = "该邮箱已注册，请直接登录或使用找回密码";
     return;
   }
 

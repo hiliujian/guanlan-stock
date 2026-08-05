@@ -170,6 +170,26 @@ end;
 $$;
 grant execute on function public.is_username_taken(text) to anon, authenticated;
 
+-- 1.4.3 邮箱是否已注册（security definer，供注册页区分"新用户注册"与"已注册改密码"）
+--   直接查 auth.users（OTP 创建用户即写入），邮箱 lower 归一化比较；
+--   返回 true 表示该邮箱已存在账号。与 is_username_taken 配合，从源头避免
+--   注册流程误触发 Supabase 的 same-password 校验（新用户本无旧密码）。
+create or replace function public.is_email_taken(p_email text)
+returns boolean
+language plpgsql security definer set search_path = public as $$
+declare
+  v_exists boolean;
+begin
+  select exists(
+    select 1 from auth.users
+    where lower(email) = lower(p_email)
+  ) into v_exists;
+  return coalesce(v_exists, false);
+end;
+$$;
+
+grant execute on function public.is_email_taken(text) to anon, authenticated;
+
 -- 1.5 头像存储桶（限制 2MB，仅登录用户可传自己的）
 insert into storage.buckets (id, name, public, file_size_limit)
 values ('avatars', 'avatars', true, 2097152)

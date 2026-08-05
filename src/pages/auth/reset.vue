@@ -84,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onUnmounted } from "vue";
+import { ref, reactive, onUnmounted } from "vue";
 import AuthShell from "@/components/AuthShell.vue";
 import AuthField from "@/components/AuthField.vue";
 import AuthAgreement from "@/components/AuthAgreement.vue";

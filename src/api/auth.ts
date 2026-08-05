@@ -58,6 +58,20 @@ export async function checkUsernameAvailable(username: string): Promise<{ ok: bo
 }
 
 /**
+ * 判断邮箱是否已注册（注册页用于区分"新用户注册"与"已注册改密码"，
+ * 从源头避免注册流程误触发 same-password 校验）。
+ * 直接查询 auth.users（OTP 创建用户即写入该表，比 profiles 更早、更可靠），
+ * 邮箱做 lower 归一化比较。底层走 RPC is_email_taken（security definer，可匿名调用）。
+ */
+export async function isEmailRegistered(email: string): Promise<{ ok: boolean; registered: boolean; error?: string }> {
+  const sb = getSupabase();
+  if (!sb) return { ok: false, registered: false, error: BACKEND_NOT_CONFIGURED };
+  const { data, error } = await sb.rpc("is_email_taken", { p_email: email });
+  if (error) return { ok: false, registered: false, error: translateSupabaseError(error.message) };
+  return { ok: true, registered: !!(data as boolean) };
+}
+
+/**
  * 处理邮件确认链接：链接带 token_hash + type，用 verifyOtp 完成验证并写入会话。
  * 返回 ok=false 时 error 已是中文（过期 / 已确认 / 网络等）。
  */
