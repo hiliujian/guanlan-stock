@@ -48,8 +48,7 @@
             v-model="newEmail"
             placeholder="新邮箱"
             :error="emailErrors.newEmail"
-            :disabled="emailSent"
-            @input="emailErrors.newEmail = ''" @blur="validateNewEmail"
+            @input="onNewEmailInput" @blur="validateNewEmail"
           >
             <template #suffix>
               <view
@@ -252,6 +251,20 @@ function validateNewEmail() {
     return;
   }
   emailErrors.newEmail = "";
+}
+
+// 发送验证码后用户仍可修改新邮箱：一旦改动则旧验证码作废，重置发送/倒计时状态，允许重新发送
+function onNewEmailInput() {
+  emailErrors.newEmail = "";
+  if (emailSent.value) {
+    emailSent.value = false;
+    emailCode.value = "";
+    if (emailTimer) {
+      clearInterval(emailTimer);
+      emailTimer = null;
+    }
+    emailCountdown.value = 0;
+  }
 }
 
 async function sendEmailCode() {

@@ -9,8 +9,7 @@
         v-model="email"
         placeholder="邮箱"
         :error="errors.email"
-        :disabled="sent"
-        @input="errors.email = ''" @blur="validateEmail"
+        @input="onEmailInput" @blur="validateEmail"
       >
         <template #suffix>
           <view
@@ -129,6 +128,20 @@ function startCountdown() {
 function validateEmail() {
   const e = email.value.trim();
   errors.email = e && !EMAIL_RE.test(e) ? "请输入有效的邮箱地址" : "";
+}
+
+// 发送验证码后用户仍可修改邮箱：一旦改动则旧验证码作废，重置发送/倒计时状态，允许重新发送
+function onEmailInput() {
+  errors.email = "";
+  if (sent.value) {
+    sent.value = false;
+    code.value = "";
+    if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+    countdown.value = 0;
+  }
 }
 
 // 新密码失焦校验
