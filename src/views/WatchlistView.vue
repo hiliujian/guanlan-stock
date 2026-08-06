@@ -53,6 +53,7 @@
 
         <!-- 自选股表格：全屏铺满 + 固定表头 + 名称列固定(横滑不丢) + 横向滚动 -->
         <scroll-view v-if="rows.length" class="wl-grid" scroll-x scroll-y>
+          <view class="wl-rows">
           <view class="wl-thead">
             <view class="th c-name">名称</view>
             <view class="th c-pct" :class="{ active: sortKey === 'pct' }" @click="toggleSort('pct')">
@@ -127,6 +128,7 @@
               <text class="c-main">{{ row.q.loading ? '--' : fmtAmount(row.q.amount) }}</text>
             </view>
           </view>
+          </view>
           <view class="bottom-pad" />
         </scroll-view>
 
@@ -141,11 +143,11 @@
       <view v-if="!rankOpen" class="rp-row" role="button" aria-label="展开榜单" @click="rankOpen = true">
         <text class="rp-top">今日最热</text>
         <view class="rp-main">
-          <text class="rp-name">{{ peek ? peek.name : '--' }}</text>
           <view class="rp-sub" v-if="peek">
             <text class="rp-mkt">{{ peekMkt }}</text>
             <text class="rp-code">{{ peek.code }}</text>
           </view>
+          <text class="rp-name">{{ peek ? peek.name : '--' }}</text>
         </view>
         <view class="rp-right">
           <text class="rp-price" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
@@ -1016,6 +1018,8 @@ function manageGroup(g: string) {
   min-height: 0;
   width: 100%;
   background: var(--bg-2);
+  display: flex;
+  flex-direction: column;
 }
 .wl-thead,
 .tr {
@@ -1037,10 +1041,11 @@ function manageGroup(g: string) {
   justify-content: flex-end;
   height: 70rpx;
   padding: 0 18rpx;
-  font-size: 22rpx;
-  font-weight: 600;
-  color: var(--text-2);
+  font-size: 28rpx;
+  font-weight: 400;
+  color: var(--text);
   text-align: right;
+  cursor: pointer;
 }
 /* 表头名称列：与数据列同为固定列（左上角最高层级），背景同数据行；左内边距与数据行对齐(16rpx) */
 .th.c-name {
@@ -1050,12 +1055,9 @@ function manageGroup(g: string) {
   left: 0;
   z-index: 6;
   background: var(--bg-2);
-  padding: 0 18rpx 0 16rpx;
+  padding: 0 18rpx 0 12rpx;
 }
 /* 表头可排序：箭头指示 + 激活态高亮 */
-.th {
-  cursor: pointer;
-}
 .th-label {
   white-space: nowrap;
 }
@@ -1084,9 +1086,6 @@ function manageGroup(g: string) {
 }
 .th.active .sort-ic .ar.dn.on {
   border-top-color: var(--primary);
-}
-.th.active .th-label {
-  color: var(--text);
 }
 .th.active .sort-ic {
   color: var(--primary);
@@ -1122,9 +1121,9 @@ function manageGroup(g: string) {
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
-  gap: 10rpx;
-  width: 200rpx;
-  padding: 0 14rpx 0 16rpx;
+  gap: 6rpx;
+  width: 190rpx;
+  padding: 0 12rpx 0 12rpx;
   text-align: left;
   background: var(--bg-2);
 }
@@ -1224,9 +1223,13 @@ function manageGroup(g: string) {
   text-align: center;
   padding: 8rpx 0 0;
 }
+/* 内容容器：min-height 撑满滚动区，使底部留白始终钉在滚动区最底部（不随内容浮动产生空白块） */
+.wl-rows {
+  min-height: 100%;
+}
 .bottom-pad {
-  /* 预留收起态卡片顶沿(safe+186rpx) 高度：卡片 fixed 浮于底部 110~186rpx 区域，
-     内容须止于卡片顶沿，末行才不被遮挡，且滚动到底时无多余空白 */
+  /* 固定占位：预留卡片(76rpx)+tabbar(110rpx) 高度，末行不被遮挡，且钉在底部无浮动空白 */
+  flex: none;
   height: calc(env(safe-area-inset-bottom) + 186rpx);
 }
 
@@ -1290,7 +1293,8 @@ function manageGroup(g: string) {
 .rp-name {
   font-size: 22rpx;
   color: var(--text);
-  flex: none;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
