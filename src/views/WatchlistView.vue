@@ -70,18 +70,18 @@
                 </view>
               </view>
             </view>
-            <view v-if="cols.pct" class="th c-pct" :class="{ active: sortKey === 'pct' }" @click="toggleSort('pct')">
-              <text class="th-label">涨跌幅</text>
-              <view class="sort-ic">
-                <view class="ar up" :class="{ on: sortKey === 'pct' && sortDir === 'asc' }" />
-                <view class="ar dn" :class="{ on: sortKey === 'pct' && sortDir === 'desc' }" />
-              </view>
-            </view>
             <view v-if="cols.price" class="th c-price" :class="{ active: sortKey === 'price' }" @click="toggleSort('price')">
               <text class="th-label">最新价</text>
               <view class="sort-ic">
                 <view class="ar up" :class="{ on: sortKey === 'price' && sortDir === 'asc' }" />
                 <view class="ar dn" :class="{ on: sortKey === 'price' && sortDir === 'desc' }" />
+              </view>
+            </view>
+            <view v-if="cols.pct" class="th c-pct" :class="{ active: sortKey === 'pct' }" @click="toggleSort('pct')">
+              <text class="th-label">涨跌幅</text>
+              <view class="sort-ic">
+                <view class="ar up" :class="{ on: sortKey === 'pct' && sortDir === 'asc' }" />
+                <view class="ar dn" :class="{ on: sortKey === 'pct' && sortDir === 'desc' }" />
               </view>
             </view>
             <view v-if="cols.chg" class="th c-chg" :class="{ active: sortKey === 'chg' }" @click="toggleSort('chg')">
@@ -150,13 +150,13 @@
                 </view>
               </view>
             </view>
-            <!-- 涨跌幅（独立数值列，与榜单同款样式） -->
-            <view v-if="cols.pct" class="td c-pct">
-              <text class="st-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPct(row.q.pct) }}</text>
-            </view>
             <!-- 最新价（独立数值列） -->
             <view v-if="cols.price" class="td c-price">
               <text class="st-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPrice(row.q.price) }}</text>
+            </view>
+            <!-- 涨跌幅（独立数值列，与榜单同款样式） -->
+            <view v-if="cols.pct" class="td c-pct">
+              <text class="st-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPct(row.q.pct) }}</text>
             </view>
             <view v-if="cols.chg" class="td c-chg">
               <text class="st-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtSigned(row.q.chg) }}</text>
@@ -211,8 +211,8 @@
               <text class="rp-code">{{ peek ? peek.code : '--' }}</text>
             </view>
             <view class="rp-right">
-              <text class="rp-pct" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
               <text class="rp-price" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
+              <text class="rp-pct" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
             </view>
             <OutlineIcon class="rp-caret" type="chevron-up" :size="20" color="var(--text-2)" />
           </view>
@@ -658,8 +658,8 @@ const rows = computed(() =>
 type ColKey = "pct" | "price" | "chg" | "open" | "amp" | "amt";
 const COLS_KEY = "wl_cols";
 const colDefs: { key: ColKey; label: string }[] = [
-  { key: "pct", label: "涨跌幅" },
   { key: "price", label: "最新价" },
+  { key: "pct", label: "涨跌幅" },
   { key: "chg", label: "涨跌额" },
   { key: "open", label: "今开" },
   { key: "amp", label: "振幅" },
