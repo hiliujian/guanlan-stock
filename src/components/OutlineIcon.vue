@@ -77,6 +77,7 @@ const ICONS: Record<string, { body: string; filled?: boolean }> = {
   },
   fire: {
     body: '<path d="M12 3c1 3 4 4 4 8a4 4 0 0 1-8 0c0-1 .4-2 1-3 .3 1.5 1.5 1.8 1.5 1.8S10 6 12 3z"/><path d="M12 21a6 6 0 0 0 6-6c0-2-1-3-2-4 0 2-2 3-2 3s3 1 3 4a4 4 0 0 1-8 0c0-2 1-3 2-4 0 2-2 3-2 3s3 1 3 4a6 6 0 0 0 0 0z" opacity="0"/>',
+    filled: true,
   },
   star: {
     body: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1.1 6.1L12 17.9 6.5 20.9l1.1-6.1L3.2 9.5l6.1-.9z"/>',
