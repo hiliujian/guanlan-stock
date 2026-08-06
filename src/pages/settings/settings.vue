@@ -463,7 +463,8 @@ function rowStyle(idx: number) {
   text-align: center;
   font-size: 22rpx;
   color: var(--text-2);
-  padding: 30rpx 0 10rpx;
+  line-height: 1.5;
+  padding: 8rpx 0 0;
 }
 .bottom-pad {
   height: 40rpx;

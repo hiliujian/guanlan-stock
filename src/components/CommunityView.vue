@@ -1,14 +1,17 @@
 <template>
-  <view class="community">
-    <!-- 顶部：品牌 + 我的昵称 / 头像（可点击编辑） -->
+  <view class="cm-root">
+    <!-- 顶部：品牌 + 我的昵称 / 头像（可点击编辑），固定不随滚动 -->
     <view class="cm-header">
       <text class="cm-brand">社区</text>
       <view class="cm-me" @click="toggleEdit">
-      <view class="cm-avatar" :style="{ background: myAvatarBg }">{{ myChar }}</view>
+        <view class="cm-avatar" :style="{ background: myAvatarBg }">{{ myChar }}</view>
         <text class="cm-name">{{ myName }}</text>
         <OutlineIcon type="gear" :size="24" color="var(--text-2)" />
       </view>
     </view>
+
+    <!-- 可滚动内容区 -->
+    <scroll-view class="cm-scroll" scroll-y>
 
     <!-- 昵称编辑（未登录时本地编辑；已登录昵称同步到账号资料） -->
     <view v-if="editing" class="cm-edit glass">
@@ -63,6 +66,7 @@
 
     <!-- 底部留白（避免被固定 tabbar 遮挡） -->
     <view class="cm-pad" />
+    </scroll-view>
   </view>
 </template>
 
@@ -210,12 +214,19 @@ defineExpose({ refresh: load });
 </script>
 
 <style scoped>
-.community {
-  min-height: 100%;
+.cm-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.cm-scroll {
+  flex: 1;
+  min-height: 0;
+  height: auto;
 }
 .cm-header {
-  position: sticky;
-  top: 0;
+  flex: none;
+  position: relative;
   z-index: 30;
   display: flex;
   align-items: center;

@@ -1,66 +1,40 @@
 <template>
-  <scroll-view
-    class="view-scroll"
-    scroll-y
-    :refresher-enabled="true"
-    :refresher-triggered="refreshing"
-    @refresherrefresh="onRefresh"
-    @scroll="onScroll"
-  >
+  <view class="wl-page">
+    <!-- 头部：固定不随滚动（与社区一致），移出 scroll-view 以保证 H5 上始终吸顶 -->
+    <view class="cm-header anim-fade-up">
+      <text class="cm-brand">自选</text>
+      <view class="cm-right">
+        <!-- 当前分组内实时涨/跌个数（随行情实时刷新） -->
+        <view class="ud-pill">
+          <view class="ud-item">
+            <OutlineIcon type="arrow-up" :size="18" color="var(--up)" />
+            <text class="ud-num up">{{ upDown.counts.up }}</text>
+          </view>
+          <view class="ud-item">
+            <OutlineIcon type="arrow-down" :size="18" color="var(--down)" />
+            <text class="ud-num down">{{ upDown.counts.down }}</text>
+          </view>
+        </view>
+        <view class="cm-me" role="button" aria-label="分组切换" @click="openGroups">
+          <view class="cm-avatar" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
+            <OutlineIcon type="layers" :size="24" color="#fff" />
+          </view>
+          <text class="cm-name">{{ upDown.currentGroup }}</text>
+          <OutlineIcon type="pulldown" :size="18" color="var(--text-2)" />
+        </view>
+      </view>
+    </view>
+
+    <scroll-view
+      class="view-scroll"
+      scroll-y
+      @scroll="onScroll"
+    >
     <view class="wl">
       <BackgroundFX />
-      <!-- 头部：完全对齐社区顶部样式（品牌标题 + 涨跌计数 + 分组切换 pill） -->
-      <view class="cm-header anim-fade-up">
-        <text class="cm-brand">自选</text>
-        <view class="cm-right">
-          <!-- 当前分组内实时涨/跌个数（随行情实时刷新） -->
-          <view class="ud-pill">
-            <view class="ud-item">
-              <OutlineIcon type="arrow-up" :size="18" color="var(--up)" />
-              <text class="ud-num up">{{ upDown.counts.up }}</text>
-            </view>
-            <view class="ud-item">
-              <OutlineIcon type="arrow-down" :size="18" color="var(--down)" />
-              <text class="ud-num down">{{ upDown.counts.down }}</text>
-            </view>
-          </view>
-          <view class="cm-me" role="button" aria-label="分组切换" @click="openGroups">
-            <view class="cm-avatar" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
-              <OutlineIcon type="layers" :size="24" color="#fff" />
-            </view>
-            <text class="cm-name">{{ upDown.currentGroup }}</text>
-            <OutlineIcon type="pulldown" :size="18" color="var(--text-2)" />
-          </view>
-        </view>
-      </view>
 
-      <!-- 分段：自选 / 今日热榜 / 完整热榜 -->
-      <view class="wl-seg anim-fade-up">
-        <view :class="['seg', viewMode === 'watch' ? 'on' : '']" @click="viewMode = 'watch'">
-          <OutlineIcon type="star" :size="22" :color="viewMode === 'watch' ? '#fff' : 'var(--text-2)'" />
-          <text>自选</text>
-        </view>
-        <view :class="['seg', viewMode === 'today' ? 'on' : '']" @click="viewMode = 'today'">
-          <OutlineIcon type="fire" :size="22" :color="viewMode === 'today' ? '#fff' : 'var(--text-2)'" />
-          <text>今日热榜</text>
-        </view>
-        <view :class="['seg', viewMode === 'all' ? 'on' : '']" @click="viewMode = 'all'">
-          <OutlineIcon type="bars" :size="22" :color="viewMode === 'all' ? '#fff' : 'var(--text-2)'" />
-          <text>完整热榜</text>
-        </view>
-      </view>
-
-      <!-- 热榜模式 -->
-      <RankView
-        v-if="viewMode !== 'watch'"
-        :key="rankKey"
-        :mode="rankMode"
-        @open-market="onOpenMarket"
-      />
-
-      <!-- 自选模式 -->
-      <template v-else>
-        <!-- 价格预警横幅：当前已触发且未忽略的预警（H5 无系统推送，仅应用内提醒） -->
+      <!-- 自选内容 -->
+      <!-- 价格预警横幅：当前已触发且未忽略的预警（H5 无系统推送，仅应用内提醒） -->
         <view v-if="alertHits.length" class="alert-banner anim-fade-up">
           <view v-for="a in alertHits" :key="a.key" class="ab-item glass glass--lg" @click="dismissAlert(a.key)">
             <view class="ab-ic">
@@ -140,11 +114,48 @@
 
         <text v-if="list.length && !rows.length" class="wl-hint">该分组暂无股票</text>
         <text v-if="list.length" class="wl-hint">左滑股票可移除自选</text>
-      </template>
 
-      <view class="bottom-pad" />
+        <view class="bottom-pad" />
+      </view>
+    </scroll-view>
+
+    <!-- 底部卡片：本地展开/收起（向上动效），自身承载完整榜单，无遮罩层。
+         进入页面即渲染（不等数据）；peek 为 null 时显示 -- 占位。 -->
+    <view class="rank-peek" :class="{ open: rankOpen }" :style="rankStyle">
+      <!-- 收起态：一行「今日最热」摘要，点击展开；数据为 null 时显示 -- 占位 -->
+      <view v-if="!rankOpen" class="rp-row" role="button" aria-label="展开榜单" @click="rankOpen = true">
+        <text class="rp-top">今日最热</text>
+        <view class="rp-main">
+          <text class="rp-name">{{ peek ? peek.name : '--' }}</text>
+          <text class="rp-code">{{ peek ? peek.code : '' }}</text>
+        </view>
+        <view class="rp-right">
+          <text class="rp-price" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
+          <text class="rp-pct" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
+        </view>
+        <OutlineIcon class="rp-caret" type="chevron-up" :size="20" color="var(--text-2)" />
+      </view>
+
+      <!-- 展开态：完整榜单（含收起手柄、Tab 切换、榜单列表）-->
+      <view v-if="rankOpen" class="rp-panel">
+        <view
+          class="rs-grip"
+          @touchstart="onGripDown" @touchmove="onGripMove" @touchend="onGripUp" @touchcancel="onGripUp"
+          @mousedown="onGripDown" @mousemove="onGripMove" @mouseup="onGripUp" @mouseleave="onGripUp"
+          @click="onGripTap"
+        >
+          <view class="rs-handle" />
+        </view>
+        <view class="rs-tabs">
+          <text :class="['rs-tab', rankTab === 'today' ? 'on' : '']" @click="rankTab = 'today'">今日热榜</text>
+          <text :class="['rs-tab', rankTab === 'all' ? 'on' : '']" @click="rankTab = 'all'">完整榜单</text>
+        </view>
+        <scroll-view class="rs-body" scroll-y>
+          <RankView :mode="rankTab" @open-market="onSheetOpenMarket" />
+        </scroll-view>
+      </view>
     </view>
-  </scroll-view>
+  </view>
 </template>
 
 <script setup lang="ts">
@@ -155,7 +166,7 @@ import RankView from "@/views/RankView.vue";
 import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, type WatchItem, type PriceAlert } from "@/store/watchlist";
 import { userState } from "@/store/user";
 import { openAuth, goTab } from "@/store/nav";
-import { fetchSnapshot } from "@/api/quote";
+import { LOCAL_STOCKS, fetchSnapshot } from "@/api/quote";
 import { resolveSecid, marketCharFor } from "@/utils/period";
 import { fmtPrice, fmtPct } from "@/utils/format";
 
@@ -164,14 +175,51 @@ const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: s
 const wl = useWatchlist();
 const list = computed(() => wl.items as WatchItem[]);
 
-// 分段：自选 / 今日热榜 / 完整热榜
-const viewMode = ref<"watch" | "today" | "all">("watch");
-// 热榜组件只接受 today / all（watch 分支不会渲染该组件）
-const rankMode = computed<"today" | "all">(() =>
-  viewMode.value === "watch" ? "all" : viewMode.value
-);
-// 下拉刷新时热榜组件重新挂载以刷新行情
-const rankKey = ref(0);
+// 榜单弹层 + 底部露出卡片：默认展示「今日热榜 / 完整榜单」切换
+const rankOpen = ref(false);
+const rankTab = ref<"today" | "all">("today");
+
+// 露出卡片预览数据：当前选中榜单的第 1 名（一行最热股）
+interface PeekRow {
+  code: string;
+  name: string;
+  chg: number;
+  pct: number | null;
+  price: number | null;
+}
+const peek = ref<PeekRow | null>(null);
+
+function marketOfCode(code: string): string {
+  if (/^\d{5}$/.test(code)) return "hk";
+  if (/^6/.test(code)) return "sh";
+  if (/^[03]/.test(code)) return "sz";
+  if (/^[489]/.test(code)) return "bj";
+  return "sh";
+}
+
+async function loadPeek(mode: "today" | "all") {
+  const pool = LOCAL_STOCKS.filter((h) => h.code !== "000300" && h.code !== "510300");
+  const list = await Promise.all(
+    pool.map(async (h) => {
+      const market = marketOfCode(h.code);
+      const secid = resolveSecid(h.code, market as any);
+      try {
+        const s = await fetchSnapshot(secid);
+        return { code: h.code, name: h.name, chg: s.chg, pct: s.pct, price: s.price };
+      } catch {
+        return { code: h.code, name: h.name, chg: 0, pct: null, price: null };
+      }
+    })
+  );
+  const ranked = list.sort((a, b) => (b.pct ?? -Infinity) - (a.pct ?? -Infinity));
+  const top = mode === "today" ? ranked.slice(0, 20) : ranked;
+  peek.value = top[0]
+    ? { code: top[0].code, name: top[0].name, chg: top[0].chg, pct: top[0].pct, price: top[0].price }
+    : null;
+}
+
+// 切换榜单类型时同步刷新露出卡片的预览
+watch(rankTab, (m) => loadPeek(m));
 
 // 分组筛选：默认展示「全部」（含所有分组），通过右上角「分组」切换；分组名从现有自选派生
 const selectedGroup = ref<string>("__all__");
@@ -420,21 +468,12 @@ function moveStockToGroup() {
   });
 }
 
-// 下拉刷新：自选模式复载行情；热榜模式强制重挂载重新拉取
-const refreshing = ref(false);
+// 下拉刷新：自选列表复载行情（由页面级下拉刷新 onPullDownRefresh 触发，见 index.vue）
 async function onRefresh() {
-  refreshing.value = true;
-  try {
-    if (viewMode.value === "watch") {
-      await loadQuotesSafe();
-    } else {
-      rankKey.value += 1;
-      await new Promise((r) => setTimeout(r, 300));
-    }
-  } finally {
-    refreshing.value = false;
-  }
+  await loadQuotesSafe();
 }
+// 暴露给页面级下拉刷新（index.vue onPullDownRefresh 路由到此，避免 scroll-view 与页面级双 loading）
+defineExpose({ refresh: () => onRefresh() });
 
 // 自动刷新心跳：非后台常驻，离开页面即停
 let loadingQuotes = false;
@@ -452,7 +491,7 @@ async function loadQuotesSafe() {
 function startPolling() {
   if (pollTimer) return;
   pollTimer = setInterval(() => {
-    if (needLogin.value || !list.value.length || viewMode.value !== "watch") return;
+    if (needLogin.value || !list.value.length) return;
     loadQuotesSafe();
   }, POLL_MS);
 }
@@ -498,13 +537,62 @@ function pctCls(q: Snap): string {
   return "flat";
 }
 
-// 统一跳转行情页（自选列表与热榜共用）
-function onOpenMarket(p: { code: string; market: string }) {
+// 榜单弹层：点击热榜股票跳转行情页并关闭弹层
+function onSheetOpenMarket(p: { code: string; market: string }) {
+  closeRank();
   emit("open-market", p);
+}
+// 关闭榜单弹层
+function closeRank() {
+  rankOpen.value = false;
+}
+
+// 拖拽缩回：面板顶部手柄区支持「下拉收起」，配合 height/transform 过渡实现平滑动效
+const dragY = ref(0);
+const dragging = ref(false);
+let gripStartY = 0;
+let gripMoved = false;
+const rankStyle = computed(() =>
+  dragging.value
+    ? { transform: `translateX(-50%) translateY(${dragY.value}px)`, transition: "none" }
+    : {}
+);
+function onGripDown(e: any) {
+  dragging.value = true;
+  dragY.value = 0;
+  gripMoved = false;
+  gripStartY = ptY(e);
+}
+function onGripMove(e: any) {
+  if (!dragging.value) return;
+  const dy = ptY(e) - gripStartY;
+  // 仅允许向下拖拽收起；上滑加阻尼，避免误触影响面板内滚动
+  dragY.value = dy < 0 ? dy * 0.2 : dy;
+  if (Math.abs(dragY.value) > 4) gripMoved = true;
+  if (dy > 0 && e.cancelable) {
+    try {
+      e.preventDefault();
+    } catch (_) {}
+  }
+}
+function onGripUp() {
+  if (!dragging.value) return;
+  const dy = dragY.value;
+  dragging.value = false;
+  dragY.value = 0;
+  if (dy > 80) closeRank(); // 下拉超过阈值即收起
+}
+function onGripTap() {
+  if (gripMoved) {
+    gripMoved = false;
+    return; // 拖拽结束后不触发点击收起，避免重复动作
+  }
+  closeRank();
 }
 
 onMounted(() => {
   if (!needLogin.value) loadQuotesSafe();
+  loadPeek(rankTab.value);
 });
 onActivated(() => {
   if (needLogin.value) {
@@ -751,17 +839,25 @@ function manageGroup(g: string) {
 </script>
 
 <style scoped>
-.view-scroll {
+/* 页面 = 顶部固定头部 + 可滚动内容区（flex 纵向布局，头部天然不随滚动） */
+.wl-page {
+  display: flex;
+  flex-direction: column;
   height: 100%;
 }
+.view-scroll {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
 .wl {
-  padding: 4rpx 0 0;
+  padding: 18rpx 0 0;
 }
 
-/* ===== 头部（完全对齐社区 CommunityView） ===== */
+/* ===== 头部（固定不随滚动；与社区 CommunityView 视觉一致） ===== */
 .cm-header {
-  position: sticky;
-  top: 0;
+  flex: none;
+  position: relative;
   z-index: 30;
   display: flex;
   align-items: center;
@@ -834,35 +930,6 @@ function manageGroup(g: string) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* ===== 分段 ===== */
-.wl-seg {
-  display: flex;
-  gap: 10rpx;
-  margin: 16rpx 24rpx 8rpx;
-  padding: 8rpx;
-  border-radius: 999rpx;
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
-}
-.seg {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-  font-size: 25rpx;
-  font-weight: 600;
-  color: var(--text-2);
-  padding: 14rpx 0;
-  border-radius: 999rpx;
-  transition: all 0.2s ease;
-}
-.seg.on {
-  color: #fff;
-  background: var(--primary);
-  box-shadow: var(--shadow-up);
 }
 
 /* ===== 价格预警横幅 ===== */
@@ -968,9 +1035,6 @@ function manageGroup(g: string) {
   box-shadow: var(--shadow);
   max-height: 164rpx;
   transition: max-height 0.3s ease 0.06s;
-}
-.wl-row:first-of-type {
-  margin-top: 12rpx;
 }
 .wl-row.removing {
   max-height: 0;
@@ -1138,9 +1202,157 @@ function manageGroup(g: string) {
   font-size: 22rpx;
   color: var(--text-2);
   text-align: center;
-  padding: 28rpx 0 0;
+  padding: 8rpx 0 0;
 }
 .bottom-pad {
-  height: 140rpx;
+  /* 预留底部被菜单栏 + 今日最热卡片占用的高度，避免内容被卡片遮挡 */
+  height: calc(env(safe-area-inset-bottom) + 216rpx);
+}
+
+/* ===== 底部卡片：本地展开/收起（向上动效），自身承载完整榜单，无遮罩层 ===== */
+.rank-peek {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 110rpx);
+  width: 100%;
+  max-width: 480px;
+  height: 76rpx;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 22rpx 22rpx 0 0;
+  background: var(--tabbar-bg);
+  backdrop-filter: blur(20rpx) saturate(150%);
+  -webkit-backdrop-filter: blur(20rpx) saturate(150%);
+  border-top: 1rpx solid var(--tabbar-border);
+  transition: height var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
+}
+.rank-peek.open {
+  height: 62vh;
+}
+/* 收起态一行 */
+.rp-row {
+  flex: none;
+  height: 76rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  padding: 0 28rpx;
+  cursor: pointer;
+}
+.rp-row:active {
+  background: var(--card-2);
+}
+.rp-caret {
+  flex: none;
+}
+.rp-top {
+  flex: none;
+  font-size: 22rpx;
+  color: var(--text-3);
+}
+.rp-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
+  overflow: hidden;
+}
+.rp-name {
+  font-size: 22rpx;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-code {
+  flex: none;
+  font-size: 22rpx;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.rp-right {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
+}
+.rp-price {
+  font-size: 24rpx;
+  font-variant-numeric: tabular-nums;
+}
+.rp-price.up,
+.rp-pct.up {
+  color: var(--up);
+}
+.rp-price.down,
+.rp-pct.down {
+  color: var(--down);
+}
+.rp-pct {
+  flex: none;
+  font-size: 24rpx;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== 展开态：榜单面板 ===== */
+.rp-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 顶部拖拽区：比视觉手柄更大，便于下拉收起；touch-action:none 保证手势用于拖拽而非滚动 */
+.rs-grip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44rpx;
+  cursor: grab;
+  touch-action: none;
+}
+.rs-grip:active {
+  cursor: grabbing;
+}
+.rs-handle {
+  width: 68rpx;
+  height: 8rpx;
+  border-radius: 999rpx;
+  background: var(--card-2);
+}
+.rs-tabs {
+  flex: none;
+  display: flex;
+  gap: 10rpx;
+  margin: 8rpx 24rpx 6rpx;
+  padding: 8rpx;
+  border-radius: 999rpx;
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
+}
+.rs-tab {
+  flex: 1;
+  text-align: center;
+  font-size: 25rpx;
+  font-weight: 600;
+  color: var(--text-2);
+  padding: 14rpx 0;
+  border-radius: 999rpx;
+  transition: all 0.2s ease;
+}
+.rs-tab.on {
+  color: #fff;
+  background: var(--primary);
+  box-shadow: var(--shadow-up);
+}
+.rs-body {
+  flex: 1;
+  min-height: 0;
+  padding: 4rpx 0 0;
 }
 </style>

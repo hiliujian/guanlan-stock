@@ -473,7 +473,7 @@ function onMenu(act: MenuItem["act"]) {
   background: rgba(229, 72, 77, 0.12);
 }
 .pf-hint {
-  margin-top: 16rpx;
+  padding: 8rpx 0 0;
   text-align: center;
   font-size: 24rpx;
   color: var(--text-2);

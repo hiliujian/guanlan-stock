@@ -68,8 +68,15 @@
       <view class="mk-body">
       <!-- 空态 -->
       <view v-if="!result" class="empty anim-fade-up">
-        <OutlineIcon type="bars" :size="96" color="var(--border)" />
-        <text class="empty-t">输入代码或名称，搜索查看智能分析</text>
+        <view class="empty-card glass">
+          <view class="empty-ic">
+            <OutlineIcon type="search" :size="54" color="var(--primary)" />
+          </view>
+          <text class="empty-t">开始智能分析</text>
+          <text class="empty-s">输入代码或名称，查看行情、K 线与 AI 研判</text>
+          <view class="empty-divider" />
+          <HotSearchPanel @open="pickOne" />
+        </view>
       </view>
 
       <!-- 结果 -->
@@ -77,7 +84,7 @@
         <!-- 头部：名称 + 价格 + 自选星标（右上角） -->
         <view class="glass quote-head anim-fade-up">
           <view class="qh-star" :class="{ on: watched }" @click="toggleWatch">
-            <OutlineIcon :type="watched ? 'star-filled' : 'star'" :size="52" :color="watched ? 'var(--up)' : 'var(--text-2)'" />
+            <OutlineIcon type="star" :size="30" :color="watched ? 'var(--primary)' : 'var(--text-3)'" />
           </view>
           <view class="qh-left">
             <text class="qh-name">{{ name }}</text>
@@ -112,7 +119,7 @@
 
       </block>
 
-      <view class="risk-note">
+      <view v-if="result" class="risk-note">
         <OutlineIcon type="info" :size="22" color="var(--text-2)" />
         <text>以上分析仅供参考，不构成任何投资建议</text>
       </view>
@@ -133,6 +140,8 @@ import AnalysisCard from "@/components/AnalysisCard.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import ReportView from "@/components/ReportView.vue";
 import KlineCard from "@/components/KlineCard.vue";
+import HotSearchPanel from "@/components/HotSearchPanel.vue";
+import { recordSearch } from "@/api/hot";
 import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, type SearchHit, type QuoteBundle, type NewsItem } from "@/api/quote";
 import { getMarketStatus } from "@/utils/marketStatus";
 import {
@@ -150,6 +159,13 @@ import { useUser } from "@/store/user";
 import { navState, openAuth } from "@/store/nav";
 
 const code = ref("");
+
+// 点击热门股票（HotSearchPanel 触达）：填入代码并触发智能分析
+function pickOne(s: { code: string; name?: string }) {
+  code.value = s.code;
+  chosen.value = null;
+  run();
+}
 const period = ref<PeriodKey>("d");
 const loading = ref(false); // 仅「搜索」动作使用，控制搜索按钮的「分析中」态（点击后拉数据+算指标+出报告）
 const switching = ref(false); // 仅「切换周期」使用，避免误占用搜索按钮的加载态
@@ -319,7 +335,7 @@ function loadLastViewed(): boolean {
     period.value = v.period || "d";
     code.value = v.code;
     chosen.value = { code: v.code, name: v.name || "" };
-    run(v.market || "auto"); // 自动恢复历史查看
+    run(v.market || "auto", false); // 自动恢复历史查看，不计入今日热搜
     return true;
   } catch {
     return false;
@@ -442,7 +458,7 @@ function cardTitle(c: MarketCardMeta): string {
 // 分析报告独立成卡），无需再折叠。周期切换轴已并入「行情图」卡片内部（见 KlineCard）。
 const displayCards = visibleMarketCards;
 
-async function run(forceMarket?: Market) {
+async function run(forceMarket?: Market, track = true) {
   const kw = code.value.trim();
   if (!kw) {
     uni.showToast({ title: "请输入股票代码或名称", icon: "none" });
@@ -484,6 +500,7 @@ async function run(forceMarket?: Market) {
     // 联想选择/历史记录/代码，避免头部股票名变空白。
     name.value = b.name || chosen.value?.name || name.value || curCode.value;
     pushHistory({ code: curCode.value, name: name.value });
+    if (track) recordSearch(curCode.value, name.value); // 用户主动搜索计入今日热搜
     preClose.value = b.preClose;
     realtime.value = b.realtime;
     // 关联资讯：先做「多维严格关联 + 时效（最近3天）」过滤，所有 scope 统一校验相关性，
@@ -509,10 +526,9 @@ async function switchPeriod(p: PeriodKey) {
   if (!secid.value) return;
   switching.value = true;
   try {
-    if (!bundle.value) {
+if (!bundle.value) {
       // 极端情况（缓存未建立），回退到单次预取（内部调用）
-      await run(undefined);
-      return;
+      await run(undefined, false);
     }
     applyPeriod(p); // 纯本地，瞬时切换，无联网等待
     saveLastViewed();
@@ -947,15 +963,52 @@ defineExpose({ refresh: () => refreshFull() });
 
 .empty {
   display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40rpx 24rpx 0;
+}
+.empty-card {
+  width: 100%;
+  padding: 48rpx 34rpx 38rpx;
+  display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16rpx;
-  padding: 120rpx 0;
+}
+.empty-ic {
+  width: 108rpx;
+  height: 108rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-soft);
+  margin-bottom: 26rpx;
 }
 .empty-t {
-  font-size: 30rpx;
+  font-size: 34rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+.empty-s {
+  margin-top: 14rpx;
+  font-size: 25rpx;
   color: var(--text-2);
-  font-weight: 500;
+  line-height: 1.6;
+  text-align: center;
+}
+.empty-divider {
+  width: 56rpx;
+  height: 6rpx;
+  border-radius: 999rpx;
+  background: var(--primary);
+  margin: 34rpx 0 24rpx;
+}
+.empty-divider {
+  width: 56rpx;
+  height: 6rpx;
+  border-radius: 999rpx;
+  background: var(--primary);
+  margin: 34rpx 0 0;
 }
 .quote-head {
   position: relative;
@@ -992,25 +1045,27 @@ defineExpose({ refresh: () => refreshFull() });
   background: var(--card-2);
   border: 1rpx solid var(--border);
 }
-/* 自选星标：相对卡片垂直居中（右侧），纯图标、无背景色块；
-   加入自选时仅改变星星图标颜色（灰 -> 绿），不渲染背景 */
+/* 自选星标：与自选页热搜榜单图标一致——描边星星 + 圆形底，加入自选时底变 primary-soft */
 .qh-star {
   position: absolute;
   top: 50%;
   right: 16rpx;
   transform: translateY(-50%);
   /* 触摸目标 ≥44px（固定 px 保证任意屏不缩水），图标在圈内居中 */
-  width: 44px;
-  height: 44px;
+  width: 52rpx;
+  height: 52rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: transparent;
-  transition: transform 0.12s ease;
+  background: var(--card-2);
+  transition: transform 0.12s ease, background 0.15s ease;
 }
 .qh-star:active {
   transform: translateY(-50%) scale(0.9);
+}
+.qh-star.on {
+  background: var(--primary-soft);
 }
 .qh-right {
   text-align: right;

@@ -1,5 +1,5 @@
 <template>
-  <view class="app-shell">
+  <view class="app-shell tab-host">
     <transition name="tab-fade" mode="out-in">
       <keep-alive>
         <component
@@ -99,12 +99,13 @@ onMounted(() => {
 
 // 页面级下拉刷新（index 是注册 page，可触发 onPullDownRefresh）：
 // - 行情：路由到 MarketView.refresh()（全量刷新图表+资讯）
-// - 自选：自选用内部 scroll-view 的 refresher 自行处理，这里跳过避免双触发
+// - 自选：路由到 WatchlistView.refresh()（复载自选行情；自选不再用 scroll-view refresher，避免双 loading）
 // - 社区：路由到 CommunityView.refresh()（重载帖子列表）
 // - 我的：无刷新目标，直接收尾
 onPullDownRefresh(async () => {
   try {
     if (currentKey.value === "market" && tabRef.value?.refresh) await tabRef.value.refresh();
+    else if (currentKey.value === "watch" && tabRef.value?.refresh) await tabRef.value.refresh();
     else if (currentKey.value === "community" && tabRef.value?.refresh) await tabRef.value.refresh();
   } finally {
     uni.stopPullDownRefresh();

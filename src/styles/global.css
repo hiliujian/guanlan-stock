@@ -178,6 +178,14 @@ textarea {
   padding-top: env(safe-area-inset-top, 0px);
 }
 
+/* 主 Tab 宿主（pages/index）：固定视口高度，各 Tab 内部各自滚动，
+   使顶部栏真正吸顶，而不是随整页滚动被卷走。 */
+.tab-host {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
 /* 关掉 uni-app H5 原生导航条（.uni-page-head 仅 H5 运行时存在，小程序为原生条不受影响） */
 .uni-page-head {
   display: none !important;
@@ -682,12 +690,12 @@ textarea {
   color: var(--text-2);
   margin-top: 12rpx;
 }
-/* 提示行（如：验证已失效，重新验证） */
+/* 提示行（如：验证已失效，重新验证）——顶距沿用全局标准（与行情页 risk-note 一致） */
 .auth-hint {
-  margin-top: 18rpx;
+  padding: 8rpx 0 0;
   font-size: 22rpx;
   color: var(--text-2);
-  line-height: 1.6;
+  line-height: 1.5;
   text-align: center;
 }
 

@@ -54,7 +54,6 @@ function labelColor(t: TabDef) {
   backdrop-filter: blur(20rpx) saturate(150%);
   -webkit-backdrop-filter: blur(20rpx) saturate(150%);
   border-top: 1rpx solid var(--tabbar-border);
-  box-shadow: var(--tabbar-shadow);
   display: flex;
   z-index: 900;
 }

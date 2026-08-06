@@ -270,10 +270,11 @@ npx supabase link --project-ref <ref>
 
 ```bash
 npx supabase functions deploy guanlan-quote-proxy
+npx supabase functions deploy guanlan-hot-searches
 ```
 
 - **不需要 Docker**（只有本地模拟 `supabase start` 才要 Docker，云端部署不用）。
-- **不需要设密钥**（本函数直连东方财富，代码里没用 `Deno.env.get`，所以无需 `supabase secrets set`）。
+- **不需要设密钥**（这两个函数直连供应链源 / Supabase RPC，代码里未用 `Deno.env.get` 自定义 secret，所以无需 `supabase secrets set`）。
 - 部署成功后，函数地址就是：
   `https://<ref>.supabase.co/functions/v1/guanlan-quote-proxy`
 - 以后每加一个新函数，把 `guanlan-quote-proxy` 换成新函数目录名再跑一次即可。
@@ -313,4 +314,17 @@ npx supabase secrets set EM_API_KEY=你的密钥
 - **curl 返回 401/403** → 函数默认公开（匿名可调用）；当前不用管，若以后在函数里加了鉴权再另行处理。
 
 > 提示：建表（第二~四步）与部署 Edge Function（本节）彼此独立——表没建好也能先部署函数，函数没部署也不影响表与登录/社区功能。建议顺序：先确认表已建（第七节按需重建）→ 再部署 `guanlan-quote-proxy` → 最后跑验证清单。
+
+---
+
+## 八·补 今日热搜（热门股票快速入口）
+
+行情页空态下方的「今日热门」榜单，数据来自独立后端接口 `guanlan-hot-searches`（Edge Function）：
+- **只统计当日搜索次数，不叠加历史**；「每日零点重置」由底层 `hot_search_daily` 表
+  「日期+代码」复合主键实现 —— 榜单只查当日，旧日记录自动失效，无需定时清数。
+- 表与 RPC 已包含在 `deploy.sql` §101（图形化重建 whole 库时一并生效；老库可单独粘贴该 §101 段）。
+  函数部署见「八、步骤 3」。
+- 前端：`src/api/hot.ts`（`fetchHotSearches` / `recordSearch`）、组件 `src/components/HotSearchPanel.vue`。
+  未配置后端或接口失败时前端自动降级为空列表（面板隐藏），不影响搜索主流程。
+- 触发记录时机：用户在行情页实际「搜索 / 联想选中 / 点击热门」时计一次；自动恢复上次查看不计。
 

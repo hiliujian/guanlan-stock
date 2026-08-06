@@ -652,3 +652,81 @@ select u.id from auth.users u
 where not exists (select 1 from public.profiles p where p.id = u.id)
 on conflict (id) do nothing;
 
+
+-- ╔══════════════════════════════════════════════════════════════╗
+-- ║ 101. 今日热门搜索（热度榜单 · 每日零点自动重置）                    ║
+-- ╚══════════════════════════════════════════════════════════════╝
+-- 需求：展示「今日搜索次数最多」的股票榜单，只统计当日、不叠加历史。
+-- 方案：以「日期 day + 代码 code」为复合主键按日分桶，榜单只查 day = 当前日期，
+--       「每日零点重置」即由新一天自动开启新统计实现——旧日记录不再进入榜单，
+--       无需任务在零点清空计数；reset_hot_searches() 可选清理过期行控表体量。
+-- 调用：前端经 Edge Function guanlan-hot-searches（REST /rest/v1/rpc/* + anon key）
+--       记录一次搜索（log_stock_search）或读取今日榜单（get_hot_searches）。
+create table if not exists public.hot_search_daily (
+  day        date        not null default current_date,
+  code       text        not null,
+  name       text        not null default '',
+  count      bigint      not null default 1 check (count >= 0),
+  updated_at timestamptz not null default now(),
+  primary key (day, code)
+);
+create index if not exists hot_search_daily_day_idx on public.hot_search_daily (day);
+
+-- 底层表不对外开放（读写都只经下方 security definer RPC），杜绝客户端伪造或越权读。
+alter table public.hot_search_daily enable row level security;
+drop policy if exists "hot_search_forbid_select" on public.hot_search_daily;
+create policy "hot_search_forbid_select" on public.hot_search_daily for select using (false);
+drop policy if exists "hot_search_forbid_insert" on public.hot_search_daily;
+create policy "hot_search_forbid_insert" on public.hot_search_daily for insert with check (false);
+drop policy if exists "hot_search_forbid_update" on public.hot_search_daily;
+create policy "hot_search_forbid_update" on public.hot_search_daily for update using (false);
+drop policy if exists "hot_search_forbid_delete" on public.hot_search_daily;
+create policy "hot_search_forbid_delete" on public.hot_search_daily for delete using (false);
+
+-- 记录一次搜索：当日存在则计数 +1，否则插入计数 1（超当日其余行失效）
+create or replace function public.log_stock_search(p_code text, p_name text)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.hot_search_daily (day, code, name, count)
+  values (current_date, p_code, coalesce(nullif(p_name, ''), ''), 1)
+  on conflict (day, code) do update
+    set count      = public.hot_search_daily.count + 1,
+        name       = case
+                       when public.hot_search_daily.name = '' then excluded.name
+                       else public.hot_search_daily.name
+                     end,
+        updated_at = now();
+end;
+$$;
+grant execute on function public.log_stock_search(text, text) to anon, authenticated;
+
+-- 取今日榜单：按搜索次数降序、最近更新优先；limit 自动夹在 [1, 200]
+create or replace function public.get_hot_searches(p_limit int default 10)
+returns table (code text, name text, count bigint)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  return query
+    select h.code, h.name, h.count
+    from public.hot_search_daily h
+    where h.day = current_date
+    order by h.count desc, h.updated_at desc, h.code
+    limit greatest(1, least(coalesce(p_limit, 10), 200));
+end;
+$$;
+grant execute on function public.get_hot_searches(int) to anon, authenticated;
+
+-- 清理过期日数据（返回被删行数）；可挂 pg_cron 每日凌晨执行，控表体量非必需
+create or replace function public.reset_hot_searches()
+returns integer
+language plpgsql security definer set search_path = public as $$
+declare
+  v_rows integer;
+begin
+  delete from public.hot_search_daily where day <> current_date;
+  get diagnostics v_rows = row_count;
+  return v_rows;
+end;
+$$;
+grant execute on function public.reset_hot_searches() to anon, authenticated;
+

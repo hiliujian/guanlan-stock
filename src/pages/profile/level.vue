@@ -429,12 +429,11 @@ function back() {
 }
 
 .lv-foot {
-  margin-top: 24rpx;
+  padding: 8rpx 0 0;
   text-align: center;
-  font-size: 21rpx;
+  font-size: 22rpx;
   color: var(--text-2);
-  line-height: 1.6;
-  padding: 0 20rpx;
+  line-height: 1.5;
 }
 .bottom-pad {
   height: 80rpx;

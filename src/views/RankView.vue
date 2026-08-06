@@ -42,15 +42,8 @@
             <OutlineIcon type="star" :size="30" :color="watched(r) ? 'var(--primary)' : 'var(--text-3)'" />
           </view>
         </view>
-
-        <view class="rk-foot">
-          <text class="cfoot" v-if="mode === 'today'">今日热榜 · 按实时涨跌幅排序，取前 {{ rows.length }} 名</text>
-          <text class="cfoot" v-else>完整热榜 · 全部关注股票的实时涨跌幅排行</text>
-        </view>
       </view>
     </template>
-
-    <view class="bottom-pad" />
   </view>
 </template>
 
@@ -378,16 +371,6 @@ function openRow(r: { code: string; market: string }) {
   background: var(--primary-soft);
 }
 
-.rk-foot {
-  display: flex;
-  justify-content: center;
-  padding: 12rpx 0 0;
-}
-.cfoot {
-  font-size: 22rpx;
-  color: var(--text-2);
-}
-
 .rk-empty {
   display: flex;
   flex-direction: column;
@@ -406,8 +389,5 @@ function openRow(r: { code: string; market: string }) {
   color: var(--text-2);
   text-align: center;
   line-height: 1.6;
-}
-.bottom-pad {
-  height: 140rpx;
 }
 </style>
