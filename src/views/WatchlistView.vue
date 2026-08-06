@@ -1033,13 +1033,16 @@ function manageGroup(g: string) {
   top: 0;
   z-index: 5;
   background: var(--bg-2);
+  /* 表头上下边框，样式与底部今日最热卡片边框一致（1rpx solid var(--tabbar-border)） */
+  border-top: 1rpx solid var(--tabbar-border);
+  border-bottom: 1rpx solid var(--tabbar-border);
 }
 .th {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  height: 70rpx;
+  height: 84rpx;
   padding: 0 18rpx;
   font-size: 28rpx;
   font-weight: 400;
@@ -1224,12 +1227,12 @@ function manageGroup(g: string) {
   padding: 8rpx 0 0;
 }
 /* 内容容器：min-height 撑满滚动区，使底部留白始终钉在滚动区最底部（不随内容浮动产生空白块） */
-.wl-rows {
-  min-height: 100%;
-}
+/* 内容包裹层 .wl-rows 不再设置 min-height:100%，避免内容不足一屏时拉伸出“行尾→卡片”间的空白 */
 .bottom-pad {
-  /* 固定占位：预留卡片(76rpx)+tabbar(110rpx) 高度，末行不被遮挡，且钉在底部无浮动空白 */
+  /* 固定占位：预留卡片(76rpx)+tabbar(110rpx) 高度，末行不被遮挡；
+     margin-top:auto 使内容不足一屏时占位退到最底(被卡片遮挡)，内容超屏时在末尾预留卡片高度 */
   flex: none;
+  margin-top: auto;
   height: calc(env(safe-area-inset-bottom) + 186rpx);
 }
 
