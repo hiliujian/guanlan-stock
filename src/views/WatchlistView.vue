@@ -129,8 +129,9 @@
             </view>
           </view>
           </view>
-          <!-- 底部占位：高度=卡片高度(76rpx)+安全区；滚到底时末行紧贴卡片顶沿、无空白；
-               内容不足一屏时该占位退到列表末尾、被固定卡片覆盖，不露空白 -->
+          <!-- 底部占位：仅占位「卡片自身高度(76rpx)」即可。卡片固定在菜单栏上方，
+               其下方 110rpx 区域本就被固定菜单栏遮挡，无需再预留；占位过高会在列表
+               未填满一屏时于末行与卡片之间露出大片空白。滚到底时末行紧贴卡片顶沿。 -->
           <view class="bottom-pad" />
         </scroll-view>
 
@@ -139,11 +140,8 @@
           <view v-if="!rankOpen" class="rp-row" role="button" aria-label="展开榜单" @click="rankOpen = true">
             <text class="rp-top">今日最热</text>
             <view class="rp-main">
-              <view class="rp-sub" v-if="peek">
-                <text class="rp-mkt">{{ peekMkt }}</text>
-                <text class="rp-code">{{ peek.code }}</text>
-              </view>
               <text class="rp-name">{{ peek ? peek.name : '--' }}</text>
+              <text class="rp-code">{{ peek ? peek.code : '--' }}</text>
             </view>
             <view class="rp-right">
               <text class="rp-price" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
@@ -214,9 +212,6 @@ interface PeekRow {
   price: number | null;
 }
 const peek = ref<PeekRow | null>(null);
-// 今日最热卡片：根据代码推断市场徽标(沪/深/港/北)
-const peekMkt = computed(() => (peek.value ? marketCharFor(peek.value.code) : ""));
-
 function marketOfCode(code: string): string {
   if (/^\d{5}$/.test(code)) return "hk";
   if (/^6/.test(code)) return "sh";
@@ -1019,6 +1014,11 @@ function manageGroup(g: string) {
   width: max-content;
   min-width: 100%;
 }
+/* 列表不足一屏时，用 auto 外边距把内容整体顶到底部，使底部占位收拢到固定卡片下方，
+   末行与卡片之间不再露出空白（内容超过一屏时 auto 边距归零，正常从上往下滚动） */
+.wl-rows {
+  margin-top: auto;
+}
 .wl-thead {
   position: sticky;
   top: 0;
@@ -1245,8 +1245,10 @@ function manageGroup(g: string) {
 .rank-peek.max {
   height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
 }
-/* 底部占位：高度=卡片高度(76rpx)+安全区；内容滚到底时末行紧贴卡片顶沿，无空白；
-   内容不足一屏时该占位退到列表末尾、被固定卡片覆盖，不露空白 */
+/* 底部占位：高度须为「卡片自身 76rpx + 菜单栏 110rpx + 安全区」，因为卡片固定
+   于菜单栏上方，距视口底恰为 186rpx+safe；滚到底时末行须停在此高度之上才不被卡片遮挡。
+   列表不足一屏时，靠 .wl-rows 的 margin-top:auto 把内容整体顶到底部、占位收拢到卡片下方，
+   从而末行与卡片之间不会露出空白（之前空白的根因是内容被顶对齐、占位成了可见空块）。 */
 .bottom-pad {
   flex: none;
   height: calc(env(safe-area-inset-bottom) + 186rpx);
@@ -1281,31 +1283,16 @@ function manageGroup(g: string) {
   gap: 10rpx;
   overflow: hidden;
 }
+/* 代码紧挨名称显示（不再被 flex:1 推到最右）；名称超长时省略号截断 */
 .rp-name {
+  flex: none;
+  max-width: 220rpx;
+  min-width: 0;
   font-size: 22rpx;
   color: var(--text);
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.rp-sub {
-  display: flex;
-  align-items: center;
-  gap: 6rpx;
-  min-width: 0;
-  overflow: hidden;
-}
-.rp-mkt {
-  flex: none;
-  font-size: 18rpx;
-  line-height: 1;
-  padding: 2rpx 6rpx;
-  border-radius: 6rpx;
-  color: var(--text-2);
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
 }
 .rp-code {
   flex: none;
