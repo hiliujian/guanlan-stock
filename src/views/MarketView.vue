@@ -722,7 +722,7 @@ defineExpose({ refresh: () => refreshFull() });
   gap: 14rpx;
   min-width: 0;
 }
-/* 市场状态标识：开盘中(绿) / 午间休市(橙) / 未开盘·已收市·周末休市(灰) */
+/* 市场状态标识：开盘中(绿) / 午间休市(橙) / 未开盘·已收市·周末休市·节假日休市·临时休市(灰) */
 .mk-status {
   display: flex;
   align-items: center;

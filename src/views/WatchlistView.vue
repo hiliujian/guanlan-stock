@@ -244,6 +244,7 @@ import { openAuth, goTab } from "@/store/nav";
 import { fetchSnapshot } from "@/api/quote";
 import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
+import { getMarketStatus } from "@/utils/marketStatus";
 import { fmtPrice, fmtPct, fmtSigned, fmtAmount } from "@/utils/format";
 
 const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
@@ -571,6 +572,8 @@ function startPolling() {
   if (pollTimer) return;
   pollTimer = setInterval(() => {
     if (needLogin.value || !list.value.length) return;
+    // 休市期间个股数据不变：跳过自动刷新（首次加载已完成），开市后下一拍自动恢复
+    if (!getMarketStatus().open) return;
     loadQuotesSafe();
   }, POLL_MS);
 }
