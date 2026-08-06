@@ -64,7 +64,7 @@
                   aria-label="拖拽排序"
                   @click="toggleReorder"
                 >
-                  <OutlineIcon type="reorder" :size="26" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
+                  <OutlineIcon type="grip" :size="26" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
                 </view>
                 <view class="th-ic" role="button" aria-label="列设置" @click="showCols = true">
                   <OutlineIcon type="columns" :size="26" :color="'var(--text-3)'" />
@@ -143,7 +143,6 @@
               >
                 <OutlineIcon type="grip" :size="30" :color="dragKey === keyOf(row.it) ? 'var(--primary)' : 'var(--text-3)'" />
               </view>
-              <view class="al-dot" :class="{ on: hasAlert(row.it) }" @click.stop="editAlert(row.it)" />
               <view class="t-block">
                 <text class="t-name">{{ row.it.name || row.it.code }}</text>
                 <view class="t-sub">
@@ -335,11 +334,6 @@ const keyOf = (it: WatchItem) => `${it.code}|${it.market}`;
 const prevPrices = reactive<Record<string, number>>({});
 const dismissed = reactive<Set<string>>(new Set());
 const alertHits = ref<{ key: string; code: string; name: string; text: string }[]>([]);
-
-function hasAlert(it: WatchItem): boolean {
-  const a = it.alerts;
-  return !!(a && (a.above != null || a.below != null));
-}
 
 // 自选股实时行情：批量拉取快照（与行情页同口径），填充现价与涨跌幅，并检测价格预警穿越
 async function loadQuotes() {
@@ -764,10 +758,10 @@ const upDown = computed(() => {
 });
 
 function pctCls(q: Snap): string {
-  if (q.loading) return "flat";
-  if (q.chg > 0) return "up";
-  if (q.chg < 0) return "down";
-  return "flat";
+  if (q.loading) return "st-flat";
+  if (q.chg > 0) return "st-up";
+  if (q.chg < 0) return "st-down";
+  return "st-flat";
 }
 // 振幅%（(最高-最低)/昨收）
 function ampPct(q: Snap): string {
@@ -1371,23 +1365,6 @@ function manageGroup(g: string) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 预警点（整理模式下跟随拖拽手柄内联排列，不与手柄重叠） */
-.al-dot {
-  position: absolute;
-  left: 4rpx;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 12rpx;
-  height: 12rpx;
-  border-radius: 50%;
-  border: 1rpx solid var(--border);
-  background: transparent;
-}
-.al-dot.on {
-  background: var(--primary);
-  border-color: var(--primary);
-}
-
 /* ===== 底部卡片：固定常驻于菜单栏上方(始终可见)，本地展开/收起，无遮罩层 ===== */
 /* 仅 border-top 与表格表头边框同款，无阴影 */
 .rank-peek {
@@ -1573,14 +1550,7 @@ function manageGroup(g: string) {
   justify-content: center;
   width: 44rpx;
   height: 44rpx;
-  border-radius: 10rpx;
   cursor: pointer;
-}
-.th-ic:active {
-  background: var(--card-2);
-}
-.th-ic.on {
-  background: var(--primary-soft);
 }
 
 /* ===== 行内拖动手柄（常驻，仅单分组视图显示） ===== */
@@ -1592,24 +1562,11 @@ function manageGroup(g: string) {
   width: 40rpx;
   height: 56rpx;
   margin-left: -6rpx;
-  border-radius: 10rpx;
   cursor: grab;
   touch-action: none;
 }
 .drag-handle:active {
-  background: var(--card-2);
   cursor: grabbing;
-}
-.drag-handle.on {
-  background: var(--primary-soft);
-}
-/* 整理模式下：拖拽手柄在最前，预警点改为内联（不再绝对定位），避免与手柄重叠 */
-.c-name.has-handle .al-dot {
-  position: relative;
-  left: auto;
-  top: auto;
-  transform: none;
-  flex: none;
 }
 .tr.reordering .td {
   cursor: grabbing;
