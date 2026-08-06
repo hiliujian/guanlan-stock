@@ -54,22 +54,42 @@
         <!-- 自选股表格：全屏铺满 + 固定表头 + 名称列固定(横滑不丢) + 横向滚动 -->
         <scroll-view v-if="rows.length" class="wl-grid" scroll-x scroll-y>
           <view class="wl-thead">
-            <text class="th c-name">名称</text>
-            <text class="th c-pct" :class="{ active: sortKey === 'pct' }" @click="toggleSort('pct')">
-              <text class="th-label">涨跌幅</text><text class="sort-ic">{{ sortKey === 'pct' ? (sortDir === 'desc' ? '▼' : '▲') : '↕' }}</text>
-            </text>
-            <text class="th c-chg" :class="{ active: sortKey === 'chg' }" @click="toggleSort('chg')">
-              <text class="th-label">涨跌额</text><text class="sort-ic">{{ sortKey === 'chg' ? (sortDir === 'desc' ? '▼' : '▲') : '↕' }}</text>
-            </text>
-            <text class="th c-open" :class="{ active: sortKey === 'open' }" @click="toggleSort('open')">
-              <text class="th-label">今开</text><text class="sort-ic">{{ sortKey === 'open' ? (sortDir === 'desc' ? '▼' : '▲') : '↕' }}</text>
-            </text>
-            <text class="th c-amp" :class="{ active: sortKey === 'amp' }" @click="toggleSort('amp')">
-              <text class="th-label">振幅</text><text class="sort-ic">{{ sortKey === 'amp' ? (sortDir === 'desc' ? '▼' : '▲') : '↕' }}</text>
-            </text>
-            <text class="th c-amt" :class="{ active: sortKey === 'amt' }" @click="toggleSort('amt')">
-              <text class="th-label">成交额</text><text class="sort-ic">{{ sortKey === 'amt' ? (sortDir === 'desc' ? '▼' : '▲') : '↕' }}</text>
-            </text>
+            <view class="th c-name">名称</view>
+            <view class="th c-pct" :class="{ active: sortKey === 'pct' }" @click="toggleSort('pct')">
+              <text class="th-label">涨跌幅</text>
+              <view class="sort-ic">
+                <view class="ar up" :class="{ on: sortKey === 'pct' && sortDir === 'asc' }" />
+                <view class="ar dn" :class="{ on: sortKey === 'pct' && sortDir === 'desc' }" />
+              </view>
+            </view>
+            <view class="th c-chg" :class="{ active: sortKey === 'chg' }" @click="toggleSort('chg')">
+              <text class="th-label">涨跌额</text>
+              <view class="sort-ic">
+                <view class="ar up" :class="{ on: sortKey === 'chg' && sortDir === 'asc' }" />
+                <view class="ar dn" :class="{ on: sortKey === 'chg' && sortDir === 'desc' }" />
+              </view>
+            </view>
+            <view class="th c-open" :class="{ active: sortKey === 'open' }" @click="toggleSort('open')">
+              <text class="th-label">今开</text>
+              <view class="sort-ic">
+                <view class="ar up" :class="{ on: sortKey === 'open' && sortDir === 'asc' }" />
+                <view class="ar dn" :class="{ on: sortKey === 'open' && sortDir === 'desc' }" />
+              </view>
+            </view>
+            <view class="th c-amp" :class="{ active: sortKey === 'amp' }" @click="toggleSort('amp')">
+              <text class="th-label">振幅</text>
+              <view class="sort-ic">
+                <view class="ar up" :class="{ on: sortKey === 'amp' && sortDir === 'asc' }" />
+                <view class="ar dn" :class="{ on: sortKey === 'amp' && sortDir === 'desc' }" />
+              </view>
+            </view>
+            <view class="th c-amt" :class="{ active: sortKey === 'amt' }" @click="toggleSort('amt')">
+              <text class="th-label">成交额</text>
+              <view class="sort-ic">
+                <view class="ar up" :class="{ on: sortKey === 'amt' && sortDir === 'asc' }" />
+                <view class="ar dn" :class="{ on: sortKey === 'amt' && sortDir === 'desc' }" />
+              </view>
+            </view>
           </view>
           <view
             v-for="row in displayRows"
@@ -1022,7 +1042,7 @@ function manageGroup(g: string) {
   color: var(--text-2);
   text-align: right;
 }
-/* 表头名称列：与数据列同为固定列（左上角最高层级），背景同数据行 */
+/* 表头名称列：与数据列同为固定列（左上角最高层级），背景同数据行；左内边距与数据行对齐(16rpx) */
 .th.c-name {
   justify-content: flex-start;
   text-align: left;
@@ -1030,6 +1050,7 @@ function manageGroup(g: string) {
   left: 0;
   z-index: 6;
   background: var(--bg-2);
+  padding: 0 18rpx 0 16rpx;
 }
 /* 表头可排序：箭头指示 + 激活态高亮 */
 .th {
@@ -1039,9 +1060,30 @@ function manageGroup(g: string) {
   white-space: nowrap;
 }
 .sort-ic {
-  font-size: 18rpx;
-  color: var(--text-3);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4rpx;
   margin-left: 4rpx;
+  width: 16rpx;
+}
+.sort-ic .ar {
+  width: 0;
+  height: 0;
+  border-left: 5rpx solid transparent;
+  border-right: 5rpx solid transparent;
+}
+.sort-ic .ar.up {
+  border-bottom: 6rpx solid var(--text-3);
+}
+.sort-ic .ar.dn {
+  border-top: 6rpx solid var(--text-3);
+}
+.th.active .sort-ic .ar.up.on {
+  border-bottom-color: var(--primary);
+}
+.th.active .sort-ic .ar.dn.on {
+  border-top-color: var(--primary);
 }
 .th.active .th-label {
   color: var(--text);
@@ -1155,7 +1197,10 @@ function manageGroup(g: string) {
   text-overflow: ellipsis;
 }
 .al-dot {
-  flex: none;
+  position: absolute;
+  left: 4rpx;
+  top: 50%;
+  transform: translateY(-50%);
   width: 12rpx;
   height: 12rpx;
   border-radius: 50%;
@@ -1180,8 +1225,9 @@ function manageGroup(g: string) {
   padding: 8rpx 0 0;
 }
 .bottom-pad {
-  /* 仅预留收起态卡片(76rpx) + 安全区，避免末行被遮挡，去除多余空白 */
-  height: calc(env(safe-area-inset-bottom) + 80rpx);
+  /* 预留收起态卡片顶沿(safe+186rpx) 高度：卡片 fixed 浮于底部 110~186rpx 区域，
+     内容须止于卡片顶沿，末行才不被遮挡，且滚动到底时无多余空白 */
+  height: calc(env(safe-area-inset-bottom) + 186rpx);
 }
 
 /* ===== 底部卡片：本地展开/收起（向上动效），自身承载完整榜单，无遮罩层 ===== */
