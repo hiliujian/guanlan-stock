@@ -229,12 +229,24 @@
           </view>
         </view>
       </view>
+
+      <!-- 统一底部弹层（替代 uni.showActionSheet 默认样式，复用项目主题） -->
+      <ActionSheet
+        v-model="sheetOpen"
+        :title="sheetTitle"
+        :items="sheetItems"
+        :cancel-text="sheetCancel"
+        @select="onSheetSelect"
+        @cancel="onSheetCancel"
+      />
   </view>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch, onMounted, onActivated, onDeactivated, onUnmounted } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
+import ActionSheet from "@/components/ActionSheet.vue";
+import type { ActionSheetItem } from "@/components/action-sheet-types";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import RankView from "@/views/RankView.vue";
 import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, applyGroupOrder, type WatchItem, type PriceAlert } from "@/store/watchlist";
@@ -245,6 +257,33 @@ import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
 import { getMarketStatus } from "@/utils/marketStatus";
 import { fmtPrice, fmtPct, fmtSigned, fmtAmount } from "@/utils/format";
+
+// 统一底部弹层（替代原 uni.showActionSheet 默认样式，复用项目主题）
+const sheetOpen = ref(false);
+const sheetTitle = ref("");
+const sheetItems = ref<ActionSheetItem[]>([]);
+const sheetCancel = ref("取消");
+let sheetHandler: ((item: ActionSheetItem, index: number) => void) | null = null;
+function openSheet(opts: {
+  title?: string;
+  items: ActionSheetItem[];
+  cancelText?: string;
+  onSelect: (item: ActionSheetItem, index: number) => void;
+}) {
+  sheetTitle.value = opts.title || "";
+  sheetItems.value = opts.items;
+  sheetCancel.value = opts.cancelText || "取消";
+  sheetHandler = opts.onSelect;
+  sheetOpen.value = true;
+}
+function onSheetSelect(payload: { item: ActionSheetItem; index: number }) {
+  const h = sheetHandler;
+  sheetHandler = null;
+  h?.(payload.item, payload.index);
+}
+function onSheetCancel() {
+  sheetHandler = null;
+}
 
 const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
 
@@ -398,15 +437,20 @@ function dismissAlert(key: string) {
 // 设置价格预警：高于 / 低于 / 清除（H5 无系统推送，触发后在自选页以横幅 + Toast 提醒）
 function editAlert(it: WatchItem) {
   const a = it.alerts || {};
-  uni.showActionSheet({
-    itemList: ["设置高于预警", "设置低于预警", "清除预警"],
-    success: (res) => {
-      if (res.tapIndex === 2) {
+  openSheet({
+    title: "价格预警",
+    items: [
+      { label: "设置高于预警", icon: "arrow-up", key: "above" },
+      { label: "设置低于预警", icon: "arrow-down", key: "below" },
+      { label: "清除预警", icon: "trash", accent: "danger", key: "clear" },
+    ],
+    onSelect: (s) => {
+      if (s.key === "clear") {
         setAlerts(it.code, it.market, undefined);
         uni.showToast({ title: "已清除预警", icon: "none" });
         return;
       }
-      const dir: "above" | "below" = res.tapIndex === 0 ? "above" : "below";
+      const dir: "above" | "below" = s.key === "above" ? "above" : "below";
       const cur = a[dir];
       uni.showModal({
         title: dir === "above" ? "高于此价提醒" : "低于此价提醒",
@@ -449,10 +493,11 @@ function createGroupFlow() {
         return;
       }
       const opts = list.value.map((i) => i.name || i.code);
-      uni.showActionSheet({
-        itemList: opts,
-        success: (res) => {
-          const it = list.value[res.tapIndex];
+      openSheet({
+        title: `将股票加入「${name}」`,
+        items: list.value.map((i, idx) => ({ label: i.name || i.code, key: idx })),
+        onSelect: (s) => {
+          const it = list.value[Number(s.key)];
           if (it) {
             setItemGroup(it.code, it.market, name);
             selectedGroup.value = name;
@@ -467,37 +512,46 @@ function createGroupFlow() {
 // 分组管理入口：右上角「分组」pill 点击后，可切换分组（默认即「全部」）、新建分组、
 // 将股票移入分组、或管理既有分组（重命名/删除）
 function openGroups() {
-  const items: string[] = [];
-  const acts: { kind: "all" | "group" | "new" | "move" | "manage"; g?: string }[] = [];
-  items.push("全部");
-  acts.push({ kind: "all" });
+  const items: ActionSheetItem[] = [
+    { label: "全部", key: "all", active: selectedGroup.value === "__all__" },
+  ];
   for (const g of groups.value) {
-    items.push(g);
-    acts.push({ kind: "group", g });
+    items.push({ label: g, key: g, active: selectedGroup.value === g });
   }
-  items.push("新建分组");
-  acts.push({ kind: "new" });
-  items.push("将股票移入分组");
-  acts.push({ kind: "move" });
+  items.push({ label: "新建分组", icon: "plus", accent: "primary", key: "new" });
+  items.push({ label: "将股票移入分组", icon: "layers", key: "move" });
   if (groups.value.length) {
-    items.push("管理分组");
-    acts.push({ kind: "manage" });
+    items.push({ label: "管理分组", icon: "gear", key: "manage" });
   }
-  uni.showActionSheet({
-    itemList: items,
-    success: (res) => {
-      const act = acts[res.tapIndex];
-      if (!act) return;
-      if (act.kind === "all") selectedGroup.value = "__all__";
-      else if (act.kind === "group" && act.g != null) selectedGroup.value = act.g;
-      else if (act.kind === "new") createGroupFlow();
-      else if (act.kind === "move") moveStockToGroup();
-      else {
-        uni.showActionSheet({
-          itemList: groups.value.map((g) => `管理「${g}」`),
-          success: (r2) => manageGroup(groups.value[r2.tapIndex]),
-        });
+  openSheet({
+    title: "我的分组",
+    items,
+    onSelect: (_s, idx) => {
+      if (idx === 0) {
+        selectedGroup.value = "__all__";
+        return;
       }
+      const gCount = groups.value.length;
+      if (idx <= gCount) {
+        selectedGroup.value = groups.value[idx - 1];
+        return;
+      }
+      const action = idx - gCount; // 1: 新建分组 / 2: 移入分组 / 3: 管理分组
+      if (action === 1) createGroupFlow();
+      else if (action === 2) moveStockToGroup();
+      else if (action === 3) openManageSheet();
+    },
+  });
+}
+
+// 分组管理二级：选择要管理的分组
+function openManageSheet() {
+  if (!groups.value.length) return;
+  openSheet({
+    title: "管理分组",
+    items: groups.value.map((g) => ({ label: `管理「${g}」`, icon: "gear", key: g })),
+    onSelect: (s) => {
+      if (typeof s.key === "string") manageGroup(s.key);
     },
   });
 }
@@ -508,22 +562,25 @@ function moveStockToGroup() {
     uni.showToast({ title: "还没有自选股", icon: "none" });
     return;
   }
-  const stocks = list.value.map((i) => `${i.name || i.code}`);
-  uni.showActionSheet({
-    itemList: stocks,
-    success: (r) => {
-      const it = list.value[r.tapIndex];
+  openSheet({
+    title: "选择股票",
+    items: list.value.map((i, idx) => ({ label: `${i.name || i.code}`, key: idx })),
+    onSelect: (s) => {
+      const it = list.value[Number(s.key)];
       if (!it) return;
       const targets = ["默认", ...groups.value];
-      uni.showActionSheet({
-        itemList: [...targets, "新建分组…"],
-        success: (r2) => {
-          if (r2.tapIndex < targets.length) {
-            const grp = r2.tapIndex === 0 ? "" : groups.value[r2.tapIndex - 1];
-            setItemGroup(it.code, it.market, grp);
-            selectedGroup.value = grp;
-            uni.showToast({ title: `已移入${grp || "默认"}`, icon: "none" });
-          } else {
+      openSheet({
+        title: `将「${it.name || it.code}」移入`,
+        items: [
+          ...targets.map((t, idx) => ({
+            label: t === "默认" ? "默认分组" : t,
+            key: idx,
+            active: t === "默认" ? selectedGroup.value === "__all__" : selectedGroup.value === t,
+          })),
+          { label: "新建分组…", icon: "plus", accent: "primary", key: "new" },
+        ],
+        onSelect: (s2) => {
+          if (s2.key === "new") {
             uni.showModal({
               title: "新建分组",
               editable: true,
@@ -538,6 +595,12 @@ function moveStockToGroup() {
                 }
               },
             });
+          } else {
+            const tIdx = Number(s2.key);
+            const grp = tIdx === 0 ? "" : groups.value[tIdx - 1];
+            setItemGroup(it.code, it.market, grp);
+            selectedGroup.value = grp;
+            uni.showToast({ title: `已移入${grp || "默认"}`, icon: "none" });
           }
         },
       });
@@ -921,13 +984,17 @@ function doRemove(it: WatchItem) {
 
 // 长按行：弹出操作菜单
 function onRowLongPress(it: WatchItem) {
-  uni.showActionSheet({
-    itemList: ["编辑价格预警", "移入分组", "删除自选"],
-    success: (res) => {
-      const idx = res.tapIndex;
-      if (idx === 0) editAlert(it);
-      else if (idx === 1) showMoveGroup(it);
-      else if (idx === 2) doRemove(it);
+  openSheet({
+    title: it.name || it.code,
+    items: [
+      { label: "编辑价格预警", icon: "bell", key: "alert" },
+      { label: "移入分组", icon: "layers", key: "move" },
+      { label: "删除自选", icon: "trash", accent: "danger", key: "del" },
+    ],
+    onSelect: (s) => {
+      if (s.key === "alert") editAlert(it);
+      else if (s.key === "move") showMoveGroup(it);
+      else if (s.key === "del") doRemove(it);
     },
   });
 }
@@ -935,33 +1002,40 @@ function onRowLongPress(it: WatchItem) {
 // 移入其他分组（含新建分组）
 function showMoveGroup(it: WatchItem) {
   const others = groups.value.filter((g) => g !== it.group);
-  const itemList = [...others, "+ 新建分组…"];
-  uni.showActionSheet({
-    itemList,
-    success: (res) => {
-      const idx = res.tapIndex;
-      if (idx < others.length) {
-        setItemGroup(it.code, it.market, others[idx]);
-      } else {
+  openSheet({
+    title: `将「${it.name || it.code}」移入`,
+    items: [
+      ...others.map((g) => ({ label: g, key: g })),
+      { label: "+ 新建分组…", icon: "plus", accent: "primary", key: "new" },
+    ],
+    onSelect: (_s, idx) => {
+      if (idx === others.length) {
         uni.showModal({
           title: "新建分组",
           editable: true,
           placeholderText: "分组名",
           content: "",
           success: (r) => {
-            if (r.confirm && r.content?.trim()) setItemGroup(it.code, it.market, r.content.trim());
+            const n = r.content?.trim();
+            if (r.confirm && n) setItemGroup(it.code, it.market, n);
           },
         });
+      } else {
+        setItemGroup(it.code, it.market, others[idx]);
       }
     },
   });
 }
 
 function manageGroup(g: string) {
-  uni.showActionSheet({
-    itemList: ["重命名", "删除（组内项归入默认）"],
-    success: (res) => {
-      if (res.tapIndex === 0) {
+  openSheet({
+    title: `管理「${g}」`,
+    items: [
+      { label: "重命名", icon: "edit", key: "rename" },
+      { label: "删除（组内项归入默认）", icon: "trash", accent: "danger", key: "del" },
+    ],
+    onSelect: (s) => {
+      if (s.key === "rename") {
         uni.showModal({
           title: "重命名分组",
           editable: true,
@@ -971,7 +1045,7 @@ function manageGroup(g: string) {
             if (r.confirm && v && v !== g) renameGroup(g, v);
           },
         });
-      } else {
+      } else if (s.key === "del") {
         uni.showModal({
           title: "删除分组",
           content: `确认删除「${g}」？组内股票将归入默认分组`,
