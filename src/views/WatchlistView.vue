@@ -64,10 +64,10 @@
                   aria-label="拖拽排序"
                   @click="toggleReorder"
                 >
-                  <OutlineIcon type="grip" :size="26" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
+                  <OutlineIcon type="grip" :size="28" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
                 </view>
                 <view class="th-ic" role="button" aria-label="列设置" @click="showCols = true">
-                  <OutlineIcon type="columns" :size="26" :color="'var(--text-3)'" />
+                  <OutlineIcon type="columns" :size="28" :color="'var(--text-3)'" />
                 </view>
               </view>
             </view>
@@ -179,6 +179,7 @@
         <!-- 列设置面板：选择展示/隐藏的数据列（本地持久化） -->
         <view v-if="showCols" class="col-mask" @click="showCols = false">
           <view class="col-sheet" @click.stop>
+            <view class="col-grip"><view class="col-handle" /></view>
             <view class="col-head">
               <text class="col-title">显示列</text>
               <view class="col-close" role="button" aria-label="关闭" @click="showCols = false">
@@ -622,6 +623,12 @@ const showCols = ref(false);
 const reorderMode = ref(false);
 function toggleReorder() {
   reorderMode.value = !reorderMode.value;
+  // 进入整理模式：先捕获「当前可见顺序」(可能正处于列排序态) 作为拖拽基准，
+  // 再清除列排序——避免「先点表头排序、再拖拽」时列表跳变、拖拽位置不生效。
+  if (reorderMode.value) {
+    manualOrder.value = renderRows.value.map((r) => keyOf(r.it));
+    sortKey.value = "";
+  }
 }
 
 // 可见顺序（键序列），拖拽时实时重排；默认随 displayRows（按分组 + sort_order）
@@ -1035,7 +1042,7 @@ function manageGroup(g: string) {
   gap: 4rpx;
 }
 .ud-num {
-  font-size: 20rpx;
+  font-size: 22rpx;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -1321,7 +1328,7 @@ function manageGroup(g: string) {
 .c-chg  { width: 150rpx; }
 .c-open { width: 130rpx; }
 .c-amp  { width: 120rpx; }
-.c-amt  { width: 150rpx; }
+.c-amt  { width: 180rpx; }
 /* 名称列内部 */
 .t-block {
   display: flex;
@@ -1334,7 +1341,7 @@ function manageGroup(g: string) {
   font-size: 28rpx;
   font-weight: 400;
   color: var(--text);
-  max-width: 104rpx;
+  max-width: 160rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1595,9 +1602,31 @@ function manageGroup(g: string) {
   width: 100%;
   max-width: 480px;
   background: var(--tabbar-bg);
-  border-radius: 24rpx 24rpx 0 0;
-  padding: 24rpx 24rpx calc(env(safe-area-inset-bottom) + 24rpx);
+  backdrop-filter: blur(20rpx) saturate(150%);
+  -webkit-backdrop-filter: blur(20rpx) saturate(150%);
+  border-radius: 22rpx 22rpx 0 0;
+  padding: 12rpx 24rpx calc(env(safe-area-inset-bottom) + 24rpx);
   box-shadow: 0 -8rpx 30rpx rgba(0, 0, 0, 0.25);
+}
+/* 顶部拖拽手柄：与热榜弹窗(rank-peek)同款，强化「底部弹出层」视觉一致性 */
+.col-grip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 26rpx;
+  margin-bottom: 4rpx;
+  cursor: grab;
+  touch-action: none;
+}
+.col-grip:active {
+  cursor: grabbing;
+}
+.col-handle {
+  width: 56rpx;
+  height: 6rpx;
+  border-radius: 999rpx;
+  background: var(--card-2);
 }
 .col-head {
   display: flex;

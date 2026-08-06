@@ -17,9 +17,12 @@
         <view class="rk-thead">
           <text class="rh rank">排名</text>
           <text class="rh name">名称</text>
-          <text class="rh heat">热度</text>
           <text class="rh price">最新价</text>
           <text class="rh pct">涨跌幅</text>
+          <view class="rh heat">
+            <OutlineIcon type="fire" :size="22" color="var(--text-2)" />
+            <text>热度</text>
+          </view>
           <view class="rh star" />
         </view>
         <!-- 数据行 -->
@@ -38,9 +41,9 @@
               <text class="rcode">{{ r.code }}</text>
             </view>
           </view>
-          <text class="rh heat st-num">{{ r.heat }}</text>
           <text class="rh price st-num" :class="'st-' + clsOf(r)">{{ fmtPrice(r.price) }}</text>
           <text class="rh pct st-num" :class="'st-' + clsOf(r)">{{ fmtPct(r.pct) }}</text>
+          <text class="rh heat st-num">{{ r.heat }}</text>
           <view class="rh star" :class="{ on: watched(r) }" @click.stop="toggleWatch(r)" role="button" aria-label="加入自选">
             <OutlineIcon type="star" :size="30" :color="watched(r) ? 'var(--primary)' : 'var(--text-3)'" />
           </view>
@@ -188,6 +191,12 @@ function openRow(r: { code: string; market: string }) {
   font-weight: 600;
   color: var(--text-2);
 }
+/* 表头排名列与普通表头同款字号/字重/颜色（数据行的奖牌色仅作用于数据，不污染表头） */
+.rk-thead .rh.rank {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--text-2);
+}
 .rk-row {
   min-height: 96rpx;
   border-bottom: 1rpx solid var(--border);
@@ -253,10 +262,12 @@ function openRow(r: { code: string; market: string }) {
   color: var(--text-3);
 }
 .rh.heat {
-  width: 110rpx;
+  width: 130rpx;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4rpx;
   text-align: right;
-  font-weight: 700;
-  color: var(--primary);
 }
 .rh.price {
   width: 150rpx;
@@ -273,6 +284,11 @@ function openRow(r: { code: string; market: string }) {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
+  background: var(--card-2);
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+.rh.star:active {
+  transform: scale(0.9);
 }
 .rh.star.on {
   background: var(--primary-soft);

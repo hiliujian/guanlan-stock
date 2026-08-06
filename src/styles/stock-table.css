@@ -21,23 +21,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 带主/次两行的数值单元格（需要副标题时） */
-.st-num--stack {
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4rpx;
-}
-.st-num--main {
-  font-size: 27rpx;
-  font-weight: 500;
-  line-height: 1.2;
-}
-.st-num--sub {
-  font-size: 20rpx;
-  color: var(--text-2);
-  line-height: 1.2;
-}
-
 /* 涨跌色（A股习惯：涨红跌绿） */
 .st-up {
   color: var(--up) !important;
@@ -47,17 +30,4 @@
 }
 .st-flat {
   color: var(--text-2) !important;
-}
-
-/* 表头数值列基础（右对齐、弱化色） */
-.st-th {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  font-size: 22rpx;
-  font-weight: 600;
-  color: var(--text-2);
-  text-align: right;
-  cursor: pointer;
 }
