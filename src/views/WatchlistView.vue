@@ -25,15 +25,9 @@
       </view>
     </view>
 
-    <scroll-view
-      class="view-scroll"
-      scroll-y
-      @scroll="onScroll"
-    >
     <view class="wl">
       <BackgroundFX />
 
-      <!-- 自选内容 -->
       <!-- 价格预警横幅：当前已触发且未忽略的预警（H5 无系统推送，仅应用内提醒） -->
         <view v-if="alertHits.length" class="alert-banner anim-fade-up">
           <view v-for="a in alertHits" :key="a.key" class="ab-item glass glass--lg" @click="dismissAlert(a.key)">
@@ -57,67 +51,46 @@
           </view>
         </view>
 
-        <!-- 列表：左删除层 + 两行卡片 + 预警铃最右侧居中 -->
-        <view
-          v-for="(row, i) in rows"
-          :key="row.it.code + row.it.market"
-          class="wl-row anim-fade-up"
-          :class="{ open: openIdx === i, removing: removingIdx === i }"
-          :style="{ animationDelay: (i % 8) * 40 + 'ms' }"
-        >
-          <view class="wl-del" @click="onDel(row.it, i)">
-            <OutlineIcon type="trash" :size="28" color="#fff" />
-            <text class="wl-del-t">删除</text>
+        <!-- 自选股表格：全屏铺满 + 固定表头 + 横向滚动 -->
+        <scroll-view v-if="rows.length" class="wl-grid" scroll-x scroll-y>
+          <view class="wl-thead">
+            <text class="th col-name">名称</text>
+            <text class="th col-code">代码</text>
+            <text class="th col-num">现价</text>
+            <text class="th col-num">涨跌额</text>
+            <text class="th col-num">涨跌幅</text>
+            <text class="th col-num">今开</text>
+            <text class="th col-num">振幅</text>
+            <text class="th col-num">成交额</text>
+            <text class="th col-act">操作</text>
           </view>
           <view
-            class="wl-item"
-            :class="{ 'no-trans': dragIdx === i, removing: removingIdx === i }"
-            :style="{ transform: 'translateX(' + (offsets[i] || 0) + 'px)' }"
-            @touchstart="onDown($event, i)"
-            @touchmove="onMove($event, i)"
-            @touchend="onUp($event, i, row.it)"
-            @mousedown="onDown($event, i)"
-            @mousemove="onMove($event, i)"
-            @mouseup="onUp($event, i, row.it)"
-            @mouseleave="onUp($event, i, row.it)"
-            @click="onItemClick(row.it, i)"
+            v-for="(row, i) in rows"
+            :key="row.it.code + row.it.market"
+            class="tr"
+            @click="onItemClick(row.it)"
+            @longpress="moveToGroup(row.it)"
           >
-            <!-- 左列：名称(+分组) / 代码(+市场标签) 两行 -->
-            <view class="wl-main">
-              <view class="wl-name-row">
-                <text class="wl-name">{{ row.it.name || row.it.code }}</text>
-                <view v-if="row.it.group" class="grp-chip" @click.stop="moveToGroup(row.it)">
-                  <OutlineIcon type="layers" :size="18" color="var(--primary)" />
-                  <text>{{ row.it.group }}</text>
-                </view>
-              </view>
-              <view class="wl-code-row">
-                <view class="mkt-tag">{{ row.mkt }}</view>
-                <text class="wl-code">{{ row.it.code }}</text>
-              </view>
+            <view class="td col-name">
+              <view class="al-dot" :class="{ on: hasAlert(row.it) }" @click.stop="editAlert(row.it)" />
+              <text class="t-name">{{ row.it.name || row.it.code }}</text>
+              <text class="t-mkt">{{ row.mkt }}</text>
             </view>
-            <!-- 中间：现价 / 涨跌幅 两行，右对齐 -->
-            <view class="wl-right">
-              <text class="wl-price" :class="{ 'is-loading': row.q.loading }" :style="{ color: priceColor(row.q) }">
-                {{ row.q.loading ? "--" : fmtPrice(row.q.price) }}
-              </text>
-              <text class="wl-pct" :class="pctCls(row.q)">
-                {{ row.q.loading ? "--" : fmtPct(row.q.pct) }}
-              </text>
-            </view>
-            <!-- 最右侧：预警铃铛，垂直居中 -->
-            <view class="wl-bell" :class="{ on: hasAlert(row.it) }" @tap.stop="editAlert(row.it)">
-              <OutlineIcon type="bell" :size="28" :color="hasAlert(row.it) ? 'var(--primary)' : 'var(--text-3)'" />
-            </view>
+            <text class="td col-code">{{ row.it.code }}</text>
+            <text class="td col-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPrice(row.q.price) }}</text>
+            <text class="td col-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtSigned(row.q.chg) }}</text>
+            <text class="td col-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPct(row.q.pct) }}</text>
+            <text class="td col-num">{{ row.q.loading ? '--' : fmtPrice(row.q.open) }}</text>
+            <text class="td col-num">{{ row.q.loading ? '--' : ampPct(row.q) }}</text>
+            <text class="td col-num">{{ row.q.loading ? '--' : fmtAmount(row.q.amount) }}</text>
+            <view class="td col-act"><text class="t-del" @click.stop="onDel(row.it)">删除</text></view>
           </view>
-        </view>
+          <view class="bottom-pad" />
+        </scroll-view>
 
         <text v-if="list.length && !rows.length" class="wl-hint">该分组暂无股票</text>
-        <text v-if="list.length" class="wl-hint">左滑股票可移除自选</text>
-
-        <view class="bottom-pad" />
+        <text v-if="rows.length" class="wl-hint">点击查看详情 · 长按移动分组 · 可横滑查看更多数据</text>
       </view>
-    </scroll-view>
 
     <!-- 底部卡片：本地展开/收起（向上动效），自身承载完整榜单，无遮罩层。
          进入页面即渲染（不等数据）；peek 为 null 时显示 -- 占位。 -->
@@ -169,7 +142,7 @@ import { userState } from "@/store/user";
 import { openAuth, goTab } from "@/store/nav";
 import { LOCAL_STOCKS, fetchSnapshot } from "@/api/quote";
 import { resolveSecid, marketCharFor } from "@/utils/period";
-import { fmtPrice, fmtPct } from "@/utils/format";
+import { fmtPrice, fmtPct, fmtSigned, fmtAmount } from "@/utils/format";
 
 const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
 
@@ -256,6 +229,11 @@ interface Snap {
   price: number;
   chg: number;
   pct: number;
+  preClose?: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  amount?: number;
   loading: boolean;
   error?: boolean;
 }
@@ -541,17 +519,16 @@ const upDown = computed(() => {
   return { currentGroup, counts: { up, down } };
 });
 
-// 现价颜色：跟随涨跌（平盘用主文字色）
-function priceColor(q: Snap): string {
-  if (q.chg > 0) return "var(--up)";
-  if (q.chg < 0) return "var(--down)";
-  return "var(--text)";
-}
 function pctCls(q: Snap): string {
   if (q.loading) return "flat";
   if (q.chg > 0) return "up";
   if (q.chg < 0) return "down";
   return "flat";
+}
+// 振幅%（(最高-最低)/昨收）
+function ampPct(q: Snap): string {
+  if (q.loading || !q.preClose || q.preClose === 0 || q.high == null || q.low == null) return "--";
+  return (((q.high - q.low) / q.preClose) * 100).toFixed(2) + "%";
 }
 
 // 榜单弹层：点击热榜股票跳转行情页并关闭弹层
@@ -584,6 +561,12 @@ const rankStyle = computed(() => {
   // 下拉：整体下移预览，松手后收起
   return { transform: `translateX(-50%) translateY(${dragY.value}px)`, transition: "none" };
 });
+// 取触摸/鼠标事件的 Y 坐标（榜单卡片拖拽手势使用）
+function ptY(e: any): number {
+  if (e.touches && e.touches[0]) return e.touches[0].clientY;
+  if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
+  return e.clientY || 0;
+}
 function onGripDown(e: any) {
   dragging.value = true;
   dragY.value = 0;
@@ -677,164 +660,13 @@ watch(
   () => loadQuotesSafe()
 );
 
-// ===== 左滑删除（方向锁定 + 果冻阻尼 + 回弹展开；滑到底自动删除，也可点红色按钮删除）=====
-function rpx2px(rpx: number): number {
-  const w = typeof window !== "undefined" && window.innerWidth ? window.innerWidth : 375;
-  return Math.round((rpx / 750) * w);
-}
-const DEL_W = rpx2px(150);
-const OPEN_TRIGGER = Math.round(DEL_W * 0.42);
-const DELETE_TRIGGER = -DEL_W * 0.99;
-const dragIdx = ref(-1);
-const openIdx = ref(-1);
-const removingIdx = ref(-1);
-const offsets = reactive<Record<number, number>>({});
-const suppressClick = ref(false);
-let startX = 0;
-let startY = 0;
-let baseOffset = 0;
-let lockDir: "" | "h" | "v" = "";
-let lastX = 0;
-let lastT = 0;
-let lastTouch = 0;
-let activePointer = "";
-
-function ptX(e: any): number {
-  if (e.touches && e.touches[0]) return e.touches[0].clientX;
-  if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientX;
-  return e.clientX || 0;
-}
-function ptY(e: any): number {
-  if (e.touches && e.touches[0]) return e.touches[0].clientY;
-  if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
-  return e.clientY || 0;
-}
-
-function withResistance(target: number): number {
-  const LEFT_MAX = -DEL_W * 1.7;
-  if (target < -DEL_W) {
-    const over = target + DEL_W;
-    target = -DEL_W + over * 0.32;
-    if (target < LEFT_MAX) target = LEFT_MAX;
-  } else if (target > 0) {
-    target = target * 0.32;
-  }
-  return target;
-}
-
-function onDown(e: any, i: number) {
-  const isTouch = !!e.type && e.type.indexOf("touch") === 0;
-  if (isTouch) lastTouch = Date.now();
-  if (!isTouch && Date.now() - lastTouch < 600) return;
-  activePointer = isTouch ? "touch" : "mouse";
-  startX = ptX(e);
-  startY = ptY(e);
-  baseOffset = offsets[i] || 0;
-  lastX = startX;
-  lastT = Date.now();
-  lockDir = "";
-  suppressClick.value = false;
-  dragIdx.value = i;
-}
-
-function onMove(e: any, i: number) {
-  if (dragIdx.value !== i) return;
-  const isTouch = !!e.type && e.type.indexOf("touch") === 0;
-  if (!isTouch && Date.now() - lastTouch < 600) return;
-  if (activePointer === "mouse" && e.buttons === 0) {
-    dragIdx.value = -1;
-    return;
-  }
-  const x = ptX(e);
-  const y = ptY(e);
-  const dx = x - startX;
-  const dy = y - startY;
-  if (lockDir === "") {
-    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
-      lockDir = Math.abs(dx) >= Math.abs(dy) ? "h" : "v";
-    }
-  }
-  if (lockDir === "v") {
-    dragIdx.value = -1;
-    return;
-  }
-  if (lockDir === "h") {
-    if (isTouch && e.cancelable) {
-      try {
-        e.preventDefault();
-      } catch (_) {}
-    }
-    offsets[i] = withResistance(baseOffset + dx);
-    lastX = x;
-    lastT = Date.now();
-    if (Math.abs(dx) > 6) suppressClick.value = true;
-  }
-}
-
-function onUp(e: any, i: number, it: WatchItem) {
-  if (dragIdx.value !== i) return;
-  dragIdx.value = -1;
-  if (lockDir !== "h") return;
-  const x = ptX(e);
-  const now = Date.now();
-  const dt = Math.max(1, now - lastT);
-  const vx = (x - lastX) / dt;
-  const final = offsets[i] || 0;
-  if (final <= DELETE_TRIGGER || (vx < -0.6 && final <= -OPEN_TRIGGER)) {
-    triggerDelete(i, it);
-  } else if (final <= -OPEN_TRIGGER) {
-    openRow(i);
-  } else {
-    closeRow(i);
-  }
-}
-
-function openRow(i: number) {
-  for (const k of Object.keys(offsets)) {
-    const key = Number(k);
-    if (key !== i) offsets[key] = 0;
-  }
-  offsets[i] = -DEL_W;
-  openIdx.value = i;
-}
-function closeRow(i: number) {
-  offsets[i] = 0;
-  if (openIdx.value === i) openIdx.value = -1;
-}
-function closeAll() {
-  if (dragIdx.value !== -1 || removingIdx.value !== -1) return;
-  for (const k of Object.keys(offsets)) offsets[Number(k)] = 0;
-  openIdx.value = -1;
-}
-function onScroll() {
-  closeAll();
-}
-
-function onItemClick(it: WatchItem, i: number) {
-  if (openIdx.value === i) {
-    closeRow(i);
-    return;
-  }
-  if (suppressClick.value) {
-    suppressClick.value = false;
-    return;
-  }
+// ===== 自选股表格交互：点击行打开个股，长按行移动分组，删除按钮移除 =====
+function onItemClick(it: WatchItem) {
   emit("open-market", { code: it.code, market: it.market });
 }
 
-function onDel(it: WatchItem, i: number) {
-  if (removingIdx.value === i) return;
-  triggerDelete(i, it);
-}
-
-function triggerDelete(i: number, it: WatchItem) {
-  removingIdx.value = i;
-  offsets[i] = -DEL_W * 3;
-  setTimeout(() => {
-    doRemove(it);
-    delete offsets[i];
-    removingIdx.value = -1;
-  }, 320);
+function onDel(it: WatchItem) {
+  doRemove(it);
 }
 
 function doRemove(it: WatchItem) {
@@ -902,13 +734,12 @@ function manageGroup(g: string) {
   flex-direction: column;
   height: 100%;
 }
-.view-scroll {
+.wl {
   flex: 1;
   min-height: 0;
-  height: auto;
-}
-.wl {
-  padding: 18rpx 0 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
 }
 
 /* ===== 头部（固定不随滚动；与社区 CommunityView 视觉一致） ===== */
@@ -919,16 +750,16 @@ function manageGroup(g: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12rpx 22rpx 14rpx;
+  padding: 8rpx 18rpx 10rpx;
   background: var(--sticky-bg);
   backdrop-filter: blur(16rpx) saturate(140%);
   -webkit-backdrop-filter: blur(16rpx) saturate(140%);
   box-shadow: var(--sticky-shadow);
 }
 .cm-brand {
-  font-size: 40rpx;
-  font-weight: 800;
-  letter-spacing: 2rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  letter-spacing: 1rpx;
   color: var(--text);
 }
 .cm-right {
@@ -951,7 +782,7 @@ function manageGroup(g: string) {
   gap: 4rpx;
 }
 .ud-num {
-  font-size: 22rpx;
+  font-size: 20rpx;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -980,7 +811,7 @@ function manageGroup(g: string) {
   justify-content: center;
 }
 .cm-name {
-  font-size: 24rpx;
+  font-size: 22rpx;
   font-weight: 600;
   color: var(--text);
   max-width: 120rpx;
@@ -1082,176 +913,94 @@ function manageGroup(g: string) {
   padding: 0 56rpx;
 }
 
-/* ===== 列表行：外层红底裁切单卡片；静止时盖住红底，左滑露出删除区 ===== */
-.wl-row {
-  position: relative;
-  margin: 0 16rpx 14rpx;
-  border-radius: 20rpx;
-  overflow: hidden;
-  background: linear-gradient(135deg, #ff5b5b, #e5484d);
-  box-shadow: var(--shadow);
-  max-height: 164rpx;
-  transition: max-height 0.3s ease 0.06s;
-}
-.wl-row.removing {
-  max-height: 0;
-}
-.wl-del {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 150rpx;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6rpx;
-  color: #fff;
-  background: transparent;
-  transition: background 0.15s ease;
-}
-.wl-del:active {
-  background: rgba(0, 0, 0, 0.12);
-}
-.wl-del-t {
-  font-size: 24rpx;
-  font-weight: 600;
-}
-
-.wl-item {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 20rpx;
-  min-height: 132rpx;
-  padding: 24rpx 22rpx;
-  background: var(--bg-2);
-  border: 1rpx solid var(--border);
-  border-top: none;
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.wl-row.open .wl-item {
-  transition: transform 0.46s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-.wl-item.no-trans {
-  transition: none;
-}
-.wl-item.removing {
-  opacity: 0;
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s ease;
-}
-
-.wl-main {
+/* ===== 自选股表格：全屏铺满 + 固定表头 + 横向滚动 ===== */
+.wl-grid {
   flex: 1;
-  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  background: var(--bg-2);
 }
-.wl-name-row {
+.wl-thead,
+.tr {
   display: flex;
-  align-items: center;
-  gap: 12rpx;
-  min-width: 0;
+  align-items: stretch;
+  width: max-content;
+  min-width: 100%;
 }
-.wl-name {
-  font-size: 32rpx;
-  font-weight: 700;
-  color: var(--text);
-  max-width: 280rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.wl-thead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--sticky-bg);
+  backdrop-filter: blur(16rpx) saturate(140%);
+  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
+  border-bottom: 1rpx solid var(--border);
 }
-.wl-code-row {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  margin-top: 10rpx;
-}
-.wl-code {
+.th {
+  flex: none;
   font-size: 22rpx;
+  font-weight: 600;
   color: var(--text-2);
+  padding: 18rpx 0;
+  text-align: center;
+}
+.tr {
+  border-bottom: 1rpx solid var(--border);
+  background: var(--bg-2);
+}
+.tr:active {
+  background: var(--card-2);
+}
+.td {
+  flex: none;
+  display: flex;
+  align-items: center;
+  font-size: 26rpx;
+  color: var(--text);
+  height: 88rpx;
   font-variant-numeric: tabular-nums;
 }
-.mkt-tag {
+/* 列宽（合计 > 屏宽 → 横向滚动） */
+.col-name { width: 230rpx; gap: 8rpx; padding-left: 20rpx; text-align: left; }
+.col-code { width: 150rpx; justify-content: center; font-size: 22rpx; color: var(--text-2); }
+.col-num  { width: 140rpx; justify-content: flex-end; padding-right: 18rpx; text-align: right; }
+.col-act  { width: 96rpx; justify-content: center; }
+/* 名称列内部 */
+.al-dot {
   flex: none;
-  font-size: 18rpx;
-  line-height: 1;
-  padding: 4rpx 10rpx;
-  border-radius: 6rpx;
-  color: var(--text-2);
-  background: var(--card-2);
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
   border: 1rpx solid var(--border);
+  background: transparent;
 }
-.grp-chip {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 4rpx;
-  max-width: 160rpx;
-  font-size: 18rpx;
-  line-height: 1;
-  padding: 6rpx 12rpx;
-  border-radius: 999rpx;
-  color: var(--primary);
-  background: var(--primary-soft);
-  overflow: hidden;
-  white-space: nowrap;
+.al-dot.on {
+  background: var(--primary);
+  border-color: var(--primary);
 }
-.grp-chip text {
+.t-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--text);
+  max-width: 150rpx;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-
-/* 中间列：现价 + 涨跌幅右对齐 */
-.wl-right {
+.t-mkt {
   flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6rpx;
-  text-align: right;
+  font-size: 18rpx;
+  color: var(--text-3);
 }
-.wl-price {
-  font-size: 34rpx;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-}
-.wl-price.is-loading {
-  opacity: 0.5;
-}
-.wl-pct {
-  font-size: 25rpx;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.wl-pct.up {
-  color: var(--up);
-}
-.wl-pct.down {
+.t-del {
+  font-size: 24rpx;
   color: var(--down);
+  padding: 8rpx 14rpx;
 }
-.wl-pct.flat {
-  color: var(--text-2);
-}
-
-/* 最右侧：预警铃铛，垂直居中 */
-.wl-bell {
-  flex: none;
-  width: 60rpx;
-  height: 60rpx;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--card-2);
-  transition: all 0.15s ease;
-}
-.wl-bell.on {
-  background: var(--primary-soft);
-}
+/* 涨跌色 */
+.up { color: var(--up); }
+.down { color: var(--down); }
+.flat { color: var(--text-2); }
 
 /* ===== 轻提示 ===== */
 .wl-hint {
@@ -1367,13 +1116,13 @@ function manageGroup(g: string) {
   display: flex;
   flex-direction: column;
 }
-/* 顶部拖拽区：比视觉手柄更大，便于下拉收起；touch-action:none 保证手势用于拖拽而非滚动 */
+/* 顶部拖拽区：比视觉手柄稍大便于下拉收起；touch-action:none 保证手势用于拖拽而非滚动 */
 .rs-grip {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 44rpx;
+  height: 26rpx;
   cursor: grab;
   touch-action: none;
 }
@@ -1381,8 +1130,8 @@ function manageGroup(g: string) {
   cursor: grabbing;
 }
 .rs-handle {
-  width: 68rpx;
-  height: 8rpx;
+  width: 56rpx;
+  height: 6rpx;
   border-radius: 999rpx;
   background: var(--card-2);
 }
@@ -1390,17 +1139,17 @@ function manageGroup(g: string) {
   position: relative;
   flex: none;
   display: flex;
-  margin: 10rpx 24rpx 0;
-  padding: 0 0 14rpx;
+  margin: 2rpx 24rpx 0;
+  padding: 0 0 8rpx;
   border-bottom: 1rpx solid var(--border);
 }
 .rs-tab {
   flex: 1;
   text-align: center;
-  font-size: 28rpx;
+  font-size: 23rpx;
   font-weight: 500;
   color: var(--text-2);
-  padding: 4rpx 0;
+  padding: 2rpx 0;
   cursor: pointer;
   transition: color 0.2s ease;
 }
@@ -1421,8 +1170,8 @@ function manageGroup(g: string) {
   transform: translateX(100%);
 }
 .rs-ink-bar {
-  width: 56rpx;
-  height: 5rpx;
+  width: 46rpx;
+  height: 4rpx;
   border-radius: 999rpx;
   background: var(--primary);
 }

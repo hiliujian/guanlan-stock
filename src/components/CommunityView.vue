@@ -231,16 +231,16 @@ defineExpose({ refresh: load });
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12rpx 22rpx 14rpx;
+  padding: 8rpx 18rpx 10rpx;
   background: var(--sticky-bg);
   backdrop-filter: blur(16rpx) saturate(140%);
   -webkit-backdrop-filter: blur(16rpx) saturate(140%);
   box-shadow: var(--sticky-shadow);
 }
 .cm-brand {
-  font-size: 40rpx;
-  font-weight: 800;
-  letter-spacing: 2rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  letter-spacing: 1rpx;
   color: var(--text);
 }
 .cm-me {
@@ -265,7 +265,7 @@ defineExpose({ refresh: load });
   font-size: 22rpx;
 }
 .cm-name {
-  font-size: 24rpx;
+  font-size: 22rpx;
   font-weight: 600;
   color: var(--text);
   max-width: 160rpx;
