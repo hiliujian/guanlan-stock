@@ -1030,13 +1030,14 @@ function manageGroup(g: string) {
   display: flex;
   flex-direction: column;
 }
-/* 数据行包裹层：占据表头以下、底部占位以上的全部空间；当内容不足一屏时，
-   .tr:first-of-type 的 margin-top:auto 把整组行顶到该层底部，使末行紧贴底部占位
-   （即紧贴固定卡片），首行之上露出空白而非末行之下露出空白。内容超一屏时 auto
-   边距归零，正常从上往下排列并滚动。 */
+/* 数据行包裹层：占据表头以下、底部占位以上的空间。
+   - 内容不足一屏：flex:1 填满可用高度，.tr:first-of-type 的 margin-top:auto 把整组
+     行顶到该层底部，末行紧贴底部占位(即紧贴固定卡片)，空白转移到首行之上。
+   - 内容超一屏：不能用 min-height:0 裁切(否则末几行溢出到卡片遮挡区被藏住)，
+     保留默认 min-height:auto 让本层撑高到内容高度，溢出落在 bottom-pad 之后，
+     滚到底时末行正好停在卡片上方、全部可见。 */
 .wl-body {
   flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
 }
