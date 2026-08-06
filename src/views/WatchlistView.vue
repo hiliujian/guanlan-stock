@@ -79,7 +79,7 @@
               </view>
             </view>
             <view v-if="cols.price" class="th c-price" :class="{ active: sortKey === 'price' }" @click="toggleSort('price')">
-              <text class="th-label">最新</text>
+              <text class="th-label">最新价</text>
               <view class="sort-ic">
                 <view class="ar up" :class="{ on: sortKey === 'price' && sortDir === 'asc' }" />
                 <view class="ar dn" :class="{ on: sortKey === 'price' && sortDir === 'desc' }" />
@@ -597,7 +597,7 @@ type ColKey = "pct" | "price" | "chg" | "open" | "amp" | "amt";
 const COLS_KEY = "wl_cols";
 const colDefs: { key: ColKey; label: string }[] = [
   { key: "pct", label: "涨跌幅" },
-  { key: "price", label: "最新" },
+  { key: "price", label: "最新价" },
   { key: "chg", label: "涨跌额" },
   { key: "open", label: "今开" },
   { key: "amp", label: "振幅" },
@@ -1325,13 +1325,13 @@ function manageGroup(g: string) {
   text-align: left;
   background: var(--bg-2);
 }
-/* 列宽（合计 > 屏宽 → 横向滚动） */
+/* 列宽（合计 > 屏宽 → 横向滚动）。涨跌幅/最新价/涨跌额/今开 四列等宽(150rpx) */
 .c-pct  { width: 150rpx; }
 .c-price { width: 150rpx; }
 .c-chg  { width: 150rpx; }
-.c-open { width: 130rpx; }
+.c-open { width: 150rpx; }
 .c-amp  { width: 120rpx; }
-.c-amt  { width: 180rpx; }
+.c-amt  { width: 200rpx; }
 /* 名称列内部 */
 .t-block {
   display: flex;
@@ -1558,9 +1558,25 @@ function manageGroup(g: string) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44rpx;
-  height: 44rpx;
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 12rpx;
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.th-ic:active {
+  background: var(--primary-soft);
+  border-color: var(--primary-soft);
+}
+.th-ic.on {
+  background: var(--primary-soft);
+  border-color: var(--primary-soft);
+}
+.th-ic:active :deep(.outline-icon),
+.th-ic.on :deep(.outline-icon) {
+  color: var(--primary) !important;
 }
 
 /* ===== 行内拖动手柄（常驻，仅单分组视图显示） ===== */
@@ -1572,6 +1588,9 @@ function manageGroup(g: string) {
   width: 40rpx;
   height: 56rpx;
   margin-left: -6rpx;
+  border-radius: 12rpx;
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
   cursor: grab;
   touch-action: none;
 }

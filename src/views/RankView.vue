@@ -43,8 +43,10 @@
           <text class="rh price st-num" :class="'st-' + clsOf(r)">{{ fmtPrice(r.price) }}</text>
           <text class="rh pct st-num" :class="'st-' + clsOf(r)">{{ fmtPct(r.pct) }}</text>
           <view class="rh heat">
-            <OutlineIcon type="fire" :size="20" color="#ff5722" />
-            <text class="st-num">{{ r.heat }}</text>
+            <view class="heat-flame">
+              <OutlineIcon type="fire" :size="46" color="#ff5722" />
+              <text class="heat-num">{{ r.heat }}</text>
+            </view>
           </view>
           <view class="rh star" :class="{ on: watched(r) }" @click.stop="toggleWatch(r)" role="button" aria-label="加入自选">
             <OutlineIcon type="star" :size="30" :color="watched(r) ? 'var(--primary)' : 'var(--text-3)'" />
@@ -210,40 +212,23 @@ function openRow(r: { code: string; market: string }) {
   flex: none;
   font-variant-numeric: tabular-nums;
 }
+/* 排名数字：参考主流热搜榜风格——前三名用红/橙/黄加粗高亮，其余用灰色 */
 .rh.rank {
   width: 72rpx;
-  font-size: 26rpx;
-  font-weight: 700;
-  color: var(--text-2);
+  font-size: 30rpx;
+  font-weight: 800;
+  color: var(--text-3);
   text-align: center;
-}
-/* 数据行排名：底部带边框的方框，数字居中显示 */
-.rk-row .rh.rank {
-  height: 56rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--card-2);
-  border-bottom: 3rpx solid var(--border);
-  border-radius: 8rpx 8rpx 0 0;
+  font-variant-numeric: tabular-nums;
 }
 .rh.rank.gold {
-  color: #ff8a00;
+  color: #ff4d4f;
 }
 .rh.rank.silver {
-  color: #8a97a6;
+  color: #ff9f43;
 }
 .rh.rank.bronze {
-  color: #b2763f;
-}
-.rk-row .rh.rank.gold {
-  border-bottom-color: #ff8a00;
-}
-.rk-row .rh.rank.silver {
-  border-bottom-color: #8a97a6;
-}
-.rk-row .rh.rank.bronze {
-  border-bottom-color: #b2763f;
+  color: #ffc53d;
 }
 .rh.name {
   flex: 1;
@@ -256,7 +241,7 @@ function openRow(r: { code: string; market: string }) {
 }
 .rn {
   font-size: 28rpx;
-  font-weight: 700;
+  font-weight: 400;
   color: var(--text);
   max-width: 220rpx;
   overflow: hidden;
@@ -281,26 +266,50 @@ function openRow(r: { code: string; market: string }) {
   font-size: 20rpx;
   color: var(--text-3);
 }
+/* 热度：火焰图标 + 数值居中置于火焰中心，数值用火焰色调突出热度 */
 .rh.heat {
   width: 150rpx;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 6rpx;
-  text-align: right;
-  color: var(--text);
+  justify-content: center;
 }
+.heat-flame {
+  position: relative;
+  width: 48rpx;
+  height: 48rpx;
+}
+.heat-flame :deep(.outline-icon) {
+  position: absolute;
+  inset: 0;
+  width: 48rpx !important;
+  height: 48rpx !important;
+}
+.heat-num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18rpx;
+  font-weight: 800;
+  color: #ff5722;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+/* 最新价 / 涨跌幅 / 热度 三列等宽(150rpx) */
 .rh.price {
   width: 150rpx;
   text-align: right;
 }
 .rh.pct {
-  width: 130rpx;
+  width: 150rpx;
   text-align: right;
 }
+/* 自选星星：与行情页 .qh-star 一致——真正的圆形底，on 态浅绿、按下缩放 */
 .rh.star {
   flex: none;
-  width: 72rpx;
+  width: 56rpx;
+  height: 56rpx;
   display: flex;
   align-items: center;
   justify-content: center;
