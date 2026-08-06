@@ -199,7 +199,6 @@ function openRow(r: { code: string; market: string }) {
 }
 .rk-row {
   min-height: 96rpx;
-  border-bottom: 1rpx solid var(--border);
 }
 .rk-row:active {
   background: var(--card-2);
