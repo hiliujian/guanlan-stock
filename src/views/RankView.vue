@@ -43,8 +43,10 @@
           <text class="rh price st-num" :class="'st-' + clsOf(r)">{{ fmtPrice(r.price) }}</text>
           <text class="rh pct st-num" :class="'st-' + clsOf(r)">{{ fmtPct(r.pct) }}</text>
           <view class="rh heat">
-            <text class="heat-flame">🔥</text>
-            <text class="heat-num">{{ r.heat }}</text>
+            <view class="heat-flame">
+              <text class="heat-emoji">🔥</text>
+              <text class="heat-num">{{ r.heat }}</text>
+            </view>
           </view>
           <view class="rh star" :class="{ on: watched(r) }" @click.stop="toggleWatch(r)" role="button" aria-label="加入自选">
             <OutlineIcon type="star" :size="30" :color="watched(r) ? 'var(--primary)' : 'var(--text-3)'" />
@@ -268,24 +270,39 @@ function openRow(r: { code: string; market: string }) {
   font-size: 20rpx;
   color: var(--text-3);
 }
-/* 热度：火焰 emoji + 数值并排，数值用火焰橙红确保清晰可读 */
+/* 热度：🔥 emoji 作火焰，数值叠加于火焰正中心；白字加深色描边，任何主题/背景均清晰可读 */
 .rh.heat {
   width: 150rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6rpx;
 }
 .heat-flame {
-  font-size: 26rpx;
+  position: relative;
+  width: 48rpx;
+  height: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40rpx;
+  line-height: 1;
+}
+.heat-emoji {
   line-height: 1;
 }
 .heat-num {
-  font-size: 22rpx;
-  font-weight: 400;
-  color: #ff5722;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18rpx;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 0 3rpx rgba(0, 0, 0, 0.7), 0 0 3rpx rgba(0, 0, 0, 0.7);
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  pointer-events: none;
 }
 /* 最新价 / 涨跌幅 / 热度 三列等宽(150rpx) */
 .rh.price {
