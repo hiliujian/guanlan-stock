@@ -226,25 +226,32 @@ export async function setItemGroup(code: string, market: string, group: string):
 /**
  * 拖拽重排：传入目标分组与该分组内重排后的可见键顺序（code|market），
  * 仅重排该分组内的 sort_order 并持久化（云：批量按 id 更新；本地：重存）。
- * 仅对单分组视图生效（"全部"视图不触发拖拽），保证「组内排序」语义。
+ * - 单分组视图：group 为分组名，仅重排该分组内顺序（"组内排序"语义）。
+ * - "全部"视图：group 传 "*"，忽略分组维度、对整个列表整体重排并持久化。
+ * 登录后自动同步：排序权重写入 watchlists.sort_order，恢复时按 group_name + sort_order 还原。
  */
 export async function applyGroupOrder(group: string, orderedKeys: string[]): Promise<void> {
+  const all = group === "*";
   const grp = group || "";
   const idxByKey = new Map<string, number>();
   orderedKeys.forEach((k, i) => idxByKey.set(k, i));
 
   state.items = sortItems(
     state.items.map((i) => {
-      if ((i.group || "") !== grp) return i;
       const k = `${i.code}|${i.market}`;
-      if (idxByKey.has(k)) return { ...i, order: idxByKey.get(k)! };
-      return i;
+      if (!idxByKey.has(k)) return i;
+      if (!all && (i.group || "") !== grp) return i;
+      return { ...i, order: idxByKey.get(k)! };
     })
   );
 
   if (state.mode === "cloud" && userState.userId) {
     const sb = getSupabase()!;
-    const targets = state.items.filter((i) => (i.group || "") === grp && i.id);
+    const targets = state.items.filter((i) => {
+      if (!idxByKey.has(`${i.code}|${i.market}`)) return false;
+      if (!all && (i.group || "") !== grp) return false;
+      return !!i.id;
+    });
     await Promise.all(
       targets.map((i) =>
         sb.from("watchlists").update({ sort_order: i.order ?? 0 }).eq("id", i.id)

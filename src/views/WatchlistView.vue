@@ -56,19 +56,18 @@
           <view class="wl-rows">
           <view class="wl-thead">
             <view class="th c-name">
-              <text class="th-label">名称</text>
               <view class="th-tools">
                 <view
                   class="th-ic"
                   :class="{ on: reorderMode }"
                   role="button"
-                  aria-label="拖动排序"
+                  aria-label="拖拽排序"
                   @click="toggleReorder"
                 >
-                  <OutlineIcon type="grip" :size="26" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
+                  <OutlineIcon type="reorder" :size="26" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
                 </view>
-                <view class="th-ic" role="button" aria-label="选择显示列" @click="showCols = true">
-                  <OutlineIcon type="sliders" :size="26" :color="'var(--text-3)'" />
+                <view class="th-ic" role="button" aria-label="列设置" @click="showCols = true">
+                  <OutlineIcon type="columns" :size="26" :color="'var(--text-3)'" />
                 </view>
               </view>
             </view>
@@ -77,6 +76,13 @@
               <view class="sort-ic">
                 <view class="ar up" :class="{ on: sortKey === 'pct' && sortDir === 'asc' }" />
                 <view class="ar dn" :class="{ on: sortKey === 'pct' && sortDir === 'desc' }" />
+              </view>
+            </view>
+            <view v-if="cols.price" class="th c-price" :class="{ active: sortKey === 'price' }" @click="toggleSort('price')">
+              <text class="th-label">最新</text>
+              <view class="sort-ic">
+                <view class="ar up" :class="{ on: sortKey === 'price' && sortDir === 'asc' }" />
+                <view class="ar dn" :class="{ on: sortKey === 'price' && sortDir === 'desc' }" />
               </view>
             </view>
             <view v-if="cols.chg" class="th c-chg" :class="{ active: sortKey === 'chg' }" @click="toggleSort('chg')">
@@ -117,10 +123,10 @@
             @click="onItemClick(row.it)"
             @longpress="onRowLongPress(row.it)"
           >
-            <!-- 固定列：拖拽手柄 + 预警点 + 名称 + (市场徽标 + 代码) -->
-            <view class="td c-name">
+            <!-- 固定列：拖拽手柄(仅整理模式) + 预警点 + 名称 + (市场徽标 + 代码) -->
+            <view class="td c-name" :class="{ 'has-handle': reorderMode }">
               <view
-                v-if="selectedGroup !== '__all__'"
+                v-if="reorderMode"
                 class="drag-handle"
                 :class="{ on: dragKey === keyOf(row.it) }"
                 role="button"
@@ -146,22 +152,25 @@
                 </view>
               </view>
             </view>
-            <!-- 涨跌幅：主行(涨跌幅) + 次行(净值/现价) -->
+            <!-- 涨跌幅（独立数值列，与榜单同款样式） -->
             <view v-if="cols.pct" class="td c-pct">
-              <text class="c-main" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPct(row.q.pct) }}</text>
-              <text class="c-sub">{{ row.q.loading ? '' : fmtPrice(row.q.price) }}</text>
+              <text class="st-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPct(row.q.pct) }}</text>
+            </view>
+            <!-- 最新价（独立数值列） -->
+            <view v-if="cols.price" class="td c-price">
+              <text class="st-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPrice(row.q.price) }}</text>
             </view>
             <view v-if="cols.chg" class="td c-chg">
-              <text class="c-main" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtSigned(row.q.chg) }}</text>
+              <text class="st-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtSigned(row.q.chg) }}</text>
             </view>
             <view v-if="cols.open" class="td c-open">
-              <text class="c-main">{{ row.q.loading ? '--' : fmtPrice(row.q.open) }}</text>
+              <text class="st-num">{{ row.q.loading ? '--' : fmtPrice(row.q.open) }}</text>
             </view>
             <view v-if="cols.amp" class="td c-amp">
-              <text class="c-main">{{ row.q.loading ? '--' : ampPct(row.q) }}</text>
+              <text class="st-num">{{ row.q.loading ? '--' : ampPct(row.q) }}</text>
             </view>
             <view v-if="cols.amt" class="td c-amt">
-              <text class="c-main">{{ row.q.loading ? '--' : fmtAmount(row.q.amount) }}</text>
+              <text class="st-num">{{ row.q.loading ? '--' : fmtAmount(row.q.amount) }}</text>
             </view>
           </view>
           </view>
@@ -586,16 +595,17 @@ const rows = computed(() =>
 );
 
 // ===== 列显隐：本地持久化（wl_cols），默认全显 =====
-type ColKey = "pct" | "chg" | "open" | "amp" | "amt";
+type ColKey = "pct" | "price" | "chg" | "open" | "amp" | "amt";
 const COLS_KEY = "wl_cols";
 const colDefs: { key: ColKey; label: string }[] = [
   { key: "pct", label: "涨跌幅" },
+  { key: "price", label: "最新" },
   { key: "chg", label: "涨跌额" },
   { key: "open", label: "今开" },
   { key: "amp", label: "振幅" },
   { key: "amt", label: "成交额" },
 ];
-const cols = reactive<Record<ColKey, boolean>>({ pct: true, chg: true, open: true, amp: true, amt: true });
+const cols = reactive<Record<ColKey, boolean>>({ pct: true, price: true, chg: true, open: true, amp: true, amt: true });
 function loadCols() {
   try {
     const saved = uni.getStorageSync(COLS_KEY);
@@ -648,7 +658,6 @@ function dragPtY(e: any): number {
   return e.clientY || 0;
 }
 function onDragStart(e: any, it: WatchItem) {
-  if (selectedGroup.value === "__all__") return; // 仅单分组内可拖拽排序
   if (sortKey.value) sortKey.value = ""; // 拖拽即自定义顺序，清除列排序
   dragKey.value = keyOf(it);
   dragStartY = dragPtY(e);
@@ -692,13 +701,14 @@ function onDragEnd() {
   if (!dragKey.value) return;
   dragKey.value = null;
   if (dragMoved) {
-    const group = selectedGroup.value === "__all__" ? "" : selectedGroup.value;
+    // “全部”视图按整个列表排序（group 传 "*"，store 内忽略分组维度整体重排）
+    const group = selectedGroup.value === "__all__" ? "*" : selectedGroup.value;
     applyGroupOrder(group, manualOrder.value);
   }
 }
 
 // 表头排序：点击列头切换 升/降序；null(加载中) 始终排末尾（名称列固定，不参与排序）
-type SortKey = "pct" | "chg" | "open" | "amp" | "amt" | "";
+type SortKey = "pct" | "price" | "chg" | "open" | "amp" | "amt" | "";
 const sortKey = ref<SortKey>("");
 const sortDir = ref<"asc" | "desc">("desc");
 function toggleSort(key: SortKey) {
@@ -713,6 +723,7 @@ function sortVal(q: Snap, k: Exclude<SortKey, "">): number | null {
   if (q.loading) return null;
   switch (k) {
     case "pct": return q.pct ?? null;
+    case "price": return q.price ?? null;
     case "chg": return q.chg ?? null;
     case "open": return q.open ?? null;
     case "amp":
@@ -972,6 +983,7 @@ function manageGroup(g: string) {
 </script>
 
 <style scoped>
+@import "../styles/stock-table.css";
 /* 页面 = 顶部固定头部 + 可滚动内容区（flex 纵向布局，头部天然不随滚动） */
 .wl-page {
   display: flex;
@@ -1292,7 +1304,6 @@ function manageGroup(g: string) {
   height: 104rpx;
   padding: 0 18rpx;
   overflow: hidden;
-  font-size: 26rpx;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
@@ -1305,13 +1316,14 @@ function manageGroup(g: string) {
   align-items: center;
   justify-content: flex-start;
   gap: 6rpx;
-  width: 188rpx;
+  width: 200rpx;
   padding: 0 10rpx 0 18rpx;
   text-align: left;
   background: var(--bg-2);
 }
 /* 列宽（合计 > 屏宽 → 横向滚动） */
 .c-pct  { width: 150rpx; }
+.c-price { width: 150rpx; }
 .c-chg  { width: 150rpx; }
 .c-open { width: 130rpx; }
 .c-amp  { width: 120rpx; }
@@ -1359,25 +1371,7 @@ function manageGroup(g: string) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 数值单元格：主行(大) + 次行(小) */
-.c-main {
-  font-size: 27rpx;
-  font-weight: 500;
-  line-height: 1.2;
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.c-sub {
-  font-size: 20rpx;
-  color: var(--text-2);
-  line-height: 1.2;
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* 预警点（整理模式下跟随拖拽手柄内联排列，不与手柄重叠） */
 .al-dot {
   position: absolute;
   left: 4rpx;
@@ -1393,10 +1387,6 @@ function manageGroup(g: string) {
   background: var(--primary);
   border-color: var(--primary);
 }
-/* 涨跌色 */
-.up { color: var(--up); }
-.down { color: var(--down); }
-.flat { color: var(--text-2); }
 
 /* ===== 底部卡片：固定常驻于菜单栏上方(始终可见)，本地展开/收起，无遮罩层 ===== */
 /* 仅 border-top 与表格表头边框同款，无阴影 */
@@ -1613,8 +1603,8 @@ function manageGroup(g: string) {
 .drag-handle.on {
   background: var(--primary-soft);
 }
-/* 名称列内预警点改为内联，避免与手柄重叠 */
-.c-name .al-dot {
+/* 整理模式下：拖拽手柄在最前，预警点改为内联（不再绝对定位），避免与手柄重叠 */
+.c-name.has-handle .al-dot {
   position: relative;
   left: auto;
   top: auto;

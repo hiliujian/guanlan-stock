@@ -38,9 +38,9 @@
               <text class="rcode">{{ r.code }}</text>
             </view>
           </view>
-          <text class="rh heat">{{ r.heat }}</text>
-          <text class="rh price" :style="{ color: colorOf(r) }">{{ fmtPrice(r.price) }}</text>
-          <text class="rh pct" :class="clsOf(r)">{{ fmtPct(r.pct) }}</text>
+          <text class="rh heat st-num">{{ r.heat }}</text>
+          <text class="rh price st-num" :class="'st-' + clsOf(r)">{{ fmtPrice(r.price) }}</text>
+          <text class="rh pct st-num" :class="'st-' + clsOf(r)">{{ fmtPct(r.pct) }}</text>
           <view class="rh star" :class="{ on: watched(r) }" @click.stop="toggleWatch(r)" role="button" aria-label="加入自选">
             <OutlineIcon type="star" :size="30" :color="watched(r) ? 'var(--primary)' : 'var(--text-3)'" />
           </view>
@@ -105,11 +105,6 @@ function rankCls(i: number): string {
   return "";
 }
 
-function colorOf(r: RankRow): string {
-  if (r.chg > 0) return "var(--up)";
-  if (r.chg < 0) return "var(--down)";
-  return "var(--text)";
-}
 function clsOf(r: RankRow): string {
   if (r.price == null || r.pct == null) return "flat";
   if (r.chg > 0) return "up";
@@ -144,6 +139,7 @@ function openRow(r: { code: string; market: string }) {
 </script>
 
 <style scoped>
+@import "../styles/stock-table.css";
 .rk {
   padding: 12rpx 0 0;
 }
@@ -259,30 +255,16 @@ function openRow(r: { code: string; market: string }) {
 .rh.heat {
   width: 110rpx;
   text-align: right;
-  font-size: 28rpx;
   font-weight: 700;
   color: var(--primary);
 }
 .rh.price {
   width: 150rpx;
   text-align: right;
-  font-size: 28rpx;
-  font-weight: 600;
 }
 .rh.pct {
   width: 130rpx;
   text-align: right;
-  font-size: 26rpx;
-  font-weight: 600;
-}
-.rh.pct.up {
-  color: var(--up);
-}
-.rh.pct.down {
-  color: var(--down);
-}
-.rh.pct.flat {
-  color: var(--text-2);
 }
 .rh.star {
   flex: none;

@@ -1,0 +1,63 @@
+/* ============================================================
+ * 股票表格共用数值列样式
+ * 自选股表(WatchlistView) 与 人气热度榜(RankView) 共用同一套，
+ * 避免两处维护重复的数值列 / 涨跌色样式。
+ * 组件 <style scoped> 中以 @import 引入（scoped 属性会分别加在各自组件上）。
+ * ============================================================ */
+
+/* 数值列单元格：右对齐、等宽数字、单行 */
+.st-num {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  text-align: right;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 带主/次两行的数值单元格（需要副标题时） */
+.st-num--stack {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4rpx;
+}
+.st-num--main {
+  font-size: 27rpx;
+  font-weight: 500;
+  line-height: 1.2;
+}
+.st-num--sub {
+  font-size: 20rpx;
+  color: var(--text-2);
+  line-height: 1.2;
+}
+
+/* 涨跌色（A股习惯：涨红跌绿） */
+.st-up {
+  color: var(--up) !important;
+}
+.st-down {
+  color: var(--down) !important;
+}
+.st-flat {
+  color: var(--text-2) !important;
+}
+
+/* 表头数值列基础（右对齐、弱化色） */
+.st-th {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--text-2);
+  text-align: right;
+  cursor: pointer;
+}

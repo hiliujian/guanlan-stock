@@ -107,9 +107,13 @@ const ICONS: Record<string, { body: string; filled?: boolean }> = {
   refresh: {
     body: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
   },
-  // 列设置 / 字段筛选（滑块）
-  sliders: {
-    body: '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>',
+  // 拖拽排序 / 整理顺序（上下箭头，表头切换按钮）
+  reorder: {
+    body: '<polyline points="8 10 12 6 16 10"/><polyline points="8 14 12 18 16 14"/>',
+  },
+  // 列设置 / 字段显隐（表格列网格）
+  columns: {
+    body: '<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/><line x1="15" y1="4" x2="15" y2="20"/><line x1="3" y1="12" x2="21" y2="12"/>',
   },
   // 资讯 / 新闻（报纸）
   news: {
