@@ -54,15 +54,27 @@
         <!-- 自选股表格：全屏铺满 + 固定表头 + 名称列固定(横滑不丢) + 横向滚动 -->
         <scroll-view v-if="rows.length" class="wl-grid" scroll-x scroll-y>
           <view class="wl-thead">
-            <text class="th c-name">名称</text>
-            <text class="th c-pct">涨跌幅</text>
-            <text class="th c-chg">涨跌额</text>
-            <text class="th c-open">今开</text>
-            <text class="th c-amp">振幅</text>
-            <text class="th c-amt">成交额</text>
+            <text class="th c-name" :class="{ active: sortKey === 'name' }" @click="toggleSort('name')">
+              <text class="th-label">名称</text><text class="sort-ic">{{ sortKey === 'name' ? (sortDir === 'desc' ? '▼' : '▲') : '↕' }}</text>
+            </text>
+            <text class="th c-pct" :class="{ active: sortKey === 'pct' }" @click="toggleSort('pct')">
+              <text class="th-label">涨跌幅</text><text class="sort-ic">{{ sortKey === 'pct' ? (sortDir === 'desc' ? '▼' : '▲') : '↕' }}</text>
+            </text>
+            <text class="th c-chg" :class="{ active: sortKey === 'chg' }" @click="toggleSort('chg')">
+              <text class="th-label">涨跌额</text><text class="sort-ic">{{ sortKey === 'chg' ? (sortDir === 'desc' ? '▼' : '▲') : '↕' }}</text>
+            </text>
+            <text class="th c-open" :class="{ active: sortKey === 'open' }" @click="toggleSort('open')">
+              <text class="th-label">今开</text><text class="sort-ic">{{ sortKey === 'open' ? (sortDir === 'desc' ? '▼' : '▲') : '↕' }}</text>
+            </text>
+            <text class="th c-amp" :class="{ active: sortKey === 'amp' }" @click="toggleSort('amp')">
+              <text class="th-label">振幅</text><text class="sort-ic">{{ sortKey === 'amp' ? (sortDir === 'desc' ? '▼' : '▲') : '↕' }}</text>
+            </text>
+            <text class="th c-amt" :class="{ active: sortKey === 'amt' }" @click="toggleSort('amt')">
+              <text class="th-label">成交额</text><text class="sort-ic">{{ sortKey === 'amt' ? (sortDir === 'desc' ? '▼' : '▲') : '↕' }}</text>
+            </text>
           </view>
           <view
-            v-for="row in rows"
+            v-for="row in displayRows"
             :key="row.it.code + row.it.market"
             class="tr"
             @click="onItemClick(row.it)"
@@ -517,6 +529,51 @@ const rows = computed(() =>
   }))
 );
 
+// 表头排序：点击列头切换 升/降序；null(加载中) 始终排末尾
+type SortKey = "name" | "pct" | "chg" | "open" | "amp" | "amt" | "";
+const sortKey = ref<SortKey>("");
+const sortDir = ref<"asc" | "desc">("desc");
+function toggleSort(key: SortKey) {
+  if (!key) return;
+  if (sortKey.value === key) sortDir.value = sortDir.value === "desc" ? "asc" : "desc";
+  else {
+    sortKey.value = key;
+    sortDir.value = "desc";
+  }
+}
+function sortVal(q: Snap, k: Exclude<SortKey, "name" | "">): number | null {
+  if (q.loading) return null;
+  switch (k) {
+    case "pct": return q.pct ?? null;
+    case "chg": return q.chg ?? null;
+    case "open": return q.open ?? null;
+    case "amp":
+      return q.high != null && q.low != null && q.preClose ? ((q.high - q.low) / q.preClose) * 100 : null;
+    case "amt": return q.amount ?? null;
+  }
+  return null;
+}
+const displayRows = computed(() => {
+  const arr = rows.value;
+  const k = sortKey.value;
+  if (!k) return arr;
+  const dir = sortDir.value === "desc" ? -1 : 1;
+  return [...arr].sort((a, b) => {
+    let cmp = 0;
+    if (k === "name") {
+      cmp = (a.it.name || a.it.code).localeCompare(b.it.name || b.it.code, "zh");
+    } else {
+      const va = sortVal(a.q, k);
+      const vb = sortVal(b.q, k);
+      if (va == null && vb == null) cmp = 0;
+      else if (va == null) cmp = 1;
+      else if (vb == null) cmp = -1;
+      else cmp = va - vb;
+    }
+    return cmp * dir;
+  });
+});
+
 // 顶部右侧：当前分组名（默认「全部」）+ 当前分组内实时涨/跌个股个数（随行情刷新）
 const upDown = computed(() => {
   const g = selectedGroup.value;
@@ -955,7 +1012,6 @@ function manageGroup(g: string) {
   background: var(--sticky-bg);
   backdrop-filter: blur(16rpx) saturate(140%);
   -webkit-backdrop-filter: blur(16rpx) saturate(140%);
-  border-bottom: 1rpx solid var(--border);
 }
 .th {
   flex: none;
@@ -978,8 +1034,25 @@ function manageGroup(g: string) {
   z-index: 6;
   background: var(--sticky-bg);
 }
+/* 表头可排序：箭头指示 + 激活态高亮 */
+.th {
+  cursor: pointer;
+}
+.th-label {
+  white-space: nowrap;
+}
+.sort-ic {
+  font-size: 18rpx;
+  color: var(--text-3);
+  margin-left: 4rpx;
+}
+.th.active .th-label {
+  color: var(--text);
+}
+.th.active .sort-ic {
+  color: var(--primary);
+}
 .tr {
-  border-bottom: 1rpx solid var(--border);
   background: var(--bg-2);
 }
 .tr:active {
@@ -997,11 +1070,12 @@ function manageGroup(g: string) {
   gap: 4rpx;
   height: 104rpx;
   padding: 0 18rpx;
+  overflow: hidden;
   font-size: 26rpx;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-/* 固定名称列：横向滚动时始终可见 + 右侧分隔线 */
+/* 固定名称列：横向滚动时始终可见 */
 .c-name {
   position: sticky;
   left: 0;
@@ -1012,7 +1086,6 @@ function manageGroup(g: string) {
   width: 230rpx;
   padding: 0 18rpx 0 20rpx;
   background: var(--bg-2);
-  border-right: 1rpx solid var(--border);
 }
 /* 列宽（合计 > 屏宽 → 横向滚动） */
 .c-pct  { width: 150rpx; }
@@ -1056,17 +1129,29 @@ function manageGroup(g: string) {
   font-size: 20rpx;
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
+  max-width: 130rpx;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* 数值单元格：主行(大) + 次行(小) */
 .c-main {
   font-size: 27rpx;
   font-weight: 500;
   line-height: 1.2;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .c-sub {
   font-size: 20rpx;
   color: var(--text-2);
   line-height: 1.2;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .al-dot {
   flex: none;
