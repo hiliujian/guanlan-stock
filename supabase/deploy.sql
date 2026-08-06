@@ -514,6 +514,7 @@ alter table public.profiles add column if not exists exp integer not null defaul
 alter table public.profiles add column if not exists signin_streak        integer not null default 0;
 alter table public.profiles add column if not exists last_signin          date;
 alter table public.profiles add column if not exists profile_bonus_claimed boolean not null default false;
+alter table public.profiles add column if not exists last_login           jsonb;  -- 最近一次登录的地点/时间/设备信息（前端登录成功时写入，供「账号安全」页展示）
 
 -- 100.2 按累计经验刷新等级（阈值与前端 TIERS 一致）
 create or replace function public.refresh_level(p_user uuid)

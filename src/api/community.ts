@@ -11,6 +11,7 @@
 // 边界单点映射，UI 无需改动。
 // =====================================================================
 import { getSupabase } from "@/api/supabase";
+import { withTimeout } from "@/api/transport";
 import { translateSupabaseError } from "@/api/auth";
 import { getMyName } from "@/store/identity";
 import { userState } from "@/store/user";
@@ -159,13 +160,17 @@ export function formatRelative(ts: number): string {
 async function listRemote(): Promise<CommunityPost[]> {
   const sb = getSupabase();
   if (!sb) return [];
-  const { data, error } = await sb
-    .from("community_posts")
-    .select(
-      "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, content, created_at)"
-    )
-    .order("created_at", { ascending: false })
-    .limit(50);
+  // 网络异常时 Supabase 查询可能挂起，用 withTimeout 兜底（10s），避免下拉刷新 loading 卡死
+  const { data, error } = await withTimeout(
+    sb
+      .from("community_posts")
+      .select(
+        "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, content, created_at)"
+      )
+      .order("created_at", { ascending: false })
+      .limit(50) as unknown as Promise<{ data: any; error: any }>,
+    10000
+  );
   if (error || !data) return [];
   // 点赞态以服务端 community_likes 为唯一权威（不再本地缓存）
   const liked = await loadLikedFromServer(sb);

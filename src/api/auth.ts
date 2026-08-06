@@ -219,6 +219,17 @@ export interface ProfilePatch {
   username?: string;
   bio?: string;
   avatar_url?: string;
+  last_login?: LoginInfo | null;
+}
+
+/** 最近一次登录信息（供「账号安全」页展示）：地点 / 时间 / 设备 */
+export interface LoginInfo {
+  ip?: string; // 登录 IP（最佳努力获取，失败为空）
+  city?: string; // 登录城市（由 IP 地理定位，失败为「未知」）
+  device?: string; // 设备型号（uni.getSystemInfoSync().model）
+  os?: string; // 操作系统及版本（如 "iOS 17.0" / "Android 14"）
+  platform?: string; // 平台标识（ios / android / web 等）
+  time?: string; // 登录时刻 ISO 字符串
 }
 
 export interface UploadResult {
@@ -399,6 +410,68 @@ export async function updateProfile(patch: ProfilePatch): Promise<AuthResult> {
   const { error } = await sb.from("profiles").update(patch).eq("id", uid);
   if (error) return { ok: false, error: translateSupabaseError(error.message) };
   return { ok: true };
+}
+
+/**
+ * 捕获本次登录的设备 / 地点 / 时间，写入 profiles.last_login，供「账号安全」页
+ * 展示「上次登录信息」。全程最佳努力：系统信息 / IP 地理定位任一环节失败都不影响登录，
+ * 仅对应字段留空；函数本身绝不抛出，避免阻塞登录主流程。
+ */
+export async function captureLoginInfo(): Promise<void> {
+  try {
+    const sb = getSupabase();
+    if (!sb) return;
+    const { data: u } = await sb.auth.getUser();
+    const uid = u.user?.id;
+    if (!uid) return;
+
+    // 设备信息：uni-app 跨端可用（model=型号、system=操作系统及版本、platform=平台）
+    let device = "";
+    let os = "";
+    let platform = "";
+    try {
+      const info: any = uni.getSystemInfoSync();
+      device = info?.model || "";
+      os = info?.system || "";
+      platform = info?.platform || "";
+    } catch {
+      /* 设备信息不可用时仅留空 */
+    }
+
+    // 地点：最佳努力 IP 地理定位（超时即放弃，不影响其余字段）
+    const geo = await fetchLoginGeo();
+
+    const info: LoginInfo = {
+      ip: geo?.ip || "",
+      city: geo?.city || "",
+      device,
+      os,
+      platform,
+      time: new Date().toISOString(),
+    };
+    await sb.from("profiles").update({ last_login: info }).eq("id", uid);
+  } catch {
+    /* 静默失败：登录信息仅为展示用途，绝不阻塞主流程 */
+  }
+}
+
+/** 最佳努力 IP 地理定位：返回 { ip, city }，失败返回 null。3s 超时，绝不抛出。 */
+async function fetchLoginGeo(): Promise<{ ip?: string; city?: string } | null> {
+  try {
+    const res: any = await uni.request({
+      url: "https://ipwho.is/json",
+      method: "GET",
+      timeout: 3000,
+      dataType: "json",
+    });
+    const body = res?.data;
+    if (body && body.success !== false && (body.city || body.ip)) {
+      return { ip: body.ip || "", city: body.city || "" };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /**

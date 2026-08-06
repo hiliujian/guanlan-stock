@@ -4,7 +4,7 @@
 // =====================================================================
 import { reactive, readonly } from "vue";
 import { getSupabase, isSupabaseConfigured } from "@/api/supabase";
-import { onAuthChange, updateProfile, awardDailySignin } from "@/api/auth";
+import { onAuthChange, updateProfile, awardDailySignin, captureLoginInfo, type LoginInfo } from "@/api/auth";
 
 interface Profile {
   id: string;
@@ -14,6 +14,7 @@ interface Profile {
   avatar_url: string;
   level?: number; // 用户等级序号（0=新手散户）；由后端维护，前端只读
   exp?: number; // 用户经验值；由后端维护，缺省 0
+  last_login?: LoginInfo | null; // 最近一次登录的地点/时间/设备（账号安全页展示）
 }
 
 interface UserState {
@@ -47,6 +48,7 @@ async function loadProfile(userId: string) {
       avatar_url: data.avatar_url || "",
       level: typeof data.level === "number" ? data.level : 0,
       exp: typeof data.exp === "number" ? data.exp : 0,
+      last_login: (data.last_login as LoginInfo) ?? null,
     };
     // 注意：username 由用户在注册时自填、唯一（见 deploy.sql 部分唯一索引）。
     // 历史空 username 不再由前端自动补随机值；
@@ -62,6 +64,7 @@ export function useUser() {
     if (isSupabaseConfigured) {
       onAuthChange(async (user) => {
         if (user) {
+          const wasLoggedIn = state.loggedIn;
           state.loggedIn = true;
           state.userId = user.id;
           state.email = user.email ?? null;
@@ -70,6 +73,9 @@ export function useUser() {
           // （后端 award_daily_signin RPC 幂等，当日已签到则不重复发放）
           await awardDailySignin();
           await loadProfile(user.id);
+          // 仅在「从未登录 → 已登录」的跃迁时记录本次登录信息（刷新 token 不重复写），
+          // 供「账号安全」页展示「上次登录」；失败静默，不影响主流程。
+          if (!wasLoggedIn) captureLoginInfo().catch(() => {});
         } else {
           state.loggedIn = false;
           state.userId = null;

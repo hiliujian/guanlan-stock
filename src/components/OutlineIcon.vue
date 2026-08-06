@@ -162,6 +162,18 @@ const ICONS: Record<string, { body: string; filled?: boolean }> = {
     body: '<path d="M8 4h8v4a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 3"/><path d="M16 6h3a3 3 0 0 1-3 3"/><path d="M12 12v4"/><path d="M9 20h6"/><path d="M10 16h4l-1 4h-2z"/>',
     filled: true,
   },
+  // 定位（上次登录地点）
+  location: {
+    body: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
+  },
+  // 时钟（上次登录时间）
+  clock: {
+    body: '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>',
+  },
+  // 手机 / 设备（上次登录设备）
+  phone: {
+    body: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.5-1.5a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 2z"/>',
+  },
 };
 
 const svgBody = computed(() => {

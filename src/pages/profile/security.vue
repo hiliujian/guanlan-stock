@@ -27,6 +27,44 @@
         </view>
       </view>
 
+      <!-- 上次登录信息：地点 / 时间 / 设备（参考主流小程序账号安全页设计） -->
+      <view class="card sec-group anim-fade-up">
+        <text class="sec-group-title">上次登录</text>
+
+        <!-- 登录地点（城市，最佳努力 IP 地理定位） -->
+        <view class="sec-row">
+          <view class="sec-row-left">
+            <view class="sec-row-ic"><OutlineIcon type="location" :size="28" color="var(--text-2)" /></view>
+            <view class="sec-row-text">
+              <text class="sec-row-label">登录地点</text>
+              <text class="sec-row-desc">{{ loginLocation }}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 登录时间（日期 + 时间，格式化展示） -->
+        <view class="sec-row">
+          <view class="sec-row-left">
+            <view class="sec-row-ic"><OutlineIcon type="clock" :size="28" color="var(--text-2)" /></view>
+            <view class="sec-row-text">
+              <text class="sec-row-label">登录时间</text>
+              <text class="sec-row-desc">{{ loginTime }}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 登录设备（型号 + 操作系统） -->
+        <view class="sec-row">
+          <view class="sec-row-left">
+            <view class="sec-row-ic"><OutlineIcon type="phone" :size="28" color="var(--text-2)" /></view>
+            <view class="sec-row-text">
+              <text class="sec-row-label">登录设备</text>
+              <text class="sec-row-desc">{{ loginDevice }}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
       <!-- 账号与安全分组：登录邮箱 / 登录密码（手风琴展开修改表单） -->
       <view class="card sec-group anim-fade-up">
         <text class="sec-group-title">账号与安全</text>
@@ -195,6 +233,37 @@ import {
 } from "@/api/auth";
 
 const user = useUser();
+
+// —— 上次登录信息（来自 profiles.last_login，登录成功时由 user store 写入）——
+const lastLogin = computed(() => user.profile?.last_login ?? null);
+
+// 登录地点：优先城市，附 IP；均无则「未知」
+const loginLocation = computed(() => {
+  const l = lastLogin.value;
+  if (!l) return "—";
+  if (l.city) return l.ip ? `${l.city}（IP ${l.ip}）` : l.city;
+  if (l.ip) return l.ip;
+  return "未知";
+});
+
+// 登录设备：型号 · 操作系统；均无则退回平台标识
+const loginDevice = computed(() => {
+  const l = lastLogin.value;
+  if (!l) return "—";
+  const parts = [l.device, l.os].filter(Boolean);
+  return parts.length ? parts.join(" · ") : l.platform || "未知设备";
+});
+
+const loginTime = computed(() => fmtLoginTime(lastLogin.value?.time));
+
+// 时间格式化：YYYY-MM-DD HH:mm（本地时区），无效则「—」
+function fmtLoginTime(iso?: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 // 邮箱脱敏展示（仅显示前 3 位 + 星号 + 域名），不暴露完整地址
 const maskedEmail = computed(() => {
