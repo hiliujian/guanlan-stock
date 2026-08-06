@@ -51,47 +51,57 @@
           </view>
         </view>
 
-        <!-- 自选股表格：全屏铺满 + 固定表头 + 横向滚动 -->
+        <!-- 自选股表格：全屏铺满 + 固定表头 + 名称列固定(横滑不丢) + 横向滚动 -->
         <scroll-view v-if="rows.length" class="wl-grid" scroll-x scroll-y>
           <view class="wl-thead">
-            <text class="th col-name">名称</text>
-            <text class="th col-code">代码</text>
-            <text class="th col-num">现价</text>
-            <text class="th col-num">涨跌额</text>
-            <text class="th col-num">涨跌幅</text>
-            <text class="th col-num">今开</text>
-            <text class="th col-num">振幅</text>
-            <text class="th col-num">成交额</text>
-            <text class="th col-act">操作</text>
+            <text class="th c-name">名称</text>
+            <text class="th c-pct">涨跌幅</text>
+            <text class="th c-chg">涨跌额</text>
+            <text class="th c-open">今开</text>
+            <text class="th c-amp">振幅</text>
+            <text class="th c-amt">成交额</text>
           </view>
           <view
-            v-for="(row, i) in rows"
+            v-for="row in rows"
             :key="row.it.code + row.it.market"
             class="tr"
             @click="onItemClick(row.it)"
-            @longpress="moveToGroup(row.it)"
+            @longpress="onRowLongPress(row.it)"
           >
-            <view class="td col-name">
+            <!-- 固定列：预警点 + 名称 + (市场徽标 + 代码) -->
+            <view class="td c-name">
               <view class="al-dot" :class="{ on: hasAlert(row.it) }" @click.stop="editAlert(row.it)" />
-              <text class="t-name">{{ row.it.name || row.it.code }}</text>
+              <view class="t-block">
+                <text class="t-name">{{ row.it.name || row.it.code }}</text>
+                <view class="t-sub">
+                  <text class="t-mkt">{{ row.mkt }}</text>
+                  <text class="t-code">{{ row.it.code }}</text>
+                </view>
+              </view>
             </view>
-            <view class="td col-code">
-              <text class="t-mkt">{{ row.mkt }}</text>
-              <text class="t-code">{{ row.it.code }}</text>
+            <!-- 涨跌幅：主行(涨跌幅) + 次行(净值/现价) -->
+            <view class="td c-pct">
+              <text class="c-main" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPct(row.q.pct) }}</text>
+              <text class="c-sub">{{ row.q.loading ? '' : fmtPrice(row.q.price) }}</text>
             </view>
-            <text class="td col-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPrice(row.q.price) }}</text>
-            <text class="td col-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtSigned(row.q.chg) }}</text>
-            <text class="td col-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPct(row.q.pct) }}</text>
-            <text class="td col-num">{{ row.q.loading ? '--' : fmtPrice(row.q.open) }}</text>
-            <text class="td col-num">{{ row.q.loading ? '--' : ampPct(row.q) }}</text>
-            <text class="td col-num">{{ row.q.loading ? '--' : fmtAmount(row.q.amount) }}</text>
-            <view class="td col-act"><text class="t-del" @click.stop="onDel(row.it)">删除</text></view>
+            <view class="td c-chg">
+              <text class="c-main" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtSigned(row.q.chg) }}</text>
+            </view>
+            <view class="td c-open">
+              <text class="c-main">{{ row.q.loading ? '--' : fmtPrice(row.q.open) }}</text>
+            </view>
+            <view class="td c-amp">
+              <text class="c-main">{{ row.q.loading ? '--' : ampPct(row.q) }}</text>
+            </view>
+            <view class="td c-amt">
+              <text class="c-main">{{ row.q.loading ? '--' : fmtAmount(row.q.amount) }}</text>
+            </view>
           </view>
           <view class="bottom-pad" />
         </scroll-view>
 
         <text v-if="list.length && !rows.length" class="wl-hint">该分组暂无股票</text>
-        <text v-if="rows.length" class="wl-hint">点击查看详情 · 长按移动分组 · 可横滑查看更多数据</text>
+        <text v-if="rows.length" class="wl-hint">点击查看详情 · 长按操作(删除/移分组/预警) · 可横滑查看更多</text>
       </view>
 
     <!-- 底部卡片：本地展开/收起（向上动效），自身承载完整榜单，无遮罩层。
@@ -662,13 +672,9 @@ watch(
   () => loadQuotesSafe()
 );
 
-// ===== 自选股表格交互：点击行打开个股，长按行移动分组，删除按钮移除 =====
+// ===== 自选股表格交互：点击行打开个股；长按行弹出操作菜单（删除/移分组/预警） =====
 function onItemClick(it: WatchItem) {
   emit("open-market", { code: it.code, market: it.market });
-}
-
-function onDel(it: WatchItem) {
-  doRemove(it);
 }
 
 function doRemove(it: WatchItem) {
@@ -676,8 +682,21 @@ function doRemove(it: WatchItem) {
   uni.showToast({ title: "已移除", icon: "none" });
 }
 
-// 移动股票到其他分组（含新建分组）
-function moveToGroup(it: WatchItem) {
+// 长按行：弹出操作菜单
+function onRowLongPress(it: WatchItem) {
+  uni.showActionSheet({
+    itemList: ["编辑价格预警", "移入分组", "删除自选"],
+    success: (res) => {
+      const idx = res.tapIndex;
+      if (idx === 0) editAlert(it);
+      else if (idx === 1) showMoveGroup(it);
+      else if (idx === 2) doRemove(it);
+    },
+  });
+}
+
+// 移入其他分组（含新建分组）
+function showMoveGroup(it: WatchItem) {
   const others = groups.value.filter((g) => g !== it.group);
   const itemList = [...others, "+ 新建分组…"];
   uni.showActionSheet({
@@ -915,7 +934,7 @@ function manageGroup(g: string) {
   padding: 0 56rpx;
 }
 
-/* ===== 自选股表格：全屏铺满 + 固定表头 + 横向滚动 ===== */
+/* ===== 自选股表格：全屏铺满 + 固定表头 + 名称列固定(横滑不丢) + 横向滚动 ===== */
 .wl-grid {
   flex: 1;
   min-height: 0;
@@ -940,11 +959,24 @@ function manageGroup(g: string) {
 }
 .th {
   flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 70rpx;
+  padding: 0 18rpx;
   font-size: 22rpx;
   font-weight: 600;
   color: var(--text-2);
-  padding: 18rpx 0;
-  text-align: center;
+  text-align: right;
+}
+/* 表头名称列：与数据列同为固定列（左上角最高层级） */
+.th.c-name {
+  justify-content: flex-start;
+  text-align: left;
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  background: var(--sticky-bg);
 }
 .tr {
   border-bottom: 1rpx solid var(--border);
@@ -953,21 +985,89 @@ function manageGroup(g: string) {
 .tr:active {
   background: var(--card-2);
 }
+.tr:active .c-name {
+  background: var(--card-2);
+}
 .td {
   flex: none;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4rpx;
+  height: 104rpx;
+  padding: 0 18rpx;
   font-size: 26rpx;
   color: var(--text);
-  height: 88rpx;
   font-variant-numeric: tabular-nums;
 }
+/* 固定名称列：横向滚动时始终可见 + 右侧分隔线 */
+.c-name {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex-direction: row;
+  align-items: center;
+  gap: 10rpx;
+  width: 230rpx;
+  padding: 0 18rpx 0 20rpx;
+  background: var(--bg-2);
+  border-right: 1rpx solid var(--border);
+}
 /* 列宽（合计 > 屏宽 → 横向滚动） */
-.col-name { width: 230rpx; gap: 8rpx; padding-left: 20rpx; text-align: left; }
-.col-code { width: 150rpx; display: flex; align-items: center; justify-content: center; gap: 6rpx; font-size: 22rpx; color: var(--text-2); }
-.col-num  { width: 140rpx; justify-content: flex-end; padding-right: 18rpx; text-align: right; }
-.col-act  { width: 96rpx; justify-content: center; }
+.c-pct  { width: 150rpx; }
+.c-chg  { width: 150rpx; }
+.c-open { width: 130rpx; }
+.c-amp  { width: 120rpx; }
+.c-amt  { width: 150rpx; }
 /* 名称列内部 */
+.t-block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.t-name {
+  font-size: 28rpx;
+  font-weight: 400;
+  color: var(--text);
+  max-width: 170rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+.t-sub {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  margin-top: 4rpx;
+}
+.t-mkt {
+  flex: none;
+  font-size: 18rpx;
+  line-height: 1;
+  padding: 2rpx 6rpx;
+  border-radius: 6rpx;
+  color: var(--text-2);
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
+}
+.t-code {
+  font-size: 20rpx;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+/* 数值单元格：主行(大) + 次行(小) */
+.c-main {
+  font-size: 27rpx;
+  font-weight: 500;
+  line-height: 1.2;
+}
+.c-sub {
+  font-size: 20rpx;
+  color: var(--text-2);
+  line-height: 1.2;
+}
 .al-dot {
   flex: none;
   width: 12rpx;
@@ -979,35 +1079,6 @@ function manageGroup(g: string) {
 .al-dot.on {
   background: var(--primary);
   border-color: var(--primary);
-}
-.t-name {
-  font-size: 28rpx;
-  font-weight: 400;
-  color: var(--text);
-  max-width: 190rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.t-mkt {
-  flex: none;
-  font-size: 18rpx;
-  line-height: 1;
-  padding: 3rpx 6rpx;
-  border-radius: 6rpx;
-  color: var(--text-2);
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
-}
-.t-code {
-  font-size: 22rpx;
-  color: var(--text-2);
-  font-variant-numeric: tabular-nums;
-}
-.t-del {
-  font-size: 24rpx;
-  color: var(--down);
-  padding: 8rpx 14rpx;
 }
 /* 涨跌色 */
 .up { color: var(--up); }
