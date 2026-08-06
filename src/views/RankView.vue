@@ -22,7 +22,7 @@
           <view class="rh heat">
             <text>热度</text>
           </view>
-          <view class="rh star" />
+          <view class="rh star-head" />
         </view>
         <!-- 数据行 -->
         <view
@@ -148,14 +148,18 @@ function openRow(r: { code: string; market: string }) {
 <style scoped>
 @import "../styles/stock-table.css";
 .rk {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   padding: 12rpx 0 0;
 }
 .rk-loading {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 18rpx;
-  padding: 80rpx 0 40rpx;
 }
 .rk-spin {
   width: 44rpx;
@@ -291,8 +295,8 @@ function openRow(r: { code: string; market: string }) {
   align-items: center;
   justify-content: center;
   font-size: 18rpx;
-  font-weight: 800;
-  color: #ff5722;
+  font-weight: 400;
+  color: #fff;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -304,6 +308,11 @@ function openRow(r: { code: string; market: string }) {
 .rh.pct {
   width: 150rpx;
   text-align: right;
+}
+/* 表头星星占位：保留列宽对齐，无内容无背景 */
+.rh.star-head {
+  flex: none;
+  width: 56rpx;
 }
 /* 自选星星：与行情页 .qh-star 一致——真正的圆形底，on 态浅绿、按下缩放 */
 .rh.star {

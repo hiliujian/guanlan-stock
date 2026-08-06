@@ -56,10 +56,9 @@
           <view class="wl-rows">
           <view class="wl-thead">
             <view class="th c-name">
-              <view class="th-tools">
+              <view class="th-cols" :class="{ on: reorderMode }">
                 <view
                   class="th-ic"
-                  :class="{ on: reorderMode }"
                   role="button"
                   aria-label="拖拽排序"
                   @click="toggleReorder"
@@ -1046,7 +1045,7 @@ function manageGroup(g: string) {
 }
 .ud-num {
   font-size: 22rpx;
-  font-weight: 700;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
 .ud-num.up {
@@ -1545,37 +1544,49 @@ function manageGroup(g: string) {
   min-height: 0;
   padding: 4rpx 0 0;
 }
+/* 弹窗内 scroll-view 内容铺满高度并竖向排列，使榜单 loading 在弹窗区域内垂直居中 */
+.rs-body :deep(.uni-scroll-view-content) {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
 
-/* ===== 名称表头工具图标（拖动排序 / 列设置） ===== */
-.th-tools {
+/* ===== 名称表头工具图标（拖动排序 / 列设置 共用同一灰底容器） ===== */
+.th-cols {
   display: flex;
   align-items: center;
   gap: 2rpx;
   margin-left: 6rpx;
+  padding: 4rpx;
+  border-radius: 14rpx;
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+/* 拖拽激活态：整个容器变绿，提示当前处于排序模式 */
+.th-cols.on {
+  background: var(--primary-soft);
+  border-color: var(--primary-soft);
 }
 .th-ic {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48rpx;
-  height: 48rpx;
-  border-radius: 12rpx;
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 10rpx;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.12s ease;
 }
+/* 各自图标独立高亮，点哪个只亮哪个，互不干扰 */
 .th-ic:active {
-  background: var(--primary-soft);
-  border-color: var(--primary-soft);
+  background: rgba(0, 0, 0, 0.06);
 }
-.th-ic.on {
-  background: var(--primary-soft);
-  border-color: var(--primary-soft);
+.th-cols.on .th-ic:active {
+  background: rgba(7, 193, 96, 0.18);
 }
-.th-ic:active :deep(.outline-icon),
-.th-ic.on :deep(.outline-icon) {
+.th-ic:active :deep(.outline-icon) {
   color: var(--primary) !important;
 }
 
