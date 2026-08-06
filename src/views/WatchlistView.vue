@@ -92,6 +92,7 @@
               </view>
             </view>
           </view>
+          <view class="wl-body">
           <view
             v-for="row in displayRows"
             :key="row.it.code + row.it.market"
@@ -129,10 +130,12 @@
             </view>
           </view>
           </view>
-          <!-- 底部占位：仅占位「卡片自身高度(76rpx)」即可。卡片固定在菜单栏上方，
-               其下方 110rpx 区域本就被固定菜单栏遮挡，无需再预留；占位过高会在列表
-               未填满一屏时于末行与卡片之间露出大片空白。滚到底时末行紧贴卡片顶沿。 -->
+          <!-- 底部占位：高度须为「卡片自身 76rpx + 菜单栏 110rpx + 安全区」，因为卡片
+               固定于菜单栏上方，距视口底恰为 186rpx+safe；滚到底时末行须停在此高度之上
+               才不被卡片遮挡。列表不足一屏时，靠 .wl-body 的 margin-top:auto 把行整体
+               顶到底部、占位收拢到固定卡片正下方，末行与卡片之间不再露空白。 -->
           <view class="bottom-pad" />
+          </view>
         </scroll-view>
 
         <!-- 底部卡片：固定常驻于菜单栏上方(始终可见)，本地展开/收起，无遮罩层 -->
@@ -1004,19 +1007,40 @@ function manageGroup(g: string) {
   min-height: 0;
   width: 100%;
   background: var(--bg-2);
+}
+/* scroll-view 真实内容容器：H5 下为 .uni-scroll-view-content，默认 display:block。
+   改为纵向 flex 才能用 auto 外边距把短列表的行整体顶到底部，消除末行与卡片间空白。
+   其 width/height:100% 来自组件默认样式，这里只补 display:flex。 */
+.wl-grid :deep(.uni-scroll-view-content) {
   display: flex;
   flex-direction: column;
 }
 .wl-thead,
 .tr {
+  flex: none;
   display: flex;
   align-items: stretch;
   width: max-content;
   min-width: 100%;
 }
-/* 列表不足一屏时，用 auto 外边距把内容整体顶到底部，使底部占位收拢到固定卡片下方，
-   末行与卡片之间不再露出空白（内容超过一屏时 auto 边距归零，正常从上往下滚动） */
+/* 行容器：填满内容区高度；列表不足一屏时，内部 .wl-body 的 auto 外边距把行顶到底部 */
 .wl-rows {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 数据行包裹层：占据表头以下、底部占位以上的全部空间；当内容不足一屏时，
+   .tr:first-of-type 的 margin-top:auto 把整组行顶到该层底部，使末行紧贴底部占位
+   （即紧贴固定卡片），首行之上露出空白而非末行之下露出空白。内容超一屏时 auto
+   边距归零，正常从上往下排列并滚动。 */
+.wl-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wl-body > .tr:first-of-type {
   margin-top: auto;
 }
 .wl-thead {
