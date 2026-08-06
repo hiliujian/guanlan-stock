@@ -121,7 +121,7 @@
 
     <!-- 底部卡片：本地展开/收起（向上动效），自身承载完整榜单，无遮罩层。
          进入页面即渲染（不等数据）；peek 为 null 时显示 -- 占位。 -->
-    <view class="rank-peek" :class="{ open: rankOpen }" :style="rankStyle">
+    <view class="rank-peek" :class="{ open: rankOpen, max: rankMax }" :style="rankStyle">
       <!-- 收起态：一行「今日最热」摘要，点击展开；数据为 null 时显示 -- 占位 -->
       <view v-if="!rankOpen" class="rp-row" role="button" aria-label="展开榜单" @click="rankOpen = true">
         <text class="rp-top">今日最热</text>
@@ -140,15 +140,16 @@
       <view v-if="rankOpen" class="rp-panel">
         <view
           class="rs-grip"
-          @touchstart="onGripDown" @touchmove="onGripMove" @touchend="onGripUp" @touchcancel="onGripUp"
-          @mousedown="onGripDown" @mousemove="onGripMove" @mouseup="onGripUp" @mouseleave="onGripUp"
-          @click="onGripTap"
+          @touchstart.stop="onGripDown" @touchmove.stop="onGripMove" @touchend.stop="onGripUp" @touchcancel.stop="onGripUp"
+          @mousedown.stop="onGripDown" @mousemove.stop="onGripMove" @mouseup.stop="onGripUp" @mouseleave.stop="onGripUp"
+          @click.stop="onGripTap"
         >
           <view class="rs-handle" />
         </view>
         <view class="rs-tabs">
-          <text :class="['rs-tab', rankTab === 'today' ? 'on' : '']" @click="rankTab = 'today'">今日热榜</text>
-          <text :class="['rs-tab', rankTab === 'all' ? 'on' : '']" @click="rankTab = 'all'">完整榜单</text>
+          <view class="rs-tab" :class="{ on: rankTab === 'today' }" @click="rankTab = 'today'">今日热榜</view>
+          <view class="rs-tab" :class="{ on: rankTab === 'all' }" @click="rankTab = 'all'">完整榜单</view>
+          <view class="rs-ink" :class="{ right: rankTab === 'all' }"><view class="rs-ink-bar" /></view>
         </view>
         <scroll-view class="rs-body" scroll-y>
           <RankView :mode="rankTab" @open-market="onSheetOpenMarket" />
@@ -178,6 +179,20 @@ const list = computed(() => wl.items as WatchItem[]);
 // 榜单弹层 + 底部露出卡片：默认展示「今日热榜 / 完整榜单」切换
 const rankOpen = ref(false);
 const rankTab = ref<"today" | "all">("today");
+// 榜单展开态：是否铺满整页（上拉触发）
+const rankMax = ref(false);
+// 视口高度与底部占位（px），用于上拉铺满时计算目标高度
+const winH = ref(0);
+const tabPx = ref(0);
+function measureViewport() {
+  try {
+    const info: any = (uni as any).getWindowInfo ? (uni as any).getWindowInfo() : uni.getSystemInfoSync();
+    const w = info.windowWidth || info.screenWidth || 375;
+    winH.value = info.windowHeight || 0;
+    const safe = (info.safeAreaInsets && info.safeAreaInsets.bottom) || 0;
+    tabPx.value = safe + (w / 750) * 110; // 110rpx 底部偏移 + 安全区
+  } catch (_) {}
+}
 
 // 露出卡片预览数据：当前选中榜单的第 1 名（一行最热股）
 interface PeekRow {
@@ -468,11 +483,13 @@ function moveStockToGroup() {
   });
 }
 
-// 下拉刷新：自选列表复载行情（由页面级下拉刷新 onPullDownRefresh 触发，见 index.vue）
+// 下拉刷新（页面级 onPullDownRefresh，见 index.vue）：
+// index 是注册 page，其 onPullDownRefresh 会路由到当前 tab 视图的 refresh()；
+// 自选页此处复载行情。榜单卡片是 fixed 浮层，其拖拽手柄已 stopPropagation，
+// 不会把「下拉收起 / 上拉铺满」手势冒泡到页面级刷新，避免误触发 loading。
 async function onRefresh() {
   await loadQuotesSafe();
 }
-// 暴露给页面级下拉刷新（index.vue onPullDownRefresh 路由到此，避免 scroll-view 与页面级双 loading）
 defineExpose({ refresh: () => onRefresh() });
 
 // 自动刷新心跳：非后台常驻，离开页面即停
@@ -545,31 +562,43 @@ function onSheetOpenMarket(p: { code: string; market: string }) {
 // 关闭榜单弹层
 function closeRank() {
   rankOpen.value = false;
+  rankMax.value = false;
 }
 
-// 拖拽缩回：面板顶部手柄区支持「下拉收起」，配合 height/transform 过渡实现平滑动效
+// 拖拽手势：面板顶部手柄区支持「下拉收起 / 上拉铺满」，配合 height/transform 过渡动效
 const dragY = ref(0);
 const dragging = ref(false);
+const dragUp = ref(false);
 let gripStartY = 0;
 let gripMoved = false;
-const rankStyle = computed(() =>
-  dragging.value
-    ? { transform: `translateX(-50%) translateY(${dragY.value}px)`, transition: "none" }
-    : {}
-);
+const rankStyle = computed(() => {
+  if (!dragging.value) return {};
+  if (dragUp.value) {
+    // 上拉：实时增高预览（直到铺满整页）
+    const base = winH.value * 0.62;
+    const maxH = Math.max(base, winH.value - tabPx.value);
+    let h = base - dragY.value; // dragY 为负（上拉），h 增大
+    if (h > maxH) h = maxH + (h - maxH) * 0.2; // 超过铺满后加阻尼
+    return { height: `${h}px`, transition: "none" };
+  }
+  // 下拉：整体下移预览，松手后收起
+  return { transform: `translateX(-50%) translateY(${dragY.value}px)`, transition: "none" };
+});
 function onGripDown(e: any) {
   dragging.value = true;
   dragY.value = 0;
+  dragUp.value = false;
   gripMoved = false;
   gripStartY = ptY(e);
 }
 function onGripMove(e: any) {
   if (!dragging.value) return;
   const dy = ptY(e) - gripStartY;
-  // 仅允许向下拖拽收起；上滑加阻尼，避免误触影响面板内滚动
-  dragY.value = dy < 0 ? dy * 0.2 : dy;
-  if (Math.abs(dragY.value) > 4) gripMoved = true;
-  if (dy > 0 && e.cancelable) {
+  dragY.value = dy;
+  dragUp.value = dy < 0;
+  if (Math.abs(dy) > 4) gripMoved = true;
+  // 拖拽期间阻止页面级下拉刷新 / 页面滚动误触发
+  if (e.cancelable) {
     try {
       e.preventDefault();
     } catch (_) {}
@@ -577,20 +606,42 @@ function onGripMove(e: any) {
 }
 function onGripUp() {
   if (!dragging.value) return;
-  const dy = dragY.value;
   dragging.value = false;
+  const dy = dragY.value;
+  const wasUp = dragUp.value;
   dragY.value = 0;
-  if (dy > 80) closeRank(); // 下拉超过阈值即收起
+  if (wasUp) {
+    if (rankMax.value) {
+      // 已铺满：下拉超过阈值回退到半屏
+      if (dy > 80) rankMax.value = false;
+    } else if (-dy > 64) {
+      // 半屏：上拉超过阈值铺满整页
+      rankMax.value = true;
+    }
+  } else {
+    if (rankMax.value) {
+      // 铺满：下拉先回退到半屏
+      rankMax.value = false;
+    } else if (dy > 80) {
+      // 半屏：下拉收起
+      closeRank();
+    }
+  }
 }
 function onGripTap() {
   if (gripMoved) {
     gripMoved = false;
-    return; // 拖拽结束后不触发点击收起，避免重复动作
+    return; // 拖拽结束后不触发点击，避免重复动作
   }
   closeRank();
 }
 
 onMounted(() => {
+  measureViewport();
+  if (typeof window !== "undefined") {
+    window.addEventListener("resize", measureViewport);
+    window.addEventListener("orientationchange", measureViewport);
+  }
   if (!needLogin.value) loadQuotesSafe();
   loadPeek(rankTab.value);
 });
@@ -603,7 +654,13 @@ onActivated(() => {
   startPolling();
 });
 onDeactivated(stopPolling);
-onUnmounted(stopPolling);
+onUnmounted(() => {
+  stopPolling();
+  if (typeof window !== "undefined") {
+    window.removeEventListener("resize", measureViewport);
+    window.removeEventListener("orientationchange", measureViewport);
+  }
+});
 watch(
   () => userState.loggedIn,
   (li) => {
@@ -1232,6 +1289,10 @@ function manageGroup(g: string) {
 .rank-peek.open {
   height: 62vh;
 }
+/* 上拉铺满整页：从视口顶部到底部菜单栏之上（高度过渡由 --dur 控制） */
+.rank-peek.max {
+  height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
+}
 /* 收起态一行 */
 .rp-row {
   flex: none;
@@ -1326,29 +1387,44 @@ function manageGroup(g: string) {
   background: var(--card-2);
 }
 .rs-tabs {
+  position: relative;
   flex: none;
   display: flex;
-  gap: 10rpx;
-  margin: 8rpx 24rpx 6rpx;
-  padding: 8rpx;
-  border-radius: 999rpx;
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
+  margin: 10rpx 24rpx 0;
+  padding: 0 0 14rpx;
+  border-bottom: 1rpx solid var(--border);
 }
 .rs-tab {
   flex: 1;
   text-align: center;
-  font-size: 25rpx;
-  font-weight: 600;
+  font-size: 28rpx;
+  font-weight: 500;
   color: var(--text-2);
-  padding: 14rpx 0;
-  border-radius: 999rpx;
-  transition: all 0.2s ease;
+  padding: 4rpx 0;
+  cursor: pointer;
+  transition: color 0.2s ease;
 }
 .rs-tab.on {
-  color: #fff;
+  color: var(--primary);
+  font-weight: 700;
+}
+.rs-ink {
+  position: absolute;
+  left: 0;
+  bottom: -1rpx;
+  width: 50%;
+  display: flex;
+  justify-content: center;
+  transition: transform 0.28s var(--ease-out);
+}
+.rs-ink.right {
+  transform: translateX(100%);
+}
+.rs-ink-bar {
+  width: 56rpx;
+  height: 5rpx;
+  border-radius: 999rpx;
   background: var(--primary);
-  box-shadow: var(--shadow-up);
 }
 .rs-body {
   flex: 1;
