@@ -74,9 +74,11 @@
             <view class="td col-name">
               <view class="al-dot" :class="{ on: hasAlert(row.it) }" @click.stop="editAlert(row.it)" />
               <text class="t-name">{{ row.it.name || row.it.code }}</text>
-              <text class="t-mkt">{{ row.mkt }}</text>
             </view>
-            <text class="td col-code">{{ row.it.code }}</text>
+            <view class="td col-code">
+              <text class="t-mkt">{{ row.mkt }}</text>
+              <text class="t-code">{{ row.it.code }}</text>
+            </view>
             <text class="td col-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPrice(row.q.price) }}</text>
             <text class="td col-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtSigned(row.q.chg) }}</text>
             <text class="td col-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPct(row.q.pct) }}</text>
@@ -962,7 +964,7 @@ function manageGroup(g: string) {
 }
 /* 列宽（合计 > 屏宽 → 横向滚动） */
 .col-name { width: 230rpx; gap: 8rpx; padding-left: 20rpx; text-align: left; }
-.col-code { width: 150rpx; justify-content: center; font-size: 22rpx; color: var(--text-2); }
+.col-code { width: 150rpx; display: flex; align-items: center; justify-content: center; gap: 6rpx; font-size: 22rpx; color: var(--text-2); }
 .col-num  { width: 140rpx; justify-content: flex-end; padding-right: 18rpx; text-align: right; }
 .col-act  { width: 96rpx; justify-content: center; }
 /* 名称列内部 */
@@ -980,9 +982,9 @@ function manageGroup(g: string) {
 }
 .t-name {
   font-size: 28rpx;
-  font-weight: 600;
+  font-weight: 400;
   color: var(--text);
-  max-width: 150rpx;
+  max-width: 190rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -990,7 +992,17 @@ function manageGroup(g: string) {
 .t-mkt {
   flex: none;
   font-size: 18rpx;
-  color: var(--text-3);
+  line-height: 1;
+  padding: 3rpx 6rpx;
+  border-radius: 6rpx;
+  color: var(--text-2);
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
+}
+.t-code {
+  font-size: 22rpx;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
 .t-del {
   font-size: 24rpx;
