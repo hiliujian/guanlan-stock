@@ -54,9 +54,7 @@
         <!-- 自选股表格：全屏铺满 + 固定表头 + 名称列固定(横滑不丢) + 横向滚动 -->
         <scroll-view v-if="rows.length" class="wl-grid" scroll-x scroll-y>
           <view class="wl-thead">
-            <text class="th c-name" :class="{ active: sortKey === 'name' }" @click="toggleSort('name')">
-              <text class="th-label">名称</text><text class="sort-ic">{{ sortKey === 'name' ? (sortDir === 'desc' ? '▼' : '▲') : '↕' }}</text>
-            </text>
+            <text class="th c-name">名称</text>
             <text class="th c-pct" :class="{ active: sortKey === 'pct' }" @click="toggleSort('pct')">
               <text class="th-label">涨跌幅</text><text class="sort-ic">{{ sortKey === 'pct' ? (sortDir === 'desc' ? '▼' : '▲') : '↕' }}</text>
             </text>
@@ -124,7 +122,10 @@
         <text class="rp-top">今日最热</text>
         <view class="rp-main">
           <text class="rp-name">{{ peek ? peek.name : '--' }}</text>
-          <text class="rp-code">{{ peek ? peek.code : '' }}</text>
+          <view class="rp-sub" v-if="peek">
+            <text class="rp-mkt">{{ peekMkt }}</text>
+            <text class="rp-code">{{ peek.code }}</text>
+          </view>
         </view>
         <view class="rp-right">
           <text class="rp-price" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
@@ -200,6 +201,8 @@ interface PeekRow {
   price: number | null;
 }
 const peek = ref<PeekRow | null>(null);
+// 今日最热卡片：根据代码推断市场徽标(沪/深/港/北)
+const peekMkt = computed(() => (peek.value ? marketCharFor(peek.value.code) : ""));
 
 function marketOfCode(code: string): string {
   if (/^\d{5}$/.test(code)) return "hk";
@@ -529,8 +532,8 @@ const rows = computed(() =>
   }))
 );
 
-// 表头排序：点击列头切换 升/降序；null(加载中) 始终排末尾
-type SortKey = "name" | "pct" | "chg" | "open" | "amp" | "amt" | "";
+// 表头排序：点击列头切换 升/降序；null(加载中) 始终排末尾（名称列固定，不参与排序）
+type SortKey = "pct" | "chg" | "open" | "amp" | "amt" | "";
 const sortKey = ref<SortKey>("");
 const sortDir = ref<"asc" | "desc">("desc");
 function toggleSort(key: SortKey) {
@@ -541,7 +544,7 @@ function toggleSort(key: SortKey) {
     sortDir.value = "desc";
   }
 }
-function sortVal(q: Snap, k: Exclude<SortKey, "name" | "">): number | null {
+function sortVal(q: Snap, k: Exclude<SortKey, "">): number | null {
   if (q.loading) return null;
   switch (k) {
     case "pct": return q.pct ?? null;
@@ -560,16 +563,12 @@ const displayRows = computed(() => {
   const dir = sortDir.value === "desc" ? -1 : 1;
   return [...arr].sort((a, b) => {
     let cmp = 0;
-    if (k === "name") {
-      cmp = (a.it.name || a.it.code).localeCompare(b.it.name || b.it.code, "zh");
-    } else {
-      const va = sortVal(a.q, k);
-      const vb = sortVal(b.q, k);
-      if (va == null && vb == null) cmp = 0;
-      else if (va == null) cmp = 1;
-      else if (vb == null) cmp = -1;
-      else cmp = va - vb;
-    }
+    const va = sortVal(a.q, k);
+    const vb = sortVal(b.q, k);
+    if (va == null && vb == null) cmp = 0;
+    else if (va == null) cmp = 1;
+    else if (vb == null) cmp = -1;
+    else cmp = va - vb;
     return cmp * dir;
   });
 });
@@ -1009,9 +1008,7 @@ function manageGroup(g: string) {
   position: sticky;
   top: 0;
   z-index: 5;
-  background: var(--sticky-bg);
-  backdrop-filter: blur(16rpx) saturate(140%);
-  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
+  background: var(--bg-2);
 }
 .th {
   flex: none;
@@ -1025,14 +1022,14 @@ function manageGroup(g: string) {
   color: var(--text-2);
   text-align: right;
 }
-/* 表头名称列：与数据列同为固定列（左上角最高层级） */
+/* 表头名称列：与数据列同为固定列（左上角最高层级），背景同数据行 */
 .th.c-name {
   justify-content: flex-start;
   text-align: left;
   position: sticky;
   left: 0;
   z-index: 6;
-  background: var(--sticky-bg);
+  background: var(--bg-2);
 }
 /* 表头可排序：箭头指示 + 激活态高亮 */
 .th {
@@ -1075,16 +1072,18 @@ function manageGroup(g: string) {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-/* 固定名称列：横向滚动时始终可见 */
+/* 固定名称列：横向滚动时始终可见 + 内容左对齐 */
 .c-name {
   position: sticky;
   left: 0;
   z-index: 2;
   flex-direction: row;
   align-items: center;
+  justify-content: flex-start;
   gap: 10rpx;
-  width: 230rpx;
-  padding: 0 18rpx 0 20rpx;
+  width: 200rpx;
+  padding: 0 14rpx 0 16rpx;
+  text-align: left;
   background: var(--bg-2);
 }
 /* 列宽（合计 > 屏宽 → 横向滚动） */
@@ -1097,13 +1096,15 @@ function manageGroup(g: string) {
 .t-block {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
   min-width: 0;
 }
 .t-name {
   font-size: 28rpx;
   font-weight: 400;
   color: var(--text);
-  max-width: 170rpx;
+  max-width: 150rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1179,8 +1180,8 @@ function manageGroup(g: string) {
   padding: 8rpx 0 0;
 }
 .bottom-pad {
-  /* 预留底部被菜单栏 + 今日最热卡片占用的高度，避免内容被卡片遮挡 */
-  height: calc(env(safe-area-inset-bottom) + 216rpx);
+  /* 仅预留收起态卡片(76rpx) + 安全区，避免末行被遮挡，去除多余空白 */
+  height: calc(env(safe-area-inset-bottom) + 80rpx);
 }
 
 /* ===== 底部卡片：本地展开/收起（向上动效），自身承载完整榜单，无遮罩层 ===== */
@@ -1236,16 +1237,34 @@ function manageGroup(g: string) {
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10rpx;
   overflow: hidden;
 }
 .rp-name {
   font-size: 22rpx;
   color: var(--text);
+  flex: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.rp-sub {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  min-width: 0;
+  overflow: hidden;
+}
+.rp-mkt {
+  flex: none;
+  font-size: 18rpx;
+  line-height: 1;
+  padding: 2rpx 6rpx;
+  border-radius: 6rpx;
+  color: var(--text-2);
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
 }
 .rp-code {
   flex: none;
