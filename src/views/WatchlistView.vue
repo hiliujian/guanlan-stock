@@ -1632,7 +1632,7 @@ function manageGroup(g: string) {
   gap: 2rpx;
   margin-left: 6rpx;
   padding: 3rpx;
-  border-radius: 999rpx;
+  border-radius: 14rpx;
   background: var(--card-2);
   border: 1rpx solid var(--border);
   transition: background 0.18s ease, border-color 0.18s ease;
@@ -1649,7 +1649,7 @@ function manageGroup(g: string) {
   justify-content: center;
   width: 46rpx;
   height: 46rpx;
-  border-radius: 999rpx;
+  border-radius: 10rpx;
   cursor: pointer;
   transition: background 0.18s ease, box-shadow 0.18s ease;
 }
