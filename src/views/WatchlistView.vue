@@ -159,9 +159,6 @@
             </scroll-view>
           </view>
         </view>
-
-        <text v-if="list.length && !rows.length" class="wl-hint">该分组暂无股票</text>
-        <text v-if="rows.length" class="wl-hint">点击查看详情 · 长按操作(删除/移分组/预警) · 可横滑查看更多</text>
       </view>
   </view>
 </template>
@@ -1237,14 +1234,6 @@ function manageGroup(g: string) {
 .down { color: var(--down); }
 .flat { color: var(--text-2); }
 
-/* ===== 轻提示 ===== */
-.wl-hint {
-  display: block;
-  font-size: 22rpx;
-  color: var(--text-2);
-  text-align: center;
-  padding: 8rpx 0 0;
-}
 /* ===== 底部卡片：固定常驻于菜单栏上方(始终可见)，本地展开/收起，无遮罩层 ===== */
 /* 仅 border-top 与表格表头边框同款，无阴影 */
 .rank-peek {
