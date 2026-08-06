@@ -55,36 +55,52 @@
         <scroll-view v-if="rows.length" class="wl-grid" scroll-x scroll-y>
           <view class="wl-rows">
           <view class="wl-thead">
-            <view class="th c-name">名称</view>
-            <view class="th c-pct" :class="{ active: sortKey === 'pct' }" @click="toggleSort('pct')">
+            <view class="th c-name">
+              <text class="th-label">名称</text>
+              <view class="th-tools">
+                <view
+                  class="th-ic"
+                  :class="{ on: reorderMode }"
+                  role="button"
+                  aria-label="拖动排序"
+                  @click="toggleReorder"
+                >
+                  <OutlineIcon type="grip" :size="26" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
+                </view>
+                <view class="th-ic" role="button" aria-label="选择显示列" @click="showCols = true">
+                  <OutlineIcon type="sliders" :size="26" :color="'var(--text-3)'" />
+                </view>
+              </view>
+            </view>
+            <view v-if="cols.pct" class="th c-pct" :class="{ active: sortKey === 'pct' }" @click="toggleSort('pct')">
               <text class="th-label">涨跌幅</text>
               <view class="sort-ic">
                 <view class="ar up" :class="{ on: sortKey === 'pct' && sortDir === 'asc' }" />
                 <view class="ar dn" :class="{ on: sortKey === 'pct' && sortDir === 'desc' }" />
               </view>
             </view>
-            <view class="th c-chg" :class="{ active: sortKey === 'chg' }" @click="toggleSort('chg')">
+            <view v-if="cols.chg" class="th c-chg" :class="{ active: sortKey === 'chg' }" @click="toggleSort('chg')">
               <text class="th-label">涨跌额</text>
               <view class="sort-ic">
                 <view class="ar up" :class="{ on: sortKey === 'chg' && sortDir === 'asc' }" />
                 <view class="ar dn" :class="{ on: sortKey === 'chg' && sortDir === 'desc' }" />
               </view>
             </view>
-            <view class="th c-open" :class="{ active: sortKey === 'open' }" @click="toggleSort('open')">
+            <view v-if="cols.open" class="th c-open" :class="{ active: sortKey === 'open' }" @click="toggleSort('open')">
               <text class="th-label">今开</text>
               <view class="sort-ic">
                 <view class="ar up" :class="{ on: sortKey === 'open' && sortDir === 'asc' }" />
                 <view class="ar dn" :class="{ on: sortKey === 'open' && sortDir === 'desc' }" />
               </view>
             </view>
-            <view class="th c-amp" :class="{ active: sortKey === 'amp' }" @click="toggleSort('amp')">
+            <view v-if="cols.amp" class="th c-amp" :class="{ active: sortKey === 'amp' }" @click="toggleSort('amp')">
               <text class="th-label">振幅</text>
               <view class="sort-ic">
                 <view class="ar up" :class="{ on: sortKey === 'amp' && sortDir === 'asc' }" />
                 <view class="ar dn" :class="{ on: sortKey === 'amp' && sortDir === 'desc' }" />
               </view>
             </view>
-            <view class="th c-amt" :class="{ active: sortKey === 'amt' }" @click="toggleSort('amt')">
+            <view v-if="cols.amt" class="th c-amt" :class="{ active: sortKey === 'amt' }" @click="toggleSort('amt')">
               <text class="th-label">成交额</text>
               <view class="sort-ic">
                 <view class="ar up" :class="{ on: sortKey === 'amt' && sortDir === 'asc' }" />
@@ -94,14 +110,33 @@
           </view>
           <view class="wl-body">
           <view
-            v-for="row in displayRows"
+            v-for="row in renderRows"
             :key="row.it.code + row.it.market"
             class="tr"
+            :class="{ reordering: reorderMode, dragging: dragKey === keyOf(row.it) }"
             @click="onItemClick(row.it)"
             @longpress="onRowLongPress(row.it)"
           >
-            <!-- 固定列：预警点 + 名称 + (市场徽标 + 代码) -->
+            <!-- 固定列：拖拽手柄 + 预警点 + 名称 + (市场徽标 + 代码) -->
             <view class="td c-name">
+              <view
+                v-if="selectedGroup !== '__all__'"
+                class="drag-handle"
+                :class="{ on: dragKey === keyOf(row.it) }"
+                role="button"
+                aria-label="拖动排序"
+                @click.stop
+                @touchstart.stop="onDragStart($event, row.it)"
+                @touchmove.stop="onDragMove"
+                @touchend.stop="onDragEnd"
+                @touchcancel.stop="onDragEnd"
+                @mousedown.stop="onDragStart($event, row.it)"
+                @mousemove.stop="onDragMove"
+                @mouseup.stop="onDragEnd"
+                @mouseleave.stop="onDragEnd"
+              >
+                <OutlineIcon type="grip" :size="30" :color="dragKey === keyOf(row.it) ? 'var(--primary)' : 'var(--text-3)'" />
+              </view>
               <view class="al-dot" :class="{ on: hasAlert(row.it) }" @click.stop="editAlert(row.it)" />
               <view class="t-block">
                 <text class="t-name">{{ row.it.name || row.it.code }}</text>
@@ -112,26 +147,52 @@
               </view>
             </view>
             <!-- 涨跌幅：主行(涨跌幅) + 次行(净值/现价) -->
-            <view class="td c-pct">
+            <view v-if="cols.pct" class="td c-pct">
               <text class="c-main" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPct(row.q.pct) }}</text>
               <text class="c-sub">{{ row.q.loading ? '' : fmtPrice(row.q.price) }}</text>
             </view>
-            <view class="td c-chg">
+            <view v-if="cols.chg" class="td c-chg">
               <text class="c-main" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtSigned(row.q.chg) }}</text>
             </view>
-            <view class="td c-open">
+            <view v-if="cols.open" class="td c-open">
               <text class="c-main">{{ row.q.loading ? '--' : fmtPrice(row.q.open) }}</text>
             </view>
-            <view class="td c-amp">
+            <view v-if="cols.amp" class="td c-amp">
               <text class="c-main">{{ row.q.loading ? '--' : ampPct(row.q) }}</text>
             </view>
-            <view class="td c-amt">
+            <view v-if="cols.amt" class="td c-amt">
               <text class="c-main">{{ row.q.loading ? '--' : fmtAmount(row.q.amount) }}</text>
             </view>
           </view>
           </view>
           </view>
         </scroll-view>
+
+        <!-- 列设置面板：选择展示/隐藏的数据列（本地持久化） -->
+        <view v-if="showCols" class="col-mask" @click="showCols = false">
+          <view class="col-sheet" @click.stop>
+            <view class="col-head">
+              <text class="col-title">显示列</text>
+              <view class="col-close" role="button" aria-label="关闭" @click="showCols = false">
+                <OutlineIcon type="close" :size="28" color="var(--text-2)" />
+              </view>
+            </view>
+            <view class="col-list">
+              <view
+                v-for="c in colDefs"
+                :key="c.key"
+                class="col-item"
+                :class="{ off: !cols[c.key] }"
+                role="button"
+                @click="toggleCol(c.key)"
+              >
+                <text class="col-name">{{ c.label }}</text>
+                <view class="col-sw" :class="{ on: cols[c.key] }"><view class="col-knob" /></view>
+              </view>
+            </view>
+            <text class="col-tip">设置仅保存在本机，不影响其他设备</text>
+          </view>
+        </view>
 
         <!-- 底部卡片：固定常驻于菜单栏上方(始终可见)，本地展开/收起，无遮罩层 -->
         <view class="rank-peek" :class="{ open: rankOpen, max: rankMax }" :style="rankStyle">
@@ -168,10 +229,11 @@ import { computed, reactive, ref, watch, onMounted, onActivated, onDeactivated, 
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import RankView from "@/views/RankView.vue";
-import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, type WatchItem, type PriceAlert } from "@/store/watchlist";
+import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, applyGroupOrder, type WatchItem, type PriceAlert } from "@/store/watchlist";
 import { userState } from "@/store/user";
 import { openAuth, goTab } from "@/store/nav";
-import { LOCAL_STOCKS, fetchSnapshot } from "@/api/quote";
+import { fetchSnapshot } from "@/api/quote";
+import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
 import { fmtPrice, fmtPct, fmtSigned, fmtAmount } from "@/utils/format";
 
@@ -207,37 +269,25 @@ interface PeekRow {
   price: number | null;
 }
 const peek = ref<PeekRow | null>(null);
-function marketOfCode(code: string): string {
-  if (/^\d{5}$/.test(code)) return "hk";
-  if (/^6/.test(code)) return "sh";
-  if (/^[03]/.test(code)) return "sz";
-  if (/^[489]/.test(code)) return "bj";
-  return "sh";
-}
-
-async function loadPeek(mode: "today" | "all") {
-  const pool = LOCAL_STOCKS.filter((h) => h.code !== "000300" && h.code !== "510300");
-  const list = await Promise.all(
-    pool.map(async (h) => {
-      const market = marketOfCode(h.code);
-      const secid = resolveSecid(h.code, market as any);
-      try {
-        const s = await fetchSnapshot(secid);
-        return { code: h.code, name: h.name, chg: s.chg, pct: s.pct, price: s.price };
-      } catch {
-        return { code: h.code, name: h.name, chg: 0, pct: null, price: null };
-      }
-    })
-  );
-  const ranked = list.sort((a, b) => (b.pct ?? -Infinity) - (a.pct ?? -Infinity));
-  const top = mode === "today" ? ranked.slice(0, 20) : ranked;
-  peek.value = top[0]
-    ? { code: top[0].code, name: top[0].name, chg: top[0].chg, pct: top[0].pct, price: top[0].price }
-    : null;
+// 露出卡片预览数据：人气榜第 1 名（与热度榜口径一致：跨用户持有数），并补最新行情
+async function loadPeek() {
+  const heat = await fetchStockHeat(20);
+  if (!heat.length) {
+    peek.value = null;
+    return;
+  }
+  const top = heat[0];
+  const secid = resolveSecid(top.code, top.market as any);
+  try {
+    const s = await fetchSnapshot(secid);
+    peek.value = { code: top.code, name: top.name, chg: s.chg, pct: s.pct, price: s.price };
+  } catch {
+    peek.value = { code: top.code, name: top.name, chg: 0, pct: null, price: null };
+  }
 }
 
 // 切换榜单类型时同步刷新露出卡片的预览
-watch(rankTab, (m) => loadPeek(m));
+watch(rankTab, () => loadPeek());
 
 // 分组筛选：默认展示「全部」（含所有分组），通过右上角「分组」切换；分组名从现有自选派生
 const selectedGroup = ref<string>("__all__");
@@ -535,6 +585,118 @@ const rows = computed(() =>
   }))
 );
 
+// ===== 列显隐：本地持久化（wl_cols），默认全显 =====
+type ColKey = "pct" | "chg" | "open" | "amp" | "amt";
+const COLS_KEY = "wl_cols";
+const colDefs: { key: ColKey; label: string }[] = [
+  { key: "pct", label: "涨跌幅" },
+  { key: "chg", label: "涨跌额" },
+  { key: "open", label: "今开" },
+  { key: "amp", label: "振幅" },
+  { key: "amt", label: "成交额" },
+];
+const cols = reactive<Record<ColKey, boolean>>({ pct: true, chg: true, open: true, amp: true, amt: true });
+function loadCols() {
+  try {
+    const saved = uni.getStorageSync(COLS_KEY);
+    if (saved && typeof saved === "object") {
+      (Object.keys(cols) as ColKey[]).forEach((k) => {
+        if (typeof saved[k] === "boolean") cols[k] = saved[k];
+      });
+    }
+  } catch (_) {}
+}
+function toggleCol(k: ColKey) {
+  cols[k] = !cols[k];
+  try {
+    uni.setStorageSync(COLS_KEY, { ...cols });
+  } catch (_) {}
+}
+const showCols = ref(false);
+
+// ===== 自定义排序（拖拽手柄） =====
+const reorderMode = ref(false);
+function toggleReorder() {
+  reorderMode.value = !reorderMode.value;
+}
+
+// 可见顺序（键序列），拖拽时实时重排；默认随 displayRows（按分组 + sort_order）
+const manualOrder = ref<string[]>([]);
+watch(
+  () => displayRows.value.map((r) => keyOf(r.it)).slice().sort().join(","),
+  () => {
+    manualOrder.value = displayRows.value.map((r) => keyOf(r.it));
+  }
+);
+// 渲染行：列排序优先；否则按手动顺序（拖拽结果）
+const renderRows = computed(() => {
+  if (sortKey.value) return displayRows.value;
+  const idx = new Map(manualOrder.value.map((k, i) => [k, i]));
+  return displayRows.value
+    .slice()
+    .sort((a, b) => (idx.get(keyOf(a.it)) ?? 0) - (idx.get(keyOf(b.it)) ?? 0));
+});
+
+// 拖拽状态（仅单分组视图可拖拽；"全部"视图隐藏手柄）
+const dragKey = ref<string | null>(null);
+let dragStartY = 0;
+let rowHpx = 0;
+let dragMoved = false;
+function dragPtY(e: any): number {
+  if (e.touches && e.touches[0]) return e.touches[0].clientY;
+  if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
+  return e.clientY || 0;
+}
+function onDragStart(e: any, it: WatchItem) {
+  if (selectedGroup.value === "__all__") return; // 仅单分组内可拖拽排序
+  if (sortKey.value) sortKey.value = ""; // 拖拽即自定义顺序，清除列排序
+  dragKey.value = keyOf(it);
+  dragStartY = dragPtY(e);
+  dragMoved = false;
+  try {
+    const info: any = (uni as any).getWindowInfo ? (uni as any).getWindowInfo() : uni.getSystemInfoSync();
+    const w = info.windowWidth || 375;
+    rowHpx = (w / 750) * 104; // .td 行高 104rpx → px
+  } catch (_) {
+    rowHpx = 50;
+  }
+  if (e.cancelable) {
+    try {
+      e.preventDefault();
+    } catch (_) {}
+  }
+}
+function onDragMove(e: any) {
+  if (!dragKey.value) return;
+  const dy = dragPtY(e) - dragStartY;
+  if (Math.abs(dy) > 4) dragMoved = true;
+  const arr = manualOrder.value;
+  const from = arr.indexOf(dragKey.value);
+  if (from < 0) return;
+  let to = from + Math.round(dy / rowHpx);
+  to = Math.max(0, Math.min(arr.length - 1, to));
+  if (to !== from) {
+    const next = arr.slice();
+    const [m] = next.splice(from, 1);
+    next.splice(to, 0, m);
+    manualOrder.value = next;
+    dragStartY = dragPtY(e); // 锚点重置，下一步以新位置为基准
+  }
+  if (e.cancelable) {
+    try {
+      e.preventDefault();
+    } catch (_) {}
+  }
+}
+function onDragEnd() {
+  if (!dragKey.value) return;
+  dragKey.value = null;
+  if (dragMoved) {
+    const group = selectedGroup.value === "__all__" ? "" : selectedGroup.value;
+    applyGroupOrder(group, manualOrder.value);
+  }
+}
+
 // 表头排序：点击列头切换 升/降序；null(加载中) 始终排末尾（名称列固定，不参与排序）
 type SortKey = "pct" | "chg" | "open" | "amp" | "amt" | "";
 const sortKey = ref<SortKey>("");
@@ -692,12 +854,13 @@ function onGripTap() {
 
 onMounted(() => {
   measureViewport();
+  loadCols();
   if (typeof window !== "undefined") {
     window.addEventListener("resize", measureViewport);
     window.addEventListener("orientationchange", measureViewport);
   }
   if (!needLogin.value) loadQuotesSafe();
-  loadPeek(rankTab.value);
+  loadPeek();
 });
 onActivated(() => {
   if (needLogin.value) {
@@ -733,6 +896,7 @@ watch(
 
 // ===== 自选股表格交互：点击行打开个股；长按行弹出操作菜单（删除/移分组/预警） =====
 function onItemClick(it: WatchItem) {
+  if (reorderMode.value) return; // 整理顺序模式下禁用点击跳转
   emit("open-market", { code: it.code, market: it.market });
 }
 
@@ -1141,8 +1305,8 @@ function manageGroup(g: string) {
   align-items: center;
   justify-content: flex-start;
   gap: 6rpx;
-  width: 168rpx;
-  padding: 0 12rpx 0 18rpx;
+  width: 188rpx;
+  padding: 0 10rpx 0 18rpx;
   text-align: left;
   background: var(--bg-2);
 }
@@ -1164,7 +1328,7 @@ function manageGroup(g: string) {
   font-size: 28rpx;
   font-weight: 400;
   color: var(--text);
-  max-width: 118rpx;
+  max-width: 104rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1403,5 +1567,159 @@ function manageGroup(g: string) {
   flex: 1;
   min-height: 0;
   padding: 4rpx 0 0;
+}
+
+/* ===== 名称表头工具图标（拖动排序 / 列设置） ===== */
+.th-tools {
+  display: flex;
+  align-items: center;
+  gap: 2rpx;
+  margin-left: 6rpx;
+}
+.th-ic {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 10rpx;
+  cursor: pointer;
+}
+.th-ic:active {
+  background: var(--card-2);
+}
+.th-ic.on {
+  background: var(--primary-soft);
+}
+
+/* ===== 行内拖动手柄（常驻，仅单分组视图显示） ===== */
+.drag-handle {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40rpx;
+  height: 56rpx;
+  margin-left: -6rpx;
+  border-radius: 10rpx;
+  cursor: grab;
+  touch-action: none;
+}
+.drag-handle:active {
+  background: var(--card-2);
+  cursor: grabbing;
+}
+.drag-handle.on {
+  background: var(--primary-soft);
+}
+/* 名称列内预警点改为内联，避免与手柄重叠 */
+.c-name .al-dot {
+  position: relative;
+  left: auto;
+  top: auto;
+  transform: none;
+  flex: none;
+}
+.tr.reordering .td {
+  cursor: grabbing;
+}
+.tr.dragging {
+  background: var(--primary-soft);
+}
+.tr.dragging .c-name {
+  background: var(--primary-soft);
+}
+
+/* ===== 列设置面板（底部弹出） ===== */
+.col-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.col-sheet {
+  width: 100%;
+  max-width: 480px;
+  background: var(--tabbar-bg);
+  border-radius: 24rpx 24rpx 0 0;
+  padding: 24rpx 24rpx calc(env(safe-area-inset-bottom) + 24rpx);
+  box-shadow: 0 -8rpx 30rpx rgba(0, 0, 0, 0.25);
+}
+.col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.col-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text);
+}
+.col-close {
+  flex: none;
+  width: 44rpx;
+  height: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.col-list {
+  margin-top: 16rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+.col-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22rpx 16rpx;
+  border-radius: 14rpx;
+  background: var(--card-2);
+  cursor: pointer;
+}
+.col-item.off {
+  opacity: 0.55;
+}
+.col-name {
+  font-size: 28rpx;
+  color: var(--text);
+}
+.col-sw {
+  position: relative;
+  width: 80rpx;
+  height: 44rpx;
+  border-radius: 999rpx;
+  background: var(--border);
+  transition: background 0.2s ease;
+}
+.col-sw.on {
+  background: var(--primary);
+}
+.col-knob {
+  position: absolute;
+  top: 4rpx;
+  left: 4rpx;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s ease;
+}
+.col-sw.on .col-knob {
+  transform: translateX(36rpx);
+}
+.col-tip {
+  margin-top: 16rpx;
+  font-size: 20rpx;
+  color: var(--text-3);
+  text-align: center;
 }
 </style>

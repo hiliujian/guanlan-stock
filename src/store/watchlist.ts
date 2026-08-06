@@ -21,6 +21,7 @@ export interface WatchItem {
   name: string;
   note: string;
   group?: string; // 分组名，'' = 默认分组
+  order?: number; // 分组内自定义排序权重（对应 DB sort_order）；本地模式同样保留
   alerts?: PriceAlert; // 价格预警配置
   created_at?: string;
 }
@@ -54,6 +55,28 @@ function saveLocal(items: WatchItem[]) {
   }
 }
 
+// 取某分组内当前最大 sort_order，+1 即为「追加到末尾」的新权重（避免 Date.now() 并发碰撞）
+function nextGroupOrder(group: string): number {
+  let m = 0;
+  for (const i of state.items) {
+    if ((i.group || "") === group && (i.order ?? 0) > m) m = i.order as number;
+  }
+  return m + 1;
+}
+
+// 内存数组按「分组名 → 分组内 sort_order → 创建时间」稳定排序，保证默认展示顺序
+function sortItems(items: WatchItem[]): WatchItem[] {
+  return items.slice().sort((a, b) => {
+    const ga = a.group || "";
+    const gb = b.group || "";
+    if (ga !== gb) return ga.localeCompare(gb);
+    const oa = a.order ?? 0;
+    const ob = b.order ?? 0;
+    if (oa !== ob) return oa - ob;
+    return (a.created_at || "").localeCompare(b.created_at || "");
+  });
+}
+
 async function loadCloud(userId: string) {
   const sb = getSupabase();
   if (!sb) return;
@@ -61,6 +84,9 @@ async function loadCloud(userId: string) {
     .from("watchlists")
     .select("*")
     .eq("user_id", userId)
+    // 登录同步恢复完整自选逻辑：先按分组、再按分组内自定义排序、最后创建时间兜底
+    .order("group_name", { ascending: true })
+    .order("sort_order", { ascending: true })
     .order("created_at", { ascending: false });
   if (!error && data) {
     state.items = data.map((d: any) => ({
@@ -70,6 +96,7 @@ async function loadCloud(userId: string) {
       name: d.name,
       note: d.note || "",
       group: d.group_name || "",
+      order: typeof d.sort_order === "number" ? d.sort_order : 0,
       alerts: parseAlerts(d.alerts),
       created_at: d.created_at,
     }));
@@ -139,6 +166,7 @@ export async function initWatchlist() {
 
 export async function addWatch(item: WatchItem): Promise<{ ok: boolean; error?: string }> {
   const grp = item.group || "";
+  const order = nextGroupOrder(grp);
   if (state.mode === "cloud" && userState.userId) {
     const sb = getSupabase()!;
     const { error } = await sb.from("watchlists").insert({
@@ -148,14 +176,15 @@ export async function addWatch(item: WatchItem): Promise<{ ok: boolean; error?: 
       name: item.name,
       note: item.note || "",
       group_name: grp,
+      sort_order: order,
     });
     if (error) return { ok: false, error: translateSupabaseError(error.message) };
     await loadCloud(userState.userId);
   } else {
-    const next = [
-      { ...item, group: grp },
+    const next = sortItems([
+      { ...item, group: grp, order },
       ...state.items.filter((i) => !(i.code === item.code && i.market === item.market)),
-    ];
+    ]);
     state.items = next;
     saveLocal(next);
   }
@@ -179,13 +208,49 @@ function toAlertJson(a?: PriceAlert): any {
   return { above, below };
 }
 
-/** 将某只自选移动到其它分组（云：按 id 更新 group_name；本地：打补丁并重存） */
+/** 将某只自选移动到其它分组（并置于目标分组末尾序；云：按 id 更新 group_name + sort_order；本地：打补丁并重存） */
 export async function setItemGroup(code: string, market: string, group: string): Promise<void> {
-  await patchItem(code, market, { group_name: group || "" });
+  const grp = group || "";
+  const order = nextGroupOrder(grp);
+  await patchItem(code, market, { group_name: grp, sort_order: order });
   if (state.mode !== "cloud") {
-    state.items = state.items.map((i) =>
-      i.code === code && i.market === market ? { ...i, group: group || "" } : i
+    state.items = sortItems(
+      state.items.map((i) =>
+        i.code === code && i.market === market ? { ...i, group: grp, order } : i
+      )
     );
+    saveLocal(state.items);
+  }
+}
+
+/**
+ * 拖拽重排：传入目标分组与该分组内重排后的可见键顺序（code|market），
+ * 仅重排该分组内的 sort_order 并持久化（云：批量按 id 更新；本地：重存）。
+ * 仅对单分组视图生效（"全部"视图不触发拖拽），保证「组内排序」语义。
+ */
+export async function applyGroupOrder(group: string, orderedKeys: string[]): Promise<void> {
+  const grp = group || "";
+  const idxByKey = new Map<string, number>();
+  orderedKeys.forEach((k, i) => idxByKey.set(k, i));
+
+  state.items = sortItems(
+    state.items.map((i) => {
+      if ((i.group || "") !== grp) return i;
+      const k = `${i.code}|${i.market}`;
+      if (idxByKey.has(k)) return { ...i, order: idxByKey.get(k)! };
+      return i;
+    })
+  );
+
+  if (state.mode === "cloud" && userState.userId) {
+    const sb = getSupabase()!;
+    const targets = state.items.filter((i) => (i.group || "") === grp && i.id);
+    await Promise.all(
+      targets.map((i) =>
+        sb.from("watchlists").update({ sort_order: i.order ?? 0 }).eq("id", i.id)
+      )
+    );
+  } else {
     saveLocal(state.items);
   }
 }

@@ -730,3 +730,34 @@ end;
 $$;
 grant execute on function public.reset_hot_searches() to anon, authenticated;
 
+
+-- ╔══════════════════════════════════════════════════════════════╗
+-- ║ 102. 自选股人气榜（跨用户持有数聚合热度）                       ║
+-- ╠══════════════════════════════════════════════════════════════╣
+-- 需求：热度榜按「被多少用户加入自选」计（人气），与 101 的「搜索次数」口径不同。
+-- 方案：直接聚合 watchlists 表，按 (code, market) 分组，count(distinct user_id) 为热度值；
+--   同一用户将同一条股票加入多个分组只计一次持有人（count distinct 去重）。
+--   未登录用户也能查看（anon 可调用），返回热度值 / 名称 / 市场供前端排名与展示。
+-- 索引：(code, market) 支撑聚合分组；稳定、可重复执行（if not exists）。
+-- 与 101 区别：101 统计「当日搜索次数」、零点重置；本函数统计「自选持有人数」、随自选实时聚合。
+-- ╚══════════════════════════════════════════════════════════════╝
+create index if not exists idx_watchlists_code_market on public.watchlists (code, market);
+
+create or replace function public.get_stock_heat(p_limit int default 20)
+returns table (code text, name text, market text, heat bigint)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  return query
+    select
+      w.code,
+      coalesce(nullif(max(w.name), ''), '') as name,
+      w.market,
+      count(distinct w.user_id) as heat
+    from public.watchlists w
+    group by w.code, w.market
+    order by heat desc, w.code asc
+    limit greatest(1, least(coalesce(p_limit, 20), 200));
+end;
+$$;
+grant execute on function public.get_stock_heat(int) to anon, authenticated;
+

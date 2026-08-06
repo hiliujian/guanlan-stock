@@ -8,37 +8,40 @@
     <template v-else>
       <view v-if="!rows.length" class="rk-empty glass">
         <OutlineIcon type="star" :size="56" color="var(--primary)" />
-        <text class="rk-empty-t">暂无榜单数据</text>
-        <text class="rk-empty-s">行情数据源暂不可用，请下拉刷新或稍后重试</text>
+        <text class="rk-empty-t">暂无数据</text>
+        <text class="rk-empty-s">还没有足够的自选股人气数据，快去行情页添加人气股吧</text>
       </view>
 
-      <view v-else>
+      <view v-else class="rk-table">
+        <!-- 表头 -->
+        <view class="rk-thead">
+          <text class="rh rank">排名</text>
+          <text class="rh name">名称</text>
+          <text class="rh heat">热度</text>
+          <text class="rh price">最新价</text>
+          <text class="rh pct">涨跌幅</text>
+          <view class="rh star" />
+        </view>
+        <!-- 数据行 -->
         <view
           v-for="(r, i) in rows"
           :key="r.code + '-' + r.market"
-          class="rk-card anim-fade-up"
+          class="rk-row anim-fade-up"
           :style="{ animationDelay: (i % 8) * 40 + 'ms' }"
           @click="openRow(r)"
         >
-          <view class="rk-rank" :class="rankCls(i)">{{ i + 1 }}</view>
-          <view class="rk-main">
-            <view class="rk-name-row">
-              <text class="rk-name">{{ r.name }}</text>
-              <view v-if="mode === 'today' && i < 3" class="rk-hot-tag">
-                <OutlineIcon type="fire" :size="20" color="var(--primary)" />
-                <text>热</text>
-              </view>
-            </view>
-            <view class="rk-code-row">
-              <view class="mkt-tag">{{ marketCharFor(r.code, r.market) }}</view>
-              <text class="rk-code">{{ r.code }}</text>
+          <text class="rh rank" :class="rankCls(i)">{{ i + 1 }}</text>
+          <view class="rh name">
+            <text class="rn">{{ r.name || r.code }}</text>
+            <view class="rc">
+              <text class="rm">{{ marketCharFor(r.code, r.market) }}</text>
+              <text class="rcode">{{ r.code }}</text>
             </view>
           </view>
-          <view class="rk-right">
-            <text class="rk-price" :style="{ color: colorOf(r) }">{{ fmtPrice(r.price) }}</text>
-            <text class="rk-pct" :class="clsOf(r)">{{ fmtPct(r.pct) }}</text>
-          </view>
-          <view class="rk-star" :class="{ on: watched(r) }" @click.stop="toggleWatch(r)" role="button" aria-label="加入自选">
+          <text class="rh heat">{{ r.heat }}</text>
+          <text class="rh price" :style="{ color: colorOf(r) }">{{ fmtPrice(r.price) }}</text>
+          <text class="rh pct" :class="clsOf(r)">{{ fmtPct(r.pct) }}</text>
+          <view class="rh star" :class="{ on: watched(r) }" @click.stop="toggleWatch(r)" role="button" aria-label="加入自选">
             <OutlineIcon type="star" :size="30" :color="watched(r) ? 'var(--primary)' : 'var(--text-3)'" />
           </view>
         </view>
@@ -48,9 +51,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from "vue";
+import { ref, watch, onMounted } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
-import { LOCAL_STOCKS, fetchSnapshot } from "@/api/quote";
+import { fetchSnapshot } from "@/api/quote";
+import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
 import { fmtPrice, fmtPct } from "@/utils/format";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
@@ -58,91 +62,36 @@ import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
 const props = defineProps<{ mode: "today" | "all" }>();
 const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
 
-const TODAY_TOP = 20;
-
 interface RankRow {
   code: string;
   market: string;
   name: string;
+  heat: number;
   price: number | null;
   pct: number | null;
   chg: number;
-  loading: boolean;
 }
 
-const stock = ref<Record<string, Partial<RankRow>>>({});
+const rows = ref<RankRow[]>([]);
 const loading = ref(false);
-
-// 排除指数 / ETF（非个股，不参与热榜）
-function pool(): { code: string; name: string }[] {
-  return LOCAL_STOCKS.filter((h) => h.code !== "000300" && h.code !== "510300");
-}
-
-function marketOf(code: string): string {
-  if (/^\d{5}$/.test(code)) return "hk";
-  if (/^6/.test(code)) return "sh";
-  if (/^[03]/.test(code)) return "sz";
-  if (/^[489]/.test(code)) return "bj";
-  return "sh";
-}
-
-const keyOf = (r: { code: string; market: string }) => `${r.code}|${r.market}`;
-
-const baseList = computed(() =>
-  pool().map((h) => ({ code: h.code, market: marketOf(h.code), name: h.name }))
-);
-
-interface PartialRow {
-  code: string;
-  market: string;
-  name?: string;
-  price?: number | null;
-  pct?: number | null;
-  chg?: number;
-  loading?: boolean;
-}
-
-const rows = computed(() => {
-  const all = baseList.value
-    .map((b) => {
-      const q = stock.value[keyOf(b)] || {};
-      return {
-        ...b,
-        price: q.price ?? null,
-        pct: q.pct ?? null,
-        chg: q.chg ?? 0,
-        loading: q.loading !== false,
-      };
-    })
-    .sort((a, b) => {
-      const ap = a.pct == null ? -Infinity : a.pct;
-      const bp = b.pct == null ? -Infinity : b.pct;
-      return bp - ap;
-    });
-  return props.mode === "today" ? all.slice(0, TODAY_TOP) : all;
-});
 
 async function load() {
   loading.value = true;
-  const tasks = baseList.value.map(async (b) => {
-    const k = keyOf(b);
-    stock.value[k] = { code: b.code, market: b.market, loading: true };
+  // 热度榜：跨用户自选持有数聚合（人气），按热度降序
+  const heat = await fetchStockHeat(props.mode === "all" ? 100 : 20);
+  const tasks = heat.map(async (h) => {
+    const secid = resolveSecid(h.code, h.market as any);
     try {
-      const secid = resolveSecid(b.code, b.market as any);
-      const snap = await fetchSnapshot(secid);
-      stock.value[k] = {
-        code: b.code,
-        market: b.market,
-        price: snap.price,
-        pct: snap.pct,
-        chg: snap.chg,
-        loading: false,
-      };
+      const s = await fetchSnapshot(secid);
+      return { ...h, price: s.price, pct: s.pct, chg: s.chg } as RankRow;
     } catch {
-      stock.value[k] = { code: b.code, market: b.market, loading: false };
+      return { ...h, price: null, pct: null, chg: 0 } as RankRow;
     }
   });
-  await Promise.allSettled(tasks);
+  const res = await Promise.allSettled(tasks);
+  rows.value = res
+    .filter((r): r is PromiseFulfilledResult<RankRow> => r.status === "fulfilled")
+    .map((r) => r.value);
   loading.value = false;
 }
 
@@ -162,7 +111,7 @@ function colorOf(r: RankRow): string {
   return "var(--text)";
 }
 function clsOf(r: RankRow): string {
-  if (r.loading) return "flat";
+  if (r.price == null || r.pct == null) return "flat";
   if (r.chg > 0) return "up";
   if (r.chg < 0) return "down";
   return "flat";
@@ -223,151 +172,127 @@ function openRow(r: { code: string; market: string }) {
   color: var(--text-2);
 }
 
-/* ===== 卡片 ===== */
-.rk-card {
-  position: relative;
+/* ===== 表格 ===== */
+.rk-table {
+  display: flex;
+  flex-direction: column;
+}
+.rk-thead,
+.rk-row {
   display: flex;
   align-items: center;
-  gap: 16rpx;
-  margin: 0 16rpx 14rpx;
-  padding: 20rpx 22rpx;
-  border-radius: 20rpx;
-  background: var(--bg-2);
-  border: 1rpx solid var(--border);
-  box-shadow: var(--shadow);
+  padding: 0 20rpx;
 }
-.rk-card:first-of-type {
-  margin-top: 10rpx;
+.rk-thead {
+  height: 64rpx;
+  border-bottom: 1rpx solid var(--tabbar-border);
+}
+.rk-thead .rh {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.rk-row {
+  min-height: 96rpx;
+  border-bottom: 1rpx solid var(--border);
+}
+.rk-row:active {
+  background: var(--card-2);
 }
 
-.rk-rank {
+.rh {
   flex: none;
-  width: 44rpx;
-  height: 44rpx;
-  border-radius: 12rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24rpx;
-  font-weight: 700;
-  color: var(--text-2);
-  background: var(--card-2);
   font-variant-numeric: tabular-nums;
 }
-.rk-rank.gold {
-  color: #fff;
-  background: linear-gradient(135deg, #ffb13d, #ff8a00);
-  box-shadow: 0 4rpx 14rpx rgba(248, 138, 0, 0.35);
+.rh.rank {
+  width: 56rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--text-2);
+  text-align: center;
 }
-.rk-rank.silver {
-  color: #fff;
-  background: linear-gradient(135deg, #b8c2cc, #8a97a6);
-  box-shadow: 0 4rpx 14rpx rgba(138, 151, 166, 0.35);
+.rh.rank.gold {
+  color: #ff8a00;
 }
-.rk-rank.bronze {
-  color: #fff;
-  background: linear-gradient(135deg, #d9a06b, #b2763f);
-  box-shadow: 0 4rpx 14rpx rgba(178, 118, 63, 0.35);
+.rh.rank.silver {
+  color: #8a97a6;
 }
-
-.rk-main {
+.rh.rank.bronze {
+  color: #b2763f;
+}
+.rh.name {
   flex: 1;
   min-width: 0;
-}
-.rk-name-row {
   display: flex;
-  align-items: center;
-  gap: 10rpx;
-  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6rpx;
+  margin-right: 10rpx;
 }
-.rk-name {
-  font-size: 30rpx;
+.rn {
+  font-size: 28rpx;
   font-weight: 700;
   color: var(--text);
+  max-width: 220rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 240rpx;
 }
-.rk-hot-tag {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 2rpx;
-  font-size: 18rpx;
-  font-weight: 700;
-  color: var(--primary);
-  padding: 4rpx 8rpx;
-  border-radius: 8rpx;
-  background: var(--primary-soft);
-}
-.rk-code-row {
+.rc {
   display: flex;
   align-items: center;
-  gap: 10rpx;
-  margin-top: 8rpx;
+  gap: 8rpx;
 }
-.rk-code {
-  font-size: 22rpx;
-  color: var(--text-2);
-  font-variant-numeric: tabular-nums;
-}
-.mkt-tag {
-  flex: none;
+.rm {
   font-size: 18rpx;
   line-height: 1;
-  padding: 4rpx 10rpx;
+  padding: 2rpx 6rpx;
   border-radius: 6rpx;
   color: var(--text-2);
   background: var(--card-2);
   border: 1rpx solid var(--border);
 }
-
-.rk-right {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6rpx;
+.rcode {
+  font-size: 20rpx;
+  color: var(--text-3);
+}
+.rh.heat {
+  width: 110rpx;
   text-align: right;
-}
-.rk-price {
-  font-size: 32rpx;
+  font-size: 28rpx;
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+  color: var(--primary);
 }
-.rk-pct {
-  font-size: 24rpx;
+.rh.price {
+  width: 150rpx;
+  text-align: right;
+  font-size: 28rpx;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
-.rk-pct.up {
+.rh.pct {
+  width: 130rpx;
+  text-align: right;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+.rh.pct.up {
   color: var(--up);
 }
-.rk-pct.down {
+.rh.pct.down {
   color: var(--down);
 }
-.rk-pct.flat {
+.rh.pct.flat {
   color: var(--text-2);
 }
-
-.rk-star {
+.rh.star {
   flex: none;
-  width: 52rpx;
-  height: 52rpx;
-  margin-left: 6rpx;
+  width: 56rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: var(--card-2);
-  transition: transform 0.15s ease;
 }
-.rk-star:active {
-  transform: scale(0.9);
-}
-.rk-star.on {
+.rh.star.on {
   background: var(--primary-soft);
 }
 
