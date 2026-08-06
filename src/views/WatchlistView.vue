@@ -129,53 +129,40 @@
             </view>
           </view>
           </view>
-          <view class="bottom-pad" />
+          <!-- 底部卡片：收起态跟随列表流布局(末行紧贴卡片,无空白); 展开/拖拽时切 fixed 浮层 -->
+          <view class="rank-peek" :class="{ open: rankOpen, max: rankMax, floating: rankFloating }" :style="rankStyle">
+            <view v-if="!rankOpen" class="rp-row" role="button" aria-label="展开榜单" @click="rankOpen = true">
+              <text class="rp-top">今日最热</text>
+              <view class="rp-main">
+                <view class="rp-sub" v-if="peek">
+                  <text class="rp-mkt">{{ peekMkt }}</text>
+                  <text class="rp-code">{{ peek.code }}</text>
+                </view>
+                <text class="rp-name">{{ peek ? peek.name : '--' }}</text>
+              </view>
+              <view class="rp-right">
+                <text class="rp-price" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
+                <text class="rp-pct" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
+              </view>
+              <OutlineIcon class="rp-caret" type="chevron-up" :size="20" color="var(--text-2)" />
+            </view>
+            <view v-if="rankOpen" class="rp-panel">
+              <view class="rs-grip" @touchstart.stop="onGripDown" @touchmove.stop="onGripMove" @touchend.stop="onGripUp" @touchcancel.stop="onGripUp" @mousedown.stop="onGripDown" @mousemove.stop="onGripMove" @mouseup.stop="onGripUp" @mouseleave.stop="onGripUp" @click.stop="onGripTap"><view class="rs-handle" /></view>
+              <view class="rs-tabs">
+                <view class="rs-tab" :class="{ on: rankTab === 'today' }" @click="rankTab = 'today'">今日热榜</view>
+                <view class="rs-tab" :class="{ on: rankTab === 'all' }" @click="rankTab = 'all'">完整榜单</view>
+                <view class="rs-ink" :class="{ right: rankTab === 'all' }"><view class="rs-ink-bar" /></view>
+              </view>
+              <scroll-view class="rs-body" scroll-y>
+                <RankView :mode="rankTab" @open-market="onSheetOpenMarket" />
+              </scroll-view>
+            </view>
+          </view>
         </scroll-view>
 
         <text v-if="list.length && !rows.length" class="wl-hint">该分组暂无股票</text>
         <text v-if="rows.length" class="wl-hint">点击查看详情 · 长按操作(删除/移分组/预警) · 可横滑查看更多</text>
       </view>
-
-    <!-- 底部卡片：本地展开/收起（向上动效），自身承载完整榜单，无遮罩层。
-         进入页面即渲染（不等数据）；peek 为 null 时显示 -- 占位。 -->
-    <view class="rank-peek" :class="{ open: rankOpen, max: rankMax }" :style="rankStyle">
-      <!-- 收起态：一行「今日最热」摘要，点击展开；数据为 null 时显示 -- 占位 -->
-      <view v-if="!rankOpen" class="rp-row" role="button" aria-label="展开榜单" @click="rankOpen = true">
-        <text class="rp-top">今日最热</text>
-        <view class="rp-main">
-          <view class="rp-sub" v-if="peek">
-            <text class="rp-mkt">{{ peekMkt }}</text>
-            <text class="rp-code">{{ peek.code }}</text>
-          </view>
-          <text class="rp-name">{{ peek ? peek.name : '--' }}</text>
-        </view>
-        <view class="rp-right">
-          <text class="rp-price" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
-          <text class="rp-pct" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
-        </view>
-        <OutlineIcon class="rp-caret" type="chevron-up" :size="20" color="var(--text-2)" />
-      </view>
-
-      <!-- 展开态：完整榜单（含收起手柄、Tab 切换、榜单列表）-->
-      <view v-if="rankOpen" class="rp-panel">
-        <view
-          class="rs-grip"
-          @touchstart.stop="onGripDown" @touchmove.stop="onGripMove" @touchend.stop="onGripUp" @touchcancel.stop="onGripUp"
-          @mousedown.stop="onGripDown" @mousemove.stop="onGripMove" @mouseup.stop="onGripUp" @mouseleave.stop="onGripUp"
-          @click.stop="onGripTap"
-        >
-          <view class="rs-handle" />
-        </view>
-        <view class="rs-tabs">
-          <view class="rs-tab" :class="{ on: rankTab === 'today' }" @click="rankTab = 'today'">今日热榜</view>
-          <view class="rs-tab" :class="{ on: rankTab === 'all' }" @click="rankTab = 'all'">完整榜单</view>
-          <view class="rs-ink" :class="{ right: rankTab === 'all' }"><view class="rs-ink-bar" /></view>
-        </view>
-        <scroll-view class="rs-body" scroll-y>
-          <RankView :mode="rankTab" @open-market="onSheetOpenMarket" />
-        </scroll-view>
-      </view>
-    </view>
   </view>
 </template>
 
@@ -201,6 +188,8 @@ const rankOpen = ref(false);
 const rankTab = ref<"today" | "all">("today");
 // 榜单展开态：是否铺满整页（上拉触发）
 const rankMax = ref(false);
+// 卡片浮层态：展开/铺满/拖拽时切 fixed 浮层；收起态跟随列表流布局(末行紧贴卡片,无空白)
+const rankFloating = computed(() => rankOpen.value || rankMax.value || dragging.value);
 // 视口高度与底部占位（px），用于上拉铺满时计算目标高度
 const winH = ref(0);
 const tabPx = ref(0);
@@ -1050,7 +1039,7 @@ function manageGroup(g: string) {
   text-align: right;
   cursor: pointer;
 }
-/* 表头名称列：与数据列同为固定列（左上角最高层级），背景同数据行；左内边距与数据行对齐(16rpx) */
+/* 表头名称列：与数据列同为固定列（左上角最高层级），背景同数据行；左内边距与顶部栏一致(18rpx) */
 .th.c-name {
   justify-content: flex-start;
   text-align: left;
@@ -1058,7 +1047,7 @@ function manageGroup(g: string) {
   left: 0;
   z-index: 6;
   background: var(--bg-2);
-  padding: 0 18rpx 0 12rpx;
+  padding: 0 18rpx 0 18rpx;
 }
 /* 表头可排序：箭头指示 + 激活态高亮 */
 .th-label {
@@ -1116,7 +1105,7 @@ function manageGroup(g: string) {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-/* 固定名称列：横向滚动时始终可见 + 内容左对齐 */
+/* 固定名称列：横向滚动时始终可见 + 内容左对齐；左padding与顶部栏一致(18rpx) */
 .c-name {
   position: sticky;
   left: 0;
@@ -1125,8 +1114,8 @@ function manageGroup(g: string) {
   align-items: center;
   justify-content: flex-start;
   gap: 6rpx;
-  width: 190rpx;
-  padding: 0 12rpx 0 12rpx;
+  width: 168rpx;
+  padding: 0 12rpx 0 18rpx;
   text-align: left;
   background: var(--bg-2);
 }
@@ -1148,7 +1137,7 @@ function manageGroup(g: string) {
   font-size: 28rpx;
   font-weight: 400;
   color: var(--text);
-  max-width: 150rpx;
+  max-width: 118rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1174,7 +1163,7 @@ function manageGroup(g: string) {
   font-size: 20rpx;
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
-  max-width: 130rpx;
+  max-width: 92rpx;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1226,35 +1215,37 @@ function manageGroup(g: string) {
   text-align: center;
   padding: 8rpx 0 0;
 }
-/* 内容容器：min-height 撑满滚动区，使底部留白始终钉在滚动区最底部（不随内容浮动产生空白块） */
-/* 内容包裹层 .wl-rows 不再设置 min-height:100%，避免内容不足一屏时拉伸出“行尾→卡片”间的空白 */
-.bottom-pad {
-  /* 固定占位：预留卡片(76rpx)+tabbar(110rpx) 高度，末行不被遮挡；
-     margin-top:auto 使内容不足一屏时占位退到最底(被卡片遮挡)，内容超屏时在末尾预留卡片高度 */
-  flex: none;
-  margin-top: auto;
-  height: calc(env(safe-area-inset-bottom) + 186rpx);
-}
+/* 底部卡片已改为跟随列表流布局(收起态), 末行紧贴卡片, 不再需要 bottom-pad 占位 */
 
 /* ===== 底部卡片：本地展开/收起（向上动效），自身承载完整榜单，无遮罩层 ===== */
 .rank-peek {
+  /* 收起态：跟随列表流布局(末行紧贴卡片, 彻底消除空白); sticky-left 防止横向滚动时卡片偏移 */
+  position: sticky;
+  left: 0;
+  width: 100%;
+  height: 76rpx;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 22rpx;
+  background: var(--tabbar-bg);
+  backdrop-filter: blur(20rpx) saturate(150%);
+  -webkit-backdrop-filter: blur(20rpx) saturate(150%);
+  border-top: 1rpx solid var(--tabbar-border);
+  box-shadow: 0 -6rpx 20rpx rgba(0, 0, 0, 0.12);
+  margin-bottom: calc(env(safe-area-inset-bottom) + 110rpx);
+  transition: height var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
+}
+/* 展开/铺满/拖拽时切回 fixed 浮层(覆盖整页), 与原来一致 */
+.rank-peek.floating {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
   bottom: calc(env(safe-area-inset-bottom) + 110rpx);
   width: 100%;
   max-width: 480px;
-  height: 76rpx;
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
   border-radius: 22rpx 22rpx 0 0;
-  background: var(--tabbar-bg);
-  backdrop-filter: blur(20rpx) saturate(150%);
-  -webkit-backdrop-filter: blur(20rpx) saturate(150%);
-  border-top: 1rpx solid var(--tabbar-border);
-  transition: height var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
 }
 .rank-peek.open {
   height: 62vh;
