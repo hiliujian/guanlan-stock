@@ -58,7 +58,7 @@
             <view class="th c-name">
               <view class="th-cols" :class="{ on: reorderMode }">
                 <view
-                  class="th-ic"
+                  class="th-ic grip"
                   role="button"
                   aria-label="拖拽排序"
                   @click="toggleReorder"
@@ -211,8 +211,8 @@
               <text class="rp-code">{{ peek ? peek.code : '--' }}</text>
             </view>
             <view class="rp-right">
-              <text class="rp-price" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
               <text class="rp-pct" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
+              <text class="rp-price" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
             </view>
             <OutlineIcon class="rp-caret" type="chevron-up" :size="20" color="var(--text-2)" />
           </view>
@@ -1551,19 +1551,19 @@ function manageGroup(g: string) {
   flex-direction: column;
 }
 
-/* ===== 名称表头工具图标（拖动排序 / 列设置 共用同一灰底容器） ===== */
+/* ===== 名称表头工具图标（拖拽 / 列设置：共用灰底轨道，各自为独立分段，点击高亮对应一侧） ===== */
 .th-cols {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 2rpx;
   margin-left: 6rpx;
-  padding: 4rpx;
-  border-radius: 14rpx;
+  padding: 3rpx;
+  border-radius: 999rpx;
   background: var(--card-2);
   border: 1rpx solid var(--border);
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.18s ease, border-color 0.18s ease;
 }
-/* 拖拽激活态：整个容器变绿，提示当前处于排序模式 */
+/* 拖拽激活态：整条轨道泛绿，提示处于排序模式 */
 .th-cols.on {
   background: var(--primary-soft);
   border-color: var(--primary-soft);
@@ -1573,21 +1573,26 @@ function manageGroup(g: string) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44rpx;
-  height: 44rpx;
-  border-radius: 10rpx;
+  width: 46rpx;
+  height: 46rpx;
+  border-radius: 999rpx;
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
 }
-/* 各自图标独立高亮，点哪个只亮哪个，互不干扰 */
+/* 按下：该侧抬起为高亮分段（浅浮起 + 主色图标），仅高亮被点击的一侧 */
 .th-ic:active {
-  background: rgba(0, 0, 0, 0.06);
-}
-.th-cols.on .th-ic:active {
-  background: rgba(7, 193, 96, 0.18);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2rpx 6rpx rgba(7, 193, 96, 0.18);
 }
 .th-ic:active :deep(.outline-icon) {
   color: var(--primary) !important;
+}
+/* 拖拽开启时：grip 分段常驻绿色实心、图标反白，明确「当前激活的是这一侧」 */
+.th-cols.on .th-ic.grip {
+  background: var(--primary);
+}
+.th-cols.on .th-ic.grip :deep(.outline-icon) {
+  color: #fff !important;
 }
 
 /* ===== 行内拖动手柄（常驻，仅单分组视图显示） ===== */
@@ -1599,9 +1604,6 @@ function manageGroup(g: string) {
   width: 40rpx;
   height: 56rpx;
   margin-left: -6rpx;
-  border-radius: 12rpx;
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
   cursor: grab;
   touch-action: none;
 }

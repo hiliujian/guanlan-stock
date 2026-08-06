@@ -43,10 +43,8 @@
           <text class="rh price st-num" :class="'st-' + clsOf(r)">{{ fmtPrice(r.price) }}</text>
           <text class="rh pct st-num" :class="'st-' + clsOf(r)">{{ fmtPct(r.pct) }}</text>
           <view class="rh heat">
-            <view class="heat-flame">
-              <OutlineIcon type="fire" :size="46" color="#ff5722" />
-              <text class="heat-num">{{ r.heat }}</text>
-            </view>
+            <text class="heat-flame">🔥</text>
+            <text class="heat-num">{{ r.heat }}</text>
           </view>
           <view class="rh star" :class="{ on: watched(r) }" @click.stop="toggleWatch(r)" role="button" aria-label="加入自选">
             <OutlineIcon type="star" :size="30" :color="watched(r) ? 'var(--primary)' : 'var(--text-3)'" />
@@ -270,33 +268,22 @@ function openRow(r: { code: string; market: string }) {
   font-size: 20rpx;
   color: var(--text-3);
 }
-/* 热度：火焰图标 + 数值居中置于火焰中心，数值用火焰色调突出热度 */
+/* 热度：火焰 emoji + 数值并排，数值用火焰橙红确保清晰可读 */
 .rh.heat {
   width: 150rpx;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 6rpx;
 }
 .heat-flame {
-  position: relative;
-  width: 48rpx;
-  height: 48rpx;
-}
-.heat-flame :deep(.outline-icon) {
-  position: absolute;
-  inset: 0;
-  width: 48rpx !important;
-  height: 48rpx !important;
+  font-size: 26rpx;
+  line-height: 1;
 }
 .heat-num {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18rpx;
+  font-size: 22rpx;
   font-weight: 400;
-  color: #fff;
+  color: #ff5722;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
