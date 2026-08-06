@@ -130,11 +130,6 @@
             </view>
           </view>
           </view>
-          <!-- 底部占位：高度须为「卡片自身 76rpx + 菜单栏 110rpx + 安全区」，因为卡片
-               固定于菜单栏上方，距视口底恰为 186rpx+safe；滚到底时末行须停在此高度之上
-               才不被卡片遮挡。列表不足一屏时，靠 .wl-body 的 margin-top:auto 把行整体
-               顶到底部、占位收拢到固定卡片正下方，末行与卡片之间不再露空白。 -->
-          <view class="bottom-pad" />
           </view>
         </scroll-view>
 
@@ -827,7 +822,10 @@ function manageGroup(g: string) {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 0;
+  /* 内容区底边精确落在「今日最热」卡片顶沿：卡片固定位于菜单栏上方，
+     距视口底 = 菜单栏110rpx + 卡片76rpx + 安全区 = 186rpx+safe。
+     这样表格(scroll-view) 高度 = 顶栏底 → 卡片顶，末行紧贴卡片、无预留空白。 */
+  padding: 0 0 calc(env(safe-area-inset-bottom) + 186rpx);
 }
 
 /* ===== 头部（固定不随滚动；与社区 CommunityView 视觉一致） ===== */
@@ -1008,10 +1006,15 @@ function manageGroup(g: string) {
   width: 100%;
   background: var(--bg-2);
 }
-/* scroll-view 真实内容容器：H5 下为 .uni-scroll-view-content，默认 display:block。
-   改为纵向 flex 才能用 auto 外边距把短列表的行整体顶到底部，消除末行与卡片间空白。
-   其 width/height:100% 来自组件默认样式，这里只补 display:flex。 */
+/* scroll-view 真实内容容器：H5 下为 .uni-scroll-view-content，组件默认 height:100%。
+   这里改 height:auto + min-height:100% 并设为纵向 flex：
+   - 内容不足一屏：容器撑满视口高，.wl-rows 内 .tr:first-of-type 的 margin-top:auto
+     把整组行顶到容器底部 → 末行紧贴固定卡片（底边已在 .wl 处裁剪到卡片顶沿），空白
+     自然转移到首行之上；
+   - 内容超一屏：容器随内容增高，margin-top:auto 归零，正常从上往下滚动。 */
 .wl-grid :deep(.uni-scroll-view-content) {
+  height: auto;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -1030,14 +1033,14 @@ function manageGroup(g: string) {
   display: flex;
   flex-direction: column;
 }
-/* 数据行包裹层：占据表头以下、底部占位以上的空间。
-   - 内容不足一屏：flex:1 填满可用高度，.tr:first-of-type 的 margin-top:auto 把整组
-     行顶到该层底部，末行紧贴底部占位(即紧贴固定卡片)，空白转移到首行之上。
-   - 内容超一屏：不能用 min-height:0 裁切(否则末几行溢出到卡片遮挡区被藏住)，
-     保留默认 min-height:auto 让本层撑高到内容高度，溢出落在 bottom-pad 之后，
+/* 数据行包裹层：占据表头以下、卡片顶沿以上的全部空间。
+   - 内容不足一屏：flex:1 填满容器高度，.tr:first-of-type 的 margin-top:auto 把整组
+     行顶到该层底部，末行紧贴卡片顶沿，空白转移到首行之上（末行与卡片之间无空白）。
+   - 内容超一屏：min-height:0 允许本层被内容撑高并溢出，由外层 scroll-view 滚动，
      滚到底时末行正好停在卡片上方、全部可见。 */
 .wl-body {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -1269,14 +1272,6 @@ function manageGroup(g: string) {
 /* 上拉铺满整页：从视口顶部到底部菜单栏之上（高度过渡由 --dur 控制） */
 .rank-peek.max {
   height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
-}
-/* 底部占位：高度须为「卡片自身 76rpx + 菜单栏 110rpx + 安全区」，因为卡片固定
-   于菜单栏上方，距视口底恰为 186rpx+safe；滚到底时末行须停在此高度之上才不被卡片遮挡。
-   列表不足一屏时，靠 .wl-rows 的 margin-top:auto 把内容整体顶到底部、占位收拢到卡片下方，
-   从而末行与卡片之间不会露出空白（之前空白的根因是内容被顶对齐、占位成了可见空块）。 */
-.bottom-pad {
-  flex: none;
-  height: calc(env(safe-area-inset-bottom) + 186rpx);
 }
 /* 收起态一行 */
 .rp-row {
