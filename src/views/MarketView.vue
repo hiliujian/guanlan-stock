@@ -65,6 +65,7 @@
       </view>
       </view><!-- /mk-sticky -->
 
+      <scroll-view class="mk-scroll" scroll-y>
       <view class="mk-body">
       <!-- 空态 -->
       <view v-if="!result" class="empty anim-fade-up">
@@ -126,6 +127,7 @@
 
       <view class="bottom-pad" />
       </view><!-- /mk-body -->
+      </scroll-view>
     </view>
 </template>
 
@@ -680,10 +682,14 @@ defineExpose({ refresh: () => refreshFull() });
 
 <style scoped>
 .market {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   padding: 0;
 }
 /* 顶部：品牌 + 搜索 + 周期切换 固定常驻，向下滚动时不被卷走 */
 .mk-sticky {
+  flex: none;
   position: sticky;
   top: 0;
   z-index: 30;
@@ -695,6 +701,12 @@ defineExpose({ refresh: () => refreshFull() });
 }
 .mk-body {
   padding: 18rpx 18rpx 0;
+}
+/* 行情主体滚动容器：.tab-host 为固定视口高+overflow:hidden，各 Tab 必须自滚。
+   品牌栏/搜索栏(.mk-sticky) 固定顶部不随滚动，命中卡片/报告等在下方独立滚动。 */
+.mk-scroll {
+  flex: 1;
+  min-height: 0;
 }
 /* 品牌标识：APP 统一名称「观澜」，置于行情首页顶部 */
 .brand-bar {

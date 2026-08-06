@@ -118,7 +118,9 @@ function onChange(key: TabKey) {
 }
 function onOpenMarket(payload: { code: string; market: string }) {
   openInMarket(payload.code, payload.market as any);
-  currentKey.value = "market";
+  // 必须通过 goTab 同步 navTab.currentKey，否则后续点「自选」时 goTab 赋相同值不触发
+  // watcher，currentKey 卡在 market 切不回去（此前直接赋值 currentKey 漏同步 navTab）。
+  goTab("market");
 }
 </script>
 
