@@ -121,7 +121,14 @@
             class="tr"
             :class="{ reordering: reorderMode, dragging: dragKey === keyOf(row.it) }"
             @click="onItemClick(row.it)"
-            @longpress="onRowLongPress(row.it)"
+            @touchstart="onRowPressStart(row.it, $event)"
+            @touchmove="onRowPressMove"
+            @touchend="onRowPressEnd"
+            @touchcancel="onRowPressEnd"
+            @mousedown="onRowPressStart(row.it, $event)"
+            @mousemove="onRowPressMove"
+            @mouseup="onRowPressEnd"
+            @mouseleave="onRowPressEnd"
           >
             <!-- 固定列：拖拽手柄(仅整理模式) + 预警点 + 名称 + (市场徽标 + 代码) -->
             <view class="td c-name" :class="{ 'has-handle': reorderMode }">
@@ -179,7 +186,7 @@
         <!-- 统一底部窗体：固定常驻于菜单栏上方(始终可见)，折叠露出「今日最热」卡片；
              展开后按 activePanel 切换 榜单 / 我的分组 / 显示列 三种内容；
              三套内容共用同一窗体、同一套折叠/展开/铺满手势与动效，避免重复样式与代码 -->
-        <PeekSheet ref="sheet" @collapse="activePanel = 'rank'">
+        <PeekSheet ref="sheet" @expand="sheetExpanded = true" @collapse="onSheetCollapse">
           <template #peek>
             <view class="rp-row" role="button" aria-label="展开底部面板">
               <text class="rp-top">今日最热</text>
@@ -349,28 +356,59 @@
               </view>
               <text class="col-tip">设置仅保存在本机，不影响其他设备</text>
             </template>
+
+            <!-- 长按操作菜单：与「我的分组」「显示列」共用同一 PeekSheet 窗体（替代原独立 ActionSheet） -->
+            <template v-else-if="activePanel === 'actions'">
+              <view class="grp-head">
+                <text class="grp-title">{{ lpItem ? (lpItem.name || lpItem.code) : '' }}</text>
+              </view>
+              <view class="grp-list">
+                <view class="grp-item" role="button" @click="openAlertPanel">
+                  <OutlineIcon type="bell" :size="28" color="var(--text-2)" />
+                  <text class="grp-label">编辑价格预警</text>
+                </view>
+                <view class="grp-item" role="button" @click="openMoveFromSheet">
+                  <OutlineIcon type="layers" :size="28" color="var(--text-2)" />
+                  <text class="grp-label">移入分组</text>
+                </view>
+                <view class="grp-item" role="button" @click="removeLp">
+                  <OutlineIcon type="trash" :size="28" color="#ff3b30" />
+                  <text class="grp-label danger">删除自选</text>
+                </view>
+              </view>
+            </template>
+
+            <!-- 编辑价格预警子面板：高于 / 低于 / 清除（清除直接生效，高于/低于用 showModal 输入阈值） -->
+            <template v-else-if="activePanel === 'alert'">
+              <view class="grp-head">
+                <view class="grp-back" role="button" aria-label="返回" @click="activePanel = 'actions'"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
+                <text class="grp-title">价格预警</text>
+              </view>
+              <view class="grp-list">
+                <view class="grp-item" role="button" @click="alertChoose('above')">
+                  <OutlineIcon type="arrow-up" :size="28" color="var(--text-2)" />
+                  <text class="grp-label">设置高于预警</text>
+                </view>
+                <view class="grp-item" role="button" @click="alertChoose('below')">
+                  <OutlineIcon type="arrow-down" :size="28" color="var(--text-2)" />
+                  <text class="grp-label">设置低于预警</text>
+                </view>
+                <view class="grp-item" role="button" @click="alertChoose('clear')">
+                  <OutlineIcon type="trash" :size="28" color="#ff3b30" />
+                  <text class="grp-label danger">清除预警</text>
+                </view>
+              </view>
+            </template>
           </template>
         </PeekSheet>
       </view>
-
-      <!-- 统一底部弹层（替代 uni.showActionSheet 默认样式，复用项目主题） -->
-      <ActionSheet
-        v-model="sheetOpen"
-        :title="sheetTitle"
-        :items="sheetItems"
-        :cancel-text="sheetCancel"
-        @select="onSheetSelect"
-        @cancel="onSheetCancel"
-      />
   </view>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch, onMounted, onActivated, onDeactivated, onUnmounted } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
-import ActionSheet from "@/components/ActionSheet.vue";
 import PeekSheet from "@/components/PeekSheet.vue";
-import type { ActionSheetItem } from "@/components/action-sheet-types";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import RankView from "@/views/RankView.vue";
 import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, applyGroupOrder, type WatchItem, type PriceAlert } from "@/store/watchlist";
@@ -382,31 +420,14 @@ import { resolveSecid, marketCharFor } from "@/utils/period";
 import { getMarketStatus } from "@/utils/marketStatus";
 import { fmtPrice, fmtPct, fmtSigned, fmtAmount } from "@/utils/format";
 
-// 统一底部弹层（替代原 uni.showActionSheet 默认样式，复用项目主题）
-const sheetOpen = ref(false);
-const sheetTitle = ref("");
-const sheetItems = ref<ActionSheetItem[]>([]);
-const sheetCancel = ref("取消");
-let sheetHandler: ((item: ActionSheetItem, index: number) => void) | null = null;
-function openSheet(opts: {
-  title?: string;
-  items: ActionSheetItem[];
-  cancelText?: string;
-  onSelect: (item: ActionSheetItem, index: number) => void;
-}) {
-  sheetTitle.value = opts.title || "";
-  sheetItems.value = opts.items;
-  sheetCancel.value = opts.cancelText || "取消";
-  sheetHandler = opts.onSelect;
-  sheetOpen.value = true;
-}
-function onSheetSelect(payload: { item: ActionSheetItem; index: number }) {
-  const h = sheetHandler;
-  sheetHandler = null;
-  h?.(payload.item, payload.index);
-}
-function onSheetCancel() {
-  sheetHandler = null;
+// 长按操作菜单目标股（统一并入 PeekSheet 面板，替代原先独立的 ActionSheet 弹层）
+const sheetExpanded = ref(false);
+const lpItem = ref<WatchItem | null>(null);
+function onSheetCollapse() {
+  // 下拉收起 / 点击手柄收起时复位面板状态（回到榜单），并清空长按目标
+  activePanel.value = "rank";
+  sheetExpanded.value = false;
+  lpItem.value = null;
 }
 
 const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
@@ -417,7 +438,7 @@ const list = computed(() => wl.items as WatchItem[]);
 // 统一底部窗体 PeekSheet（持久常驻）：折叠露出「今日最热」卡片，展开后按 activePanel
 // 切换 榜单 / 我的分组 / 显示列 三种内容；下拉收起时父组件通过 @collapse 复位到 rank。
 const sheet = ref<any>(null);
-const activePanel = ref<"rank" | "group" | "cols">("rank");
+const activePanel = ref<"rank" | "group" | "cols" | "actions" | "alert">("rank");
 const rankTab = ref<"today" | "all">("today");
 
 // 露出卡片预览数据：当前选中榜单的第 1 名（一行最热股）
@@ -683,40 +704,6 @@ function dismissAlert(key: string) {
   alertHits.value = alertHits.value.filter((h) => h.key !== key);
 }
 
-// 设置价格预警：高于 / 低于 / 清除（H5 无系统推送，触发后在自选页以横幅 + Toast 提醒）
-function editAlert(it: WatchItem) {
-  const a = it.alerts || {};
-  openSheet({
-    title: "价格预警",
-    items: [
-      { label: "设置高于预警", icon: "arrow-up", key: "above" },
-      { label: "设置低于预警", icon: "arrow-down", key: "below" },
-      { label: "清除预警", icon: "trash", accent: "danger", key: "clear" },
-    ],
-    onSelect: (s) => {
-      if (s.key === "clear") {
-        setAlerts(it.code, it.market, undefined);
-        uni.showToast({ title: "已清除预警", icon: "none" });
-        return;
-      }
-      const dir: "above" | "below" = s.key === "above" ? "above" : "below";
-      const cur = a[dir];
-      uni.showModal({
-        title: dir === "above" ? "高于此价提醒" : "低于此价提醒",
-        editable: true,
-        placeholderText: "输入价格，如 12.5",
-        content: cur != null ? String(cur) : "",
-        success: (r) => {
-          if (!r.confirm) return;
-          const v = parseFloat(r.content ?? "");
-          const next: PriceAlert = { ...a };
-          next[dir] = isFinite(v) ? v : null;
-          setAlerts(it.code, it.market, next.above == null && next.below == null ? undefined : next);
-        },
-      });
-    },
-  });
-}
 
 // 空态按钮：跳转到行情 tab 选股
 function goPickMarket() {
@@ -724,8 +711,12 @@ function goPickMarket() {
 }
 
 // 分组管理入口：右上角「分组」pill 点击后，复用底部统一窗体（与热榜/显示列同窗体），
-// 展开并切到 group 内容区；默认回到「我的分组」主视图
+// 展开并切到 group 内容区；再次点击则收起（toggle）
 function openGroups() {
+  if (sheetExpanded.value && activePanel.value === "group") {
+    sheet.value?.collapse();
+    return;
+  }
   groupView.value = "main";
   activePanel.value = "group";
   sheet.value?.expand();
@@ -805,8 +796,13 @@ function toggleCol(k: ColKey) {
     uni.setStorageSync(COLS_KEY, { ...cols });
   } catch (_) {}
 }
-// 列设置入口：复用底部统一窗体，展开并切到 cols 内容区（标题栏与「我的分组」共用）
+// 列设置入口：复用底部统一窗体，展开并切到 cols 内容区（标题栏与「我的分组」共用）；
+// 再次点击则收起（toggle）
 function openCols() {
+  if (sheetExpanded.value && activePanel.value === "cols") {
+    sheet.value?.collapse();
+    return;
+  }
   activePanel.value = "cols";
   sheet.value?.expand();
 }
@@ -1010,7 +1006,52 @@ watch(
 // ===== 自选股表格交互：点击行打开个股；长按行弹出操作菜单（删除/移分组/预警） =====
 function onItemClick(it: WatchItem) {
   if (reorderMode.value) return; // 整理顺序模式下禁用点击跳转
+  if (lpFired) {
+    lpFired = false; // 长按已触发菜单，抑制随后冒泡的 click，避免误开个股
+    return;
+  }
   emit("open-market", { code: it.code, market: it.market });
+}
+
+// 自定义长按检测：手指/指针按下启动计时，移动超过阈值即取消（左/右拖拽横滑滚动时
+// 会触发移动，从而不会误判为长按），解决「拖拽滚动误触发长按」的手势冲突。
+let lpTimer: any = null;
+let lpStartX = 0;
+let lpStartY = 0;
+let lpFired = false;
+const LP_MS = 500;
+const LP_MOVE = 10;
+function pressPt(e: any): { x: number; y: number } {
+  const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+  if (t) return { x: t.clientX, y: t.clientY };
+  return { x: e.clientX || 0, y: e.clientY || 0 };
+}
+function onRowPressStart(it: WatchItem, e: any) {
+  if (reorderMode.value) return; // 整理模式下禁用长按菜单（拖拽手柄另行处理）
+  lpFired = false;
+  const p = pressPt(e);
+  lpStartX = p.x;
+  lpStartY = p.y;
+  if (lpTimer != null) clearTimeout(lpTimer);
+  const target = it;
+  lpTimer = setTimeout(() => {
+    lpFired = true;
+    onRowLongPress(target);
+  }, LP_MS);
+}
+function onRowPressMove(e: any) {
+  if (lpTimer == null) return;
+  const p = pressPt(e);
+  if (Math.abs(p.x - lpStartX) > LP_MOVE || Math.abs(p.y - lpStartY) > LP_MOVE) {
+    clearTimeout(lpTimer);
+    lpTimer = null;
+  }
+}
+function onRowPressEnd() {
+  if (lpTimer != null) {
+    clearTimeout(lpTimer);
+    lpTimer = null;
+  }
 }
 
 function doRemove(it: WatchItem) {
@@ -1018,49 +1059,56 @@ function doRemove(it: WatchItem) {
   uni.showToast({ title: "已移除", icon: "none" });
 }
 
-// 长按行：弹出操作菜单
+// 长按行：统一进入 PeekSheet 的 actions 面板（与「我的分组」「显示列」同窗体），不再使用独立 ActionSheet
 function onRowLongPress(it: WatchItem) {
-  openSheet({
-    title: it.name || it.code,
-    items: [
-      { label: "编辑价格预警", icon: "bell", key: "alert" },
-      { label: "移入分组", icon: "layers", key: "move" },
-      { label: "删除自选", icon: "trash", accent: "danger", key: "del" },
-    ],
-    onSelect: (s) => {
-      if (s.key === "alert") editAlert(it);
-      else if (s.key === "move") showMoveGroup(it);
-      else if (s.key === "del") doRemove(it);
+  lpItem.value = it;
+  activePanel.value = "actions";
+  sheet.value?.expand();
+}
+// 长按菜单「编辑价格预警」：进入 alert 子面板（高于 / 低于 / 清除）
+function openAlertPanel() {
+  if (!lpItem.value) return;
+  activePanel.value = "alert";
+}
+// 预警选择：清除直接生效并收起；高于/低于用 showModal 输入阈值
+function alertChoose(dir: "above" | "below" | "clear") {
+  const it = lpItem.value;
+  if (!it) return;
+  const a = it.alerts || {};
+  if (dir === "clear") {
+    setAlerts(it.code, it.market, undefined);
+    uni.showToast({ title: "已清除预警", icon: "none" });
+    sheet.value?.collapse();
+    return;
+  }
+  const cur = a[dir];
+  uni.showModal({
+    title: dir === "above" ? "高于此价提醒" : "低于此价提醒",
+    editable: true,
+    placeholderText: "输入价格，如 12.5",
+    content: cur != null ? String(cur) : "",
+    success: (r) => {
+      if (!r.confirm) return;
+      const v = parseFloat(r.content ?? "");
+      const next: PriceAlert = { ...a };
+      next[dir] = isFinite(v) ? v : null;
+      setAlerts(it.code, it.market, next.above == null && next.below == null ? undefined : next);
     },
   });
 }
-
-// 移入其他分组（含新建分组）
-function showMoveGroup(it: WatchItem) {
-  const others = groups.value.filter((g) => g !== it.group);
-  openSheet({
-    title: `将「${it.name || it.code}」移入`,
-    items: [
-      ...others.map((g) => ({ label: g, key: g })),
-      { label: "+ 新建分组…", icon: "plus", accent: "primary", key: "new" },
-    ],
-    onSelect: (_s, idx) => {
-      if (idx === others.length) {
-        uni.showModal({
-          title: "新建分组",
-          editable: true,
-          placeholderText: "分组名",
-          content: "",
-          success: (r) => {
-            const n = r.content?.trim();
-            if (r.confirm && n) setItemGroup(it.code, it.market, n);
-          },
-        });
-      } else {
-        setItemGroup(it.code, it.market, others[idx]);
-      }
-    },
-  });
+// 长按菜单「移入分组」：复用「我的分组」面板的移入流程（已选定目标股，直接进入选择目标分组步骤）
+function openMoveFromSheet() {
+  const it = lpItem.value;
+  if (!it) return;
+  moveStock.value = it;
+  moveNew.value = false;
+  moveNewName.value = "";
+  groupView.value = "move";
+  activePanel.value = "group";
+}
+// 长按菜单「删除自选」
+function removeLp() {
+  if (lpItem.value) doRemove(lpItem.value);
 }
 </script>
 
@@ -1458,7 +1506,7 @@ function showMoveGroup(it: WatchItem) {
   flex: none;
   display: flex;
   align-items: center;
-  height: 78rpx;
+  height: 56rpx;
   padding: 0 20rpx;
 }
 .grp-title {
@@ -1500,6 +1548,9 @@ function showMoveGroup(it: WatchItem) {
   flex: 1;
   font-size: 30rpx;
   color: var(--text);
+}
+.grp-label.danger {
+  color: #ff3b30;
 }
 .grp-item.active .grp-label {
   color: var(--primary);
@@ -1563,7 +1614,6 @@ function showMoveGroup(it: WatchItem) {
   height: 76rpx;
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 12rpx;
   padding: 0 28rpx;
   cursor: pointer;
@@ -1580,7 +1630,7 @@ function showMoveGroup(it: WatchItem) {
   color: var(--text-3);
 }
 .rp-main {
-  flex: 1;
+  flex: none;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -1606,6 +1656,7 @@ function showMoveGroup(it: WatchItem) {
 }
 .rp-right {
   flex: none;
+  margin-left: auto;
   display: flex;
   align-items: baseline;
   gap: 10rpx;

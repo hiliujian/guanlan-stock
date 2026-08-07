@@ -38,7 +38,7 @@ import { computed, ref, onMounted, onUnmounted } from "vue";
 
 // 纯持久窗体：始终渲染，折叠露出卡片(peek)；父组件通过 expand/collapse 控制展开/收起，
 // 下拉收起 / 点击手柄收起时 emit('collapse') 供父组件复位面板状态（如 activePanel）。
-const emit = defineEmits<{ (e: "collapse"): void }>();
+const emit = defineEmits<{ (e: "collapse"): void; (e: "expand"): void }>();
 
 type Mode = "collapsed" | "expanded" | "max";
 const mode = ref<Mode>("collapsed");
@@ -158,6 +158,7 @@ function onTap() {
 
 function expand() {
   mode.value = "expanded";
+  emit("expand");
 }
 function collapse() {
   mode.value = "collapsed";
