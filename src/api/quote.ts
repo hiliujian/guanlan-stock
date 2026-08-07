@@ -37,8 +37,8 @@ function cset<T>(key: string, data: T): void {
   _cache.set(key, { ts: Date.now(), data });
 }
 
-// 本地内置常用股票池：网络不可用 / 搜索接口失败时，输入仍能即时给出联想列表；
-// 同时作为「完整热榜」的数据池（今日热榜按其实时行情排序）。
+// 本地内置常用股票池：仅用于「搜索联想」兜底（网络不可用 / 搜索接口失败时即时给出候选），
+// 不参与任何榜单统计——人气榜 / 今日热榜均来自后端 get_stock_heat 真实聚合。
 export const LOCAL_STOCKS: SearchHit[] = [
   { code: "600519", name: "贵州茅台" },
   { code: "601318", name: "中国平安" },

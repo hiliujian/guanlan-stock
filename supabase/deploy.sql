@@ -741,12 +741,19 @@ grant execute on function public.reset_hot_searches() to anon, authenticated;
 --   未登录用户也能查看（anon 可调用），返回热度值 / 名称 / 市场供前端排名与展示。
 -- 索引：(code, market) 支撑聚合分组；稳定、可重复执行（if not exists）。
 -- 与 101 区别：101 统计「当日搜索次数」、零点重置；本函数统计「自选持有人数」、随自选实时聚合。
+-- p_today=true 时仅统计「当日（北京时间，Asia/Shanghai）新增自选」行为（今日热榜），
+--   当日无任何新增则返回空——前端据此显示「暂无数据」，绝不兜底完整榜单；
+-- p_today=false（默认）统计历史累计持有人数（完整榜单）。两种口径后端各自独立聚合。
 -- ╚══════════════════════════════════════════════════════════════╝
 create index if not exists idx_watchlists_code_market on public.watchlists (code, market);
 
-create or replace function public.get_stock_heat(p_limit int default 20)
+drop function if exists public.get_stock_heat(int);
+create or replace function public.get_stock_heat(p_limit int default 20, p_today boolean default false)
 returns table (code text, name text, market text, heat bigint)
 language plpgsql stable security definer set search_path = public as $$
+declare
+  -- 当日（北京时间）零点：watchlists.created_at 在建表时默认 now()，真实记录每次新增自选的时间
+  v_start timestamptz := (date_trunc('day', now() at time zone 'Asia/Shanghai') at time zone 'Asia/Shanghai');
 begin
   return query
     select
@@ -755,10 +762,11 @@ begin
       w.market,
       count(distinct w.user_id) as heat
     from public.watchlists w
+    where (not p_today) or w.created_at >= v_start
     group by w.code, w.market
     order by heat desc, w.code asc
     limit greatest(1, least(coalesce(p_limit, 20), 200));
 end;
 $$;
-grant execute on function public.get_stock_heat(int) to anon, authenticated;
+grant execute on function public.get_stock_heat(int, boolean) to anon, authenticated;
 

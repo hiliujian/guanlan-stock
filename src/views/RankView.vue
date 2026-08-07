@@ -84,8 +84,12 @@ const loading = ref(false);
 
 async function load() {
   loading.value = true;
-  // 热度榜：跨用户自选持有数聚合（人气），按热度降序
-  const heat = await fetchStockHeat(props.mode === "all" ? 100 : 20);
+  // 热度榜：跨用户自选聚合（人气）。
+  //   today 模式（今日热榜）→ 仅统计当日（北京时间）新增自选行为，真实反映今日热度；
+  //   all 模式（完整榜单）  → 统计历史累计持有人数。
+  // 二者后端各自独立聚合；today 为空时本组件显示「暂无数据」，不会兜底完整榜单。
+  const today = props.mode === "today";
+  const heat = await fetchStockHeat(props.mode === "all" ? 100 : 20, today);
   const tasks = heat.map(async (h) => {
     const secid = resolveSecid(h.code, h.market as any);
     try {

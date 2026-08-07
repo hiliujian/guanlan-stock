@@ -181,14 +181,17 @@
           <template #peek>
             <view class="rp-row" role="button" aria-label="展开底部面板">
               <text class="rp-top">今日最热</text>
-              <view class="rp-main">
-                <text class="rp-name">{{ peek ? peek.name : '--' }}</text>
-                <text class="rp-code">{{ peek ? peek.code : '--' }}</text>
-              </view>
-              <view class="rp-right">
-                <text class="rp-price" :class="(peek && peek.price != null) ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
-                <text class="rp-pct" :class="(peek && peek.pct != null) ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
-              </view>
+              <template v-if="peek">
+                <view class="rp-main">
+                  <text class="rp-name">{{ peek.name }}</text>
+                  <text class="rp-code">{{ peek.code }}</text>
+                </view>
+                <view class="rp-right">
+                  <text class="rp-price" :class="peek.price != null ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
+                  <text class="rp-pct" :class="peek.pct != null ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
+                </view>
+              </template>
+              <text v-else class="rp-empty">今日暂无人气新增</text>
               <OutlineIcon class="rp-caret" type="chevron-up" :size="20" color="var(--text-2)" />
             </view>
           </template>
@@ -454,7 +457,8 @@ const sheet = ref<any>(null);
 const activePanel = ref<"rank" | "group" | "cols" | "actions" | "alert">("rank");
 const rankTab = ref<"today" | "all">("today");
 
-// 露出卡片预览数据：当前选中榜单的第 1 名（一行最热股）
+// 露出卡片预览数据：与折叠态卡片标签「今日最热」一致，始终取「当日（北京时间）新增自选」第 1 名；
+// 当日无新增时 peek=null，模板显示「今日暂无人气新增」，绝不兜底完整榜单。
 interface PeekRow {
   code: string;
   name: string;
@@ -463,9 +467,8 @@ interface PeekRow {
   price: number | null;
 }
 const peek = ref<PeekRow | null>(null);
-// 露出卡片预览数据：人气榜第 1 名（与热度榜口径一致：跨用户持有数），并补最新行情
 async function loadPeek() {
-  const heat = await fetchStockHeat(20);
+  const heat = await fetchStockHeat(20, true);
   if (!heat.length) {
     peek.value = null;
     return;
@@ -479,9 +482,6 @@ async function loadPeek() {
     peek.value = { code: top.code, name: top.name, chg: 0, pct: null, price: null };
   }
 }
-
-// 切换榜单类型时同步刷新露出卡片的预览
-watch(rankTab, () => loadPeek());
 
 // 分组筛选：默认展示「全部」（含所有分组），通过右上角「分组」切换；分组名从现有自选派生
 const selectedGroup = ref<string>("__all__");
@@ -1716,6 +1716,16 @@ function removeLp() {
   flex: none;
   font-size: 22rpx;
   color: var(--text-3);
+}
+/* 当日无新增自选时的诚实占位（绝不兜底完整榜单数据） */
+.rp-empty {
+  flex: 1;
+  min-width: 0;
+  font-size: 22rpx;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .rp-main {
   flex: none;
