@@ -1,6 +1,5 @@
 <template>
   <view v-if="shown" class="peek">
-    <view v-if="modal" class="peek-mask" :style="maskStyle" @click="onMask"></view>
     <view
       class="peek-card"
       :class="{ expanded: mode !== 'collapsed', max: mode === 'max' }"
@@ -43,8 +42,6 @@ const props = withDefaults(
     modelValue?: boolean;
     /** 持久模式：始终渲染，带折叠露出卡片(peek)，收起回到卡片 */
     persistent?: boolean;
-    /** 模态模式：渲染遮罩，点遮罩/下拉收起即关闭 */
-    modal?: boolean;
     /** 展开态高度（默认半屏） */
     expandedHeight?: string;
     /** 铺满态高度（默认整页减去底部菜单栏） */
@@ -53,7 +50,6 @@ const props = withDefaults(
   {
     modelValue: undefined,
     persistent: false,
-    modal: false,
     expandedHeight: "62vh",
     maxHeight: "calc(100vh - 110rpx - env(safe-area-inset-bottom))",
   }
@@ -140,7 +136,7 @@ const shellStyle = computed(() => {
 
 const cardStyle = computed(() => {
   const base: Record<string, string | number> = {
-    ...(props.modal ? { zIndex: 70 } : { zIndex: 40 }),
+    zIndex: 40,
   };
   if (closing.value) {
     // 关闭动画：整体下滑至屏幕外，复用 .peek-card 的 transform 过渡(--dur)
@@ -150,7 +146,6 @@ const cardStyle = computed(() => {
   }
   return base;
 });
-const maskStyle = { zIndex: 65 };
 
 function ptY(e: any): number {
   if (e.touches && e.touches[0]) return e.touches[0].clientY;
@@ -233,23 +228,11 @@ function close() {
     hideTimer = undefined;
   }, 320);
 }
-function onMask() {
-  if (props.modal) close();
-}
-
 defineExpose({ expand, collapse, close });
 </script>
 
 <style scoped>
 /* 统一底部窗体：固定底部、玻璃质感、浅阴影、仅顶部圆角，与主题一致 */
-.peek-mask {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
-}
 .peek-card {
   position: fixed;
   left: 50%;
@@ -266,7 +249,7 @@ defineExpose({ expand, collapse, close });
   backdrop-filter: blur(20rpx) saturate(150%);
   -webkit-backdrop-filter: blur(20rpx) saturate(150%);
   border-top: 1rpx solid var(--tabbar-border);
-  box-shadow: 0 -4rpx 20rpx rgba(0, 0, 0, 0.12); /* 浅浅的阴影，统一 */
+  box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.08); /* 更克制的浅阴影，统一（榜单/分组/显示列共用） */
   transition: height var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
   animation: peekIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
 }

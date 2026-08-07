@@ -176,14 +176,11 @@
           </view>
         </scroll-view>
 
-        <!-- 显示列：与热榜/分组同款统一窗体（模态遮罩） -->
-        <PeekSheet modal :model-value="showCols" @update:model-value="(v: boolean) => (showCols = v)">
+        <!-- 显示列：与热榜/分组同款统一窗体（无遮罩） -->
+        <PeekSheet :model-value="showCols" @update:model-value="(v: boolean) => (showCols = v)">
           <template #default>
             <view class="col-head">
               <text class="col-title">显示列</text>
-              <view class="col-close" role="button" aria-label="关闭" @click="showCols = false">
-                <OutlineIcon type="close" :size="28" color="var(--text-2)" />
-              </view>
             </view>
             <view class="col-list">
               <view
@@ -1749,12 +1746,12 @@ function showMoveGroup(it: WatchItem) {
   background: var(--primary-soft);
 }
 
-/* ===== 列设置面板（与热榜/分组同款统一窗体 PeekSheet，模态遮罩） ===== */
+/* ===== 列设置面板（与热榜/分组同款统一窗体 PeekSheet，无遮罩） ===== */
 .col-head {
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   height: 78rpx;
   padding: 0 20rpx;
 }
@@ -1762,14 +1759,6 @@ function showMoveGroup(it: WatchItem) {
   font-size: 30rpx;
   font-weight: 700;
   color: var(--text);
-}
-.col-close {
-  flex: none;
-  width: 44rpx;
-  height: 44rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 .col-list {
   margin-top: 12rpx;
