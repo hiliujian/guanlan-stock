@@ -51,6 +51,12 @@
 			}
 		}
 	],
+	"easycom": {
+		"autoscan": true,
+		"custom": {
+			"^Stock(.*)$": "@/components/Stock$1.vue"
+		}
+	},
 	"globalStyle": {
 		"navigationBarTextStyle": "black",
 		"navigationBarTitleText": "观澜",

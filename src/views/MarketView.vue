@@ -76,6 +76,19 @@
           <text class="empty-t">开始智能分析</text>
           <text class="empty-s">输入代码或名称，查看行情、K 线与 AI 研判</text>
           <view class="empty-divider" />
+          <!-- 热门搜索：后端当日真实搜索行为统计，以标签形式展示（最多 9 个），点击即搜索 -->
+          <view class="hot-in">
+            <text class="hot-in-title">热门搜索</text>
+            <view class="hot-in-tags">
+              <StockTag
+                v-for="h in hotList"
+                :key="h.code"
+                :code="h.code"
+                :name="h.name"
+              />
+            </view>
+            <text v-if="!hotList.length" class="hot-in-empty">今日暂无搜索热点</text>
+          </view>
         </view>
       </view>
 
@@ -119,9 +132,6 @@
 
       </block>
 
-      <!-- 今日热门：常驻展示（空态/结果态均可见），基于后端当日真实搜索行为统计 -->
-      <HotSearchPanel ref="hotPanel" @open="pickOne" />
-
       <view v-if="result" class="risk-note">
         <OutlineIcon type="info" :size="22" color="var(--text-2)" />
         <text>以上分析仅供参考，不构成任何投资建议</text>
@@ -144,9 +154,8 @@ import AnalysisCard from "@/components/AnalysisCard.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import ReportView from "@/components/ReportView.vue";
 import KlineCard from "@/components/KlineCard.vue";
-import HotSearchPanel from "@/components/HotSearchPanel.vue";
-import type HotSearchPanelType from "@/components/HotSearchPanel.vue";
-import { recordSearch } from "@/api/hot";
+import StockTag from "@/components/StockTag.vue";
+import { fetchHotSearches, recordSearch, type HotStock } from "@/api/hot";
 import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, type SearchHit, type QuoteBundle, type NewsItem } from "@/api/quote";
 import { getMarketStatus } from "@/utils/marketStatus";
 import {
@@ -166,12 +175,6 @@ import { navState, openAuth } from "@/store/nav";
 
 const code = ref("");
 
-// 点击热门股票（HotSearchPanel 触达）：填入代码并触发智能分析
-function pickOne(s: { code: string; name?: string }) {
-  code.value = s.code;
-  chosen.value = null;
-  run();
-}
 const period = ref<PeriodKey>("d");
 const loading = ref(false); // 仅「搜索」动作使用，控制搜索按钮的「分析中」态（点击后拉数据+算指标+出报告）
 const switching = ref(false); // 仅「切换周期」使用，避免误占用搜索按钮的加载态
@@ -230,10 +233,14 @@ let blurTimer: any = null;
 // 联想面板是否展开（同一卡片向下展开，与搜索框融为一体）
 const suggestOpen = computed(() => showSuggest.value && suggestions.value.length > 0);
 
-// 今日热搜面板实例：用户搜索后主动刷新榜单
-const hotPanel = ref<InstanceType<typeof HotSearchPanelType> | null>(null);
 // 输入框是否获得焦点：驱动搜索框「聚焦激活态」绿色高亮，让控件活起来
 const focused = ref(false);
+
+// 空态卡片「热门搜索」标签：后端当日真实搜索行为统计，最多 9 个（名称随榜返回，免二次解析）
+const hotList = ref<HotStock[]>([]);
+async function loadHot() {
+  hotList.value = await fetchHotSearches(9);
+}
 
 // 最近搜索历史：本地存储、去重、上限 10、可清除；空输入聚焦时作为联想展示
 const HISTORY_KEY = "stock_analyzer_search_history";
@@ -511,8 +518,8 @@ async function run(forceMarket?: Market, track = true) {
     name.value = b.name || chosen.value?.name || name.value || curCode.value;
     pushHistory({ code: curCode.value, name: name.value });
     if (track) {
-      // 用户主动搜索计入今日热搜；写入完成后再刷新面板，确保刚搜索的个股立即上榜
-      recordSearch(curCode.value, name.value).finally(() => hotPanel.value?.load());
+      // 用户主动搜索计入今日热搜（数据供空态卡片「热门搜索」展示，不阻塞搜索流程）
+      recordSearch(curCode.value, name.value);
     }
     preClose.value = b.preClose;
     realtime.value = b.realtime;
@@ -661,6 +668,7 @@ watch(
 
 onMounted(() => {
   loadHistory();
+  loadHot();
   // 仅当从「自选」页跳转过来（带 pendingCode）时才自动搜索；
   // 否则若本地有最近查看记录则恢复该股票，保证切回行情页不丢数据、冷启动也能恢复。
   if (navState.pendingCode) {
@@ -1026,12 +1034,28 @@ defineExpose({ refresh: () => refreshFull() });
   background: var(--primary);
   margin: 34rpx 0 24rpx;
 }
-.empty-divider {
-  width: 56rpx;
-  height: 6rpx;
-  border-radius: 999rpx;
-  background: var(--primary);
-  margin: 34rpx 0 0;
+/* 空态卡片内「热门搜索」标签区：与上方提示文案经分割线分隔，自然融入卡片 */
+.hot-in {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.hot-in-title {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 18rpx;
+}
+.hot-in-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx 16rpx;
+  justify-content: center;
+}
+.hot-in-empty {
+  font-size: 22rpx;
+  color: var(--text-3);
 }
 .quote-head {
   position: relative;

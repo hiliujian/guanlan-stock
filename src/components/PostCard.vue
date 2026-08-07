@@ -13,8 +13,8 @@
       </view>
     </view>
 
-    <!-- 纯文字动态 -->
-    <text v-if="post.type === 'text'" class="p-text">{{ post.content }}</text>
+    <!-- 纯文字动态：# + 股票代码 自动解析为可点击标签（全局交互） -->
+    <StockText v-if="post.type === 'text'" :text="post.content || ''" class="p-text" />
 
     <!-- 持仓卡片 -->
     <view v-else-if="post.card?.kind === 'holding'" class="card-s holding">
@@ -95,7 +95,7 @@
     <view v-if="showReply" class="p-replies">
       <view v-for="r in post.replies" :key="r.id" class="p-reply">
         <text class="pr-name">{{ r.author }}</text>
-        <text class="pr-text">{{ r.content }}</text>
+        <StockText :text="r.content || ''" class="pr-text" />
       </view>
       <view class="p-reply-input">
         <input class="pri-in" v-model="replyText" placeholder="回复 TA…" :maxlength="200" @confirm="sendReply" />
@@ -110,6 +110,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
+import StockText from "./StockText.vue";
 import { formatRelative, type CommunityPost } from "@/api/community";
 import { avatarGradient, avatarChar, topicColor } from "@/utils/avatar";
 
@@ -222,7 +223,6 @@ function preview(current: string) {
   padding: 6rpx;
 }
 .p-text {
-  display: block;
   font-size: 28rpx;
   line-height: 1.6;
   color: var(--text);
