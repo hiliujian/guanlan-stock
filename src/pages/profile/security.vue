@@ -218,8 +218,8 @@ const loginSummary = computed(() => {
   const l = lastLogin.value;
   if (!l) return "暂无登录记录";
   const parts: string[] = [];
-  if (l.city) parts.push(l.ip ? `${l.city}（${l.ip}）` : l.city);
-  else if (l.ip) parts.push(l.ip);
+  // 地点：依赖 IP 地理定位，定位失败则显示「未知」（不回退到裸 IP）
+  parts.push(l.city || "未知");
   if (l.time) parts.push(fmtLoginTime(l.time));
   const dev = [l.device, l.os].filter(Boolean);
   if (dev.length) parts.push(dev.join(" · "));
