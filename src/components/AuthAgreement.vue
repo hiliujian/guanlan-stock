@@ -15,15 +15,17 @@
  * - 使用即视为已同意（主流小程序做法），不需要勾选
  * - 链接通过 uni API 打开，便于后续接入内置 H5 预览
  *
- * 贴底实现：组件自身采用 fixed 定位 + bottom:0，
- * 不参与父容器的 flex 居中计算，因此不会被表单"顶起来"。
+ * 贴底实现：组件自身采用 fixed 定位 + bottom:0，不参与父容器的
+ * flex 居中计算，因此不会被表单布局顶起。
  * 注意：本组件只能作为 AuthShell（position:fixed 全屏层）的子元素使用。
  *
- * 键盘避让：软键盘弹出时（尤其 Android/iOS WebView 会把 position:fixed
- * 的 bottom:0 顶到键盘上方，导致协议"跟着键盘弹上来"），用「键盘实际高度」把本协议
- * 条推到键盘下方（bottom 取负键盘高度），使其不再悬浮在键盘上方的可视区。
- * 仅由键盘真实高度驱动，绝不受输入框聚焦影响——桌面端或覆盖层键盘下高度为 0，
- * 协议始终贴屏幕底部可见；点输入框不会让它消失。
+ * 键盘避让（解决「点输入框唤起键盘后协议跟着弹上来」）：
+ * - H5 触屏设备（手机/平板）：软键盘几乎必然伴随输入框聚焦，故用
+ *   focusin/focusout 在「任一表单字段聚焦」时直接隐藏协议条、失焦恢复。
+ *   这能覆盖 Android WebView / VIA 等「覆盖层键盘」场景——这类键盘不收缩
+ *   visualViewport，纯高度探测（innerHeight-vv.height）永远为 0，会失效。
+ * - 桌面端（无触屏）：不随聚焦隐藏，协议始终贴底可见（点输入框不会消失）。
+ * - 非 H5（App/小程序）：用 uni.onKeyboardHeightChange，键盘高度 >0 时隐藏。
  */
 import { ref, computed, onMounted, onUnmounted } from "vue";
 
@@ -42,31 +44,57 @@ withDefaults(
   }
 );
 
-// 软键盘高度（CSS px）：仅当几何上确实存在键盘高度时，把协议条推到键盘下方，
-// 避免其悬浮在键盘上方的可视区（即「跟着键盘弹起来」的观感）。
-// 注意：用「键盘实际高度」驱动，而非「输入框是否聚焦」——
-// 桌面端或覆盖层键盘下高度为 0，协议始终贴屏幕底部可见；只有真正弹出键盘时才下移。
+// 是否触屏设备（仅 H5 有意义）：触屏设备用「聚焦」驱动隐藏，桌面端不隐藏
+const isTouch = ref(false);
+// 表单内是否有字段被聚焦（H5 触屏设备据此隐藏协议）
+const focused = ref(false);
+// 软键盘真实高度（CSS px）：非 H5 / 收缩型键盘（iOS）据此隐藏
 const kbPx = ref(0);
-const agreeStyle = computed(() =>
-  kbPx.value > 0 ? { bottom: `-${kbPx.value}px` } : null
-);
+
+// 隐藏条件：触屏且聚焦，或键盘真实高度 >0
+const hidden = computed(() => (isTouch.value && focused.value) || kbPx.value > 0);
+const agreeStyle = computed(() => (hidden.value ? { display: "none" } : null));
 
 let detach: (() => void) | null = null;
 
 onMounted(() => {
   // #ifdef H5
+  isTouch.value =
+    (navigator.maxTouchPoints || 0) > 0 || "ontouchstart" in window;
+  if (isTouch.value) {
+    const onFocusIn = () => {
+      focused.value = true;
+    };
+    const onFocusOut = () => {
+      // 延后一帧，避免输入框之间切换时闪烁
+      requestAnimationFrame(() => {
+        const el = document.activeElement as HTMLElement | null;
+        if (!el || !el.closest(".auth-form")) focused.value = false;
+      });
+    };
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    const prev = detach;
+    detach = () => {
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
+      prev?.();
+    };
+  }
+  // 兜底：收缩型键盘（iOS Safari）会收缩 visualViewport，可据此判定
   const vv = window.visualViewport;
   if (vv) {
     const onResize = () => {
-      // 键盘高度 = 布局视口高 - 可视视口高 - 偏移；>0 即键盘已弹出
       kbPx.value = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
     };
     vv.addEventListener("resize", onResize);
     vv.addEventListener("scroll", onResize);
     onResize();
+    const prev = detach;
     detach = () => {
       vv.removeEventListener("resize", onResize);
       vv.removeEventListener("scroll", onResize);
+      prev?.();
     };
   }
   // #endif
