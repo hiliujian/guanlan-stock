@@ -56,10 +56,10 @@
                   aria-label="拖拽排序"
                   @click="toggleReorder"
                 >
-                  <OutlineIcon type="grip" :size="24" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
+                  <OutlineIcon type="grip" :size="28" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
                 </view>
                 <view class="th-ic" :class="{ on: activePanel === 'cols' }" role="button" aria-label="列设置" @click="openCols">
-                  <OutlineIcon type="columns" :size="24" :color="activePanel === 'cols' ? 'var(--primary)' : 'var(--text-3)'" />
+                  <OutlineIcon type="columns" :size="28" :color="activePanel === 'cols' ? 'var(--primary)' : 'var(--text-3)'" />
                 </view>
               </view>
             </view>
@@ -1338,7 +1338,7 @@ function removeLp() {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  height: 56rpx;
+  height: 60rpx;
   padding: 0 18rpx;
   font-size: 26rpx;
   font-weight: 400;
@@ -1738,8 +1738,8 @@ function removeLp() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40rpx;
-  height: 40rpx;
+  width: 44rpx;
+  height: 44rpx;
   border-radius: 6rpx;
   cursor: pointer;
   transition: background 0.18s ease, box-shadow 0.18s ease;

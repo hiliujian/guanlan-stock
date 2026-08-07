@@ -121,9 +121,13 @@ function onUp() {
   if (!dragging.value) return;
   dragging.value = false;
   const dy = dragY.value;
-  const wasUp = dragUp.value;
   dragY.value = 0;
-  if (wasUp) {
+  // 纯点击（位移极小）视为误触，不触发任何展开/收起切换：
+  // 避免展开态下点顶部手柄空白区导致窗体被收起并复位到榜单（进而误跳热榜）。
+  // 仅当位移超过阈值才认定为拖拽手势。
+  if (Math.abs(dy) < 10) return;
+  const movedUp = dy < 0;
+  if (movedUp) {
     if (mode.value === "max") {
       // 已铺满：下拉超过阈值回退到半屏
       if (dy > 80) mode.value = "expanded";
