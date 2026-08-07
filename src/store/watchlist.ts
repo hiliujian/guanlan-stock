@@ -208,10 +208,15 @@ function toAlertJson(a?: PriceAlert): any {
   return { above, below };
 }
 
-/** 将某只自选移动到其它分组（并置于目标分组末尾序；云：按 id 更新 group_name + sort_order；本地：打补丁并重存） */
+/** 将某只自选移动到其它分组（保留其原有排序权重，不强制沉到目标分组末尾；
+ *  云：按 id 仅更新 group_name（sort_order 一并写回原值，避免漂移）；本地：打补丁并重存）。
+ *  说明：早期实现会把 order 重置为 nextGroupOrder(grp)，导致个股“被插到目标分组最后一行”，
+ *  在「全部」视图下表现为顺序错乱。现保留原 order，移入后按其原权重落在目标分组对应位置。 */
 export async function setItemGroup(code: string, market: string, group: string): Promise<void> {
   const grp = group || "";
-  const order = nextGroupOrder(grp);
+  const target = state.items.find((i) => i.code === code && i.market === market);
+  if (!target) return;
+  const order = target.order ?? 0; // 保留原分组内排序权重
   await patchItem(code, market, { group_name: grp, sort_order: order });
   if (state.mode !== "cloud") {
     state.items = sortItems(

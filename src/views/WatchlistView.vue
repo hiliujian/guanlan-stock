@@ -585,7 +585,7 @@ function newNext() {
 function newPickStock(it: WatchItem) {
   const name = newName.value.trim();
   setItemGroup(it.code, it.market, name);
-  selectedGroup.value = name;
+  // 新建并加入后保持当前视图（不自动切换分组），可在「选择股票加入」中继续添加多只
   uni.showToast({ title: `已创建「${name}」`, icon: 'none' });
   sheet.value?.collapse();
 }
@@ -596,7 +596,7 @@ function movePickStock(it: WatchItem) {
 function doMoveTarget(grp: string) {
   if (!moveStock.value) return;
   setItemGroup(moveStock.value.code, moveStock.value.market, grp);
-  selectedGroup.value = grp;
+  // 移入后保持当前视图（不自动切换分组），避免操作后跳走、打断浏览
   uni.showToast({ title: `已移入${grp || '默认'}`, icon: 'none' });
   sheet.value?.collapse();
 }
@@ -608,8 +608,8 @@ function doMoveNew() {
   }
   if (moveStock.value) {
     setItemGroup(moveStock.value.code, moveStock.value.market, name);
-    selectedGroup.value = name;
   }
+  // 移入后保持当前视图（不自动切换分组）
   uni.showToast({ title: `已移入${name}`, icon: 'none' });
   sheet.value?.collapse();
 }
@@ -1164,13 +1164,7 @@ function removeLp() {
   padding: 0 0 calc(env(safe-area-inset-bottom) + 186rpx);
 }
 
-/* ===== 头部（固定不随滚动；与社区 CommunityView 视觉一致） ===== */
-.cm-header,
-.cm-brand,
-.cm-right {
-  /* 顶部栏外壳已迁出至 PageHeader.vue，这里保留空规则仅用于兼容历史选择器残留，
-     后续如确认无引用可彻底删除。当前选择器仍可能在子组件被外部全局样式命中。 */
-}
+/* ===== 头部（固定不随滚动；与社区 CommunityView 视觉一致，外壳已迁出至 PageHeader.vue） ===== */
 /* 实时涨/跌个股数：并入分组按钮，故去独立背景，仅以细分隔线区分于分组名 */
 .ud-pill {
   display: flex;
@@ -1319,10 +1313,8 @@ function removeLp() {
 }
 /* scroll-view 真实内容容器：H5 下为 .uni-scroll-view-content，组件默认 height:100%。
    这里改 height:auto + min-height:100% 并设为纵向 flex：
-   - 内容不足一屏：容器撑满视口高，.wl-rows 内 .tr:first-of-type 的 margin-top:auto
-     把整组行顶到容器底部 → 末行紧贴固定卡片（底边已在 .wl 处裁剪到卡片顶沿），空白
-     自然转移到首行之上；
-   - 内容超一屏：容器随内容增高，margin-top:auto 归零，正常从上往下滚动。 */
+   - 内容不足一屏：容器撑满视口高，数据行从顶部依次排列，空白自然落在末行与底部卡片之间；
+   - 内容超一屏：容器随内容增高，由外层 scroll-view 滚动，滚到底时末行停在卡片上方。 */
 .wl-grid :deep(.uni-scroll-view-content) {
   height: auto;
   min-height: 100%;
@@ -1337,26 +1329,20 @@ function removeLp() {
   width: max-content;
   min-width: 100%;
 }
-/* 行容器：填满内容区高度；列表不足一屏时，内部 .wl-body 的 auto 外边距把行顶到底部 */
+/* 行容器：填满内容区高度，使滚动区域高度稳定 */
 .wl-rows {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
-/* 数据行包裹层：占据表头以下、卡片顶沿以上的全部空间。
-   - 内容不足一屏：flex:1 填满容器高度，.tr:first-of-type 的 margin-top:auto 把整组
-     行顶到该层底部，末行紧贴卡片顶沿，空白转移到首行之上（末行与卡片之间无空白）。
-   - 内容超一屏：min-height:0 允许本层被内容撑高并溢出，由外层 scroll-view 滚动，
-     滚到底时末行正好停在卡片上方、全部可见。 */
+/* 数据行包裹层：占据表头以下、卡片顶沿以上的全部空间；行从顶部依次排列，
+   不足一屏时空白自然落在末行下方（不再把首行顶到容器底部）。 */
 .wl-body {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-.wl-body > .tr:first-of-type {
-  margin-top: auto;
 }
 /* 表头：实色背景（--bg-2 是 #ffffff/暗主题 #0a1322，纯色而非透明），保证清晰对比 */
 .wl-thead {
