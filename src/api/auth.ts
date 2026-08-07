@@ -227,7 +227,6 @@ export interface LoginInfo {
   ip?: string; // 登录 IP（最佳努力获取，失败为空）
   city?: string; // 登录城市（由 IP 地理定位，失败为「未知」）
   device?: string; // 设备型号（uni.getSystemInfoSync().model）
-  os?: string; // 操作系统及版本（如 "iOS 17.0" / "Android 14"）
   platform?: string; // 平台标识（ios / android / web 等）
   time?: string; // 登录时刻 ISO 字符串
 }
@@ -425,14 +424,12 @@ export async function captureLoginInfo(): Promise<void> {
     const uid = u.user?.id;
     if (!uid) return;
 
-    // 设备信息：uni-app 跨端可用（model=型号、system=操作系统及版本、platform=平台）
+    // 设备信息：uni-app 跨端可用（model=型号、platform=平台）
     let device = "";
-    let os = "";
     let platform = "";
     try {
       const info: any = uni.getSystemInfoSync();
       device = info?.model || "";
-      os = info?.system || "";
       platform = info?.platform || "";
     } catch {
       /* 设备信息不可用时仅留空 */
@@ -445,7 +442,6 @@ export async function captureLoginInfo(): Promise<void> {
       ip: geo?.ip || "",
       city: geo?.city || "",
       device,
-      os,
       platform,
       time: new Date().toISOString(),
     };

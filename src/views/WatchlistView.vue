@@ -1687,21 +1687,33 @@ function removeLp() {
   padding: 20rpx 0;
   border-radius: 999rpx;
   font-size: 27rpx;
-  color: var(--text-2);
-  background: var(--card-2);
+  font-weight: 500;
+  /* 幽灵按钮：描边 + 主色字，与绿色 primary 按钮视觉协调，比灰底更有品质感 */
+  color: var(--primary);
+  background: transparent;
+  border: 2rpx solid var(--primary);
   cursor: pointer;
-  transition: background 0.12s ease, opacity 0.12s ease;
+  transition: background 0.14s ease, color 0.14s ease, opacity 0.12s ease;
 }
 .grp-btn:active {
-  opacity: 0.85;
+  background: rgba(7, 193, 96, 0.08);
 }
 .grp-btn.primary {
   color: #fff;
   background: var(--primary);
+  border-color: var(--primary);
+}
+.grp-btn.primary:active {
+  background: var(--primary-dark, #06a752);
+  border-color: var(--primary-dark, #06a752);
 }
 .grp-btn.danger {
-  color: #fff;
-  background: #e35d6a;
+  color: #e35d6a;
+  background: transparent;
+  border: 2rpx solid #e35d6a;
+}
+.grp-btn.danger:active {
+  background: rgba(227, 93, 106, 0.08);
 }
 /* 收起态一行 */
 .rp-row {

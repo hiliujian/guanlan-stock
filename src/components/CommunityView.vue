@@ -4,7 +4,7 @@
     <PageHeader brand-text="社区" brand-icon="chatbubble">
       <template #right>
         <view class="cm-me" @click="toggleEdit">
-          <view class="cm-avatar" :style="{ background: myAvatarBg }">{{ myChar }}</view>
+          <UserAvatar :url="myAvatarUrl" :seed="mySeed" :size="48" />
           <text class="cm-name">{{ myName }}</text>
           <OutlineIcon type="gear" :size="24" color="var(--text-2)" />
         </view>
@@ -80,13 +80,14 @@ import OutlineIcon from "./OutlineIcon.vue";
 import PageHeader from "./PageHeader.vue";
 import PostComposer from "./PostComposer.vue";
 import PostCard from "./PostCard.vue";
+import UserAvatar from "./UserAvatar.vue";
 import { useCommunity } from "@/store/community";
 import { openAuth } from "@/store/nav";
 import { getMyName, setMyName } from "@/store/identity";
 import { userState } from "@/store/user";
 import { updateProfile } from "@/api/auth";
 import { refreshProfile } from "@/store/user";
-import { avatarGradient, avatarChar, avatarSeed, topicColor } from "@/utils/avatar";
+import { avatarSeed, topicColor } from "@/utils/avatar";
 import type { CommunityPost, PostCard as PostCardData, Topic } from "@/api/community";
 
 const { posts, loading, load, publishText, publishCard, like, reply, remove } = useCommunity();
@@ -105,8 +106,11 @@ const mySeed = computed(() =>
     ? avatarSeed(userState.profile?.username || "") || "我"
     : myName.value
 );
-const myAvatarBg = computed(() => avatarGradient(mySeed.value));
-const myChar = computed(() => avatarChar(mySeed.value));
+// 已登录时直接读 user.profile.avatar_url（与个人资料页同源）；
+// 未登录时无 url，回退到「字」头像。这是修复「社区头像不同步」的根因。
+const myAvatarUrl = computed(() =>
+  userState.loggedIn ? userState.profile?.avatar_url || "" : ""
+);
 
 function isMine(p: CommunityPost): boolean {
   // 已登录：按账号 id 判定（帖子创建时已写入 userId）
@@ -239,19 +243,6 @@ defineExpose({ refresh: load });
   border-radius: 999rpx;
   background: var(--card-2);
   box-shadow: inset 0 0 0 1rpx var(--tabbar-border);
-}
-.cm-avatar {
-  width: 48rpx;
-  height: 48rpx;
-  border-radius: 50%;
-  overflow: hidden;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  color: #fff;
-  font-size: 24rpx;
 }
 .cm-name {
   font-size: 26rpx;

@@ -15,17 +15,16 @@
       <!-- 头像（点击更换）：居中展示 -->
       <view class="card ep-hero anim-fade-up">
         <view class="ep-avatar" hover-class="ep-av-hover" @click="chooseAvatar" role="button" aria-label="更换头像">
-          <image v-if="avatarUrl" :src="avatarUrl" class="ep-av-img" mode="aspectFill" />
-          <text v-else class="ep-av-char" :style="{ background: avatarBg }">{{ ch }}</text>
+          <UserAvatar :url="avatarUrl" :seed="seedName" :size="148" />
           <view class="ep-cam">
             <OutlineIcon v-if="!uploading" type="camera" :size="20" color="#fff" />
             <view v-else class="ep-spin" />
           </view>
         </view>
-        <text class="ep-hero-tip">点击头像可裁剪调整</text>
+        <text class="ep-hero-tip">点击头像可更换</text>
       </view>
 
-      <!-- 头像裁剪弹窗 -->
+      <!-- 头像裁剪弹窗：选图后弹出，确认后上传 -->
       <AvatarCropper
         v-model="cropperVisible"
         :src="cropperSrc"
@@ -74,9 +73,10 @@ import { ref, computed, watch } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import AvatarCropper from "@/components/AvatarCropper.vue";
+import UserAvatar from "@/components/UserAvatar.vue";
 import { useUser, refreshProfile } from "@/store/user";
 import { updateProfile, uploadAvatar } from "@/api/auth";
-import { avatarGradient, avatarChar, avatarSeed } from "@/utils/avatar";
+import { avatarSeed } from "@/utils/avatar";
 
 const user = useUser();
 
@@ -91,11 +91,8 @@ const uploading = ref(false);
 const cropperVisible = ref(false);
 const cropperSrc = ref("");
 
-// 默认头像（底色 + 首字）以「不变身份」为种子：昵称修改不改变，
-// 仅当用户自行上传图片头像时才替换。
+// 字头像种子：用户名（不可变身份），与社区页等其他场景共用
 const seedName = computed(() => avatarSeed(username.value) || "我");
-const avatarBg = computed(() => avatarGradient(seedName.value));
-const ch = computed(() => avatarChar(seedName.value));
 
 watch(
   () => [user.loggedIn, user.profile],
@@ -252,7 +249,6 @@ async function save() {
   width: 148rpx;
   height: 148rpx;
   border-radius: 50%;
-  background: var(--card-2);
   border: 3rpx solid var(--card);
   box-shadow: 0 0 0 6rpx rgba(7, 193, 96, 0.16), 0 10rpx 24rpx rgba(0, 0, 0, 0.22);
   overflow: hidden;
@@ -263,21 +259,6 @@ async function save() {
 }
 .ep-av-hover {
   transform: scale(0.97);
-}
-.ep-av-img {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-}
-.ep-av-char {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  color: #fff;
-  font-size: 64rpx;
 }
 .ep-cam {
   position: absolute;
