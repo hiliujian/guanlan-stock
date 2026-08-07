@@ -123,6 +123,9 @@ uni-input,
 uni-textarea,
 uni-button {
   box-sizing: border-box;
+  /* 关闭点击高亮：默认 WebKit 会在被点元素上闪出半透明黑色蒙层，
+     按钮内的 <text>/<view> 子元素未被覆盖时会把白字"压黑"，造成绿底黑字的错觉。 */
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* 清除原生按钮外观：必须显式关闭，否则 iOS/WebKit 的默认控件样式会盖过我们的药丸按钮 */
@@ -138,7 +141,6 @@ uni-button {
   font-size: inherit;
   line-height: normal;
   color: inherit;
-  -webkit-tap-highlight-color: transparent;
   /* 抵消部分 WebView/iOS 给原生 <button> 施加的 UA 默认最小高度，
      否则按钮会被悄悄撑高、跨浏览器"一致变高"；显式归零后 height 才在所有浏览器都生效 */
   min-height: 0;
@@ -231,11 +233,13 @@ textarea {
    （与 .lift:active 一致），替代原 scale(0.97)+外发光，避免收缩抖动与突兀辉光。 */
 .btn-primary:active {
   background: var(--primary-dark);
+  color: #fff;
   transform: translateY(1rpx);
   box-shadow: 0 3rpx 12rpx rgba(7, 193, 96, 0.28), inset 0 1rpx 0 rgba(255, 255, 255, 0.22);
 }
 .btn-danger:active {
   background: var(--danger-dark);
+  color: #fff;
   transform: translateY(1rpx);
   box-shadow: 0 3rpx 12rpx rgba(229, 72, 77, 0.32), inset 0 1rpx 0 rgba(255, 255, 255, 0.22);
 }
