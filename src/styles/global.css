@@ -80,8 +80,16 @@
   --shell-shadow: 0 0 60rpx rgba(0, 0, 0, 0.5);
 }
 
-page,
-body {
+/* 背景必须刷到整条根容器链（html、body、#app、uni-app、uni-page-wrapper、uni-page-body、page）。
+   否则顶部安全区 padding、滚动回弹（overscroll）等透明/溢出区域会透出浏览器默认白色，
+   在 VIA 等浏览器表现为「顶部留白」。用 var(--bg) 随主题（深/浅）自动切换。 */
+html,
+body,
+#app,
+uni-app,
+uni-page-wrapper,
+uni-page-body,
+page {
   background: var(--bg);
   color: var(--text);
   font-size: 28rpx;
@@ -172,7 +180,9 @@ textarea {
   box-sizing: border-box;
   min-height: 100vh;
   min-height: 100dvh;
-  background: transparent;
+  /* 必须实色（应用背景），不能 transparent：否则顶部安全区 padding 段与滚动回弹区域
+     会透出浏览器默认白色，在 VIA 等浏览器表现为顶部留白。深色主题下 var(--bg) 自动变深。 */
+  background: var(--bg);
   position: relative;
   z-index: 1;
   box-shadow: var(--shell-shadow);
