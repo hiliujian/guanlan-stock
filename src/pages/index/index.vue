@@ -64,12 +64,15 @@ const pageKey = computed(() => currentKey.value);
 const tabRef = ref<any>(null);
 useUser(); // 初始化用户态（含登录态监听），无需持有返回值
 
-// 与 navTab 双向同步：其他页（如「我的」菜单）调用 goTab 时切换到对应 Tab
+// 与 navTab 双向同步：其他页（如「我的」菜单 / 认证页守卫重定向）调用 goTab 时切换到对应 Tab
+// immediate: 首页创建即反映全局当前 tab（如已登录访问登录页被守卫 reLaunch 回「我的」时，
+// 需在 setup 阶段就把 currentKey 同步为 profile，否则会停在默认 market tab）
 watch(
   () => navTab.currentKey,
   (k) => {
     if (k !== currentKey.value) currentKey.value = k;
-  }
+  },
+  { immediate: true }
 );
 // 兜底：当前 Tab 被远程配置关闭时回退到首个可用 Tab
 watch(

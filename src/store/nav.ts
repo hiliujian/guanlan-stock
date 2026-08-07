@@ -63,6 +63,20 @@ export function goHome() {
   });
 }
 
+/**
+ * 已登录用户访问认证页（登录 / 注册 / 找回）时重定向到「我的」。
+ * - 设置全局 tab 为 profile（「我的」），并 reLaunch 首页：
+ *   reLaunch 会关闭所有页面，等价于 replace 语义，返回键不会再回到被关闭的登录页。
+ * - 带 fail 兜底 navigateTo（极端环境 reLaunch 不可用时）。
+ */
+export function goToProfile() {
+  navTab.currentKey = "profile";
+  uni.reLaunch({
+    url: "/pages/index/index",
+    fail: () => uni.navigateTo({ url: "/pages/index/index" }),
+  });
+}
+
 export function openInMarket(code: string, market: Market = "auto") {
   navState.pendingCode = code;
   navState.pendingMarket = market;

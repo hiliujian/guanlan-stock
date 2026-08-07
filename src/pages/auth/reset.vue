@@ -1,5 +1,5 @@
 <template>
-  <AuthShell title="找回密码">
+  <AuthShell v-if="ready" title="找回密码">
     <view class="auth-form anim-rise-soft">
       <text class="auth-lead">验证邮箱身份后，即可重设登录密码。</text>
 
@@ -79,10 +79,12 @@
     <!-- 协议贴底（fixed）：与表单整体垂直居中无关，始终在屏幕最底部 -->
     <AuthAgreement action="使用" />
   </AuthShell>
+  <view v-else class="auth-guard"><view class="auth-guard-spin" /></view>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onUnmounted } from "vue";
+import { onLoad } from "@dcloudio/uni-app";
 import AuthShell from "@/components/AuthShell.vue";
 import AuthField from "@/components/AuthField.vue";
 import AuthAgreement from "@/components/AuthAgreement.vue";
@@ -93,6 +95,11 @@ import {
   EMAIL_RE,
 } from "@/api/auth";
 import { syncSession } from "@/store/user";
+import { useAuthGuard } from "@/composables/useAuthGuard";
+
+// 已登录用户访问找回密码页 → 自动 replace 到「我的」（不渲染表单、返回键不回找回页）
+const { ready, guard } = useAuthGuard();
+onLoad(() => guard());
 
 const email = ref("");
 const code = ref("");

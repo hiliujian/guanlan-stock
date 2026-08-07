@@ -545,6 +545,27 @@ textarea {
   flex: none;
 }
 
+/* 认证页守卫占位：未确认登录态前不渲染表单，仅居中显示绿色 spinner，避免闪烁 / 闪登录表单一帧 */
+.auth-guard {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+}
+.theme-dark .auth-guard {
+  background: var(--bg);
+}
+.auth-guard-spin {
+  width: 48rpx;
+  height: 48rpx;
+  border: 5rpx solid var(--primary-soft);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
 /* ============ 登录 / 注册 / 找回密码 表单元素（全局共享，避免各页重复 scoped 样式） ============
    这些类由 AuthField 组件与各授权页共用，仅此一处维护。配色 / 圆角 / 字号全部复用全局变量。 */
 /* 占位符文字色（全局，确保 AuthField 跨组件也能正确着色；uni placeholder-class 不继承 scoped） */
