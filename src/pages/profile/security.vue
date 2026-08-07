@@ -27,23 +27,21 @@
         </view>
       </view>
 
-      <!-- 上次登录信息：地点 · 时间 · 设备 合并一行展示（避免三项各占一行占用空间） -->
+      <!-- 账号与安全分组：上次登录 / 登录邮箱 / 登录密码（手风琴展开修改表单）。
+           上次登录不再单列卡片，合并进本分组，与登录邮箱/密码统一管理。 -->
       <view class="card sec-group anim-fade-up">
-        <text class="sec-group-title">上次登录</text>
+        <text class="sec-group-title">账号与安全</text>
+
+        <!-- 上次登录（合并进本分组，不再单列卡片）：地点 · 时间 · 设备名 -->
         <view class="sec-row">
           <view class="sec-row-left">
             <view class="sec-row-ic"><OutlineIcon type="clock" :size="28" color="var(--text-2)" /></view>
             <view class="sec-row-text">
-              <text class="sec-row-label">登录信息</text>
+              <text class="sec-row-label">上次登录</text>
               <text class="sec-row-desc">{{ loginSummary }}</text>
             </view>
           </view>
         </view>
-      </view>
-
-      <!-- 账号与安全分组：登录邮箱 / 登录密码（手风琴展开修改表单） -->
-      <view class="card sec-group anim-fade-up">
-        <text class="sec-group-title">账号与安全</text>
 
         <!-- 登录邮箱 -->
         <view class="sec-row" hover-class="sec-row-hover" role="button" aria-label="修改登录邮箱" @click="toggleMail">
@@ -238,7 +236,8 @@ const loginSummary = computed(() => {
   // 地点：依赖 IP 地理定位，定位失败则显示「未知」（不回退到裸 IP）
   parts.push(l.city || "未知");
   if (l.time) parts.push(fmtLoginTime(l.time));
-  const dev = [l.device, l.os].filter(Boolean);
+  // 设备名（不再附带操作系统/平台信息，如 android / iOS 等），仅展示设备名
+  const dev = [l.device].filter(Boolean);
   if (dev.length) parts.push(dev.join(" · "));
   else if (l.platform) parts.push(l.platform);
   return parts.length ? parts.join(" · ") : "暂无登录记录";
@@ -532,8 +531,8 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: calc(88rpx + env(safe-area-inset-top));
-  padding: env(safe-area-inset-top) 12rpx 0;
+  height: 88rpx;
+  padding: 0 12rpx;
   background: var(--sticky-bg);
   backdrop-filter: blur(16rpx) saturate(140%);
   -webkit-backdrop-filter: blur(16rpx) saturate(140%);

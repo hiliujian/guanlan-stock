@@ -173,8 +173,8 @@ function back() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: calc(88rpx + env(safe-area-inset-top));
-  padding: env(safe-area-inset-top) 12rpx 0;
+  height: 88rpx;
+  padding: 0 12rpx;
   background: var(--sticky-bg);
   backdrop-filter: blur(16rpx) saturate(140%);
   -webkit-backdrop-filter: blur(16rpx) saturate(140%);
