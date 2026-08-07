@@ -229,30 +229,128 @@
           </view>
         </view>
 
-        <!-- 分组切换面板：与底部热榜弹窗(rank-peek)同款——固定底部、无遮罩、玻璃质感 -->
+        <!-- 分组切换面板：与底部热榜弹窗(rank-peek)同款——固定底部、无遮罩、玻璃质感；
+             我的分组 / 新建分组 / 移入分组 / 管理分组 共用同一窗体，点击切换内容 -->
         <view v-if="groupOpen" class="grp-peek">
           <view class="grp-head">
-            <view class="grp-grip"><view class="grp-handle" /></view>
-            <text class="grp-title">我的分组</text>
+            <view v-if="groupView === 'main'" class="grp-grip"><view class="grp-handle" /></view>
+            <view v-else class="grp-back" role="button" aria-label="返回" @click="groupBack"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
+            <text class="grp-title">{{ groupTitle }}</text>
             <view class="grp-close" role="button" aria-label="关闭" @click="groupOpen = false"><OutlineIcon type="close" :size="30" color="var(--text-2)" /></view>
           </view>
           <scroll-view class="grp-body" scroll-y>
-            <view
-              v-for="row in groupRows"
-              :key="row.key"
-              class="grp-item"
-              :class="{ active: row.active }"
-              hover-class="grp-item-hover"
-              @click="pickGroup(row.key)"
-            >
-              <text class="grp-label">{{ row.label }}</text>
-              <OutlineIcon v-if="row.active" type="check" :size="30" color="var(--primary)" />
-            </view>
+            <!-- 主视图：我的分组 + 三个入口 -->
+            <template v-if="groupView === 'main'">
+              <view class="grp-section">
+                <view
+                  v-for="row in groupRows"
+                  :key="row.key"
+                  class="grp-item"
+                  :class="{ active: row.active }"
+                  hover-class="grp-item-hover"
+                  @click="pickGroup(row.key)"
+                >
+                  <text class="grp-label">{{ row.label }}</text>
+                  <OutlineIcon v-if="row.active" type="check" :size="30" color="var(--primary)" />
+                </view>
+              </view>
+              <view class="grp-list">
+                <view class="grp-item" role="button" @click="openNewGroup">
+                  <OutlineIcon type="plus" :size="28" color="var(--primary)" />
+                  <text class="grp-label">新建分组</text>
+                </view>
+                <view class="grp-item" role="button" @click="openMove">
+                  <OutlineIcon type="layers" :size="28" color="var(--text-2)" />
+                  <text class="grp-label">移入分组</text>
+                </view>
+                <view v-if="groups.length" class="grp-item" role="button" @click="openManage">
+                  <OutlineIcon type="gear" :size="28" color="var(--text-2)" />
+                  <text class="grp-label">管理分组</text>
+                </view>
+              </view>
+            </template>
+
+            <!-- 新建分组：步骤1 命名 -->
+            <template v-else-if="groupView === 'new' && newStep === 1">
+              <view class="grp-form">
+                <input class="grp-input" v-model="newName" :focus="groupView === 'new' && newStep === 1" placeholder="请输入分组名" @confirm="newNext" />
+              </view>
+            </template>
+            <!-- 新建分组：步骤2 选择股票加入 -->
+            <template v-else-if="groupView === 'new'">
+              <view class="grp-list">
+                <view v-for="it in list" :key="keyOf(it)" class="grp-item" hover-class="grp-item-hover" @click="newPickStock(it)">
+                  <text class="grp-label">{{ it.name || it.code }}</text>
+                </view>
+              </view>
+            </template>
+
+            <!-- 移入分组：步骤1 选择股票 -->
+            <template v-else-if="groupView === 'move' && !moveStock">
+              <view class="grp-list">
+                <view v-for="it in list" :key="keyOf(it)" class="grp-item" hover-class="grp-item-hover" @click="movePickStock(it)">
+                  <text class="grp-label">{{ it.name || it.code }}</text>
+                </view>
+              </view>
+            </template>
+            <!-- 移入分组：步骤2 选择目标分组 -->
+            <template v-else-if="groupView === 'move' && !moveNew">
+              <view class="grp-list">
+                <view class="grp-item" hover-class="grp-item-hover" @click="doMoveTarget('')">
+                  <text class="grp-label">默认分组</text>
+                  <OutlineIcon v-if="selectedGroup === '__all__'" type="check" :size="30" color="var(--primary)" />
+                </view>
+                <view v-for="g in groups" :key="g" class="grp-item" hover-class="grp-item-hover" @click="doMoveTarget(g)">
+                  <text class="grp-label">{{ g }}</text>
+                  <OutlineIcon v-if="selectedGroup === g" type="check" :size="30" color="var(--primary)" />
+                </view>
+                <view class="grp-item" hover-class="grp-item-hover" @click="moveNew = true">
+                  <OutlineIcon type="plus" :size="28" color="var(--primary)" />
+                  <text class="grp-label">新建分组…</text>
+                </view>
+              </view>
+            </template>
+            <!-- 移入分组：内联新建分组名 -->
+            <template v-else-if="groupView === 'move'">
+              <view class="grp-form">
+                <input class="grp-input" v-model="moveNewName" :focus="moveNew" placeholder="请输入新分组名" @confirm="doMoveNew" />
+              </view>
+            </template>
+
+            <!-- 管理分组：步骤1 选择分组 -->
+            <template v-else-if="groupView === 'manage' && !manageTarget">
+              <view class="grp-list">
+                <view v-for="g in groups" :key="g" class="grp-item" hover-class="grp-item-hover" @click="manageTarget = g; renameName = g; manageDel = false">
+                  <text class="grp-label">{{ g }}</text>
+                </view>
+              </view>
+            </template>
+            <!-- 管理分组：步骤2 重命名 / 删除 -->
+            <template v-else-if="groupView === 'manage'">
+              <view class="grp-form">
+                <input class="grp-input" v-model="renameName" :focus="!!manageTarget" placeholder="分组名" @confirm="doManageRename" />
+              </view>
+            </template>
           </scroll-view>
-          <view class="grp-actions">
-            <view class="grp-act primary" role="button" @click="createGroupFlow">新建分组</view>
-            <view class="grp-act" role="button" @click="moveStockToGroup">移入分组</view>
-            <view v-if="groups.length" class="grp-act" role="button" @click="openManageSheet">管理分组</view>
+
+          <!-- 底部操作条（仅子视图，无遮罩、无边框线） -->
+          <view v-if="groupView === 'new'" class="grp-foot">
+            <view class="grp-btn" role="button" @click="groupBack">取消</view>
+            <view class="grp-btn primary" role="button" @click="newNext">下一步</view>
+          </view>
+          <view v-else-if="groupView === 'move' && moveNew" class="grp-foot">
+            <view class="grp-btn" role="button" @click="moveNew = false">取消</view>
+            <view class="grp-btn primary" role="button" @click="doMoveNew">确定</view>
+          </view>
+          <view v-else-if="groupView === 'manage' && manageTarget" class="grp-foot">
+            <template v-if="!manageDel">
+              <view class="grp-btn danger" role="button" @click="manageDel = true">删除分组</view>
+              <view class="grp-btn primary" role="button" @click="doManageRename">重命名</view>
+            </template>
+            <template v-else>
+              <view class="grp-btn" role="button" @click="manageDel = false">取消</view>
+              <view class="grp-btn danger" role="button" @click="doManageDelete">确认删除</view>
+            </template>
           </view>
         </view>
       </view>
@@ -393,6 +491,128 @@ function pickGroup(key: string) {
   groupOpen.value = false;
 }
 
+// 分组面板多视图：我的分组 / 新建分组 / 移入分组 / 管理分组 共用同一窗体
+const groupView = ref<'main' | 'new' | 'move' | 'manage'>('main');
+const newStep = ref(1);
+const newName = ref('');
+const moveStock = ref<WatchItem | null>(null);
+const moveNew = ref(false);
+const moveNewName = ref('');
+const manageTarget = ref('');
+const renameName = ref('');
+const manageDel = ref(false);
+
+const groupTitle = computed(() => {
+  if (groupView.value === 'new') return newStep.value === 1 ? '新建分组' : '选择股票加入';
+  if (groupView.value === 'move') return moveStock.value ? '移入分组' : '选择股票';
+  if (groupView.value === 'manage') return manageTarget.value ? `管理「${manageTarget.value}」` : '管理分组';
+  return '我的分组';
+});
+
+// 返回：子视图内优先回退一步，否则回到主视图
+function groupBack() {
+  if (groupView.value === 'new' && newStep.value === 2) {
+    newStep.value = 1;
+    return;
+  }
+  if (groupView.value === 'move' && moveStock.value) {
+    moveStock.value = null;
+    return;
+  }
+  if (groupView.value === 'manage' && manageTarget.value) {
+    manageTarget.value = '';
+    renameName.value = '';
+    manageDel.value = false;
+    return;
+  }
+  groupView.value = 'main';
+}
+
+function openNewGroup() {
+  if (!list.value.length) {
+    uni.showToast({ title: '请先在行情页添加自选股', icon: 'none' });
+    return;
+  }
+  newStep.value = 1;
+  newName.value = '';
+  groupView.value = 'new';
+}
+function openMove() {
+  moveStock.value = null;
+  moveNew.value = false;
+  moveNewName.value = '';
+  groupView.value = 'move';
+}
+function openManage() {
+  manageTarget.value = '';
+  renameName.value = '';
+  manageDel.value = false;
+  groupView.value = 'manage';
+}
+
+function newNext() {
+  const name = newName.value.trim();
+  if (!name) {
+    uni.showToast({ title: '请输入分组名', icon: 'none' });
+    return;
+  }
+  if (groups.value.includes(name)) {
+    uni.showToast({ title: '分组已存在', icon: 'none' });
+    return;
+  }
+  newStep.value = 2;
+}
+function newPickStock(it: WatchItem) {
+  const name = newName.value.trim();
+  setItemGroup(it.code, it.market, name);
+  selectedGroup.value = name;
+  uni.showToast({ title: `已创建「${name}」`, icon: 'none' });
+  groupOpen.value = false;
+}
+
+function movePickStock(it: WatchItem) {
+  moveStock.value = it;
+}
+function doMoveTarget(grp: string) {
+  if (!moveStock.value) return;
+  setItemGroup(moveStock.value.code, moveStock.value.market, grp);
+  selectedGroup.value = grp;
+  uni.showToast({ title: `已移入${grp || '默认'}`, icon: 'none' });
+  groupOpen.value = false;
+}
+function doMoveNew() {
+  const name = moveNewName.value.trim();
+  if (!name) {
+    uni.showToast({ title: '请输入分组名', icon: 'none' });
+    return;
+  }
+  if (moveStock.value) {
+    setItemGroup(moveStock.value.code, moveStock.value.market, name);
+    selectedGroup.value = name;
+  }
+  uni.showToast({ title: `已移入${name}`, icon: 'none' });
+  groupOpen.value = false;
+}
+
+function doManageRename() {
+  const v = renameName.value.trim();
+  if (!v || !manageTarget.value) return;
+  if (v !== manageTarget.value) renameGroup(manageTarget.value, v);
+  manageTarget.value = '';
+  renameName.value = '';
+  manageDel.value = false;
+  uni.showToast({ title: '已重命名', icon: 'none' });
+}
+function doManageDelete() {
+  if (!manageTarget.value) return;
+  deleteGroup(manageTarget.value);
+  if (selectedGroup.value === manageTarget.value) selectedGroup.value = '__all__';
+  manageTarget.value = '';
+  renameName.value = '';
+  manageDel.value = false;
+  uni.showToast({ title: '已删除', icon: 'none' });
+}
+
 // 未登录且已配置后端（登录可达）时，进入本页自动跳转登录页（见 onActivated）
 const needLogin = computed(() => userState.supabaseEnabled && !userState.loggedIn);
 
@@ -517,109 +737,11 @@ function goPickMarket() {
   goTab("market");
 }
 
-// 新建分组：命名后选择将某只现有自选并入，保证分组可持久化（避免出现空分组）
-function createGroupFlow() {
-  if (!list.value.length) {
-    uni.showToast({ title: "请先在行情页添加自选股", icon: "none" });
-    return;
-  }
-  uni.showModal({
-    title: "新建分组",
-    editable: true,
-    placeholderText: "分组名",
-    content: "",
-    success: (r) => {
-      if (!r.confirm || !r.content?.trim()) return;
-      const name = r.content.trim();
-      if (groups.value.includes(name)) {
-        uni.showToast({ title: "分组已存在", icon: "none" });
-        return;
-      }
-      const opts = list.value.map((i) => i.name || i.code);
-      openSheet({
-        title: `将股票加入「${name}」`,
-        items: list.value.map((i, idx) => ({ label: i.name || i.code, key: idx })),
-        onSelect: (s) => {
-          const it = list.value[Number(s.key)];
-          if (it) {
-            setItemGroup(it.code, it.market, name);
-            selectedGroup.value = name;
-          }
-          uni.showToast({ title: `已创建「${name}」`, icon: "none" });
-        },
-      });
-    },
-  });
-}
-
 // 分组管理入口：右上角「分组」pill 点击后，弹出与底部热榜弹窗同款的无遮罩底部面板，
-// 可切换分组（默认「全部」）、新建分组、将股票移入分组、或管理既有分组（重命名/删除）
+// 可切换分组（默认「全部」）并通过同一窗体进入 新建 / 移入 / 管理 三个子视图
 function openGroups() {
+  groupView.value = "main";
   groupOpen.value = true;
-}
-
-// 分组管理二级：选择要管理的分组
-function openManageSheet() {
-  if (!groups.value.length) return;
-  openSheet({
-    title: "管理分组",
-    items: groups.value.map((g) => ({ label: `管理「${g}」`, icon: "gear", key: g })),
-    onSelect: (s) => {
-      if (typeof s.key === "string") manageGroup(s.key);
-    },
-  });
-}
-
-// 将某只自选股移入指定分组（目标可选默认 / 既有分组 / 新建分组）
-function moveStockToGroup() {
-  if (!list.value.length) {
-    uni.showToast({ title: "还没有自选股", icon: "none" });
-    return;
-  }
-  openSheet({
-    title: "选择股票",
-    items: list.value.map((i, idx) => ({ label: `${i.name || i.code}`, key: idx })),
-    onSelect: (s) => {
-      const it = list.value[Number(s.key)];
-      if (!it) return;
-      const targets = ["默认", ...groups.value];
-      openSheet({
-        title: `将「${it.name || it.code}」移入`,
-        items: [
-          ...targets.map((t, idx) => ({
-            label: t === "默认" ? "默认分组" : t,
-            key: idx,
-            active: t === "默认" ? selectedGroup.value === "__all__" : selectedGroup.value === t,
-          })),
-          { label: "新建分组…", icon: "plus", accent: "primary", key: "new" },
-        ],
-        onSelect: (s2) => {
-          if (s2.key === "new") {
-            uni.showModal({
-              title: "新建分组",
-              editable: true,
-              placeholderText: "分组名",
-              content: "",
-              success: (m) => {
-                const name = m.content?.trim();
-                if (m.confirm && name) {
-                  setItemGroup(it.code, it.market, name);
-                  selectedGroup.value = name;
-                  uni.showToast({ title: `已创建「${name}」`, icon: "none" });
-                }
-              },
-            });
-          } else {
-            const tIdx = Number(s2.key);
-            const grp = tIdx === 0 ? "" : groups.value[tIdx - 1];
-            setItemGroup(it.code, it.market, grp);
-            selectedGroup.value = grp;
-            uni.showToast({ title: `已移入${grp || "默认"}`, icon: "none" });
-          }
-        },
-      });
-    },
-  });
 }
 
 // 下拉刷新（页面级 onPullDownRefresh，见 index.vue）：
@@ -1036,37 +1158,6 @@ function showMoveGroup(it: WatchItem) {
         });
       } else {
         setItemGroup(it.code, it.market, others[idx]);
-      }
-    },
-  });
-}
-
-function manageGroup(g: string) {
-  openSheet({
-    title: `管理「${g}」`,
-    items: [
-      { label: "重命名", icon: "edit", key: "rename" },
-      { label: "删除（组内项归入默认）", icon: "trash", accent: "danger", key: "del" },
-    ],
-    onSelect: (s) => {
-      if (s.key === "rename") {
-        uni.showModal({
-          title: "重命名分组",
-          editable: true,
-          content: g,
-          success: (r) => {
-            const v = r.content?.trim();
-            if (r.confirm && v && v !== g) renameGroup(g, v);
-          },
-        });
-      } else if (s.key === "del") {
-        uni.showModal({
-          title: "删除分组",
-          content: `确认删除「${g}」？组内股票将归入默认分组`,
-          success: (r) => {
-            if (r.confirm) deleteGroup(g);
-          },
-        });
       }
     },
   });
@@ -1528,7 +1619,6 @@ function manageGroup(g: string) {
   align-items: center;
   height: 78rpx;
   padding: 0 20rpx;
-  border-bottom: 1rpx solid var(--tabbar-border);
 }
 .grp-grip {
   flex: none;
@@ -1586,8 +1676,12 @@ function manageGroup(g: string) {
 .grp-item-hover {
   background: var(--card-2);
 }
-.grp-item:not(:last-child) {
+/* 我的分组列表：仅此区块底部保留一条分隔线，其余边框全部取消 */
+.grp-section {
   border-bottom: 1rpx solid var(--tabbar-border);
+}
+.grp-list {
+  padding: 6rpx 0;
 }
 .grp-label {
   flex: 1;
@@ -1597,29 +1691,58 @@ function manageGroup(g: string) {
 .grp-item.active .grp-label {
   color: var(--primary);
 }
-.grp-actions {
+.grp-back {
   flex: none;
+  width: 56rpx;
+  height: 56rpx;
   display: flex;
-  border-top: 1rpx solid var(--tabbar-border);
-  padding-bottom: calc(env(safe-area-inset-bottom) + 4rpx);
-}
-.grp-act {
-  flex: 1;
-  text-align: center;
-  font-size: 27rpx;
-  color: var(--text-2);
-  padding: 18rpx 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
   cursor: pointer;
   transition: background 0.12s ease;
 }
-.grp-act:active {
+.grp-back:active {
   background: var(--card-2);
 }
-.grp-act.primary {
-  color: var(--primary);
+/* 文本输入框（新建 / 重命名 / 移动内联新建） */
+.grp-input {
+  height: 84rpx;
+  margin: 16rpx 26rpx;
+  padding: 0 20rpx;
+  background: var(--card-2);
+  border-radius: 14rpx;
+  font-size: 28rpx;
+  color: var(--text);
 }
-.grp-act + .grp-act {
-  border-left: 1rpx solid var(--tabbar-border);
+/* 底部操作条（取消 / 确定等）：无边框线，纯间距区分 */
+.grp-foot {
+  flex: none;
+  display: flex;
+  gap: 16rpx;
+  padding: 16rpx 26rpx calc(env(safe-area-inset-bottom) + 16rpx);
+}
+.grp-btn {
+  flex: 1;
+  text-align: center;
+  padding: 20rpx 0;
+  border-radius: 999rpx;
+  font-size: 27rpx;
+  color: var(--text-2);
+  background: var(--card-2);
+  cursor: pointer;
+  transition: background 0.12s ease, opacity 0.12s ease;
+}
+.grp-btn:active {
+  opacity: 0.85;
+}
+.grp-btn.primary {
+  color: #fff;
+  background: var(--primary);
+}
+.grp-btn.danger {
+  color: #fff;
+  background: #e35d6a;
 }
 /* 收起态一行 */
 .rp-row {
