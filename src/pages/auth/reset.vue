@@ -1,6 +1,6 @@
 <template>
   <AuthShell title="找回密码">
-    <view class="card auth-form anim-rise-soft">
+    <view class="auth-form anim-rise-soft">
       <text class="auth-lead">验证邮箱身份后，即可重设登录密码。</text>
 
       <!-- 邮箱 + 发送验证码（主流小程序：发送按钮内嵌邮箱输入框右侧） -->
@@ -74,11 +74,10 @@
     </view>
 
     <view class="auth-foot">
-      <view class="auth-switch">
-        <text>想起密码了？<text class="auth-link" @click="goLogin">去登录</text></text>
-      </view>
-      <AuthAgreement action="使用" />
+      <text>想起密码了？<text class="auth-link" @click="goLogin">去登录</text></text>
     </view>
+    <!-- 协议贴底（fixed）：与表单整体垂直居中无关，始终在屏幕最底部 -->
+    <AuthAgreement action="使用" />
   </AuthShell>
 </template>
 

@@ -1,6 +1,6 @@
 <template>
   <AuthShell title="注册">
-    <view class="card auth-form anim-rise-soft">
+    <view class="auth-form anim-rise-soft">
       <text class="auth-lead">注册后探索深度数据分析。</text>
 
       <!-- 用户名（用户自填、唯一；昵称由系统自动生成） -->
@@ -75,11 +75,10 @@
     </view>
 
     <view class="auth-foot">
-      <view class="auth-switch">
-        <text>已有账号？<text class="auth-link" @click="goLogin">去登录</text></text>
-      </view>
-      <AuthAgreement action="使用" />
+      <text>已有账号？<text class="auth-link" @click="goLogin">去登录</text></text>
     </view>
+    <!-- 协议贴底（fixed）：与表单整体垂直居中无关，始终在屏幕最底部 -->
+    <AuthAgreement action="使用" />
   </AuthShell>
 </template>
 

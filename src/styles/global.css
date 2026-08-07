@@ -403,9 +403,16 @@ textarea {
   box-sizing: border-box;
   min-height: 100vh;
   min-height: 100dvh;
+  /* 登录 / 注册 / 找回密码页背景统一为白色（浅色主题）；
+     深色主题下沿用全局 --bg（深底），保证文字可读、不突兀。 */
+  background: #fff;
   /* 自定义导航后顶部从状态栏下开始，避免被刘海 / 状态栏遮挡。
      border-box：避免 content-box 下 padding-top 叠加在 100vh 之上导致溢出滚动。 */
   padding-top: env(safe-area-inset-top, 0px);
+}
+/* 深色主题：登录页保持深底，文字色随主题仍可辨 */
+.theme-dark .auth-page {
+  background: var(--bg);
 }
 /* 关键修复：uni-app H5 框架对所有 <view>(uni-view) 强制 overflow:hidden，
    导致 suffix/按钮等子元素被裁剪。在授权页子树中全局覆盖为 visible。 */
@@ -426,9 +433,11 @@ textarea {
   height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: center; /* 观澜 + 输入框整体垂直居中 */
-  /* 顶部预留返回导航的高度，避免与居中内容重叠；底部预留空间容纳绝对定位的协议条款，避免与居中表单重叠 */
-  padding: 130rpx 24rpx 96rpx;
+  justify-content: center; /* 观澜 + 输入框整体垂直居中（屏幕纵向正中） */
+  /* 顶部预留返回导航的高度（absolute 顶部高度 88rpx + 缓冲 24rpx）；
+     底部不再预留空间——协议已 fixed 贴底，不在 flex 流中参与计算。
+     顶部 padding 兼顾安全区（status bar）下方的视觉呼吸感。 */
+  padding: calc(env(safe-area-inset-top, 0px) + 112rpx) 24rpx 24rpx;
 }
 .auth-nav {
   position: absolute;
@@ -487,31 +496,34 @@ textarea {
   display: flex;
   flex-direction: column;
 }
-/* 底部组（协议 + 切换链接）随整体居中，不再贴底 */
+/* 「切换链接」区（注册账号引导 / 忘记密码）：位于表单下方，独立成行 */
 .auth-foot {
   margin-top: 30rpx;
-  padding-top: 0;
-}
-
-/* 协议声明行：主流做法，使用即视为已同意，不再需要勾选；绝对定位贴屏幕底部并水平居中
-   （.auth-content 已预留底部空间，避免与垂直居中的表单重叠） */
-.agree {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 32rpx;
-  padding: 0 24rpx;
-  margin-top: 0;
-  text-align: center;
-}
-.agree-text {
-  font-size: 22rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22rpx;
+  font-size: 25rpx;
   color: var(--text-2);
   line-height: 1.6;
 }
-.agree-text .lk {
+/* 注册引导行：「还没有账号？」+ 绿色链接「注册账号」 */
+.auth-foot-guide {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  color: var(--text-2);
+}
+.auth-foot-forgot {
+  display: block;
+}
+/* 文字链接（注册 / 忘记密码）复用主题绿，清晰可点 */
+.auth-link {
   color: var(--primary);
 }
+
+/* .agree / .agree-text / .lk 已迁移至 AuthAgreement.vue 自带样式（组件自身 absolute 贴底），
+   旧规则保留为空类以避免外部旧选择器找不到节点；不再定义具体定位属性。 */
 
 /* 共享按钮内 spinner（处理中态）：全局统一，避免各组件重复定义，保证视觉一致 */
 .btn-spin {
@@ -531,16 +543,9 @@ textarea {
 .ph {
   color: var(--text-2);
 }
-/* 表单卡内边距（与 .card 叠加：.card 提供底色/边框/阴影，此处置内边距）
-   覆盖 uni-app H5 框架的 overflow:hidden；同时收窄 .card 的全局 padding 以在窄屏腾出空间 */
+/* 登录 / 注册表单：去掉卡片外壳后仅需 overflow:visible（uni-view 默认 hidden 会裁剪 suffix）。 */
 .auth-form {
-  padding: 24rpx 20rpx 20rpx;
   overflow: visible !important;
-}
-/* 授权页内卡片收紧水平内边距（全局 .card 默认 22rpx 在窄屏占用过多空间） */
-.auth-form::before,
-.card.auth-form {
-  padding: 16rpx !important;
 }
 /* 引导语 */
 .auth-lead {
