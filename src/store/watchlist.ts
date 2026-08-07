@@ -55,21 +55,23 @@ function saveLocal(items: WatchItem[]) {
   }
 }
 
-// 取某分组内当前最大 sort_order，+1 即为「追加到末尾」的新权重（避免 Date.now() 并发碰撞）
-function nextGroupOrder(group: string): number {
+// 取当前全部自选里最大的 sort_order，+1 作为新项的全局唯一排序权重。
+// 设计：order 为全局唯一（不按分组各自从 0 起算），「全部」视图即按此全局序展示；
+// 移入/移出分组只改 group 不改 order，故个股在「全部」中的位置保持稳定、不会跳到末尾。
+function nextGroupOrder(): number {
   let m = 0;
   for (const i of state.items) {
-    if ((i.group || "") === group && (i.order ?? 0) > m) m = i.order as number;
+    if ((i.order ?? 0) > m) m = i.order as number;
   }
   return m + 1;
 }
 
-// 内存数组按「分组名 → 分组内 sort_order → 创建时间」稳定排序，保证默认展示顺序
+// 内存数组按「全局 sort_order → 创建时间」稳定排序。
+// 说明：order 是全局唯一权重（不按分组聚类）；「全部」视图直接以本序展示，
+// 因此移入/移出分组只改 group、不动 order，个股在「全部」中的位置保持稳定、
+// 不会因重新聚类而被推到列表末尾。
 function sortItems(items: WatchItem[]): WatchItem[] {
   return items.slice().sort((a, b) => {
-    const ga = a.group || "";
-    const gb = b.group || "";
-    if (ga !== gb) return ga.localeCompare(gb);
     const oa = a.order ?? 0;
     const ob = b.order ?? 0;
     if (oa !== ob) return oa - ob;
@@ -89,17 +91,19 @@ async function loadCloud(userId: string) {
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: false });
   if (!error && data) {
-    state.items = data.map((d: any) => ({
-      id: d.id,
-      code: d.code,
-      market: d.market,
-      name: d.name,
-      note: d.note || "",
-      group: d.group_name || "",
-      order: typeof d.sort_order === "number" ? d.sort_order : 0,
-      alerts: parseAlerts(d.alerts),
-      created_at: d.created_at,
-    }));
+    state.items = sortItems(
+      data.map((d: any) => ({
+        id: d.id,
+        code: d.code,
+        market: d.market,
+        name: d.name,
+        note: d.note || "",
+        group: d.group_name || "",
+        order: typeof d.sort_order === "number" ? d.sort_order : 0,
+        alerts: parseAlerts(d.alerts),
+        created_at: d.created_at,
+      }))
+    );
   }
 }
 
@@ -166,7 +170,7 @@ export async function initWatchlist() {
 
 export async function addWatch(item: WatchItem): Promise<{ ok: boolean; error?: string }> {
   const grp = item.group || "";
-  const order = nextGroupOrder(grp);
+  const order = nextGroupOrder();
   if (state.mode === "cloud" && userState.userId) {
     const sb = getSupabase()!;
     const { error } = await sb.from("watchlists").insert({
@@ -208,15 +212,16 @@ function toAlertJson(a?: PriceAlert): any {
   return { above, below };
 }
 
-/** 将某只自选移动到其它分组（保留其原有排序权重，不强制沉到目标分组末尾；
- *  云：按 id 仅更新 group_name（sort_order 一并写回原值，避免漂移）；本地：打补丁并重存）。
- *  说明：早期实现会把 order 重置为 nextGroupOrder(grp)，导致个股“被插到目标分组最后一行”，
- *  在「全部」视图下表现为顺序错乱。现保留原 order，移入后按其原权重落在目标分组对应位置。 */
+/** 将某只自选移动到其它分组：只改 group_name，保留其全局排序权重 order 不变。
+ *  因为 order 是全局唯一的（详见 sortItems），移入/移出分组不会改变个股在「全部」视图中的
+ *  位置——这正是修复「在全部中把某股移入分组后它跑到列表末尾」的根因：旧实现会把 order 重置为
+ *  nextGroupOrder(grp)，等于把它沉到目标分组 + 全部列表的末尾。
+ *  云：按 id 更新 group_name（sort_order 一并写回原值，避免漂移）；本地：打补丁并重存。 */
 export async function setItemGroup(code: string, market: string, group: string): Promise<void> {
   const grp = group || "";
   const target = state.items.find((i) => i.code === code && i.market === market);
   if (!target) return;
-  const order = target.order ?? 0; // 保留原分组内排序权重
+  const order = target.order ?? 0; // 保留原全局排序权重：移组不改序，全部视图位置稳定
   await patchItem(code, market, { group_name: grp, sort_order: order });
   if (state.mode !== "cloud") {
     state.items = sortItems(
@@ -241,22 +246,40 @@ export async function applyGroupOrder(group: string, orderedKeys: string[]): Pro
   const idxByKey = new Map<string, number>();
   orderedKeys.forEach((k, i) => idxByKey.set(k, i));
 
+  // 计算重排后的「全局键序列」：
+  // - "全部"视图（group="*"）：直接按传入的整体顺序重排整个列表。
+  // - 单分组视图：仅在该分组占用的「槽位」内按新顺序重排，保持与其它分组项的相对位置，
+  //   避免单分组内拖拽后，这些项因 order 被重置为 0..n 而整体跳到「全部」列表顶部。
+  let newKeyOrder: string[];
+  if (all) {
+    newKeyOrder = orderedKeys.slice();
+  } else {
+    const reorderedGroupKeys = state.items
+      .filter((i) => (i.group || "") === grp)
+      .map((i) => `${i.code}|${i.market}`)
+      .sort((a, b) => (idxByKey.get(a) ?? 0) - (idxByKey.get(b) ?? 0));
+    let gi = 0;
+    newKeyOrder = state.items.map((i) => {
+      const k = `${i.code}|${i.market}`;
+      return (i.group || "") === grp ? reorderedGroupKeys[gi++] : k;
+    });
+  }
+
+  // 依据全局键序列重排：order = 该项在新序列中的索引（全局唯一权重），再按 order 稳定排序。
+  const posByKey = new Map(newKeyOrder.map((k, i) => [k, i]));
   state.items = sortItems(
     state.items.map((i) => {
       const k = `${i.code}|${i.market}`;
-      if (!idxByKey.has(k)) return i;
-      if (!all && (i.group || "") !== grp) return i;
-      return { ...i, order: idxByKey.get(k)! };
+      if (!posByKey.has(k)) return i;
+      return { ...i, order: posByKey.get(k)! };
     })
   );
 
   if (state.mode === "cloud" && userState.userId) {
     const sb = getSupabase()!;
-    const targets = state.items.filter((i) => {
-      if (!idxByKey.has(`${i.code}|${i.market}`)) return false;
-      if (!all && (i.group || "") !== grp) return false;
-      return !!i.id;
-    });
+    const targets = state.items.filter(
+      (i) => posByKey.has(`${i.code}|${i.market}`) && !!i.id
+    );
     await Promise.all(
       targets.map((i) =>
         sb.from("watchlists").update({ sort_order: i.order ?? 0 }).eq("id", i.id)
