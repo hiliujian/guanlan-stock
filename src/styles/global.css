@@ -425,12 +425,11 @@ textarea {
 .auth-content {
   position: relative;
   z-index: 1;
-  /* 修复浏览器兼容（Via / 老 WebKit 等）：不再使用 min-height:calc(100vh - 安全区)，
-     因为部分浏览器对 100vh 计算含地址栏高度，导致双重 100vh 嵌套后整页高度超出视口，
-     配合 padding-top 安全区呈现为顶部大空白 + 可滚动；同样地，calc 把视口算矮会让表单偏上。
-     改为继承父级 min-height:100vh 的高度（父级 .auth-page 已是 border-box 含 padding），
-     子级用 height:100% 自然贴合，跨浏览器表现一致。 */
-  height: 100%;
+  /* 用 min-height（而非固定 height）让 logo + 表单整体垂直居中，
+     同时表单较高（注册 / 找回密码页）时容器自然撑高、页面可滚动，
+     不会因 justify-content:center 把顶部（观澜标）裁掉而滚不到。 */
+  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   justify-content: center; /* 观澜 + 输入框整体垂直居中（屏幕纵向正中） */
@@ -464,7 +463,6 @@ textarea {
 }
 .auth-nav-title {
   font-size: 32rpx;
-  font-weight: 700;
   color: var(--text);
   margin-left: 8rpx;
 }
@@ -514,9 +512,6 @@ textarea {
   gap: 6rpx;
   color: var(--text-2);
 }
-.auth-foot-forgot {
-  display: block;
-}
 /* 文字链接（注册 / 忘记密码）复用主题绿，清晰可点 */
 .auth-link {
   color: var(--primary);
@@ -553,7 +548,7 @@ textarea {
   font-size: 25rpx;
   color: var(--text-2);
   line-height: 1.7;
-  margin-bottom: 28rpx;
+  margin-bottom: 0;
 }
 /* 单行输入容器：图标 + 输入框 + 右附（发送码/眼睛）
    注意：uni-app H5 框架对 uni-view 强制 overflow:hidden，必须显式覆盖否则 suffix 文字会被裁剪 */

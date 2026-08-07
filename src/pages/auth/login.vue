@@ -9,7 +9,7 @@
         <text>还没有账号？</text>
         <text class="auth-link">注册账号</text>
       </view>
-      <text class="auth-link auth-foot-forgot" @click="goReset">忘记密码</text>
+      <view class="auth-foot-guide" @click="goReset">忘记密码？</view>
     </view>
 
     <!-- 协议贴底（fixed）：与表单整体垂直居中无关，始终在屏幕最底部 -->
