@@ -1338,7 +1338,7 @@ function removeLp() {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  height: 84rpx;
+  height: 56rpx;
   padding: 0 18rpx;
   font-size: 26rpx;
   font-weight: 400;
@@ -1481,7 +1481,7 @@ function removeLp() {
   position: relative;
   display: flex;
   align-items: center;
-  height: 56rpx;
+  height: 48rpx;
   padding: 0 20rpx;
 }
 /* 标题绝对居中：无论左侧是否有「返回」图标，标题都精确居中于整个窗体头部 */
@@ -1541,8 +1541,8 @@ function removeLp() {
   flex: none;
   position: relative;
   z-index: 1;
-  width: 56rpx;
-  height: 56rpx;
+  width: 48rpx;
+  height: 48rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1669,7 +1669,7 @@ function removeLp() {
   flex: none;
   display: flex;
   margin: 0 24rpx;
-  padding: 0 0 8rpx;
+  padding: 6rpx 0 8rpx;
   border-bottom: 1rpx solid var(--border);
 }
 .rs-tab {
@@ -1722,8 +1722,8 @@ function removeLp() {
   align-items: center;
   gap: 2rpx;
   margin-left: 6rpx;
-  padding: 3rpx;
-  border-radius: 10rpx;
+  padding: 2rpx;
+  border-radius: 8rpx;
   background: var(--card-2);
   border: 1rpx solid var(--border);
   transition: background 0.18s ease, border-color 0.18s ease;
@@ -1738,9 +1738,9 @@ function removeLp() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 46rpx;
-  height: 46rpx;
-  border-radius: 8rpx;
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 6rpx;
   cursor: pointer;
   transition: background 0.18s ease, box-shadow 0.18s ease;
 }

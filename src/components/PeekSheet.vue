@@ -17,7 +17,6 @@
         @mousemove.stop="onMove"
         @mouseup.stop="onUp"
         @mouseleave.stop="onUp"
-        @click.stop="onTap"
       ><view class="peek-handle" /></view>
 
       <!-- 折叠态：常驻露出卡片 -->
@@ -76,7 +75,6 @@ const dragging = ref(false);
 const dragUp = ref(false);
 const dragY = ref(0);
 let startY = 0;
-let moved = false;
 
 const shellStyle = computed(() => {
   if (!dragging.value) return {};
@@ -105,7 +103,6 @@ function onDown(e: any) {
   dragging.value = true;
   dragY.value = 0;
   dragUp.value = false;
-  moved = false;
   startY = ptY(e);
 }
 function onMove(e: any) {
@@ -113,7 +110,6 @@ function onMove(e: any) {
   const dy = ptY(e) - startY;
   dragY.value = dy;
   dragUp.value = dy < 0;
-  if (Math.abs(dy) > 4) moved = true;
   // 拖拽期间阻止页面级下拉刷新 / 页面滚动误触发
   if (e.cancelable) {
     try {
@@ -146,16 +142,6 @@ function onUp() {
     }
   }
 }
-function onTap() {
-  if (moved) {
-    moved = false;
-    return; // 拖拽结束后不触发点击，避免重复动作
-  }
-  // 展开态点手柄：收起回到露出卡片
-  mode.value = "collapsed";
-  emit("collapse");
-}
-
 function expand() {
   mode.value = "expanded";
   emit("expand");
