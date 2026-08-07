@@ -228,6 +228,33 @@
             </scroll-view>
           </view>
         </view>
+
+        <!-- 分组切换面板：与底部热榜弹窗(rank-peek)同款——固定底部、无遮罩、玻璃质感 -->
+        <view v-if="groupOpen" class="grp-peek">
+          <view class="grp-head">
+            <view class="grp-grip"><view class="grp-handle" /></view>
+            <text class="grp-title">我的分组</text>
+            <view class="grp-close" role="button" aria-label="关闭" @click="groupOpen = false"><OutlineIcon type="close" :size="30" color="var(--text-2)" /></view>
+          </view>
+          <scroll-view class="grp-body" scroll-y>
+            <view
+              v-for="row in groupRows"
+              :key="row.key"
+              class="grp-item"
+              :class="{ active: row.active }"
+              hover-class="grp-item-hover"
+              @click="pickGroup(row.key)"
+            >
+              <text class="grp-label">{{ row.label }}</text>
+              <OutlineIcon v-if="row.active" type="check" :size="30" color="var(--primary)" />
+            </view>
+          </scroll-view>
+          <view class="grp-actions">
+            <view class="grp-act primary" role="button" @click="createGroupFlow">新建分组</view>
+            <view class="grp-act" role="button" @click="moveStockToGroup">移入分组</view>
+            <view v-if="groups.length" class="grp-act" role="button" @click="openManageSheet">管理分组</view>
+          </view>
+        </view>
       </view>
 
       <!-- 统一底部弹层（替代 uni.showActionSheet 默认样式，复用项目主题） -->
@@ -349,6 +376,22 @@ const filteredList = computed(() => {
   if (selectedGroup.value === "") return list.value.filter((i) => !i.group);
   return list.value.filter((i) => i.group === selectedGroup.value);
 });
+
+// 分组切换面板：无遮罩底部面板（与底部热榜弹窗 rank-peek 同款视觉）
+const groupOpen = ref(false);
+const groupRows = computed(() => {
+  const rows: { label: string; key: string; active: boolean }[] = [
+    { label: "全部", key: "__all__", active: selectedGroup.value === "__all__" },
+  ];
+  for (const g of groups.value) {
+    rows.push({ label: g, key: g, active: selectedGroup.value === g });
+  }
+  return rows;
+});
+function pickGroup(key: string) {
+  selectedGroup.value = key;
+  groupOpen.value = false;
+}
 
 // 未登录且已配置后端（登录可达）时，进入本页自动跳转登录页（见 onActivated）
 const needLogin = computed(() => userState.supabaseEnabled && !userState.loggedIn);
@@ -509,39 +552,10 @@ function createGroupFlow() {
   });
 }
 
-// 分组管理入口：右上角「分组」pill 点击后，可切换分组（默认即「全部」）、新建分组、
-// 将股票移入分组、或管理既有分组（重命名/删除）
+// 分组管理入口：右上角「分组」pill 点击后，弹出与底部热榜弹窗同款的无遮罩底部面板，
+// 可切换分组（默认「全部」）、新建分组、将股票移入分组、或管理既有分组（重命名/删除）
 function openGroups() {
-  const items: ActionSheetItem[] = [
-    { label: "全部", key: "all", active: selectedGroup.value === "__all__" },
-  ];
-  for (const g of groups.value) {
-    items.push({ label: g, key: g, active: selectedGroup.value === g });
-  }
-  items.push({ label: "新建分组", icon: "plus", accent: "primary", key: "new" });
-  items.push({ label: "将股票移入分组", icon: "layers", key: "move" });
-  if (groups.value.length) {
-    items.push({ label: "管理分组", icon: "gear", key: "manage" });
-  }
-  openSheet({
-    title: "我的分组",
-    items,
-    onSelect: (_s, idx) => {
-      if (idx === 0) {
-        selectedGroup.value = "__all__";
-        return;
-      }
-      const gCount = groups.value.length;
-      if (idx <= gCount) {
-        selectedGroup.value = groups.value[idx - 1];
-        return;
-      }
-      const action = idx - gCount; // 1: 新建分组 / 2: 移入分组 / 3: 管理分组
-      if (action === 1) createGroupFlow();
-      else if (action === 2) moveStockToGroup();
-      else if (action === 3) openManageSheet();
-    },
-  });
+  groupOpen.value = true;
 }
 
 // 分组管理二级：选择要管理的分组
@@ -1148,7 +1162,7 @@ function manageGroup(g: string) {
 }
 .cm-name {
   font-size: 22rpx;
-  font-weight: 600;
+  font-weight: 400;
   color: var(--text);
   max-width: 120rpx;
   overflow: hidden;
@@ -1475,6 +1489,137 @@ function manageGroup(g: string) {
 /* 上拉铺满整页：从视口顶部到底部菜单栏之上（高度过渡由 --dur 控制） */
 .rank-peek.max {
   height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
+}
+
+/* ===== 分组切换面板：与底部热榜弹窗(rank-peek)同款——固定底部、无遮罩、玻璃质感 ===== */
+.grp-peek {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 110rpx);
+  width: 100%;
+  max-width: 480px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+  overflow: hidden;
+  border-radius: 22rpx 22rpx 0 0;
+  background: var(--tabbar-bg);
+  backdrop-filter: blur(20rpx) saturate(150%);
+  -webkit-backdrop-filter: blur(20rpx) saturate(150%);
+  border-top: 1rpx solid var(--tabbar-border);
+  box-shadow: 0 -6rpx 24rpx rgba(0, 0, 0, 0.18);
+  animation: grpIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes grpIn {
+  from {
+    transform: translateX(-50%) translateY(24rpx);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+.grp-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 78rpx;
+  padding: 0 20rpx;
+  border-bottom: 1rpx solid var(--tabbar-border);
+}
+.grp-grip {
+  flex: none;
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.grp-handle {
+  width: 44rpx;
+  height: 6rpx;
+  border-radius: 999rpx;
+  background: var(--card-2);
+}
+.grp-title {
+  flex: 1;
+  text-align: center;
+  font-size: 26rpx;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.grp-close {
+  flex: none;
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.grp-close:active {
+  background: var(--card-2);
+}
+.grp-body {
+  flex: 1;
+  min-height: 0;
+  padding: 6rpx 0;
+}
+.grp-body :deep(.uni-scroll-view-content) {
+  height: 100%;
+}
+.grp-item {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  min-height: 88rpx;
+  padding: 0 26rpx;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.grp-item:active,
+.grp-item-hover {
+  background: var(--card-2);
+}
+.grp-item:not(:last-child) {
+  border-bottom: 1rpx solid var(--tabbar-border);
+}
+.grp-label {
+  flex: 1;
+  font-size: 30rpx;
+  color: var(--text);
+}
+.grp-item.active .grp-label {
+  color: var(--primary);
+}
+.grp-actions {
+  flex: none;
+  display: flex;
+  border-top: 1rpx solid var(--tabbar-border);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 4rpx);
+}
+.grp-act {
+  flex: 1;
+  text-align: center;
+  font-size: 27rpx;
+  color: var(--text-2);
+  padding: 18rpx 0;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.grp-act:active {
+  background: var(--card-2);
+}
+.grp-act.primary {
+  color: var(--primary);
+}
+.grp-act + .grp-act {
+  border-left: 1rpx solid var(--tabbar-border);
 }
 /* 收起态一行 */
 .rp-row {
