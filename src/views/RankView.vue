@@ -194,16 +194,16 @@ function openRow(r: { code: string; market: string }) {
   height: 64rpx;
   border-bottom: 1rpx solid var(--tabbar-border);
 }
-/* 表头：与数据行股票名称(.rn) 同款字号/字重/颜色，保证视觉一致 */
+/* 表头：比数据行股票名称(.rn) 小一号，与自选表头保持一致 */
 .rk-thead .rh {
-  font-size: 28rpx;
+  font-size: 26rpx;
   font-weight: 400;
   color: var(--text);
 }
 /* 表头排名列：仅做居中；显式声明字号/字重/颜色与表头统一，
    避免被数据行 .rh.rank 的奖牌高亮(30rpx/800/彩色) 样式污染表头 */
 .rk-thead .rh.rank {
-  font-size: 28rpx;
+  font-size: 26rpx;
   font-weight: 400;
   color: var(--text);
   text-align: center;

@@ -28,16 +28,8 @@
     <view class="wl">
       <BackgroundFX />
 
-      <!-- 价格预警横幅：当前已触发且未忽略的预警（H5 无系统推送，仅应用内提醒） -->
-        <view v-if="alertHits.length" class="alert-banner anim-fade-up">
-          <view v-for="a in alertHits" :key="a.key" class="ab-item glass glass--lg" @click="dismissAlert(a.key)">
-            <view class="ab-ic">
-              <OutlineIcon type="bell" :size="26" color="var(--primary)" />
-            </view>
-            <text class="ab-txt">{{ a.text }}</text>
-            <view class="ab-action">忽略</view>
-          </view>
-        </view>
+        <!-- 价格预警：命中行在自选表格内闪烁红/绿提示（见 .tr.alert-up/.alert-down），
+             不再使用独立横幅卡片；清除预警请在长按菜单「编辑价格预警」中操作。 -->
 
         <!-- 空态 -->
         <view v-if="!list.length" class="empty-wrap anim-fade-up">
@@ -64,10 +56,10 @@
                   aria-label="拖拽排序"
                   @click="toggleReorder"
                 >
-                  <OutlineIcon type="grip" :size="28" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
+                  <OutlineIcon type="grip" :size="24" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
                 </view>
                 <view class="th-ic" :class="{ on: activePanel === 'cols' }" role="button" aria-label="列设置" @click="openCols">
-                  <OutlineIcon type="columns" :size="28" :color="activePanel === 'cols' ? 'var(--primary)' : 'var(--text-3)'" />
+                  <OutlineIcon type="columns" :size="24" :color="activePanel === 'cols' ? 'var(--primary)' : 'var(--text-3)'" />
                 </view>
               </view>
             </view>
@@ -119,7 +111,7 @@
             v-for="row in renderRows"
             :key="row.it.code + row.it.market"
             class="tr"
-            :class="{ reordering: reorderMode, dragging: dragKey === keyOf(row.it) }"
+            :class="{ reordering: reorderMode, dragging: dragKey === keyOf(row.it), 'alert-up': alertState[keyOf(row.it)] === 'up', 'alert-down': alertState[keyOf(row.it)] === 'down' }"
             @click="onItemClick(row.it)"
             @touchstart="onRowPressStart(row.it, $event)"
             @touchmove="onRowPressMove"
@@ -640,10 +632,9 @@ const EMPTY: Snap = { price: 0, chg: 0, pct: 0, loading: true };
 const quotes = reactive<Record<string, Snap>>({});
 const keyOf = (it: WatchItem) => `${it.code}|${it.market}`;
 
-// 价格预警：上一轮成功价格（用于穿越检测）+ 已忽略的预警 key
+// 价格预警：上一轮成功价格（用于穿越检测）+ 当前命中行方向（up=突破阈值/红，down=跌破阈值/绿）
 const prevPrices = reactive<Record<string, number>>({});
-const dismissed = reactive<Set<string>>(new Set());
-const alertHits = ref<{ key: string; code: string; name: string; text: string }[]>([]);
+const alertState = ref<Record<string, "up" | "down">>({});
 
 // 自选股实时行情：批量拉取快照（与行情页同口径），填充现价与涨跌幅，并检测价格预警穿越
 async function loadQuotes() {
@@ -681,27 +672,19 @@ function detectAlert(it: WatchItem, price: number) {
   prevPrices[k] = price;
 }
 
-// 横幅：列出当前已处于预警区间且未被忽略的项（实时刷新时持续提示，忽略后不再弹出）
+// 命中状态：列出当前已处于预警区间的行及其方向，驱动对应行闪烁提示（替代原横幅卡片）
 function refreshAlertHits() {
-  const hits: { key: string; code: string; name: string; text: string }[] = [];
+  const next: Record<string, "up" | "down"> = {};
   for (const it of list.value) {
     const a = it.alerts;
     if (!a) continue;
     const q = quotes[keyOf(it)];
     const price = q?.price;
     if (!price) continue;
-    if (a.above != null && price >= a.above && !dismissed.has(keyOf(it) + "_up")) {
-      hits.push({ key: keyOf(it) + "_up", code: it.code, name: it.name || it.code, text: `${it.name || it.code} 已突破 ${a.above} 元（现价 ${price}）` });
-    }
-    if (a.below != null && price <= a.below && !dismissed.has(keyOf(it) + "_down")) {
-      hits.push({ key: keyOf(it) + "_down", code: it.code, name: it.name || it.code, text: `${it.name || it.code} 已跌破 ${a.below} 元（现价 ${price}）` });
-    }
+    if (a.above != null && price >= a.above) next[keyOf(it)] = "up";
+    else if (a.below != null && price <= a.below) next[keyOf(it)] = "down";
   }
-  alertHits.value = hits;
-}
-function dismissAlert(key: string) {
-  dismissed.add(key);
-  alertHits.value = alertHits.value.filter((h) => h.key !== key);
+  alertState.value = next;
 }
 
 
@@ -1209,58 +1192,49 @@ function removeLp() {
   white-space: nowrap;
 }
 
-/* ===== 价格预警横幅 ===== */
-.alert-banner {
-  margin: 8rpx 16rpx 4rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 12rpx;
-}
-.ab-item {
+/* ===== 价格预警命中：对应行闪烁提示（替代原横幅卡片） =====
+   up = 突破阈值（红/涨），down = 跌破阈值（绿/跌），与 A 股配色一致。
+   - 左侧常驻一道彩色竖条，便于一眼定位预警行；
+   - 整行覆盖一层柔和脉冲底色（::after 置于置顶且穿透点击，含固定名称列），呼吸式提示不刺眼。 */
+.tr.alert-up,
+.tr.alert-down {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 14rpx;
-  padding: 18rpx 18rpx 18rpx 26rpx;
-  background: linear-gradient(135deg, var(--primary-soft), transparent 62%);
-  border: 1rpx solid var(--primary-soft);
-  overflow: hidden;
 }
-.ab-item::before {
+.tr.alert-up::before,
+.tr.alert-down::before {
   content: "";
   position: absolute;
   left: 0;
   top: 0;
   bottom: 0;
-  width: 8rpx;
-  background: linear-gradient(180deg, var(--primary), rgba(7, 193, 96, 0.35));
+  width: 6rpx;
+  z-index: 3;
+  pointer-events: none;
 }
-.ab-ic {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 52rpx;
-  height: 52rpx;
-  border-radius: 50%;
-  background: var(--primary-soft);
+.tr.alert-up::before {
+  background: var(--up);
 }
-.ab-txt {
-  flex: 1;
-  font-size: 24rpx;
-  font-weight: 600;
-  color: var(--text);
-  line-height: 1.4;
+.tr.alert-down::before {
+  background: var(--down);
 }
-.ab-action {
-  flex: none;
-  font-size: 22rpx;
-  font-weight: 600;
-  color: var(--primary);
-  padding: 8rpx 22rpx;
-  border-radius: 999rpx;
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
+.tr.alert-up::after,
+.tr.alert-down::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  animation: rowTint 1.9s ease-in-out infinite;
+}
+.tr.alert-up::after {
+  background: rgba(255, 59, 48, 0.12);
+}
+.tr.alert-down::after {
+  background: rgba(7, 193, 96, 0.12);
+}
+@keyframes rowTint {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
 }
 
 /* ===== 空态 ===== */
@@ -1366,7 +1340,7 @@ function removeLp() {
   justify-content: flex-end;
   height: 84rpx;
   padding: 0 18rpx;
-  font-size: 28rpx;
+  font-size: 26rpx;
   font-weight: 400;
   color: var(--text);
   text-align: right;
@@ -1504,14 +1478,22 @@ function removeLp() {
 /* ===== 分组切换面板：与热榜/显示列同款统一窗体(PeekSheet)——固定底部、无遮罩、玻璃质感 ===== */
 .grp-head {
   flex: none;
+  position: relative;
   display: flex;
   align-items: center;
   height: 56rpx;
   padding: 0 20rpx;
 }
+/* 标题绝对居中：无论左侧是否有「返回」图标，标题都精确居中于整个窗体头部 */
 .grp-title {
-  flex: 1;
-  text-align: center;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 26rpx;
   font-weight: 500;
   color: var(--text-2);
@@ -1557,6 +1539,8 @@ function removeLp() {
 }
 .grp-back {
   flex: none;
+  position: relative;
+  z-index: 1;
   width: 56rpx;
   height: 56rpx;
   display: flex;
@@ -1610,7 +1594,7 @@ function removeLp() {
 }
 /* 收起态一行 */
 .rp-row {
-  flex: none;
+  flex: 1;
   height: 76rpx;
   display: flex;
   align-items: center;
