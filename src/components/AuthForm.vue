@@ -11,7 +11,7 @@
 
     <!-- 用户名或邮箱（统一输入框，后端按实际类型判定登录方式） -->
     <AuthField
-      icon="user"
+      icon="person"
       v-model="identifier"
       placeholder="用户名或邮箱"
       :error="errors.identifier"
