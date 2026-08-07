@@ -249,7 +249,8 @@ export async function applyGroupOrder(group: string, orderedKeys: string[]): Pro
   orderedKeys.forEach((k, i) => idxByKey.set(k, i));
 
   // 仅重排 grp 分组内的项：按其在新序列中的相对位置赋 order = 0..n，其它分组 order 不变。
-  const newOrderById = new Map<string, number>();
+  // 内存按 key(code|market) 更新（本地模式项无 id，亦能持久化）；云模式再按 id 批量写库。
+  const newOrderByKey = new Map<string, number>();
   state.items
     .filter((i) => (i.group || "") === grp)
     .sort(
@@ -258,19 +259,20 @@ export async function applyGroupOrder(group: string, orderedKeys: string[]): Pro
         (idxByKey.get(`${b.code}|${b.market}`) ?? 0)
     )
     .forEach((i, n) => {
-      if (i.id) newOrderById.set(i.id, n);
+      newOrderByKey.set(`${i.code}|${i.market}`, n);
     });
 
-  state.items = state.items.map((i) =>
-    i.id && newOrderById.has(i.id) ? { ...i, order: newOrderById.get(i.id)! } : i
-  );
+  state.items = state.items.map((i) => {
+    const k = `${i.code}|${i.market}`;
+    return newOrderByKey.has(k) ? { ...i, order: newOrderByKey.get(k)! } : i;
+  });
 
   if (state.mode === "cloud" && userState.userId) {
     const sb = getSupabase()!;
     await Promise.all(
-      [...newOrderById.entries()].map(([id, ord]) =>
-        sb.from("watchlists").update({ sort_order: ord }).eq("id", id)
-      )
+      state.items
+        .filter((i) => (i.group || "") === grp && !!i.id)
+        .map((i) => sb.from("watchlists").update({ sort_order: i.order ?? 0 }).eq("id", i.id))
     );
   } else {
     saveLocal(state.items);
