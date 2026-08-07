@@ -55,27 +55,31 @@ function saveLocal(items: WatchItem[]) {
   }
 }
 
-// 取当前全部自选里最大的 sort_order，+1 作为新项的全局唯一排序权重。
-// 设计：order 为全局唯一（不按分组各自从 0 起算），「全部」视图即按此全局序展示；
-// 移入/移出分组只改 group 不改 order，故个股在「全部」中的位置保持稳定、不会跳到末尾。
-function nextGroupOrder(): number {
-  let m = 0;
+// 取「目标分组内」当前最大的 sort_order，+1 作为新项在该分组内的排序权重。
+// 设计：order 是「分组内」权重（各分组各自从 0 起算，不跨分组比较）。
+// 「全部」视图的展示序由 created_at 决定（见 sortItems / 视图 filteredList）；
+// 「单分组」视图则按组内 order 展示。移入某分组时 order = 组内最大+1，即按「加入
+// 该分组的时间」追加到目标分组末尾，满足「目标分组内按加入顺序排列」的诉求。
+function nextGroupOrder(grp: string): number {
+  let m = -1;
   for (const i of state.items) {
-    if ((i.order ?? 0) > m) m = i.order as number;
+    if ((i.group || "") === grp && (i.order ?? 0) > m) m = i.order as number;
   }
   return m + 1;
 }
 
-// 内存数组按「全局 sort_order → 创建时间」稳定排序。
-// 说明：order 是全局唯一权重（不按分组聚类）；「全部」视图直接以本序展示，
-// 因此移入/移出分组只改 group、不动 order，个股在「全部」中的位置保持稳定、
-// 不会因重新聚类而被推到列表末尾。
+// 内存数组默认按「创建时间 → 分组内 order → 分组名」稳定排序，作为「全部」视图的展示序。
+// 说明：order 是分组内权重（不跨分组比较），故「全部」视图改以 created_at 为主序；
+// 移入/移出分组只改 group 与组内 order，不会改变 created_at，个股在「全部」中的位置保持稳定。
 function sortItems(items: WatchItem[]): WatchItem[] {
   return items.slice().sort((a, b) => {
+    const ca = a.created_at || "";
+    const cb = b.created_at || "";
+    if (ca !== cb) return ca < cb ? -1 : 1;
     const oa = a.order ?? 0;
     const ob = b.order ?? 0;
     if (oa !== ob) return oa - ob;
-    return (a.created_at || "").localeCompare(b.created_at || "");
+    return (a.group || "").localeCompare(b.group || "");
   });
 }
 
@@ -170,7 +174,7 @@ export async function initWatchlist() {
 
 export async function addWatch(item: WatchItem): Promise<{ ok: boolean; error?: string }> {
   const grp = item.group || "";
-  const order = nextGroupOrder();
+  const order = nextGroupOrder(grp);
   if (state.mode === "cloud" && userState.userId) {
     const sb = getSupabase()!;
     const { error } = await sb.from("watchlists").insert({
@@ -212,16 +216,15 @@ function toAlertJson(a?: PriceAlert): any {
   return { above, below };
 }
 
-/** 将某只自选移动到其它分组：只改 group_name，保留其全局排序权重 order 不变。
- *  因为 order 是全局唯一的（详见 sortItems），移入/移出分组不会改变个股在「全部」视图中的
- *  位置——这正是修复「在全部中把某股移入分组后它跑到列表末尾」的根因：旧实现会把 order 重置为
- *  nextGroupOrder(grp)，等于把它沉到目标分组 + 全部列表的末尾。
- *  云：按 id 更新 group_name（sort_order 一并写回原值，避免漂移）；本地：打补丁并重存。 */
+/** 将某只自选移动到其它分组：改写 group_name，并将其「分组内排序权重」order 重置为
+ *  目标分组内当前的「最大 order + 1」——即按「加入该分组的时间」追加到目标分组末尾，
+ *  满足「目标分组内项目按加入顺序排列」的诉求。
+ *  云：按 id 更新 group_name + 新 sort_order；本地：打补丁并就地重排后重存。 */
 export async function setItemGroup(code: string, market: string, group: string): Promise<void> {
   const grp = group || "";
   const target = state.items.find((i) => i.code === code && i.market === market);
   if (!target) return;
-  const order = target.order ?? 0; // 保留原全局排序权重：移组不改序，全部视图位置稳定
+  const order = nextGroupOrder(grp); // 追加到目标分组末尾：组内最大 order + 1（加入该分组的时间顺序）
   await patchItem(code, market, { group_name: grp, sort_order: order });
   if (state.mode !== "cloud") {
     state.items = sortItems(
@@ -235,54 +238,38 @@ export async function setItemGroup(code: string, market: string, group: string):
 
 /**
  * 拖拽重排：传入目标分组与该分组内重排后的可见键顺序（code|market），
- * 仅重排该分组内的 sort_order 并持久化（云：批量按 id 更新；本地：重存）。
- * - 单分组视图：group 为分组名，仅重排该分组内顺序（"组内排序"语义）。
- * - "全部"视图：group 传 "*"，忽略分组维度、对整个列表整体重排并持久化。
- * 登录后自动同步：排序权重写入 watchlists.sort_order，恢复时按 group_name + sort_order 还原。
+ * 仅重排该分组内的 sort_order 为 0..n 并持久化（云：批量按 id 更新；本地：重存）。
+ * order 为分组内权重，故「单分组视图」内拖拽只影响该分组内部顺序，不会干扰其它分组。
+ * （「全部」视图不提供拖拽重排：因 order 是分组内权重，整体重排无法跨分组持久化，
+ *   视图层已隐藏「全部」下的拖拽手柄，历史遗留的全局重排分支已移除。）
  */
 export async function applyGroupOrder(group: string, orderedKeys: string[]): Promise<void> {
-  const all = group === "*";
   const grp = group || "";
   const idxByKey = new Map<string, number>();
   orderedKeys.forEach((k, i) => idxByKey.set(k, i));
 
-  // 计算重排后的「全局键序列」：
-  // - "全部"视图（group="*"）：直接按传入的整体顺序重排整个列表。
-  // - 单分组视图：仅在该分组占用的「槽位」内按新顺序重排，保持与其它分组项的相对位置，
-  //   避免单分组内拖拽后，这些项因 order 被重置为 0..n 而整体跳到「全部」列表顶部。
-  let newKeyOrder: string[];
-  if (all) {
-    newKeyOrder = orderedKeys.slice();
-  } else {
-    const reorderedGroupKeys = state.items
-      .filter((i) => (i.group || "") === grp)
-      .map((i) => `${i.code}|${i.market}`)
-      .sort((a, b) => (idxByKey.get(a) ?? 0) - (idxByKey.get(b) ?? 0));
-    let gi = 0;
-    newKeyOrder = state.items.map((i) => {
-      const k = `${i.code}|${i.market}`;
-      return (i.group || "") === grp ? reorderedGroupKeys[gi++] : k;
+  // 仅重排 grp 分组内的项：按其在新序列中的相对位置赋 order = 0..n，其它分组 order 不变。
+  const newOrderById = new Map<string, number>();
+  state.items
+    .filter((i) => (i.group || "") === grp)
+    .sort(
+      (a, b) =>
+        (idxByKey.get(`${a.code}|${a.market}`) ?? 0) -
+        (idxByKey.get(`${b.code}|${b.market}`) ?? 0)
+    )
+    .forEach((i, n) => {
+      if (i.id) newOrderById.set(i.id, n);
     });
-  }
 
-  // 依据全局键序列重排：order = 该项在新序列中的索引（全局唯一权重），再按 order 稳定排序。
-  const posByKey = new Map(newKeyOrder.map((k, i) => [k, i]));
-  state.items = sortItems(
-    state.items.map((i) => {
-      const k = `${i.code}|${i.market}`;
-      if (!posByKey.has(k)) return i;
-      return { ...i, order: posByKey.get(k)! };
-    })
+  state.items = state.items.map((i) =>
+    i.id && newOrderById.has(i.id) ? { ...i, order: newOrderById.get(i.id)! } : i
   );
 
   if (state.mode === "cloud" && userState.userId) {
     const sb = getSupabase()!;
-    const targets = state.items.filter(
-      (i) => posByKey.has(`${i.code}|${i.market}`) && !!i.id
-    );
     await Promise.all(
-      targets.map((i) =>
-        sb.from("watchlists").update({ sort_order: i.order ?? 0 }).eq("id", i.id)
+      [...newOrderById.entries()].map(([id, ord]) =>
+        sb.from("watchlists").update({ sort_order: ord }).eq("id", id)
       )
     );
   } else {

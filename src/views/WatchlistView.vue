@@ -124,7 +124,7 @@
             <!-- 固定列：拖拽手柄(仅整理模式) + 预警点 + 名称 + (市场徽标 + 代码) -->
             <view class="td c-name" :class="{ 'has-handle': reorderMode }">
               <view
-                v-if="reorderMode"
+                v-if="reorderMode && selectedGroup !== '__all__'"
                 class="drag-handle"
                 :class="{ on: dragKey === keyOf(row.it) }"
                 role="button"
@@ -491,9 +491,16 @@ const groups = computed(() => {
   return Array.from(s).sort();
 });
 const filteredList = computed(() => {
-  if (selectedGroup.value === "__all__") return list.value;
-  if (selectedGroup.value === "") return list.value.filter((i) => !i.group);
-  return list.value.filter((i) => i.group === selectedGroup.value);
+  const base = list.value;
+  if (selectedGroup.value === "__all__") {
+    // 「全部」视图：按创建时间（加入自选的时间）稳定排序；移组不改 created_at，位置不跳变
+    return base.slice().sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+  }
+  const grp = selectedGroup.value; // "" = 默认分组
+  // 单分组视图：按「分组内 order」排序（即加入该分组的时间顺序，move/拖拽可改）
+  return base
+    .filter((i) => (i.group || "") === grp)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 });
 
 // 分组切换面板：统一窗体 PeekSheet 的 group 内容区（与热榜/显示列同窗体）
@@ -893,10 +900,9 @@ function onDragMove(e: any) {
 function onDragEnd() {
   if (!dragKey.value) return;
   dragKey.value = null;
-  if (dragMoved) {
-    // “全部”视图按整个列表排序（group 传 "*"，store 内忽略分组维度整体重排）
-    const group = selectedGroup.value === "__all__" ? "*" : selectedGroup.value;
-    applyGroupOrder(group, manualOrder.value);
+  // 仅单分组视图可拖拽重排（order 为分组内权重，全部视图不提供整体重排，手柄已隐藏）
+  if (dragMoved && selectedGroup.value !== "__all__") {
+    applyGroupOrder(selectedGroup.value, manualOrder.value);
   }
 }
 
