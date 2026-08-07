@@ -56,17 +56,18 @@
           <view class="wl-rows">
           <view class="wl-thead">
             <view class="th c-name">
-              <view class="th-cols" :class="{ on: reorderMode }">
+              <view class="th-cols" :class="{ on: reorderMode || showCols }">
                 <view
                   class="th-ic grip"
+                  :class="{ on: reorderMode }"
                   role="button"
                   aria-label="拖拽排序"
                   @click="toggleReorder"
                 >
                   <OutlineIcon type="grip" :size="28" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
                 </view>
-                <view class="th-ic" role="button" aria-label="列设置" @click="showCols = true">
-                  <OutlineIcon type="columns" :size="28" :color="'var(--text-3)'" />
+                <view class="th-ic" :class="{ on: showCols }" role="button" aria-label="列设置" @click="showCols = true">
+                  <OutlineIcon type="columns" :size="28" :color="showCols ? 'var(--primary)' : 'var(--text-3)'" />
                 </view>
               </view>
             </view>
@@ -1705,7 +1706,7 @@ function showMoveGroup(it: WatchItem) {
   border: 1rpx solid var(--border);
   transition: background 0.18s ease, border-color 0.18s ease;
 }
-/* 拖拽激活态：整条轨道泛绿，提示处于排序模式 */
+/* 激活态：拖拽排序中 或 列设置面板打开时，整条轨道泛绿，提示当前所处工具模式 */
 .th-cols.on {
   background: var(--primary-soft);
   border-color: var(--primary-soft);
@@ -1729,11 +1730,12 @@ function showMoveGroup(it: WatchItem) {
 .th-ic:active :deep(.outline-icon) {
   color: var(--primary) !important;
 }
-/* 拖拽开启时：grip 分段常驻绿色实心、图标反白，明确「当前激活的是这一侧」 */
-.th-cols.on .th-ic.grip {
+/* 当前激活的分段（拖拽排序中 / 列设置面板打开）：常驻绿色实心、图标反白，
+   两个分段共用同一套高亮，确保两种工具在视觉表现上完全对齐 */
+.th-cols.on .th-ic.on {
   background: var(--primary);
 }
-.th-cols.on .th-ic.grip :deep(.outline-icon) {
+.th-cols.on .th-ic.on :deep(.outline-icon) {
   color: #fff !important;
 }
 
