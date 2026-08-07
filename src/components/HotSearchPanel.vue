@@ -46,6 +46,9 @@ function pick(s: HotStock) {
 }
 
 onMounted(load);
+
+// 供父组件在用户搜索后主动刷新榜单，使「今日热搜」即时反映真实行为
+defineExpose({ load });
 </script>
 
 <style scoped>

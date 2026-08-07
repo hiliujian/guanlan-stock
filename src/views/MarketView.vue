@@ -76,7 +76,7 @@
           <text class="empty-t">开始智能分析</text>
           <text class="empty-s">输入代码或名称，查看行情、K 线与 AI 研判</text>
           <view class="empty-divider" />
-          <HotSearchPanel @open="pickOne" />
+          <HotSearchPanel ref="hotPanel" @open="pickOne" />
         </view>
       </view>
 
@@ -143,6 +143,7 @@ import BackgroundFX from "@/components/BackgroundFX.vue";
 import ReportView from "@/components/ReportView.vue";
 import KlineCard from "@/components/KlineCard.vue";
 import HotSearchPanel from "@/components/HotSearchPanel.vue";
+import type HotSearchPanelType from "@/components/HotSearchPanel.vue";
 import { recordSearch } from "@/api/hot";
 import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, type SearchHit, type QuoteBundle, type NewsItem } from "@/api/quote";
 import { getMarketStatus } from "@/utils/marketStatus";
@@ -226,6 +227,9 @@ let blurTimer: any = null;
 
 // 联想面板是否展开（同一卡片向下展开，与搜索框融为一体）
 const suggestOpen = computed(() => showSuggest.value && suggestions.value.length > 0);
+
+// 今日热搜面板实例：用户搜索后主动刷新榜单
+const hotPanel = ref<InstanceType<typeof HotSearchPanelType> | null>(null);
 // 输入框是否获得焦点：驱动搜索框「聚焦激活态」绿色高亮，让控件活起来
 const focused = ref(false);
 
@@ -504,7 +508,10 @@ async function run(forceMarket?: Market, track = true) {
     // 联想选择/历史记录/代码，避免头部股票名变空白。
     name.value = b.name || chosen.value?.name || name.value || curCode.value;
     pushHistory({ code: curCode.value, name: name.value });
-    if (track) recordSearch(curCode.value, name.value); // 用户主动搜索计入今日热搜
+    if (track) {
+      recordSearch(curCode.value, name.value); // 用户主动搜索计入今日热搜
+      hotPanel.value?.load(); // 搜索后立即刷新「今日热搜」面板，真实反映行为
+    }
     preClose.value = b.preClose;
     realtime.value = b.realtime;
     // 关联资讯：先做「多维严格关联 + 时效（最近3天）」过滤，所有 scope 统一校验相关性，

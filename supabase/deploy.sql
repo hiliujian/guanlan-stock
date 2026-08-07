@@ -661,10 +661,14 @@ on conflict (id) do nothing;
 -- 方案：以「日期 day + 代码 code」为复合主键按日分桶，榜单只查 day = 当前日期，
 --       「每日零点重置」即由新一天自动开启新统计实现——旧日记录不再进入榜单，
 --       无需任务在零点清空计数；reset_hot_searches() 可选清理过期行控表体量。
--- 调用：前端经 Edge Function guanlan-hot-searches（REST /rest/v1/rpc/* + anon key）
+-- 调用：前端经 supabase-js sb.rpc 直连下方 RPC（get_hot_searches / log_stock_search），
+--       二者均为 security definer 且已 grant anon，与旧 Edge Function 用 anon key 调用等价，
+--       但去掉了「Edge Function 必须单独部署」这一单点故障（见 DEPLOY.md 第八节）。
 --       记录一次搜索（log_stock_search）或读取今日榜单（get_hot_searches）。
+-- 注意：day 统一用 Asia/Shanghai 北京时间（服务器 current_date 为 UTC，会在北京 8 点翻转），
+--       与 §102 自选热度「今日」口径保持一致。
 create table if not exists public.hot_search_daily (
-  day        date        not null default current_date,
+  day        date        not null default (timezone('Asia/Shanghai', now())::date),
   code       text        not null,
   name       text        not null default '',
   count      bigint      not null default 1 check (count >= 0),
@@ -690,7 +694,7 @@ returns void
 language plpgsql security definer set search_path = public as $$
 begin
   insert into public.hot_search_daily (day, code, name, count)
-  values (current_date, p_code, coalesce(nullif(p_name, ''), ''), 1)
+  values (timezone('Asia/Shanghai', now())::date, p_code, coalesce(nullif(p_name, ''), ''), 1)
   on conflict (day, code) do update
     set count      = public.hot_search_daily.count + 1,
         name       = case
@@ -710,7 +714,7 @@ begin
   return query
     select h.code, h.name, h.count
     from public.hot_search_daily h
-    where h.day = current_date
+    where h.day = timezone('Asia/Shanghai', now())::date
     order by h.count desc, h.updated_at desc, h.code
     limit greatest(1, least(coalesce(p_limit, 10), 200));
 end;
@@ -724,7 +728,7 @@ language plpgsql security definer set search_path = public as $$
 declare
   v_rows integer;
 begin
-  delete from public.hot_search_daily where day <> current_date;
+  delete from public.hot_search_daily where day <> (timezone('Asia/Shanghai', now())::date);
   get diagnostics v_rows = row_count;
   return v_rows;
 end;
