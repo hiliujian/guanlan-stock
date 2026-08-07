@@ -175,10 +175,9 @@
           </view>
         </scroll-view>
 
-        <!-- 列设置面板：选择展示/隐藏的数据列（本地持久化） -->
-        <view v-if="showCols" class="col-mask" @click="showCols = false">
-          <view class="col-sheet" @click.stop>
-            <view class="col-grip"><view class="col-handle" /></view>
+        <!-- 显示列：与热榜/分组同款统一窗体（模态遮罩） -->
+        <PeekSheet modal :model-value="showCols" @update:model-value="(v: boolean) => (showCols = v)">
+          <template #default>
             <view class="col-head">
               <text class="col-title">显示列</text>
               <view class="col-close" role="button" aria-label="关闭" @click="showCols = false">
@@ -199,25 +198,26 @@
               </view>
             </view>
             <text class="col-tip">设置仅保存在本机，不影响其他设备</text>
-          </view>
-        </view>
+          </template>
+        </PeekSheet>
 
         <!-- 底部卡片：固定常驻于菜单栏上方(始终可见)，本地展开/收起，无遮罩层 -->
-        <view class="rank-peek" :class="{ open: rankOpen, max: rankMax }" :style="rankStyle">
-          <view v-if="!rankOpen" class="rp-row" role="button" aria-label="展开榜单" @click="rankOpen = true">
-            <text class="rp-top">今日最热</text>
-            <view class="rp-main">
-              <text class="rp-name">{{ peek ? peek.name : '--' }}</text>
-              <text class="rp-code">{{ peek ? peek.code : '--' }}</text>
+        <PeekSheet ref="rankSheet" persistent>
+          <template #peek>
+            <view class="rp-row" role="button" aria-label="展开榜单">
+              <text class="rp-top">今日最热</text>
+              <view class="rp-main">
+                <text class="rp-name">{{ peek ? peek.name : '--' }}</text>
+                <text class="rp-code">{{ peek ? peek.code : '--' }}</text>
+              </view>
+              <view class="rp-right">
+                <text class="rp-price" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
+                <text class="rp-pct" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
+              </view>
+              <OutlineIcon class="rp-caret" type="chevron-up" :size="20" color="var(--text-2)" />
             </view>
-            <view class="rp-right">
-              <text class="rp-price" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
-              <text class="rp-pct" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
-            </view>
-            <OutlineIcon class="rp-caret" type="chevron-up" :size="20" color="var(--text-2)" />
-          </view>
-          <view v-if="rankOpen" class="rp-panel">
-            <view class="rs-grip" @touchstart.stop="onGripDown" @touchmove.stop="onGripMove" @touchend.stop="onGripUp" @touchcancel.stop="onGripUp" @mousedown.stop="onGripDown" @mousemove.stop="onGripMove" @mouseup.stop="onGripUp" @mouseleave.stop="onGripUp" @click.stop="onGripTap"><view class="rs-handle" /></view>
+          </template>
+          <template #default>
             <view class="rs-tabs">
               <view class="rs-tab" :class="{ on: rankTab === 'today' }" @click="rankTab = 'today'">今日热榜</view>
               <view class="rs-tab" :class="{ on: rankTab === 'all' }" @click="rankTab = 'all'">完整榜单</view>
@@ -226,15 +226,16 @@
             <scroll-view class="rs-body" scroll-y>
               <RankView :mode="rankTab" @open-market="onSheetOpenMarket" />
             </scroll-view>
-          </view>
-        </view>
+          </template>
+        </PeekSheet>
 
-        <!-- 分组切换面板：与底部热榜弹窗(rank-peek)同款——固定底部、无遮罩、玻璃质感；
-             我的分组 / 新建分组 / 移入分组 / 管理分组 共用同一窗体，点击切换内容 -->
-        <view v-if="groupOpen" class="grp-peek">
+        <!-- 分组切换面板：与热榜/显示列同款统一窗体（非模态）——固定底部、无遮罩、玻璃质感；
+             我的分组 / 新建分组 / 移入分组 / 管理分组 共用同一窗体，点击切换内容；
+             支持下拉收起(groupOpen=false) / 上拉铺满页面 -->
+        <PeekSheet :model-value="groupOpen" @update:model-value="(v: boolean) => (groupOpen = v)">
+          <template #default>
           <view class="grp-head">
-            <view v-if="groupView === 'main'" class="grp-grip"><view class="grp-handle" /></view>
-            <view v-else class="grp-back" role="button" aria-label="返回" @click="groupBack"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
+            <view v-if="groupView !== 'main'" class="grp-back" role="button" aria-label="返回" @click="groupBack"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
             <text class="grp-title">{{ groupTitle }}</text>
             <view class="grp-close" role="button" aria-label="关闭" @click="groupOpen = false"><OutlineIcon type="close" :size="30" color="var(--text-2)" /></view>
           </view>
@@ -352,7 +353,8 @@
               <view class="grp-btn danger" role="button" @click="doManageDelete">确认删除</view>
             </template>
           </view>
-        </view>
+        </template>
+        </PeekSheet>
       </view>
 
       <!-- 统一底部弹层（替代 uni.showActionSheet 默认样式，复用项目主题） -->
@@ -371,6 +373,7 @@
 import { computed, reactive, ref, watch, onMounted, onActivated, onDeactivated, onUnmounted } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import ActionSheet from "@/components/ActionSheet.vue";
+import PeekSheet from "@/components/PeekSheet.vue";
 import type { ActionSheetItem } from "@/components/action-sheet-types";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import RankView from "@/views/RankView.vue";
@@ -415,23 +418,9 @@ const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: s
 const wl = useWatchlist();
 const list = computed(() => wl.items as WatchItem[]);
 
-// 榜单弹层 + 底部露出卡片：默认展示「今日热榜 / 完整榜单」切换
-const rankOpen = ref(false);
+// 榜单弹层（统一窗体 PeekSheet, persistent）：默认展示「今日热榜 / 完整榜单」切换
+const rankSheet = ref<any>(null);
 const rankTab = ref<"today" | "all">("today");
-// 榜单展开态：是否铺满整页（上拉触发）
-const rankMax = ref(false);
-// 视口高度与底部占位（px），用于上拉铺满时计算目标高度
-const winH = ref(0);
-const tabPx = ref(0);
-function measureViewport() {
-  try {
-    const info: any = (uni as any).getWindowInfo ? (uni as any).getWindowInfo() : uni.getSystemInfoSync();
-    const w = info.windowWidth || info.screenWidth || 375;
-    winH.value = info.windowHeight || 0;
-    const safe = (info.safeAreaInsets && info.safeAreaInsets.bottom) || 0;
-    tabPx.value = safe + (w / 750) * 110; // 110rpx 底部偏移 + 安全区
-  } catch (_) {}
-}
 
 // 露出卡片预览数据：当前选中榜单的第 1 名（一行最热股）
 interface PeekRow {
@@ -475,7 +464,7 @@ const filteredList = computed(() => {
   return list.value.filter((i) => i.group === selectedGroup.value);
 });
 
-// 分组切换面板：无遮罩底部面板（与底部热榜弹窗 rank-peek 同款视觉）
+// 分组切换面板：统一窗体 PeekSheet（非模态，与热榜/显示列同款视觉）
 const groupOpen = ref(false);
 const groupRows = computed(() => {
   const rows: { label: string; key: string; active: boolean }[] = [
@@ -977,101 +966,14 @@ function ampPct(q: Snap): string {
   return (((q.high - q.low) / q.preClose) * 100).toFixed(2) + "%";
 }
 
-// 榜单弹层：点击热榜股票跳转行情页并关闭弹层
+// 榜单弹层：点击热榜股票跳转行情页并收起弹层
 function onSheetOpenMarket(p: { code: string; market: string }) {
-  closeRank();
+  rankSheet.value?.collapse();
   emit("open-market", p);
-}
-// 关闭榜单弹层
-function closeRank() {
-  rankOpen.value = false;
-  rankMax.value = false;
-}
-
-// 拖拽手势：面板顶部手柄区支持「下拉收起 / 上拉铺满」，配合 height/transform 过渡动效
-const dragY = ref(0);
-const dragging = ref(false);
-const dragUp = ref(false);
-let gripStartY = 0;
-let gripMoved = false;
-const rankStyle = computed(() => {
-  if (!dragging.value) return {};
-  if (dragUp.value) {
-    // 上拉：实时增高预览（直到铺满整页）
-    const base = winH.value * 0.62;
-    const maxH = Math.max(base, winH.value - tabPx.value);
-    let h = base - dragY.value; // dragY 为负（上拉），h 增大
-    if (h > maxH) h = maxH + (h - maxH) * 0.2; // 超过铺满后加阻尼
-    return { height: `${h}px`, transition: "none" };
-  }
-  // 下拉：整体下移预览，松手后收起
-  return { transform: `translateX(-50%) translateY(${dragY.value}px)`, transition: "none" };
-});
-// 取触摸/鼠标事件的 Y 坐标（榜单卡片拖拽手势使用）
-function ptY(e: any): number {
-  if (e.touches && e.touches[0]) return e.touches[0].clientY;
-  if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
-  return e.clientY || 0;
-}
-function onGripDown(e: any) {
-  dragging.value = true;
-  dragY.value = 0;
-  dragUp.value = false;
-  gripMoved = false;
-  gripStartY = ptY(e);
-}
-function onGripMove(e: any) {
-  if (!dragging.value) return;
-  const dy = ptY(e) - gripStartY;
-  dragY.value = dy;
-  dragUp.value = dy < 0;
-  if (Math.abs(dy) > 4) gripMoved = true;
-  // 拖拽期间阻止页面级下拉刷新 / 页面滚动误触发
-  if (e.cancelable) {
-    try {
-      e.preventDefault();
-    } catch (_) {}
-  }
-}
-function onGripUp() {
-  if (!dragging.value) return;
-  dragging.value = false;
-  const dy = dragY.value;
-  const wasUp = dragUp.value;
-  dragY.value = 0;
-  if (wasUp) {
-    if (rankMax.value) {
-      // 已铺满：下拉超过阈值回退到半屏
-      if (dy > 80) rankMax.value = false;
-    } else if (-dy > 64) {
-      // 半屏：上拉超过阈值铺满整页
-      rankMax.value = true;
-    }
-  } else {
-    if (rankMax.value) {
-      // 铺满：下拉先回退到半屏
-      rankMax.value = false;
-    } else if (dy > 80) {
-      // 半屏：下拉收起
-      closeRank();
-    }
-  }
-}
-function onGripTap() {
-  if (gripMoved) {
-    gripMoved = false;
-    return; // 拖拽结束后不触发点击，避免重复动作
-  }
-  closeRank();
 }
 
 onMounted(() => {
-  measureViewport();
   loadCols();
-  if (typeof window !== "undefined") {
-    window.addEventListener("resize", measureViewport);
-    window.addEventListener("orientationchange", measureViewport);
-  }
   if (!needLogin.value) loadQuotesSafe();
   loadPeek();
 });
@@ -1086,10 +988,6 @@ onActivated(() => {
 onDeactivated(stopPolling);
 onUnmounted(() => {
   stopPolling();
-  if (typeof window !== "undefined") {
-    window.removeEventListener("resize", measureViewport);
-    window.removeEventListener("orientationchange", measureViewport);
-  }
 });
 watch(
   () => userState.loggedIn,
@@ -1553,86 +1451,13 @@ function showMoveGroup(it: WatchItem) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* ===== 底部卡片：固定常驻于菜单栏上方(始终可见)，本地展开/收起，无遮罩层 ===== */
-/* 仅 border-top 与表格表头边框同款，无阴影 */
-.rank-peek {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(env(safe-area-inset-bottom) + 110rpx);
-  width: 100%;
-  max-width: 480px;
-  height: 76rpx;
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 22rpx 22rpx 0 0;
-  background: var(--tabbar-bg);
-  backdrop-filter: blur(20rpx) saturate(150%);
-  -webkit-backdrop-filter: blur(20rpx) saturate(150%);
-  border-top: 1rpx solid var(--tabbar-border);
-  transition: height var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
-}
-.rank-peek.open {
-  height: 62vh;
-}
-/* 上拉铺满整页：从视口顶部到底部菜单栏之上（高度过渡由 --dur 控制） */
-.rank-peek.max {
-  height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
-}
-
-/* ===== 分组切换面板：与底部热榜弹窗(rank-peek)同款——固定底部、无遮罩、玻璃质感 ===== */
-.grp-peek {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(env(safe-area-inset-bottom) + 110rpx);
-  width: 100%;
-  max-width: 480px;
-  z-index: 40;
-  display: flex;
-  flex-direction: column;
-  max-height: 70vh;
-  overflow: hidden;
-  border-radius: 22rpx 22rpx 0 0;
-  background: var(--tabbar-bg);
-  backdrop-filter: blur(20rpx) saturate(150%);
-  -webkit-backdrop-filter: blur(20rpx) saturate(150%);
-  border-top: 1rpx solid var(--tabbar-border);
-  box-shadow: 0 -6rpx 24rpx rgba(0, 0, 0, 0.18);
-  animation: grpIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@keyframes grpIn {
-  from {
-    transform: translateX(-50%) translateY(24rpx);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(-50%) translateY(0);
-    opacity: 1;
-  }
-}
+/* ===== 分组切换面板：与热榜/显示列同款统一窗体(PeekSheet)——固定底部、无遮罩、玻璃质感 ===== */
 .grp-head {
   flex: none;
   display: flex;
   align-items: center;
   height: 78rpx;
   padding: 0 20rpx;
-}
-.grp-grip {
-  flex: none;
-  width: 56rpx;
-  height: 56rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.grp-handle {
-  width: 44rpx;
-  height: 6rpx;
-  border-radius: 999rpx;
-  background: var(--card-2);
 }
 .grp-title {
   flex: 1;
@@ -1815,32 +1640,7 @@ function showMoveGroup(it: WatchItem) {
   font-variant-numeric: tabular-nums;
 }
 
-/* ===== 展开态：榜单面板 ===== */
-.rp-panel {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-/* 顶部拖拽区：比视觉手柄稍大便于下拉收起；touch-action:none 保证手势用于拖拽而非滚动 */
-.rs-grip {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 26rpx;
-  cursor: grab;
-  touch-action: none;
-}
-.rs-grip:active {
-  cursor: grabbing;
-}
-.rs-handle {
-  width: 56rpx;
-  height: 6rpx;
-  border-radius: 999rpx;
-  background: var(--card-2);
-}
+/* ===== 展开态：榜单面板（外壳与拖拽手柄由 PeekSheet 统一提供） ===== */
 .rs-tabs {
   position: relative;
   flex: none;
@@ -1962,53 +1762,14 @@ function showMoveGroup(it: WatchItem) {
   background: var(--primary-soft);
 }
 
-/* ===== 列设置面板（底部弹出） ===== */
-.col-mask {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  z-index: 60;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-.col-sheet {
-  width: 100%;
-  max-width: 480px;
-  background: var(--tabbar-bg);
-  backdrop-filter: blur(20rpx) saturate(150%);
-  -webkit-backdrop-filter: blur(20rpx) saturate(150%);
-  border-radius: 22rpx 22rpx 0 0;
-  padding: 12rpx 24rpx calc(env(safe-area-inset-bottom) + 24rpx);
-  box-shadow: 0 -8rpx 30rpx rgba(0, 0, 0, 0.25);
-}
-/* 顶部拖拽手柄：与热榜弹窗(rank-peek)同款，强化「底部弹出层」视觉一致性 */
-.col-grip {
+/* ===== 列设置面板（与热榜/分组同款统一窗体 PeekSheet，模态遮罩） ===== */
+.col-head {
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: center;
-  height: 26rpx;
-  margin-bottom: 4rpx;
-  cursor: grab;
-  touch-action: none;
-}
-.col-grip:active {
-  cursor: grabbing;
-}
-.col-handle {
-  width: 56rpx;
-  height: 6rpx;
-  border-radius: 999rpx;
-  background: var(--card-2);
-}
-.col-head {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
+  height: 78rpx;
+  padding: 0 20rpx;
 }
 .col-title {
   font-size: 30rpx;
@@ -2024,25 +1785,29 @@ function showMoveGroup(it: WatchItem) {
   justify-content: center;
 }
 .col-list {
-  margin-top: 16rpx;
+  margin-top: 12rpx;
   display: flex;
   flex-direction: column;
-  gap: 4rpx;
+  gap: 0;
 }
 .col-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 22rpx 16rpx;
-  border-radius: 14rpx;
-  background: var(--card-2);
+  gap: 14rpx;
+  min-height: 88rpx;
+  padding: 0 26rpx;
   cursor: pointer;
+  transition: background 0.12s ease;
+}
+.col-item:active {
+  background: var(--card-2);
 }
 .col-item.off {
   opacity: 0.55;
 }
 .col-name {
-  font-size: 28rpx;
+  flex: 1;
+  font-size: 30rpx;
   color: var(--text);
 }
 .col-sw {
