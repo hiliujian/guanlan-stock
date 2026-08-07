@@ -449,7 +449,12 @@ export async function captureLoginInfo(): Promise<void> {
       platform,
       time: new Date().toISOString(),
     };
-    await sb.from("profiles").update({ last_login: info }).eq("id", uid);
+    const { error } = await sb.from("profiles").update({ last_login: info }).eq("id", uid);
+    if (error) {
+      // 仅开发期提示，便于排查；登录信息仅为展示用途，绝不阻塞主流程
+      if (import.meta.env?.DEV) console.warn("[captureLoginInfo] 写入 last_login 失败:", error.message);
+      return;
+    }
   } catch {
     /* 静默失败：登录信息仅为展示用途，绝不阻塞主流程 */
   }

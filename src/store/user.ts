@@ -75,7 +75,12 @@ export function useUser() {
           await loadProfile(user.id);
           // 仅在「从未登录 → 已登录」的跃迁时记录本次登录信息（刷新 token 不重复写），
           // 供「账号安全」页展示「上次登录」；失败静默，不影响主流程。
-          if (!wasLoggedIn) captureLoginInfo().catch(() => {});
+          if (!wasLoggedIn) {
+            await captureLoginInfo();
+            // 写库后回读刚写入的 last_login，使「账号安全」页即时展示本次登录信息
+            // （否则内存里的 profile.last_login 仍是空，页面会一直显示「—」）
+            await loadProfile(user.id);
+          }
         } else {
           state.loggedIn = false;
           state.userId = null;

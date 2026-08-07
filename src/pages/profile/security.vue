@@ -27,39 +27,15 @@
         </view>
       </view>
 
-      <!-- 上次登录信息：地点 / 时间 / 设备（参考主流小程序账号安全页设计） -->
+      <!-- 上次登录信息：地点 · 时间 · 设备 合并一行展示（避免三项各占一行占用空间） -->
       <view class="card sec-group anim-fade-up">
         <text class="sec-group-title">上次登录</text>
-
-        <!-- 登录地点（城市，最佳努力 IP 地理定位） -->
-        <view class="sec-row">
-          <view class="sec-row-left">
-            <view class="sec-row-ic"><OutlineIcon type="location" :size="28" color="var(--text-2)" /></view>
-            <view class="sec-row-text">
-              <text class="sec-row-label">登录地点</text>
-              <text class="sec-row-desc">{{ loginLocation }}</text>
-            </view>
-          </view>
-        </view>
-
-        <!-- 登录时间（日期 + 时间，格式化展示） -->
         <view class="sec-row">
           <view class="sec-row-left">
             <view class="sec-row-ic"><OutlineIcon type="clock" :size="28" color="var(--text-2)" /></view>
             <view class="sec-row-text">
-              <text class="sec-row-label">登录时间</text>
-              <text class="sec-row-desc">{{ loginTime }}</text>
-            </view>
-          </view>
-        </view>
-
-        <!-- 登录设备（型号 + 操作系统） -->
-        <view class="sec-row">
-          <view class="sec-row-left">
-            <view class="sec-row-ic"><OutlineIcon type="phone" :size="28" color="var(--text-2)" /></view>
-            <view class="sec-row-text">
-              <text class="sec-row-label">登录设备</text>
-              <text class="sec-row-desc">{{ loginDevice }}</text>
+              <text class="sec-row-label">登录信息</text>
+              <text class="sec-row-desc">{{ loginSummary }}</text>
             </view>
           </view>
         </view>
@@ -237,24 +213,19 @@ const user = useUser();
 // —— 上次登录信息（来自 profiles.last_login，登录成功时由 user store 写入）——
 const lastLogin = computed(() => user.profile?.last_login ?? null);
 
-// 登录地点：优先城市，附 IP；均无则「未知」
-const loginLocation = computed(() => {
+// 上次登录：地点 · 时间 · 设备 合并一行展示（缺失项自动跳过，全空显「暂无登录记录」）
+const loginSummary = computed(() => {
   const l = lastLogin.value;
-  if (!l) return "—";
-  if (l.city) return l.ip ? `${l.city}（IP ${l.ip}）` : l.city;
-  if (l.ip) return l.ip;
-  return "未知";
+  if (!l) return "暂无登录记录";
+  const parts: string[] = [];
+  if (l.city) parts.push(l.ip ? `${l.city}（${l.ip}）` : l.city);
+  else if (l.ip) parts.push(l.ip);
+  if (l.time) parts.push(fmtLoginTime(l.time));
+  const dev = [l.device, l.os].filter(Boolean);
+  if (dev.length) parts.push(dev.join(" · "));
+  else if (l.platform) parts.push(l.platform);
+  return parts.length ? parts.join(" · ") : "暂无登录记录";
 });
-
-// 登录设备：型号 · 操作系统；均无则退回平台标识
-const loginDevice = computed(() => {
-  const l = lastLogin.value;
-  if (!l) return "—";
-  const parts = [l.device, l.os].filter(Boolean);
-  return parts.length ? parts.join(" · ") : l.platform || "未知设备";
-});
-
-const loginTime = computed(() => fmtLoginTime(lastLogin.value?.time));
 
 // 时间格式化：YYYY-MM-DD HH:mm（本地时区），无效则「—」
 function fmtLoginTime(iso?: string): string {

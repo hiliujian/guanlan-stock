@@ -1,4 +1,5 @@
 import { ref } from "vue";
+import { onLoad, onShow } from "@dcloudio/uni-app";
 import { userState, syncSession, useUser } from "@/store/user";
 import { goToProfile } from "@/store/nav";
 
@@ -34,9 +35,16 @@ export function useAuthGuard() {
       goToProfile();
       return;
     }
-    // 3) 确认未登录：放行渲染认证表单
-    ready.value = true;
+  // 3) 确认未登录：放行渲染认证表单
+  ready.value = true;
   }
+
+  // onLoad + onShow 双重拦截：
+  // - onLoad 覆盖正常进入场景；
+  // - onShow 兜底页面「重新显示」类进入（如浏览器前进/后退、keep-alive 缓存复用），
+  //   避免 onLoad 未触发导致已登录仍能停留在认证页。
+  onLoad(() => guard());
+  onShow(() => guard());
 
   return { ready, guard };
 }
