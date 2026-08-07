@@ -193,6 +193,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onUnmounted } from "vue";
+import { onShow } from "@dcloudio/uni-app";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
@@ -205,10 +206,25 @@ import {
   signOut,
   requestEmailChange,
   verifyEmailChange,
+  captureLoginInfo,
   EMAIL_RE,
 } from "@/api/auth";
 
 const user = useUser();
+
+// 安全网：打开「账号安全」页时，若内存/DB 均无「上次登录」数据（例如旧版本登录未写入、
+// 或登录瞬间写入未回读导致内存快照为空），优先回读 DB；DB 仍缺失则补写当前会话的
+// 登录信息并回读。确保「上次登录」不会一直空白，同时保留其真实语义（仅在确实缺失时补）。
+onShow(async () => {
+  if (!user.loggedIn) return;
+  if (!user.profile?.last_login) {
+    await refreshProfile().catch(() => {});
+    if (!user.profile?.last_login) {
+      await captureLoginInfo().catch(() => {});
+      await refreshProfile().catch(() => {});
+    }
+  }
+});
 
 // —— 上次登录信息（来自 profiles.last_login，登录成功时由 user store 写入）——
 const lastLogin = computed(() => user.profile?.last_login ?? null);
