@@ -1,9 +1,8 @@
 <template>
   <view class="wl-page">
-    <!-- 头部：固定不随滚动（与社区一致），移出 scroll-view 以保证 H5 上始终吸顶 -->
-    <view class="cm-header anim-fade-up">
-      <text class="cm-brand">自选</text>
-      <view class="cm-right">
+    <!-- 头部：与社区共用 PageHeader，移出 scroll-view 以保证 H5 上始终吸顶 -->
+    <PageHeader brand-text="自选" brand-icon="star">
+      <template #right>
         <view class="cm-me" role="button" aria-label="分组切换" @click="openGroups">
           <view class="cm-avatar" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
             <OutlineIcon type="layers" :size="24" color="#fff" />
@@ -22,8 +21,8 @@
           </view>
           <OutlineIcon type="pulldown" :size="18" color="var(--text-2)" />
         </view>
-      </view>
-    </view>
+      </template>
+    </PageHeader>
 
     <view class="wl">
       <BackgroundFX />
@@ -380,7 +379,7 @@
               <view class="alert-rt">
                 <text class="alert-rt-label">当前实时价</text>
                 <text class="alert-rt-price" :class="trendCls(alertRT?.chg)">{{ alertRT ? fmtPrice(alertRT.price) : '—' }}</text>
-                <text class="alert-rt-sub" v-if="alertRT">{{ fmtSigned(alertRT.chg) }} · {{ fmtPct(alertRT.pct) }}</text>
+                <text class="alert-rt-sub" :class="trendCls(alertRT?.chg)" v-if="alertRT">{{ fmtSigned(alertRT.chg) }} · {{ fmtPct(alertRT.pct) }}</text>
                 <text class="alert-rt-sub" v-else>实时价获取中…</text>
               </view>
               <view class="grp-list">
@@ -421,6 +420,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch, onMounted, onActivated, onDeactivated, onUnmounted } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
+import PageHeader from "@/components/PageHeader.vue";
 import PeekSheet from "@/components/PeekSheet.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import RankView from "@/views/RankView.vue";
@@ -1160,29 +1160,11 @@ function removeLp() {
 }
 
 /* ===== 头部（固定不随滚动；与社区 CommunityView 视觉一致） ===== */
-.cm-header {
-  flex: none;
-  position: relative;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8rpx 18rpx 10rpx;
-  background: var(--sticky-bg);
-  backdrop-filter: blur(16rpx) saturate(140%);
-  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
-  box-shadow: var(--sticky-shadow);
-}
-.cm-brand {
-  font-size: 30rpx;
-  font-weight: 700;
-  letter-spacing: 1rpx;
-  color: var(--text);
-}
+.cm-header,
+.cm-brand,
 .cm-right {
-  display: flex;
-  align-items: center;
-  gap: 14rpx;
+  /* 顶部栏外壳已迁出至 PageHeader.vue，这里保留空规则仅用于兼容历史选择器残留，
+     后续如确认无引用可彻底删除。当前选择器仍可能在子组件被外部全局样式命中。 */
 }
 /* 实时涨/跌个股数：并入分组按钮，故去独立背景，仅以细分隔线区分于分组名 */
 .ud-pill {
@@ -1209,17 +1191,19 @@ function removeLp() {
 .ud-num.down {
   color: var(--down);
 }
+/* 「分组 / 我的」胶囊：与社区共用视觉；头像 48rpx + 字 26rpx 与新顶部栏协调 */
 .cm-me {
   display: flex;
   align-items: center;
-  gap: 10rpx;
-  padding: 6rpx 14rpx;
+  gap: 12rpx;
+  padding: 6rpx 18rpx 6rpx 6rpx;
   border-radius: 999rpx;
   background: var(--card-2);
+  box-shadow: inset 0 0 0 1rpx var(--tabbar-border);
 }
 .cm-avatar {
-  width: 44rpx;
-  height: 44rpx;
+  width: 48rpx;
+  height: 48rpx;
   border-radius: 50%;
   overflow: hidden;
   flex: none;
@@ -1228,10 +1212,10 @@ function removeLp() {
   justify-content: center;
 }
 .cm-name {
-  font-size: 22rpx;
+  font-size: 26rpx;
   font-weight: 400;
   color: var(--text);
-  max-width: 120rpx;
+  max-width: 140rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1369,6 +1353,7 @@ function removeLp() {
 .wl-body > .tr:first-of-type {
   margin-top: auto;
 }
+/* 表头：实色背景（--bg-2 是 #ffffff/暗主题 #0a1322，纯色而非透明），保证清晰对比 */
 .wl-thead {
   position: sticky;
   top: 0;
@@ -1383,13 +1368,14 @@ function removeLp() {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  height: 64rpx;
-  padding: 0 18rpx;
-  font-size: 26rpx;
-  font-weight: 400;
-  color: var(--text);
+  height: 68rpx;
+  padding: 0 16rpx;
+  font-size: 25rpx;
+  font-weight: 500;
+  color: var(--text-2);
   text-align: right;
   cursor: pointer;
+  position: relative;
 }
 /* 表头名称列：与数据列同为固定列（左上角最高层级），背景同数据行；左内边距与顶部栏一致(18rpx) */
 .th.c-name {
@@ -1399,25 +1385,47 @@ function removeLp() {
   left: 0;
   z-index: 6;
   background: var(--bg-2);
-  padding: 0 18rpx 0 18rpx;
+  padding: 0 16rpx 0 18rpx;
 }
 /* 表头可排序：箭头指示 + 激活态高亮 */
 .th-label {
   white-space: nowrap;
+  letter-spacing: 0.5rpx;
 }
+/* 排序激活：主色文字 + 顶部小色块提示（脱离上下小箭头，用更直观的方式） */
+.th.active {
+  color: var(--primary);
+  font-weight: 700;
+}
+.th.active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 14rpx;
+  left: 14rpx;
+  height: 4rpx;
+  border-radius: 0 0 4rpx 4rpx;
+  background: linear-gradient(90deg, var(--primary), var(--primary-dark, #06a050));
+}
+.th.c-name.active::before {
+  right: 16rpx;
+  left: 16rpx;
+}
+/* 排序指示器：双箭头加粗，未激活态透明灰、激活态主色 */
 .sort-ic {
-  display: flex;
+  display: inline-flex;
   flex-direction: column;
   justify-content: center;
-  gap: 4rpx;
-  margin-left: 4rpx;
-  width: 16rpx;
+  gap: 3rpx;
+  margin-left: 6rpx;
+  width: 14rpx;
 }
 .sort-ic .ar {
   width: 0;
   height: 0;
   border-left: 5rpx solid transparent;
   border-right: 5rpx solid transparent;
+  transition: border-color 0.18s ease;
 }
 .sort-ic .ar.up {
   border-bottom: 6rpx solid var(--text-3);
@@ -1425,14 +1433,16 @@ function removeLp() {
 .sort-ic .ar.dn {
   border-top: 6rpx solid var(--text-3);
 }
+.th:hover .sort-ic .ar.up,
+.th:hover .sort-ic .ar.dn {
+  border-bottom-color: var(--text-2);
+  border-top-color: var(--text-2);
+}
 .th.active .sort-ic .ar.up.on {
   border-bottom-color: var(--primary);
 }
 .th.active .sort-ic .ar.dn.on {
   border-top-color: var(--primary);
-}
-.th.active .sort-ic {
-  color: var(--primary);
 }
 .tr {
   background: var(--bg-2);
@@ -1625,6 +1635,9 @@ function removeLp() {
   font-size: 24rpx;
   color: var(--text-3);
 }
+.alert-rt-sub.up { color: var(--up); }
+.alert-rt-sub.down { color: var(--down); }
+.alert-rt-sub.flat { color: var(--text-3); }
 /* 已设阈值回显（选项标题内联） */
 .alert-cur {
   color: var(--text-2);

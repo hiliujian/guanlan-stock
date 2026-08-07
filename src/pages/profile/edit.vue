@@ -22,8 +22,15 @@
             <view v-else class="ep-spin" />
           </view>
         </view>
-        <text class="ep-hero-tip">点击头像可更换</text>
+        <text class="ep-hero-tip">点击头像可裁剪调整</text>
       </view>
+
+      <!-- 头像裁剪弹窗 -->
+      <AvatarCropper
+        v-model="cropperVisible"
+        :src="cropperSrc"
+        @confirm="onCropped"
+      />
 
       <!-- 基本资料（含保存按钮） -->
       <view class="card ep-card anim-fade-up" :style="{ animationDelay: '60ms' }">
@@ -66,6 +73,7 @@
 import { ref, computed, watch } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
+import AvatarCropper from "@/components/AvatarCropper.vue";
 import { useUser, refreshProfile } from "@/store/user";
 import { updateProfile, uploadAvatar } from "@/api/auth";
 import { avatarGradient, avatarChar, avatarSeed } from "@/utils/avatar";
@@ -78,6 +86,10 @@ const bio = ref("");
 const saving = ref(false);
 const avatarUrl = ref("");
 const uploading = ref(false);
+
+// 裁剪弹窗状态
+const cropperVisible = ref(false);
+const cropperSrc = ref("");
 
 // 默认头像（底色 + 首字）以「不变身份」为种子：昵称修改不改变，
 // 仅当用户自行上传图片头像时才替换。
@@ -104,35 +116,50 @@ function back() {
   uni.navigateBack({ delta: 1 });
 }
 
+/**
+ * 流程：选图 → 弹出裁剪弹窗 → 用户调整 → 确认后上传
+ * - 选图后不入上传，先把临时路径传入弹窗预览与裁剪
+ * - 裁剪回调拿到 dataURL/本地路径后，再走 uploadAvatar + updateProfile
+ */
 function chooseAvatar() {
   if (uploading.value) return;
   uni.chooseImage({
     count: 1,
     sizeType: ["compressed"],
     sourceType: ["album", "camera"],
-    success: async (res: any) => {
+    success: (res: any) => {
       const path = res.tempFilePaths?.[0] || res.tempFiles?.[0]?.path;
       if (!path) return;
-      uploading.value = true;
-      const r = await uploadAvatar(path);
-      uploading.value = false;
-      if (r.url) {
-        avatarUrl.value = r.url;
-        const s = await updateProfile({ avatar_url: r.url });
-        if (!s.ok) {
-          uni.showToast({ title: s.error || "保存失败", icon: "none" });
-          return;
-        }
-        await refreshProfile();
-        uni.showToast({ title: "头像已更新", icon: "success" });
-      } else {
-        uni.showToast({ title: r.error || "上传失败", icon: "none" });
-      }
+      cropperSrc.value = path;
+      cropperVisible.value = true;
     },
     fail: () => {
       /* 用户取消选择，静默 */
     },
   });
+}
+
+async function onCropped(payload: { dataURL: string }) {
+  const finalPath = payload.dataURL;
+  if (!finalPath) return;
+  uploading.value = true;
+  try {
+    const r = await uploadAvatar(finalPath);
+    if (r.url) {
+      avatarUrl.value = r.url;
+      const s = await updateProfile({ avatar_url: r.url });
+      if (!s.ok) {
+        uni.showToast({ title: s.error || "保存失败", icon: "none" });
+        return;
+      }
+      await refreshProfile();
+      uni.showToast({ title: "头像已更新", icon: "success" });
+    } else {
+      uni.showToast({ title: r.error || "上传失败", icon: "none" });
+    }
+  } finally {
+    uploading.value = false;
+  }
 }
 
 async function save() {

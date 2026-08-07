@@ -418,11 +418,12 @@ textarea {
 .auth-content {
   position: relative;
   z-index: 1;
-  /* 父级 .auth-page 已是 border-box + min-height:100vh + padding-top:env(safe-area-inset-top)。
-     此处必须减去安全区，否则子级再要一个 100vh 会超出父级内容框 safe-area 高度 → 二次溢出滚动条 + 顶部空白。
-     配合 border-box，padding(130rpx/96rpx) 已含在内，居中区域 = (100vh - 安全区) - 上下预留。 */
-  min-height: calc(100vh - env(safe-area-inset-top, 0px));
-  min-height: calc(100dvh - env(safe-area-inset-top, 0px));
+  /* 修复浏览器兼容（Via / 老 WebKit 等）：不再使用 min-height:calc(100vh - 安全区)，
+     因为部分浏览器对 100vh 计算含地址栏高度，导致双重 100vh 嵌套后整页高度超出视口，
+     配合 padding-top 安全区呈现为顶部大空白 + 可滚动；同样地，calc 把视口算矮会让表单偏上。
+     改为继承父级 min-height:100vh 的高度（父级 .auth-page 已是 border-box 含 padding），
+     子级用 height:100% 自然贴合，跨浏览器表现一致。 */
+  height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: center; /* 观澜 + 输入框整体垂直居中 */

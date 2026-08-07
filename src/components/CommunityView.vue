@@ -1,14 +1,15 @@
 <template>
   <view class="cm-root">
-    <!-- 顶部：品牌 + 我的昵称 / 头像（可点击编辑），固定不随滚动 -->
-    <view class="cm-header">
-      <text class="cm-brand">社区</text>
-      <view class="cm-me" @click="toggleEdit">
-        <view class="cm-avatar" :style="{ background: myAvatarBg }">{{ myChar }}</view>
-        <text class="cm-name">{{ myName }}</text>
-        <OutlineIcon type="gear" :size="24" color="var(--text-2)" />
-      </view>
-    </view>
+    <!-- 顶部：品牌 + 我的昵称 / 头像（可点击编辑），与自选共用 PageHeader -->
+    <PageHeader brand-text="社区" brand-icon="chatbubble">
+      <template #right>
+        <view class="cm-me" @click="toggleEdit">
+          <view class="cm-avatar" :style="{ background: myAvatarBg }">{{ myChar }}</view>
+          <text class="cm-name">{{ myName }}</text>
+          <OutlineIcon type="gear" :size="24" color="var(--text-2)" />
+        </view>
+      </template>
+    </PageHeader>
 
     <!-- 可滚动内容区 -->
     <scroll-view class="cm-scroll" scroll-y>
@@ -76,6 +77,7 @@ import { ref, computed, onActivated, watch } from "vue";
 // 声明后 Vue 按自定义事件处理，避免 extraneous 告警。本组件自身不触发该事件。
 defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
 import OutlineIcon from "./OutlineIcon.vue";
+import PageHeader from "./PageHeader.vue";
 import PostComposer from "./PostComposer.vue";
 import PostCard from "./PostCard.vue";
 import { useCommunity } from "@/store/community";
@@ -224,36 +226,23 @@ defineExpose({ refresh: load });
   min-height: 0;
   height: auto;
 }
-.cm-header {
-  flex: none;
-  position: relative;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8rpx 18rpx 10rpx;
-  background: var(--sticky-bg);
-  backdrop-filter: blur(16rpx) saturate(140%);
-  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
-  box-shadow: var(--sticky-shadow);
-}
+.cm-header,
 .cm-brand {
-  font-size: 30rpx;
-  font-weight: 700;
-  letter-spacing: 1rpx;
-  color: var(--text);
+  /* 顶部栏外壳已迁出至 PageHeader.vue，保留空规则兼容历史选择器 */
 }
+/* 「我」的胶囊：自选/社区共用，与新顶部栏高度协调：头像 48rpx + 字 26rpx */
 .cm-me {
   display: flex;
   align-items: center;
-  gap: 10rpx;
-  padding: 6rpx 14rpx;
+  gap: 12rpx;
+  padding: 6rpx 18rpx 6rpx 6rpx;
   border-radius: 999rpx;
   background: var(--card-2);
+  box-shadow: inset 0 0 0 1rpx var(--tabbar-border);
 }
 .cm-avatar {
-  width: 44rpx;
-  height: 44rpx;
+  width: 48rpx;
+  height: 48rpx;
   border-radius: 50%;
   overflow: hidden;
   flex: none;
@@ -262,13 +251,13 @@ defineExpose({ refresh: load });
   justify-content: center;
   font-weight: 700;
   color: #fff;
-  font-size: 22rpx;
+  font-size: 24rpx;
 }
 .cm-name {
-  font-size: 22rpx;
-  font-weight: 600;
+  font-size: 26rpx;
+  font-weight: 400;
   color: var(--text);
-  max-width: 160rpx;
+  max-width: 180rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -1,134 +1,103 @@
 <template>
   <view class="card auth-form anim-rise-soft">
-    <text class="auth-lead">登录后从云端同步自选股与资料。</text>
+    <text class="auth-lead">{{ leadText }}</text>
 
-    <view v-if="!isSupabaseConfigured" class="auth-warn">
-      后端服务未配置，登录功能暂不可用。请部署时在 Vercel 注入
-      <text class="auth-warn-code">VITE_SUPABASE_URL</text> /
-      <text class="auth-warn-code">VITE_SUPABASE_ANON_KEY</text> 后重新构建。
-    </view>
-
+    <!-- 邮箱 -->
     <AuthField
-      icon="person"
-      v-model="identifier"
-      placeholder="用户名或邮箱"
-      :error="errors.identifier"
-      @input="errors.identifier = ''"
-      @blur="validateIdentifier"
+      icon="mail"
+      v-model="email"
+      placeholder="邮箱"
+      :error="errors.email"
+      @input="errors.email = ''"
+      @blur="validateEmail"
     />
+
+    <!-- 密码 + 可见性切换 -->
     <AuthField
       icon="locked"
       v-model="password"
-      placeholder="密码（至少 6 位）"
-      password
+      placeholder="密码"
+      show-toggle
       :error="errors.password"
       @input="errors.password = ''"
-      @blur="validatePassword"
     />
 
-    <!-- 后端错误：保留用户输入，仅高亮提示，绝不清空 -->
+    <!-- 后端错误兜底（保留用户输入，仅提示） -->
     <view v-if="serverErr" class="auth-server-err">{{ serverErr }}</view>
 
+    <!-- 底部提交按钮 -->
     <button
-      :class="['btn-primary', 'auth-submit', loading ? 'is-disabled' : '']"
-      :disabled="loading"
+      :class="['btn-primary', 'auth-submit', (loading || done) ? 'is-disabled' : '']"
+      :disabled="loading || done"
       @click="submit"
     >
       <view v-if="loading" class="btn-spin" />
-      <text>{{ loading ? "登录中…" : "登录" }}</text>
+      <text v-if="done">{{ doneText }}</text>
+      <text v-else-if="loading">{{ loadingText }}</text>
+      <text v-else>{{ submitText }}</text>
     </button>
+    <text v-if="done" class="auth-sent-tip">正在进入应用…</text>
   </view>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive } from "vue";
 import AuthField from "./AuthField.vue";
-import { signInByIdentifier, USERNAME_RE, EMAIL_RE } from "@/api/auth";
-import { isSupabaseConfigured } from "@/config/app";
+import { signIn, EMAIL_RE } from "@/api/auth";
 
-const props = defineProps<{ mode: "login" }>();
-const emit = defineEmits<{
-  (e: "authed"): void;
-}>();
+withDefaults(
+  defineProps<{
+    mode?: "login";
+  }>(),
+  { mode: "login" }
+);
+const emit = defineEmits<{ (e: "authed"): void }>();
 
-const identifier = ref("");
+const email = ref("");
 const password = ref("");
 const loading = ref(false);
+const done = ref(false);
 const serverErr = ref("");
-const errors = reactive<{ identifier: string; password: string }>({ identifier: "", password: "" });
+const errors = reactive({ email: "", password: "" });
 
-// 失焦校验：用户名或邮箱形态 + 密码长度（提交时另有完整兜底）
-function validateIdentifier() {
-  const id = identifier.value.trim();
-  if (!id) {
-    errors.identifier = "请输入用户名或邮箱";
-    return;
-  }
-  if (!EMAIL_RE.test(id) && !USERNAME_RE.test(id)) {
-    errors.identifier = "请输入有效的用户名或邮箱";
-  }
-}
+// 文案常量（不随 props 变化，组件当前只支持 login 一种模式，无需 computed）
+const submitText = "登录";
+const loadingText = "登录中…";
+const doneText = "登录成功 ✓";
+const leadText = "登录后解锁完整报告与自选功能。";
 
-function validatePassword() {
-  if (password.value && password.value.length < 6) {
-    errors.password = "密码至少 6 位";
-  }
+function validateEmail() {
+  const e = email.value.trim();
+  errors.email = e && !EMAIL_RE.test(e) ? "请输入有效的邮箱地址" : "";
 }
 
 async function submit() {
-  // 每次提交先清空上一次的错误，避免残留
   serverErr.value = "";
-  errors.identifier = "";
+  errors.email = "";
   errors.password = "";
-  const id = identifier.value.trim();
+  const e = email.value.trim();
   const p = password.value;
-  // 前端校验：保留输入，字段下方内联提示
-  // 用户名或邮箱均可：含 @ 走邮箱格式校验，否则校验用户名规则
-  if (!id) {
-    errors.identifier = "请输入用户名或邮箱";
+  if (!e || !EMAIL_RE.test(e)) {
+    errors.email = "请输入有效的邮箱地址";
     return;
   }
-  if (EMAIL_RE.test(id)) {
-    // 邮箱：格式由 Supabase 兜底，这里仅做基本形态校验
-  } else if (!USERNAME_RE.test(id)) {
-    errors.identifier = "用户名须为 3-20 位中英文 / 数字 / 下划线";
-    return;
-  }
-  if (p.length < 6) {
-    errors.password = "密码至少 6 位";
+  if (!p) {
+    errors.password = "请输入密码";
     return;
   }
   loading.value = true;
   try {
-    const r = await signInByIdentifier(id, p);
+    const r = await signIn(e, p);
     if (!r.ok) {
-      serverErr.value = r.error || "登录失败";
+      serverErr.value = r.error || "登录失败，请检查邮箱或密码";
       return;
     }
+    done.value = true;
     emit("authed");
   } catch (err: any) {
-    serverErr.value = err?.message || "操作失败，请重试";
+    serverErr.value = err?.message || "登录失败，请重试";
   } finally {
     loading.value = false;
   }
 }
-
 </script>
-
-<style scoped>
-.auth-warn {
-  margin: 4rpx 0 18rpx;
-  padding: 18rpx 20rpx;
-  border-radius: 14rpx;
-  background: rgba(255, 159, 64, 0.14);
-  border: 1rpx solid rgba(255, 159, 64, 0.45);
-  color: #b26a00;
-  font-size: 24rpx;
-  line-height: 1.65;
-}
-.auth-warn-code {
-  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-  font-weight: 600;
-  color: #8a5200;
-}
-</style>

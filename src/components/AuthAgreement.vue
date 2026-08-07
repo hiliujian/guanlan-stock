@@ -1,26 +1,44 @@
 <template>
   <view class="agree">
     <text class="agree-text">
-      <text>{{ action }}即表示同意</text>
-      <text class="lk" @click.stop="open('user')">《用户协议》</text>
-      <text>与</text>
-      <text class="lk" @click.stop="open('privacy')">《隐私政策》</text>
+      {{ action }}{{ productName }}即视为同意
+      <text class="lk" @click="openUrl(termsUrl)">《服务协议》</text>
+      与
+      <text class="lk" @click="openUrl(privacyUrl)">《隐私政策》</text>
     </text>
   </view>
 </template>
 
 <script setup lang="ts">
-// 主流做法：使用即视为已同意，不再要求手动勾选。
-// 文案统一为「使用即表示同意」，三页一致；action 仅作兜底，默认即为「使用」。
-const props = defineProps<{
-  action?: string;
-}>();
+/**
+ * 协议声明（登录 / 注册 / 找回密码 页脚）
+ * - 使用即视为已同意（主流小程序做法），不需要勾选
+ * - 链接通过 uni API 打开，便于后续接入内置 H5 预览
+ */
+withDefaults(
+  defineProps<{
+    action?: string;
+    productName?: string;
+    termsUrl?: string;
+    privacyUrl?: string;
+  }>(),
+  {
+    action: "继续",
+    productName: "观澜",
+    termsUrl: "",
+    privacyUrl: "",
+  }
+);
 
-function open(_kind: "user" | "privacy") {
-  // 条款页尚未上线：临时以 toast 占位，待补充 H5 静态条款页后可替换为跳转
-  uni.showToast({ title: "条款页即将上线", icon: "none" });
+function openUrl(url: string) {
+  if (!url) return;
+  // #ifdef H5
+  window.open(url, "_blank");
+  // #endif
+  // #ifndef H5
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (uni as any).setClipboardData({ data: url });
+  uni.showToast({ title: "链接已复制", icon: "none" });
+  // #endif
 }
-
-// 默认兜底为「使用」，避免漏传时文案缺失；三页现已统一传「使用」
-const action = props.action ?? "使用";
 </script>
