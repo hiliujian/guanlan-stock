@@ -76,7 +76,6 @@
           <text class="empty-t">开始智能分析</text>
           <text class="empty-s">输入代码或名称，查看行情、K 线与 AI 研判</text>
           <view class="empty-divider" />
-          <HotSearchPanel ref="hotPanel" @open="pickOne" />
         </view>
       </view>
 
@@ -119,6 +118,9 @@
         </AnalysisCard>
 
       </block>
+
+      <!-- 今日热门：常驻展示（空态/结果态均可见），基于后端当日真实搜索行为统计 -->
+      <HotSearchPanel ref="hotPanel" @open="pickOne" />
 
       <view v-if="result" class="risk-note">
         <OutlineIcon type="info" :size="22" color="var(--text-2)" />
@@ -509,8 +511,8 @@ async function run(forceMarket?: Market, track = true) {
     name.value = b.name || chosen.value?.name || name.value || curCode.value;
     pushHistory({ code: curCode.value, name: name.value });
     if (track) {
-      recordSearch(curCode.value, name.value); // 用户主动搜索计入今日热搜
-      hotPanel.value?.load(); // 搜索后立即刷新「今日热搜」面板，真实反映行为
+      // 用户主动搜索计入今日热搜；写入完成后再刷新面板，确保刚搜索的个股立即上榜
+      recordSearch(curCode.value, name.value).finally(() => hotPanel.value?.load());
     }
     preClose.value = b.preClose;
     realtime.value = b.realtime;

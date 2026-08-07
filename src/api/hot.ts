@@ -29,12 +29,13 @@ export async function fetchHotSearches(limit = 8): Promise<HotStock[]> {
   }
 }
 
-// 记录一次搜索（当日计数 +1；异步失败静默，不阻塞搜索流程）
-export function recordSearch(code: string, name: string): void {
+// 记录一次搜索（当日计数 +1；失败静默，不阻塞搜索流程）。返回 Promise 以便调用方在写入完成后再刷新榜单。
+export async function recordSearch(code: string, name: string): Promise<void> {
   const sb = getSupabase();
   if (!sb || !code) return;
-  sb.rpc("log_stock_search", { p_code: code, p_name: name }).then(
-    () => {},
-    () => {}
-  );
+  try {
+    await sb.rpc("log_stock_search", { p_code: code, p_name: name });
+  } catch {
+    // 静默：写入失败不影响搜索主流程
+  }
 }

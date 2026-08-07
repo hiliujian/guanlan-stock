@@ -1,11 +1,11 @@
 <template>
-  <view v-if="list.length" class="hot anim-fade-up">
+  <view class="hot anim-fade-up">
     <view class="hot-head">
       <text class="hot-title">今日热门</text>
       <view class="hot-dot" />
       <text v-if="loading" class="hot-refresh">刷新中…</text>
     </view>
-    <view class="hot-chips">
+    <view v-if="list.length" class="hot-chips">
       <view
         v-for="(s, i) in list"
         :key="s.code"
@@ -21,6 +21,10 @@
         </view>
         <text class="chip-count">{{ s.count }}</text>
       </view>
+    </view>
+    <view v-else class="hot-empty">
+      <text class="hot-empty-t">今日暂无搜索热点</text>
+      <text class="hot-empty-s">搜索个股即可登上今日热门</text>
     </view>
   </view>
 </template>
@@ -55,6 +59,24 @@ defineExpose({ load });
 .hot {
   width: 100%;
   margin-top: 36rpx;
+}
+.hot-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  padding: 28rpx 20rpx;
+  border-radius: 16rpx;
+  background: var(--card-2);
+  border: 1rpx dashed var(--border);
+}
+.hot-empty-t {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.hot-empty-s {
+  font-size: 20rpx;
+  color: var(--text-3);
 }
 .hot-head {
   display: flex;
