@@ -1558,8 +1558,12 @@ function removeLp() {
   min-height: 0;
   padding: 6rpx 0;
 }
+/* scroll-view 真实内容容器：H5 下为 .uni-scroll-view-content，组件默认 height:100%。
+   改用 height:auto：内容不足一屏时（如仅一个「分组名」输入框）容器按内容高度撑开，
+   由外层 scroll-view 在真正溢出时才滚动，避免内容很少却仍出现滚动条的视觉问题；
+   内容超一屏时容器随内容增高，正常滚动。与 .wl-grid 同款修复保持一致。 */
 .grp-body :deep(.uni-scroll-view-content) {
-  height: 100%;
+  height: auto;
 }
 .grp-item {
   display: flex;
