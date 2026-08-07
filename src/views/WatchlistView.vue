@@ -56,7 +56,7 @@
           <view class="wl-rows">
           <view class="wl-thead">
             <view class="th c-name">
-              <view class="th-cols" :class="{ on: reorderMode || showCols }">
+              <view class="th-cols" :class="{ on: reorderMode || activePanel === 'cols' }">
                 <view
                   class="th-ic grip"
                   :class="{ on: reorderMode }"
@@ -66,8 +66,8 @@
                 >
                   <OutlineIcon type="grip" :size="28" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
                 </view>
-                <view class="th-ic" :class="{ on: showCols }" role="button" aria-label="列设置" @click="showCols = true">
-                  <OutlineIcon type="columns" :size="28" :color="showCols ? 'var(--primary)' : 'var(--text-3)'" />
+                <view class="th-ic" :class="{ on: activePanel === 'cols' }" role="button" aria-label="列设置" @click="openCols">
+                  <OutlineIcon type="columns" :size="28" :color="activePanel === 'cols' ? 'var(--primary)' : 'var(--text-3)'" />
                 </view>
               </view>
             </view>
@@ -176,33 +176,12 @@
           </view>
         </scroll-view>
 
-        <!-- 显示列：与热榜/分组同款统一窗体（无遮罩） -->
-        <PeekSheet :model-value="showCols" @update:model-value="(v: boolean) => (showCols = v)">
-          <template #default>
-            <view class="col-head">
-              <text class="col-title">显示列</text>
-            </view>
-            <view class="col-list">
-              <view
-                v-for="c in colDefs"
-                :key="c.key"
-                class="col-item"
-                :class="{ off: !cols[c.key] }"
-                role="button"
-                @click="toggleCol(c.key)"
-              >
-                <text class="col-name">{{ c.label }}</text>
-                <view class="col-sw" :class="{ on: cols[c.key] }"><view class="col-knob" /></view>
-              </view>
-            </view>
-            <text class="col-tip">设置仅保存在本机，不影响其他设备</text>
-          </template>
-        </PeekSheet>
-
-        <!-- 底部卡片：固定常驻于菜单栏上方(始终可见)，本地展开/收起，无遮罩层 -->
-        <PeekSheet ref="rankSheet" persistent>
+        <!-- 统一底部窗体：固定常驻于菜单栏上方(始终可见)，折叠露出「今日最热」卡片；
+             展开后按 activePanel 切换 榜单 / 我的分组 / 显示列 三种内容；
+             三套内容共用同一窗体、同一套折叠/展开/铺满手势与动效，避免重复样式与代码 -->
+        <PeekSheet ref="sheet" @collapse="activePanel = 'rank'">
           <template #peek>
-            <view class="rp-row" role="button" aria-label="展开榜单">
+            <view class="rp-row" role="button" aria-label="展开底部面板">
               <text class="rp-top">今日最热</text>
               <view class="rp-main">
                 <text class="rp-name">{{ peek ? peek.name : '--' }}</text>
@@ -216,141 +195,161 @@
             </view>
           </template>
           <template #default>
-            <view class="rs-tabs">
-              <view class="rs-tab" :class="{ on: rankTab === 'today' }" @click="rankTab = 'today'">今日热榜</view>
-              <view class="rs-tab" :class="{ on: rankTab === 'all' }" @click="rankTab = 'all'">完整榜单</view>
-              <view class="rs-ink" :class="{ right: rankTab === 'all' }"><view class="rs-ink-bar" /></view>
-            </view>
-            <scroll-view class="rs-body" scroll-y>
-              <RankView :mode="rankTab" @open-market="onSheetOpenMarket" />
-            </scroll-view>
-          </template>
-        </PeekSheet>
+            <!-- 榜单：今日热榜 / 完整榜单 -->
+            <template v-if="activePanel === 'rank'">
+              <view class="rs-tabs">
+                <view class="rs-tab" :class="{ on: rankTab === 'today' }" @click="rankTab = 'today'">今日热榜</view>
+                <view class="rs-tab" :class="{ on: rankTab === 'all' }" @click="rankTab = 'all'">完整榜单</view>
+                <view class="rs-ink" :class="{ right: rankTab === 'all' }"><view class="rs-ink-bar" /></view>
+              </view>
+              <scroll-view class="rs-body" scroll-y>
+                <RankView :mode="rankTab" @open-market="onSheetOpenMarket" />
+              </scroll-view>
+            </template>
 
-        <!-- 分组切换面板：与热榜/显示列同款统一窗体（非模态）——固定底部、无遮罩、玻璃质感；
-             我的分组 / 新建分组 / 移入分组 / 管理分组 共用同一窗体，点击切换内容；
-             支持下拉收起(groupOpen=false) / 上拉铺满页面 -->
-        <PeekSheet :model-value="groupOpen" @update:model-value="(v: boolean) => (groupOpen = v)">
-          <template #default>
-          <view class="grp-head">
-            <view v-if="groupView !== 'main'" class="grp-back" role="button" aria-label="返回" @click="groupBack"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
-            <text class="grp-title">{{ groupTitle }}</text>
-          </view>
-          <scroll-view class="grp-body" scroll-y>
-            <!-- 主视图：我的分组 + 三个入口 -->
-            <template v-if="groupView === 'main'">
-              <view class="grp-section">
+            <!-- 我的分组：主视图 / 新建 / 移入 / 管理 共用同一内容容器，按 groupView 切换 -->
+            <template v-else-if="activePanel === 'group'">
+              <view class="grp-head">
+                <view v-if="groupView !== 'main'" class="grp-back" role="button" aria-label="返回" @click="groupBack"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
+                <text class="grp-title">{{ groupTitle }}</text>
+              </view>
+              <scroll-view class="grp-body" scroll-y>
+                <!-- 主视图：我的分组 + 三个入口 -->
+                <template v-if="groupView === 'main'">
+                  <view class="grp-section">
+                    <view
+                      v-for="row in groupRows"
+                      :key="row.key"
+                      class="grp-item"
+                      :class="{ active: row.active }"
+                      hover-class="grp-item-hover"
+                      @click="pickGroup(row.key)"
+                    >
+                      <text class="grp-label">{{ row.label }}</text>
+                      <OutlineIcon v-if="row.active" type="check" :size="30" color="var(--primary)" />
+                    </view>
+                  </view>
+                  <view class="grp-list">
+                    <view class="grp-item" role="button" @click="openNewGroup">
+                      <OutlineIcon type="plus" :size="28" color="var(--primary)" />
+                      <text class="grp-label">新建分组</text>
+                    </view>
+                    <view class="grp-item" role="button" @click="openMove">
+                      <OutlineIcon type="layers" :size="28" color="var(--text-2)" />
+                      <text class="grp-label">移入分组</text>
+                    </view>
+                    <view v-if="groups.length" class="grp-item" role="button" @click="openManage">
+                      <OutlineIcon type="gear" :size="28" color="var(--text-2)" />
+                      <text class="grp-label">管理分组</text>
+                    </view>
+                  </view>
+                </template>
+
+                <!-- 新建分组：步骤1 命名 -->
+                <template v-else-if="groupView === 'new' && newStep === 1">
+                  <view class="grp-form">
+                    <input class="grp-input" v-model="newName" :focus="groupView === 'new' && newStep === 1" placeholder="请输入分组名" @confirm="newNext" />
+                  </view>
+                </template>
+                <!-- 新建分组：步骤2 选择股票加入 -->
+                <template v-else-if="groupView === 'new'">
+                  <view class="grp-list">
+                    <view v-for="it in list" :key="keyOf(it)" class="grp-item" hover-class="grp-item-hover" @click="newPickStock(it)">
+                      <text class="grp-label">{{ it.name || it.code }}</text>
+                    </view>
+                  </view>
+                </template>
+
+                <!-- 移入分组：步骤1 选择股票 -->
+                <template v-else-if="groupView === 'move' && !moveStock">
+                  <view class="grp-list">
+                    <view v-for="it in list" :key="keyOf(it)" class="grp-item" hover-class="grp-item-hover" @click="movePickStock(it)">
+                      <text class="grp-label">{{ it.name || it.code }}</text>
+                    </view>
+                  </view>
+                </template>
+                <!-- 移入分组：步骤2 选择目标分组 -->
+                <template v-else-if="groupView === 'move' && !moveNew">
+                  <view class="grp-list">
+                    <view class="grp-item" hover-class="grp-item-hover" @click="doMoveTarget('')">
+                      <text class="grp-label">默认分组</text>
+                      <OutlineIcon v-if="selectedGroup === '__all__'" type="check" :size="30" color="var(--primary)" />
+                    </view>
+                    <view v-for="g in groups" :key="g" class="grp-item" hover-class="grp-item-hover" @click="doMoveTarget(g)">
+                      <text class="grp-label">{{ g }}</text>
+                      <OutlineIcon v-if="selectedGroup === g" type="check" :size="30" color="var(--primary)" />
+                    </view>
+                    <view class="grp-item" hover-class="grp-item-hover" @click="moveNew = true">
+                      <OutlineIcon type="plus" :size="28" color="var(--primary)" />
+                      <text class="grp-label">新建分组…</text>
+                    </view>
+                  </view>
+                </template>
+                <!-- 移入分组：内联新建分组名 -->
+                <template v-else-if="groupView === 'move'">
+                  <view class="grp-form">
+                    <input class="grp-input" v-model="moveNewName" :focus="moveNew" placeholder="请输入新分组名" @confirm="doMoveNew" />
+                  </view>
+                </template>
+
+                <!-- 管理分组：步骤1 选择分组 -->
+                <template v-else-if="groupView === 'manage' && !manageTarget">
+                  <view class="grp-list">
+                    <view v-for="g in groups" :key="g" class="grp-item" hover-class="grp-item-hover" @click="manageTarget = g; renameName = g; manageDel = false">
+                      <text class="grp-label">{{ g }}</text>
+                    </view>
+                  </view>
+                </template>
+                <!-- 管理分组：步骤2 重命名 / 删除 -->
+                <template v-else-if="groupView === 'manage'">
+                  <view class="grp-form">
+                    <input class="grp-input" v-model="renameName" :focus="!!manageTarget" placeholder="分组名" @confirm="doManageRename" />
+                  </view>
+                </template>
+              </scroll-view>
+
+              <!-- 底部操作条（仅子视图，无遮罩、无边框线） -->
+              <view v-if="groupView === 'new'" class="grp-foot">
+                <view class="grp-btn" role="button" @click="groupBack">取消</view>
+                <view class="grp-btn primary" role="button" @click="newNext">下一步</view>
+              </view>
+              <view v-else-if="groupView === 'move' && moveNew" class="grp-foot">
+                <view class="grp-btn" role="button" @click="moveNew = false">取消</view>
+                <view class="grp-btn primary" role="button" @click="doMoveNew">确定</view>
+              </view>
+              <view v-else-if="groupView === 'manage' && manageTarget" class="grp-foot">
+                <template v-if="!manageDel">
+                  <view class="grp-btn danger" role="button" @click="manageDel = true">删除分组</view>
+                  <view class="grp-btn primary" role="button" @click="doManageRename">重命名</view>
+                </template>
+                <template v-else>
+                  <view class="grp-btn" role="button" @click="manageDel = false">取消</view>
+                  <view class="grp-btn danger" role="button" @click="doManageDelete">确认删除</view>
+                </template>
+              </view>
+            </template>
+
+            <!-- 显示列：标题栏与「我的分组」共用 .grp-head/.grp-title，避免重复样式 -->
+            <template v-else-if="activePanel === 'cols'">
+              <view class="grp-head">
+                <text class="grp-title">显示列</text>
+              </view>
+              <view class="col-list">
                 <view
-                  v-for="row in groupRows"
-                  :key="row.key"
-                  class="grp-item"
-                  :class="{ active: row.active }"
-                  hover-class="grp-item-hover"
-                  @click="pickGroup(row.key)"
+                  v-for="c in colDefs"
+                  :key="c.key"
+                  class="col-item"
+                  :class="{ off: !cols[c.key] }"
+                  role="button"
+                  @click="toggleCol(c.key)"
                 >
-                  <text class="grp-label">{{ row.label }}</text>
-                  <OutlineIcon v-if="row.active" type="check" :size="30" color="var(--primary)" />
+                  <text class="col-name">{{ c.label }}</text>
+                  <view class="col-sw" :class="{ on: cols[c.key] }"><view class="col-knob" /></view>
                 </view>
               </view>
-              <view class="grp-list">
-                <view class="grp-item" role="button" @click="openNewGroup">
-                  <OutlineIcon type="plus" :size="28" color="var(--primary)" />
-                  <text class="grp-label">新建分组</text>
-                </view>
-                <view class="grp-item" role="button" @click="openMove">
-                  <OutlineIcon type="layers" :size="28" color="var(--text-2)" />
-                  <text class="grp-label">移入分组</text>
-                </view>
-                <view v-if="groups.length" class="grp-item" role="button" @click="openManage">
-                  <OutlineIcon type="gear" :size="28" color="var(--text-2)" />
-                  <text class="grp-label">管理分组</text>
-                </view>
-              </view>
+              <text class="col-tip">设置仅保存在本机，不影响其他设备</text>
             </template>
-
-            <!-- 新建分组：步骤1 命名 -->
-            <template v-else-if="groupView === 'new' && newStep === 1">
-              <view class="grp-form">
-                <input class="grp-input" v-model="newName" :focus="groupView === 'new' && newStep === 1" placeholder="请输入分组名" @confirm="newNext" />
-              </view>
-            </template>
-            <!-- 新建分组：步骤2 选择股票加入 -->
-            <template v-else-if="groupView === 'new'">
-              <view class="grp-list">
-                <view v-for="it in list" :key="keyOf(it)" class="grp-item" hover-class="grp-item-hover" @click="newPickStock(it)">
-                  <text class="grp-label">{{ it.name || it.code }}</text>
-                </view>
-              </view>
-            </template>
-
-            <!-- 移入分组：步骤1 选择股票 -->
-            <template v-else-if="groupView === 'move' && !moveStock">
-              <view class="grp-list">
-                <view v-for="it in list" :key="keyOf(it)" class="grp-item" hover-class="grp-item-hover" @click="movePickStock(it)">
-                  <text class="grp-label">{{ it.name || it.code }}</text>
-                </view>
-              </view>
-            </template>
-            <!-- 移入分组：步骤2 选择目标分组 -->
-            <template v-else-if="groupView === 'move' && !moveNew">
-              <view class="grp-list">
-                <view class="grp-item" hover-class="grp-item-hover" @click="doMoveTarget('')">
-                  <text class="grp-label">默认分组</text>
-                  <OutlineIcon v-if="selectedGroup === '__all__'" type="check" :size="30" color="var(--primary)" />
-                </view>
-                <view v-for="g in groups" :key="g" class="grp-item" hover-class="grp-item-hover" @click="doMoveTarget(g)">
-                  <text class="grp-label">{{ g }}</text>
-                  <OutlineIcon v-if="selectedGroup === g" type="check" :size="30" color="var(--primary)" />
-                </view>
-                <view class="grp-item" hover-class="grp-item-hover" @click="moveNew = true">
-                  <OutlineIcon type="plus" :size="28" color="var(--primary)" />
-                  <text class="grp-label">新建分组…</text>
-                </view>
-              </view>
-            </template>
-            <!-- 移入分组：内联新建分组名 -->
-            <template v-else-if="groupView === 'move'">
-              <view class="grp-form">
-                <input class="grp-input" v-model="moveNewName" :focus="moveNew" placeholder="请输入新分组名" @confirm="doMoveNew" />
-              </view>
-            </template>
-
-            <!-- 管理分组：步骤1 选择分组 -->
-            <template v-else-if="groupView === 'manage' && !manageTarget">
-              <view class="grp-list">
-                <view v-for="g in groups" :key="g" class="grp-item" hover-class="grp-item-hover" @click="manageTarget = g; renameName = g; manageDel = false">
-                  <text class="grp-label">{{ g }}</text>
-                </view>
-              </view>
-            </template>
-            <!-- 管理分组：步骤2 重命名 / 删除 -->
-            <template v-else-if="groupView === 'manage'">
-              <view class="grp-form">
-                <input class="grp-input" v-model="renameName" :focus="!!manageTarget" placeholder="分组名" @confirm="doManageRename" />
-              </view>
-            </template>
-          </scroll-view>
-
-          <!-- 底部操作条（仅子视图，无遮罩、无边框线） -->
-          <view v-if="groupView === 'new'" class="grp-foot">
-            <view class="grp-btn" role="button" @click="groupBack">取消</view>
-            <view class="grp-btn primary" role="button" @click="newNext">下一步</view>
-          </view>
-          <view v-else-if="groupView === 'move' && moveNew" class="grp-foot">
-            <view class="grp-btn" role="button" @click="moveNew = false">取消</view>
-            <view class="grp-btn primary" role="button" @click="doMoveNew">确定</view>
-          </view>
-          <view v-else-if="groupView === 'manage' && manageTarget" class="grp-foot">
-            <template v-if="!manageDel">
-              <view class="grp-btn danger" role="button" @click="manageDel = true">删除分组</view>
-              <view class="grp-btn primary" role="button" @click="doManageRename">重命名</view>
-            </template>
-            <template v-else>
-              <view class="grp-btn" role="button" @click="manageDel = false">取消</view>
-              <view class="grp-btn danger" role="button" @click="doManageDelete">确认删除</view>
-            </template>
-          </view>
-        </template>
+          </template>
         </PeekSheet>
       </view>
 
@@ -415,8 +414,10 @@ const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: s
 const wl = useWatchlist();
 const list = computed(() => wl.items as WatchItem[]);
 
-// 榜单弹层（统一窗体 PeekSheet, persistent）：默认展示「今日热榜 / 完整榜单」切换
-const rankSheet = ref<any>(null);
+// 统一底部窗体 PeekSheet（持久常驻）：折叠露出「今日最热」卡片，展开后按 activePanel
+// 切换 榜单 / 我的分组 / 显示列 三种内容；下拉收起时父组件通过 @collapse 复位到 rank。
+const sheet = ref<any>(null);
+const activePanel = ref<"rank" | "group" | "cols">("rank");
 const rankTab = ref<"today" | "all">("today");
 
 // 露出卡片预览数据：当前选中榜单的第 1 名（一行最热股）
@@ -461,8 +462,7 @@ const filteredList = computed(() => {
   return list.value.filter((i) => i.group === selectedGroup.value);
 });
 
-// 分组切换面板：统一窗体 PeekSheet（非模态，与热榜/显示列同款视觉）
-const groupOpen = ref(false);
+// 分组切换面板：统一窗体 PeekSheet 的 group 内容区（与热榜/显示列同窗体）
 const groupRows = computed(() => {
   const rows: { label: string; key: string; active: boolean }[] = [
     { label: "全部", key: "__all__", active: selectedGroup.value === "__all__" },
@@ -474,7 +474,7 @@ const groupRows = computed(() => {
 });
 function pickGroup(key: string) {
   selectedGroup.value = key;
-  groupOpen.value = false;
+  sheet.value?.collapse();
 }
 
 // 分组面板多视图：我的分组 / 新建分组 / 移入分组 / 管理分组 共用同一窗体
@@ -553,7 +553,7 @@ function newPickStock(it: WatchItem) {
   setItemGroup(it.code, it.market, name);
   selectedGroup.value = name;
   uni.showToast({ title: `已创建「${name}」`, icon: 'none' });
-  groupOpen.value = false;
+  sheet.value?.collapse();
 }
 
 function movePickStock(it: WatchItem) {
@@ -564,7 +564,7 @@ function doMoveTarget(grp: string) {
   setItemGroup(moveStock.value.code, moveStock.value.market, grp);
   selectedGroup.value = grp;
   uni.showToast({ title: `已移入${grp || '默认'}`, icon: 'none' });
-  groupOpen.value = false;
+  sheet.value?.collapse();
 }
 function doMoveNew() {
   const name = moveNewName.value.trim();
@@ -577,7 +577,7 @@ function doMoveNew() {
     selectedGroup.value = name;
   }
   uni.showToast({ title: `已移入${name}`, icon: 'none' });
-  groupOpen.value = false;
+  sheet.value?.collapse();
 }
 
 function doManageRename() {
@@ -723,11 +723,12 @@ function goPickMarket() {
   goTab("market");
 }
 
-// 分组管理入口：右上角「分组」pill 点击后，弹出与底部热榜弹窗同款的无遮罩底部面板，
-// 可切换分组（默认「全部」）并通过同一窗体进入 新建 / 移入 / 管理 三个子视图
+// 分组管理入口：右上角「分组」pill 点击后，复用底部统一窗体（与热榜/显示列同窗体），
+// 展开并切到 group 内容区；默认回到「我的分组」主视图
 function openGroups() {
   groupView.value = "main";
-  groupOpen.value = true;
+  activePanel.value = "group";
+  sheet.value?.expand();
 }
 
 // 下拉刷新（页面级 onPullDownRefresh，见 index.vue）：
@@ -804,7 +805,11 @@ function toggleCol(k: ColKey) {
     uni.setStorageSync(COLS_KEY, { ...cols });
   } catch (_) {}
 }
-const showCols = ref(false);
+// 列设置入口：复用底部统一窗体，展开并切到 cols 内容区（标题栏与「我的分组」共用）
+function openCols() {
+  activePanel.value = "cols";
+  sheet.value?.expand();
+}
 
 // ===== 自定义排序（拖拽手柄） =====
 const reorderMode = ref(false);
@@ -965,7 +970,7 @@ function ampPct(q: Snap): string {
 
 // 榜单弹层：点击热榜股票跳转行情页并收起弹层
 function onSheetOpenMarket(p: { code: string; market: string }) {
-  rankSheet.value?.collapse();
+  sheet.value?.collapse();
   emit("open-market", p);
 }
 
@@ -1628,7 +1633,7 @@ function showMoveGroup(it: WatchItem) {
   position: relative;
   flex: none;
   display: flex;
-  margin: 2rpx 24rpx 0;
+  margin: 0 24rpx;
   padding: 0 0 8rpx;
   border-bottom: 1rpx solid var(--border);
 }
@@ -1746,20 +1751,7 @@ function showMoveGroup(it: WatchItem) {
   background: var(--primary-soft);
 }
 
-/* ===== 列设置面板（与热榜/分组同款统一窗体 PeekSheet，无遮罩） ===== */
-.col-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 78rpx;
-  padding: 0 20rpx;
-}
-.col-title {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: var(--text);
-}
+/* ===== 列设置面板（与热榜/分组同款统一窗体 PeekSheet，无遮罩；标题栏复用 .grp-head/.grp-title） ===== */
 .col-list {
   margin-top: 12rpx;
   display: flex;
