@@ -11,9 +11,3 @@ export function toMarketSymbol(secid: string): string {
   if (m === "bj") return "bj" + code;
   return "sz" + code; // 深市 / 创业板 / 默认
 }
-
-// 把腾讯/新浪带前缀的代码（如 "sh600519" / "hk00700"）规整为纯数字代码，
-// 与东方财富搜索返回的纯数字代码保持一致，便于上层 resolveSecid 复用。
-export function normalizeCode(raw: string): string {
-  return (raw || "").replace(/[^0-9]/g, "");
-}

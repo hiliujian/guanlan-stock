@@ -116,14 +116,3 @@ export function parseTrend(s: string): Trend {
     avg: +a[7],
   };
 }
-
-export function dateStr(offsetDays: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  return (
-    "" +
-    d.getFullYear() +
-    String(d.getMonth() + 1).padStart(2, "0") +
-    String(d.getDate()).padStart(2, "0")
-  );
-}

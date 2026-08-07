@@ -416,7 +416,7 @@ import { fmtPrice, fmtPct, fmtSigned, fmtAmount } from "@/utils/format";
 const sheetExpanded = ref(false);
 const lpItem = ref<WatchItem | null>(null);
 function onSheetCollapse() {
-  // 下拉收起 / 点击手柄收起时复位面板状态（回到榜单），并清空长按目标
+  // 下拉拖拽收起 / 程序化 collapse() 时复位面板状态（回到榜单），并清空长按目标
   activePanel.value = "rank";
   sheetExpanded.value = false;
   lpItem.value = null;

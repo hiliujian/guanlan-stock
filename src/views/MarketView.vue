@@ -150,6 +150,7 @@ import {
   resolveSecid,
   marketFromSecid,
   codeFromSecid,
+  marketCharFor,
   type PeriodKey,
   type Market,
 } from "@/utils/period";
@@ -297,11 +298,9 @@ const curMarket = computed<Market>(() =>
 );
 
 // 市场徽标（沪/深/港/北）与纯代码：徽标样式对齐自选股 .mkt-tag，不并入代码文本
-const MKT_CHAR: Record<string, string> = { sh: "沪", sz: "深", bj: "北", hk: "港", auto: "" };
-const marketChar = computed(() => {
-  if (!secid.value) return "";
-  return MKT_CHAR[marketFromSecid(secid.value)] || "股";
-});
+const marketChar = computed(() =>
+  secid.value ? marketCharFor(codeFromSecid(secid.value), marketFromSecid(secid.value)) : ""
+);
 const rawCode = computed(() => (secid.value ? codeFromSecid(secid.value) : ""));
 
 // ---------------- 市场状态 + 实时刷新 ----------------
