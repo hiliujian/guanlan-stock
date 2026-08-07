@@ -35,6 +35,34 @@ export function openAuth(mode: "login" | "register" = "login") {
   uni.navigateTo({ url: `/pages/auth/${mode}` });
 }
 
+/**
+ * 登录成功后的可靠跳转：
+ * - 若登录页是通过 navigateTo 进入（页面栈存在上一页，如「我的」），优先 navigateBack
+ *   回到来源页，并保留 fail 兜底 reLaunch 首页；
+ * - 若登录页是栈底（App 启动未登录被 reLaunch 进来、或直接刷新登录页 URL），
+ *   直接 reLaunch 到首页。
+ *
+ * 关键修复：uni.navigateBack 在 H5 栈底时既不成功也不触发 fail 回调（history.back()
+ * 离站或空 history），会卡在登录页造成「登录成功却不跳转」。用 getCurrentPages()
+ * 显式判断栈深度，规避该跨端不可靠行为。
+ */
+export function goAfterAuth() {
+  const pages = getCurrentPages();
+  if (pages && pages.length > 1) {
+    uni.navigateBack({ fail: () => uni.reLaunch({ url: "/pages/index/index" }) });
+  } else {
+    uni.reLaunch({ url: "/pages/index/index" });
+  }
+}
+
+/** 注册 / 找回密码等「终点动作」成功后直接进首页（不回退来源）。带 fail 兜底。 */
+export function goHome() {
+  uni.reLaunch({
+    url: "/pages/index/index",
+    fail: () => uni.navigateTo({ url: "/pages/index/index" }),
+  });
+}
+
 export function openInMarket(code: string, market: Market = "auto") {
   navState.pendingCode = code;
   navState.pendingMarket = market;

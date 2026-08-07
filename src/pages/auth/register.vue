@@ -97,6 +97,7 @@ import {
   EMAIL_RE,
 } from "@/api/auth";
 import { syncSession, refreshProfile } from "@/store/user";
+import { goHome } from "@/store/nav";
 
 const email = ref("");
 const username = ref("");
@@ -298,8 +299,9 @@ async function submit() {
     done.value = true;
     // 兜底主动同步一次会话，确保即使监听器尚未就绪也能拿到登录态
     await syncSession().catch(() => {});
+    // 可靠跳转进首页（带 fail 兜底，不依赖 navigateBack）
     setTimeout(() => {
-      uni.reLaunch({ url: "/pages/index/index" });
+      goHome();
     }, 800);
   } catch (err: any) {
     serverErr.value = err?.message || "操作失败，请重试";

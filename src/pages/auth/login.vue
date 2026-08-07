@@ -22,14 +22,14 @@ import AuthShell from "@/components/AuthShell.vue";
 import AuthForm from "@/components/AuthForm.vue";
 import AuthAgreement from "@/components/AuthAgreement.vue";
 import { syncSession } from "@/store/user";
+import { goAfterAuth } from "@/store/nav";
 
-async function onAuthed() {
-  // 主动同步一次会话，确保 user store 立即切到已登录态
-  await syncSession().catch(() => {});
-  // 优先退回来源页（如「我的」），无上一页时兜底回首页
-  uni.navigateBack({
-    fail: () => uni.reLaunch({ url: "/pages/index/index" }),
-  });
+function onAuthed() {
+  // 主动同步一次会话（不阻塞跳转，确保 user store 切到已登录态）
+  syncSession().catch(() => {});
+  // 可靠跳转：有上一页则回退来源（如「我的」），栈底则直接进首页。
+  // 不再依赖 navigateBack 的 fail 回调（H5 栈底时不可靠，会卡在登录页）。
+  goAfterAuth();
 }
 function goRegister() {
   uni.navigateTo({ url: "/pages/auth/register" });
