@@ -493,7 +493,6 @@ textarea {
   flex: none; /* 取消 flex:1，让 logo + 表单作为整体贴合顶部 */
   display: flex;
   flex-direction: column;
-  margin: 14rpx auto 22rpx; /* 与 .auth-logo 一致的外边距 */
 }
 /* 「切换链接」区（注册账号引导 / 忘记密码）：位于表单下方，独立成行 */
 .auth-foot {
