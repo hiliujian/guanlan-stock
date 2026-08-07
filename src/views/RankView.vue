@@ -44,7 +44,7 @@
           <text class="rh pct st-num" :class="'st-' + clsOf(r)">{{ fmtPct(r.pct) }}</text>
           <view class="rh heat">
             <view class="heat-flame">
-              <text class="heat-emoji">🔥</text>
+              <OutlineIcon type="fire" :size="30" color="#ff5722" />
               <text class="heat-num">{{ r.heat }}</text>
             </view>
           </view>
@@ -270,7 +270,7 @@ function openRow(r: { code: string; market: string }) {
   font-size: 20rpx;
   color: var(--text-3);
 }
-/* 热度：🔥 emoji 作火焰，数值叠加于火焰正中心；白字加深色描边，任何主题/背景均清晰可读 */
+/* 热度：火焰图标(OutlineIcon fire 实心) + 热度值并排，值用火焰橙红保证清晰可读 */
 .rh.heat {
   width: 150rpx;
   display: flex;
@@ -278,31 +278,18 @@ function openRow(r: { code: string; market: string }) {
   justify-content: center;
 }
 .heat-flame {
-  position: relative;
-  width: 48rpx;
-  height: 48rpx;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 40rpx;
-  line-height: 1;
-}
-.heat-emoji {
+  gap: 4rpx;
   line-height: 1;
 }
 .heat-num {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18rpx;
-  font-weight: 800;
-  color: #fff;
-  text-shadow: 0 0 3rpx rgba(0, 0, 0, 0.7), 0 0 3rpx rgba(0, 0, 0, 0.7);
+  font-size: 22rpx;
+  font-weight: 400;
+  color: #ff5722;
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  pointer-events: none;
 }
 /* 最新价 / 涨跌幅 / 热度 三列等宽(150rpx) */
 .rh.price {
