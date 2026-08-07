@@ -476,7 +476,7 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 10rpx;
-  margin: 14rpx auto 22rpx;
+  margin: 24rpx auto; /* 上下一致、略增大（原为 14 上 / 22 下） */
 }
 .auth-wordmark {
   font-size: 42rpx;
