@@ -494,18 +494,18 @@ textarea {
   flex-direction: column; /* 观澜 与 副标题纵向堆叠并居中 */
   align-items: center;
   justify-content: center;
-  gap: 10rpx;
-  margin: 30rpx auto; /* 上下 margin 与 .auth-foot 一致（30rpx） */
+  gap: 16rpx;
+  margin: 52rpx auto; /* 加大上下留白，让品牌区更有存在感 */
 }
 .auth-wordmark {
-  font-size: 42rpx;
+  font-size: 60rpx;
   font-weight: 800;
   color: var(--primary);
-  letter-spacing: 3rpx;
+  letter-spacing: 5rpx;
 }
 /* 品牌副标题：观澜下方小字，复用行情页 brand-sub 样式（22rpx / --text-2 / 无字距），点明产品定位 */
 .auth-tagline {
-  font-size: 22rpx;
+  font-size: 25rpx;
   color: var(--text-2);
 }
 .auth-body {
@@ -667,7 +667,7 @@ textarea {
   justify-content: center;
   font-size: 27rpx;
   color: var(--primary);
-  font-weight: 600;
+  font-weight: 400;
   white-space: nowrap;
   padding: 10rpx 18rpx;
   margin: -24rpx -20rpx -24rpx 10rpx;
