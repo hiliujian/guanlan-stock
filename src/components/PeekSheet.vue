@@ -1,5 +1,5 @@
 <template>
-  <view v-if="visible" class="peek">
+  <view v-if="shown" class="peek">
     <view v-if="modal" class="peek-mask" :style="maskStyle" @click="onMask"></view>
     <view
       class="peek-card"
@@ -63,12 +63,28 @@ const emit = defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
 
 type Mode = "collapsed" | "expanded" | "max";
 const mode = ref<Mode>(props.persistent ? "collapsed" : "expanded");
-const visible = computed(() => (props.persistent ? true : !!props.modelValue));
+// 可见性：非持久模式由 modelValue 控制开关；关闭时先播放下滑动画再真正隐藏
+const shown = ref(props.persistent ? true : !!props.modelValue);
+const closing = ref(false);
+let hideTimer: number | undefined;
 
 watch(
   () => props.modelValue,
   (v) => {
-    if (!props.persistent && v) mode.value = "expanded";
+    if (props.persistent) return;
+    if (v) {
+      // 重新打开（或关闭动画途中再次打开）：取消待执行的隐藏，复位状态
+      if (hideTimer) {
+        window.clearTimeout(hideTimer);
+        hideTimer = undefined;
+      }
+      shown.value = true;
+      mode.value = "expanded";
+      closing.value = false;
+    } else if (!closing.value) {
+      // 父组件直接置 false（如选中分组后关闭）——统一走关闭动画
+      close();
+    }
   }
 );
 
@@ -94,6 +110,7 @@ onMounted(() => {
   }
 });
 onUnmounted(() => {
+  if (hideTimer) window.clearTimeout(hideTimer);
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", measure);
     window.removeEventListener("orientationchange", measure);
@@ -121,10 +138,18 @@ const shellStyle = computed(() => {
   return { transform: `translateX(-50%) translateY(${dragY.value}px)`, transition: "none" };
 });
 
-const cardStyle = computed(() => ({
-  ...(props.modal ? { zIndex: 70 } : { zIndex: 40 }),
-  ...shellStyle.value,
-}));
+const cardStyle = computed(() => {
+  const base: Record<string, string | number> = {
+    ...(props.modal ? { zIndex: 70 } : { zIndex: 40 }),
+  };
+  if (closing.value) {
+    // 关闭动画：整体下滑至屏幕外，复用 .peek-card 的 transform 过渡(--dur)
+    base.transform = "translateX(-50%) translateY(120%)";
+  } else {
+    Object.assign(base, shellStyle.value);
+  }
+  return base;
+});
 const maskStyle = { zIndex: 65 };
 
 function ptY(e: any): number {
@@ -196,7 +221,17 @@ function collapse() {
   else close();
 }
 function close() {
+  if (props.persistent) return;
+  if (closing.value) return;
+  closing.value = true;
   emit("update:modelValue", false);
+  // 与 .peek-card 的 transform 过渡(--dur=0.32s)对齐，结束后真正隐藏
+  if (hideTimer) window.clearTimeout(hideTimer);
+  hideTimer = window.setTimeout(() => {
+    closing.value = false;
+    shown.value = false;
+    hideTimer = undefined;
+  }, 320);
 }
 function onMask() {
   if (props.modal) close();

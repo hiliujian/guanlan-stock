@@ -238,7 +238,6 @@
           <view class="grp-head">
             <view v-if="groupView !== 'main'" class="grp-back" role="button" aria-label="返回" @click="groupBack"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
             <text class="grp-title">{{ groupTitle }}</text>
-            <view class="grp-close" role="button" aria-label="关闭" @click="groupOpen = false"><OutlineIcon type="close" :size="30" color="var(--text-2)" /></view>
           </view>
           <scroll-view class="grp-body" scroll-y>
             <!-- 主视图：我的分组 + 三个入口 -->
@@ -1466,20 +1465,6 @@ function showMoveGroup(it: WatchItem) {
   font-size: 26rpx;
   font-weight: 500;
   color: var(--text-2);
-}
-.grp-close {
-  flex: none;
-  width: 56rpx;
-  height: 56rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-.grp-close:active {
-  background: var(--card-2);
 }
 .grp-body {
   flex: 1;
