@@ -289,7 +289,10 @@ const chg = computed(() => dispPrice.value - preClose.value);
 const pctText = computed(() =>
   (preClose.value ? (chg.value / preClose.value) * 100 : 0).toFixed(2) + "%"
 );
-const pctColor = computed(() => (chg.value >= 0 ? "var(--up)" : "var(--down)"));
+// 涨跌幅着色：复用统一规则——涨红跌绿，持平(0)显示灰色，避免「0.00%」被误染红。
+const pctColor = computed(() =>
+  chg.value > 0 ? "var(--up)" : chg.value < 0 ? "var(--down)" : "var(--text-2)"
+);
 
 // 由当前 secid 推出自选股所需的 code / market（不再需要用户手动选择市场）
 const curCode = computed(() => (secid.value ? codeFromSecid(secid.value) : code.value));

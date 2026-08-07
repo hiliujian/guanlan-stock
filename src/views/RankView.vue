@@ -63,7 +63,7 @@ import OutlineIcon from "@/components/OutlineIcon.vue";
 import { fetchSnapshot } from "@/api/quote";
 import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
-import { fmtPrice, fmtPct } from "@/utils/format";
+import { fmtPrice, fmtPct, trendCls } from "@/utils/format";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
 
 const props = defineProps<{ mode: "today" | "all" }>();
@@ -112,11 +112,11 @@ function rankCls(i: number): string {
   return "";
 }
 
+// 复用全局 trendCls 统一规则：价格/涨跌幅缺失 → 灰色(flat)；否则按 chg 涨跌着色。
+// 与自选股表(pctCls)、价格文本(PriceText)共用同一套「占位符灰、有值才分涨跌」逻辑。
 function clsOf(r: RankRow): string {
   if (r.price == null || r.pct == null) return "flat";
-  if (r.chg > 0) return "up";
-  if (r.chg < 0) return "down";
-  return "flat";
+  return trendCls(r.chg);
 }
 
 function watched(r: { code: string; market: string }): boolean {

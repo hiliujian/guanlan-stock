@@ -187,8 +187,8 @@
                 <text class="rp-code">{{ peek ? peek.code : '--' }}</text>
               </view>
               <view class="rp-right">
-                <text class="rp-price" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
-                <text class="rp-pct" :class="peek ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
+                <text class="rp-price" :class="(peek && peek.price != null) ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
+                <text class="rp-pct" :class="(peek && peek.pct != null) ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek && peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
               </view>
               <OutlineIcon class="rp-caret" type="chevron-up" :size="20" color="var(--text-2)" />
             </view>
@@ -410,7 +410,7 @@ import { fetchSnapshot } from "@/api/quote";
 import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
 import { getMarketStatus } from "@/utils/marketStatus";
-import { fmtPrice, fmtPct, fmtSigned, fmtAmount } from "@/utils/format";
+import { fmtPrice, fmtPct, fmtSigned, fmtAmount, trendCls } from "@/utils/format";
 
 // 长按操作菜单目标股（统一并入 PeekSheet 面板，替代原先独立的 ActionSheet 弹层）
 const sheetExpanded = ref(false);
@@ -935,11 +935,11 @@ const upDown = computed(() => {
   return { currentGroup, counts: { up, down } };
 });
 
+// 表格数值列配色：复用全局 trendCls 统一规则——缺失/零值一律灰色(st-flat)，
+// 仅当价格/涨跌幅/涨跌额均有值且 chg 非零时才显示红/绿，避免 "--" 占位符被着色。
 function pctCls(q: Snap): string {
-  if (q.loading) return "st-flat";
-  if (q.chg > 0) return "st-up";
-  if (q.chg < 0) return "st-down";
-  return "st-flat";
+  if (q.loading || q.price == null || q.pct == null || q.chg == null) return "st-flat";
+  return trendCls(q.chg) === "up" ? "st-up" : "st-down";
 }
 // 振幅%（(最高-最低)/昨收）
 function ampPct(q: Snap): string {
