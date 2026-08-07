@@ -4,22 +4,22 @@
     <view class="cm-header anim-fade-up">
       <text class="cm-brand">自选</text>
       <view class="cm-right">
-        <!-- 当前分组内实时涨/跌个数（随行情实时刷新） -->
-        <view class="ud-pill">
-          <view class="ud-item">
-            <OutlineIcon type="arrow-up" :size="18" color="var(--up)" />
-            <text class="ud-num up">{{ upDown.counts.up }}</text>
-          </view>
-          <view class="ud-item">
-            <OutlineIcon type="arrow-down" :size="18" color="var(--down)" />
-            <text class="ud-num down">{{ upDown.counts.down }}</text>
-          </view>
-        </view>
         <view class="cm-me" role="button" aria-label="分组切换" @click="openGroups">
           <view class="cm-avatar" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
             <OutlineIcon type="layers" :size="24" color="#fff" />
           </view>
           <text class="cm-name">{{ upDown.currentGroup }}</text>
+          <!-- 当前分组内实时涨/跌个数（随行情实时刷新）：并入分组按钮，避免割裂 -->
+          <view class="ud-pill">
+            <view class="ud-item">
+              <OutlineIcon type="arrow-up" :size="16" color="var(--up)" />
+              <text class="ud-num up">{{ upDown.counts.up }}</text>
+            </view>
+            <view class="ud-item">
+              <OutlineIcon type="arrow-down" :size="16" color="var(--down)" />
+              <text class="ud-num down">{{ upDown.counts.down }}</text>
+            </view>
+          </view>
           <OutlineIcon type="pulldown" :size="18" color="var(--text-2)" />
         </view>
       </view>
@@ -1184,14 +1184,14 @@ function removeLp() {
   align-items: center;
   gap: 14rpx;
 }
-/* 实时涨/跌个股数 pill */
+/* 实时涨/跌个股数：并入分组按钮，故去独立背景，仅以细分隔线区分于分组名 */
 .ud-pill {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  padding: 8rpx 14rpx;
-  border-radius: 999rpx;
-  background: var(--card-2);
+  gap: 10rpx;
+  margin-left: 4rpx;
+  padding-left: 12rpx;
+  border-left: 1rpx solid var(--tabbar-border);
 }
 .ud-item {
   display: flex;
@@ -1383,7 +1383,7 @@ function removeLp() {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  height: 60rpx;
+  height: 64rpx;
   padding: 0 18rpx;
   font-size: 26rpx;
   font-weight: 400;
