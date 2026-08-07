@@ -4,19 +4,19 @@
       class="peek-card"
       :class="{ expanded: mode !== 'collapsed', max: mode === 'max' }"
       :style="cardStyle"
+      @touchstart.stop="onDown"
+      @touchmove.stop="onMove"
+      @touchend.stop="onUp"
+      @touchcancel.stop="onUp"
+      @mousedown.stop="onDown"
+      @mousemove.stop="onMove"
+      @mouseup.stop="onUp"
+      @mouseleave.stop="onUp"
     >
-      <!-- 拖拽手柄：展开/铺满态显示；折叠态由 peek 卡片本体作为点击区 -->
+      <!-- 拖拽手柄：展开/铺满态显示；折叠态由 peek 卡片本体作为点击区（整个卡片均可拖拽） -->
       <view
         v-if="mode !== 'collapsed'"
         class="peek-grip"
-        @touchstart.stop="onDown"
-        @touchmove.stop="onMove"
-        @touchend.stop="onUp"
-        @touchcancel.stop="onUp"
-        @mousedown.stop="onDown"
-        @mousemove.stop="onMove"
-        @mouseup.stop="onUp"
-        @mouseleave.stop="onUp"
       ><view class="peek-handle" /></view>
 
       <!-- 折叠态：常驻露出卡片 -->
@@ -99,17 +99,67 @@ function ptY(e: any): number {
   if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
   return e.clientY || 0;
 }
+// 表单输入元素内的手势不接管，避免影响输入框文本选择 / 编辑
+function isFormField(el: any): boolean {
+  const t = (el && el.tagName) || "";
+  return t === "INPUT" || t === "TEXTAREA" || (el && el.isContentEditable);
+}
+// 找到触摸点所在的 uni-app scroll-view 滚动容器（仅当确实可滚动时返回）
+function findScrollEl(target: any): HTMLElement | null {
+  let node: HTMLElement | null = target;
+  while (node && node !== document.documentElement && node !== document.body) {
+    if (
+      node.classList &&
+      node.classList.contains("uni-scroll-view") &&
+      node.scrollHeight > node.clientHeight + 1
+    ) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+// 手势起点时的内部列表滚动状态（锁定本次手势，避免中途抖动）
+let scrollAtTop = true;
+let scrollAtBottom = true;
+
 function onDown(e: any) {
+  if (isFormField(e.target)) return;
   dragging.value = true;
   dragY.value = 0;
   dragUp.value = false;
   startY = ptY(e);
+  const sc = findScrollEl(e.target);
+  if (sc) {
+    const st = sc.scrollTop;
+    scrollAtTop = st <= 0;
+    scrollAtBottom = st + sc.clientHeight >= sc.scrollHeight - 1;
+  } else {
+    scrollAtTop = true;
+    scrollAtBottom = true;
+  }
 }
 function onMove(e: any) {
   if (!dragging.value) return;
   const dy = ptY(e) - startY;
+  // 方向未成型前不处理
+  if (Math.abs(dy) < 4) return;
+  const upward = dy < 0;
+  const downward = dy > 0;
+  // 是否把本次手势接管为窗体拖拽（收起/展开）：
+  //  - 下滑收起：仅当内部列表已滚到顶部（否则放行列表继续上滑浏览）
+  //  - 上滑展开：仅当内部列表已滚到底部（否则放行列表继续下滑浏览）
+  let hijack = false;
+  if (downward) hijack = scrollAtTop;
+  else if (upward) hijack = scrollAtBottom;
+  if (!hijack) {
+    // 交给内部 scroll-view 正常滚动，不移动窗体、也不阻止默认
+    dragging.value = false;
+    dragY.value = 0;
+    return;
+  }
   dragY.value = dy;
-  dragUp.value = dy < 0;
+  dragUp.value = upward;
   // 拖拽期间阻止页面级下拉刷新 / 页面滚动误触发
   if (e.cancelable) {
     try {
@@ -127,20 +177,16 @@ function onUp() {
   // 仅当位移超过阈值才认定为拖拽手势。
   if (Math.abs(dy) < 10) return;
   const movedUp = dy < 0;
+  const prev = mode.value;
   if (movedUp) {
-    if (mode.value === "max") {
-      // 已铺满：下拉超过阈值回退到半屏
-      if (dy > 80) mode.value = "expanded";
-    } else if (-dy > 64) {
-      // 半屏：上拉超过阈值铺满整页
-      mode.value = "max";
-    }
+    // 上滑：展开（折叠 → 半屏 → 铺满）
+    if (prev === "collapsed") mode.value = "expanded";
+    else if (prev === "expanded") mode.value = "max";
+    if (prev === "collapsed") emit("expand");
   } else {
-    if (mode.value === "max") {
-      // 铺满：下拉先回退到半屏
-      mode.value = "expanded";
-    } else {
-      // 半屏：下拉收起回到露出卡片
+    // 下滑：收起（铺满 → 半屏 → 折叠露出）
+    if (prev === "max") mode.value = "expanded";
+    else {
       mode.value = "collapsed";
       emit("collapse");
     }
