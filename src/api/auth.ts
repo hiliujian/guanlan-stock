@@ -460,6 +460,34 @@ export async function captureLoginInfo(): Promise<void> {
   }
 }
 
+/**
+ * 直接从云端 profiles 表查询「最近一次登录信息」（last_login），不读取任何本地缓存，
+ * 也不依赖登录时的内存快照。账号安全页每次打开时调用，保证展示的是云端最新值；
+ * 云端确实无记录时返回 null（此时调用方会以当前会话最佳努力补写一条并回读）。
+ * 全程不抛出，失败降级为 null。
+ */
+export async function fetchLoginInfo(): Promise<LoginInfo | null> {
+  try {
+    const sb = getSupabase();
+    if (!sb) return null;
+    const { data: u } = await sb.auth.getUser();
+    const uid = u.user?.id;
+    if (!uid) return null;
+    const { data, error } = await sb
+      .from("profiles")
+      .select("last_login")
+      .eq("id", uid)
+      .single();
+    if (error) {
+      if (import.meta.env?.DEV) console.warn("[fetchLoginInfo] 查询 last_login 失败:", error.message);
+      return null;
+    }
+    return (data?.last_login as LoginInfo) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** 最佳努力 IP 地理定位：返回 { ip, city }，失败返回 null。3s 超时，绝不抛出。 */
 async function fetchLoginGeo(): Promise<{ ip?: string; city?: string } | null> {
   try {

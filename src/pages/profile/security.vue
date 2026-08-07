@@ -207,27 +207,28 @@ import {
   requestEmailChange,
   verifyEmailChange,
   captureLoginInfo,
+  fetchLoginInfo,
+  type LoginInfo,
   EMAIL_RE,
 } from "@/api/auth";
 
 const user = useUser();
 
-// 安全网：打开「账号安全」页时，若内存/DB 均无「上次登录」数据（例如旧版本登录未写入、
-// 或登录瞬间写入未回读导致内存快照为空），优先回读 DB；DB 仍缺失则补写当前会话的
-// 登录信息并回读。确保「上次登录」不会一直空白，同时保留其真实语义（仅在确实缺失时补）。
+// —— 上次登录信息：每次打开本页都直接从云端 profiles 表查询（不依赖本地缓存 / 登录时的
+// 内存快照，避免快照为 null 时一直显示「暂无登录记录」）。仅当云端确实无记录，才以当前
+// 会话最佳努力补写一条并回读；无论如何最终值都来自云端，本地存储不参与读取。
+const lastLogin = ref<LoginInfo | null>(null);
+
 onShow(async () => {
   if (!user.loggedIn) return;
-  if (!user.profile?.last_login) {
-    await refreshProfile().catch(() => {});
-    if (!user.profile?.last_login) {
-      await captureLoginInfo().catch(() => {});
-      await refreshProfile().catch(() => {});
-    }
+  // 每次打开都直查云端 profiles 表（不读本地缓存/内存快照）；云端真的没记录才补写并回读
+  let info = await fetchLoginInfo();
+  if (!info) {
+    await captureLoginInfo().catch(() => {});
+    info = await fetchLoginInfo();
   }
+  lastLogin.value = info;
 });
-
-// —— 上次登录信息（来自 profiles.last_login，登录成功时由 user store 写入）——
-const lastLogin = computed(() => user.profile?.last_login ?? null);
 
 // 上次登录：地点 · 时间 · 设备 合并一行展示（缺失项自动跳过，全空显「暂无登录记录」）
 const loginSummary = computed(() => {
