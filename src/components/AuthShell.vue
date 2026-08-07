@@ -12,7 +12,7 @@
       <!-- 品牌标：与行情首页统一的「观澜」文字商标（绿字 + 辉光），作为全局记忆点 -->
         <view class="auth-logo">
           <text class="auth-wordmark anim-glow">观澜</text>
-          <text class="auth-tagline">智能股票分析</text>
+          <text class="auth-tagline">让数据说话</text>
         </view>
 
       <view class="auth-body">
