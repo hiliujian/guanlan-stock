@@ -16,6 +16,7 @@
   --primary-dark: #06a454;
   --primary-soft: rgba(7, 193, 96, 0.12);
   --danger: #e5484d;
+  --danger-dark: #c93b40;
   --up: #ff5b5b;
   --down: #1fd874;
   --text: #16202e;
@@ -56,6 +57,7 @@
   --primary-dark: #06a454;
   --primary-soft: rgba(7, 193, 96, 0.18);
   --danger: #e5484d;
+  --danger-dark: #c93b40;
   --up: #ff5b5b;
   --down: #1fd874;
   --text: #eaf0fb;
@@ -225,10 +227,17 @@ textarea {
   background: var(--danger);
   color: #fff;
 }
-.btn-primary:active,
+/* 激活态：背景压暗 + 轻微下沉（translateY）+ 内高光，项目统一的「按下」触觉语言
+   （与 .lift:active 一致），替代原 scale(0.97)+外发光，避免收缩抖动与突兀辉光。 */
+.btn-primary:active {
+  background: var(--primary-dark);
+  transform: translateY(1rpx);
+  box-shadow: 0 3rpx 12rpx rgba(7, 193, 96, 0.28), inset 0 1rpx 0 rgba(255, 255, 255, 0.22);
+}
 .btn-danger:active {
-  transform: scale(0.97);
-  box-shadow: var(--shadow-up);
+  background: var(--danger-dark);
+  transform: translateY(1rpx);
+  box-shadow: 0 3rpx 12rpx rgba(229, 72, 77, 0.32), inset 0 1rpx 0 rgba(255, 255, 255, 0.22);
 }
 .btn-primary.is-disabled,
 .btn-danger.is-disabled {
@@ -476,7 +485,7 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 10rpx;
-  margin: 24rpx auto; /* 上下一致、略增大（原为 14 上 / 22 下） */
+  margin: 30rpx auto; /* 上下 margin 与 .auth-foot 一致（30rpx） */
 }
 .auth-wordmark {
   font-size: 42rpx;
