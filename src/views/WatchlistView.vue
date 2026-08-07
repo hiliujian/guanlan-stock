@@ -444,6 +444,8 @@ function onSheetCollapse() {
   activePanel.value = "rank";
   sheetExpanded.value = false;
   lpItem.value = null;
+  // 收起即露出「今日最热」预览卡：此时刷新，保证与展开态「今日热榜」数据一致、不陈旧
+  loadPeek();
 }
 
 const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
@@ -992,6 +994,7 @@ onActivated(() => {
   }
   loadQuotesSafe();
   startPolling();
+  loadPeek(); // 回到本页即刷新「今日最热」预览，避免展示过期的空态
 });
 onDeactivated(stopPolling);
 onUnmounted(() => {
