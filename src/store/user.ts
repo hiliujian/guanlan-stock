@@ -62,9 +62,8 @@ export function useUser() {
     state.ready = true;
     state.supabaseEnabled = isSupabaseConfigured;
     if (isSupabaseConfigured) {
-      onAuthChange(async (user) => {
+      onAuthChange(async (user, event) => {
         if (user) {
-          const wasLoggedIn = state.loggedIn;
           state.loggedIn = true;
           state.userId = user.id;
           state.email = user.email ?? null;
@@ -73,12 +72,13 @@ export function useUser() {
           // （后端 award_daily_signin RPC 幂等，当日已签到则不重复发放）
           await awardDailySignin();
           await loadProfile(user.id);
-          // 仅在「从未登录 → 已登录」的跃迁时记录本次登录信息（刷新 token 不重复写），
-          // 供「账号安全」页展示「上次登录」；失败静默，不影响主流程。
-          if (!wasLoggedIn) {
+          // 仅在「真正完成一次登录（SIGNED_IN）」时记录本次登录信息，供「账号安全」页
+          // 展示「上次登录」。token 刷新 / 冷启动恢复会话（TOKEN_REFRESHED / INITIAL_SESSION）
+          // 不重复写，避免每次打开 App 都把「上次登录」刷成本机这次打开记录。
+          // captureLoginInfo 内部把本次登录原子交换进 last_login（即上一次登录），失败静默。
+          if (event === "SIGNED_IN") {
             await captureLoginInfo();
-            // 写库后回读刚写入的 last_login，使「账号安全」页即时展示本次登录信息
-            // （否则内存里的 profile.last_login 仍是空，页面会一直显示「—」）
+            // 写库后回读刚交换的 last_login，使「账号安全」页即时展示本次（=上次登录）信息
             await loadProfile(user.id);
           }
         } else {

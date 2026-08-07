@@ -514,7 +514,23 @@ alter table public.profiles add column if not exists exp integer not null defaul
 alter table public.profiles add column if not exists signin_streak        integer not null default 0;
 alter table public.profiles add column if not exists last_signin          date;
 alter table public.profiles add column if not exists profile_bonus_claimed boolean not null default false;
-alter table public.profiles add column if not exists last_login           jsonb;  -- 最近一次登录的地点/时间/设备信息（前端登录成功时写入，供「账号安全」页展示）
+alter table public.profiles add column if not exists last_login           jsonb;  -- 上一次成功登录的地点/时间/设备（即账号安全页展示的「上次登录」）
+alter table public.profiles add column if not exists login_current        jsonb;  -- 本次（当前）登录信息；登录时由 capture_login_info 原子地交换到 last_login
+
+-- 100.3 记录登录信息：原子地把「本次登录」写入 login_current，并把旧的 login_current 移为 last_login
+-- （即「上次登录」= 上一次成功登录，而非本次）。用 auth.uid() 限定仅能改写本人记录，避免越权。
+-- 关键：SET 子句中 last_login = login_current 引用的是本行 UPDATE 执行前的旧值，故实现无竞态的字段交换。
+create or replace function public.capture_login_info(p_info jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return; end if;
+  update public.profiles
+     set login_current = p_info,
+         last_login    = login_current
+   where id = auth.uid();
+end;
+$$;
+grant execute on function public.capture_login_info(jsonb) to anon, authenticated;
 
 -- 100.2 按累计经验刷新等级（阈值与前端 TIERS 一致）
 create or replace function public.refresh_level(p_user uuid)

@@ -585,22 +585,22 @@ textarea {
 /* 引导语 */
 .auth-lead {
   display: block;
-  font-size: 25rpx;
+  font-size: 26rpx;
   color: var(--text-2);
   line-height: 1.7;
-  margin-bottom: 0;
+  margin-bottom: 6rpx;
 }
 /* 单行输入容器：图标 + 输入框 + 右附（发送码/眼睛）
    注意：uni-app H5 框架对 uni-view 强制 overflow:hidden，必须显式覆盖否则 suffix 文字会被裁剪 */
 .auth-field {
   display: flex;
   align-items: center;
-  gap: 10rpx;
+  gap: 14rpx;
   background: var(--card-2);
   border: 2rpx solid transparent;
   border-radius: var(--radius-sm);
-  padding: 16rpx 16rpx;
-  margin-bottom: 16rpx;
+  padding: 24rpx 20rpx;
+  margin-bottom: 18rpx;
   overflow: visible !important;
   transition: border-color 0.2s ease;
 }
@@ -610,7 +610,7 @@ textarea {
 .auth-input {
   flex: 1;
   min-width: 0; /* 关键：允许 flex 子项收缩到小于内容宽度，防止 suffix 被挤出裁剪 */
-  font-size: 28rpx;
+  font-size: 31rpx;
   color: var(--text);
 }
 /* 字段下方内联错误提示 */
@@ -644,13 +644,16 @@ textarea {
   word-break: break-all;
 }
 /* 主 CTA：在表单内占满宽度、内容居中、去除 uni 默认边框。
-   形状（药丸 / 72rpx 高度 / 字号）复用全局 .btn-primary，此处只负责全宽与去边框（登录/注册/重设三页共用） */
+   形状复用全局 .btn-primary 的药丸；此处仅放大高度/字号并全宽（登录/注册/重设三页共用），
+   使之与放大后的输入框高度协调（约 92rpx，与字段内高接近）。 */
 .auth-submit {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 8rpx;
+  height: 94rpx;
+  font-size: 33rpx;
+  margin-top: 18rpx;
 }
 .auth-submit::after {
   border: none;
@@ -662,12 +665,12 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24rpx;
+  font-size: 27rpx;
   color: var(--primary);
   font-weight: 600;
   white-space: nowrap;
-  padding: 8rpx 16rpx;
-  margin: -10rpx -10rpx -10rpx 8rpx;
+  padding: 10rpx 18rpx;
+  margin: -24rpx -20rpx -24rpx 10rpx;
 }
 .auth-suffix.disabled {
   color: var(--text-2);
@@ -678,7 +681,7 @@ textarea {
   flex: none;
   display: flex;
   align-items: center;
-  padding: 6rpx;
+  padding: 8rpx;
 }
 /* 底部切换链接（返回登录 / 去注册 等）：与协议并行、主流小程序对齐 */
 .auth-switch {

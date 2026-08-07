@@ -6,7 +6,7 @@
       :class="{ 'auth-field-err': !!error }"
       style="overflow: visible"
     >
-      <OutlineIcon v-if="icon" :type="icon" :size="20" color="var(--text-2)" />
+      <OutlineIcon v-if="icon" :type="icon" :size="23" color="var(--text-2)" />
       <input
         class="auth-input"
         :value="modelValue"
@@ -30,7 +30,7 @@
         :aria-label="revealed ? '隐藏密码' : '显示密码'"
         @click="revealed = !revealed"
       >
-        <OutlineIcon :type="revealed ? 'eye-off' : 'eye'" :size="22" color="var(--text-2)" />
+        <OutlineIcon :type="revealed ? 'eye-off' : 'eye'" :size="25" color="var(--text-2)" />
       </view>
     </view>
 

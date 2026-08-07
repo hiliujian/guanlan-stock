@@ -449,10 +449,12 @@ export async function captureLoginInfo(): Promise<void> {
       platform,
       time: new Date().toISOString(),
     };
-    const { error } = await sb.from("profiles").update({ last_login: info }).eq("id", uid);
+    // 原子交换：服务端把「本次登录」写入 login_current，并把旧 login_current 移为 last_login，
+    // 使「上次登录」严格等于上一次成功登录（而非本次）。函数以 auth.uid() 限定仅改写本人记录。
+    const { error } = await sb.rpc("capture_login_info", { p_info: info });
     if (error) {
       // 仅开发期提示，便于排查；登录信息仅为展示用途，绝不阻塞主流程
-      if (import.meta.env?.DEV) console.warn("[captureLoginInfo] 写入 last_login 失败:", error.message);
+      if (import.meta.env?.DEV) console.warn("[captureLoginInfo] 写入登录信息失败:", error.message);
       return;
     }
   } catch {
@@ -520,14 +522,16 @@ export async function awardDailySignin(): Promise<number | null> {
   return typeof data === "number" ? data : null;
 }
 
-export function onAuthChange(cb: (user: any | null) => void): () => void {
+export function onAuthChange(
+  cb: (user: any | null, event?: string) => void
+): () => void {
   const sb = getSupabase();
   if (!sb) {
     cb(null);
     return () => {};
   }
-  const { data } = sb.auth.onAuthStateChange((_event, session) => {
-    cb(session?.user ?? null);
+  const { data } = sb.auth.onAuthStateChange((event, session) => {
+    cb(session?.user ?? null, event);
   });
   return () => data.subscription.unsubscribe();
 }
