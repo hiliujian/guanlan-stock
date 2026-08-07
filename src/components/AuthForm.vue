@@ -22,7 +22,7 @@
     <AuthField
       icon="locked"
       v-model="password"
-      placeholder="密码（至少 6 位）"
+      placeholder="密码"
       show-toggle
       :error="errors.password"
       @input="errors.password = ''"
@@ -79,10 +79,6 @@ async function submit() {
     // 邮箱：格式由 Supabase 兜底，这里仅做基本形态校验
   } else if (!USERNAME_RE.test(id)) {
     errors.identifier = "用户名须为 3-20 位中英文 / 数字 / 下划线";
-    return;
-  }
-  if (p.length < 6) {
-    errors.password = "密码至少 6 位";
     return;
   }
   loading.value = true;
