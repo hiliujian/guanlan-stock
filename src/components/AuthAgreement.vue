@@ -20,8 +20,12 @@
  * 注意：本组件只能作为 AuthShell（position:fixed 全屏层）的子元素使用。
  *
  * 键盘避让：软键盘弹出时（尤其 Android/iOS WebView 会把 position:fixed
- * 的 bottom:0 顶到键盘上方，导致协议"跟着键盘弹上来"），监听键盘高度，
- * 键盘打开期间隐藏本协议（打字时本就不需要看法律条文），关闭后自动恢复。
+ * 的 bottom:0 顶到键盘上方，导致协议"跟着键盘弹上来"），键盘打开期间隐藏
+ * 本协议（打字时本就不需要看法律条文），关闭后自动恢复。
+ * 检测方式：监听输入框的 focusin/focusout——任一表单字段获得焦点即视为键盘
+ * 打开。之所以不用 visualViewport 几何计算，是因为在 Android WebView / VIA
+ * 等浏览器中，软键盘常以「覆盖层」弹出、并不收缩 visualViewport，几何检测
+ * 会失效；而聚焦判定跨端一致、绝对可靠。
  */
 import { ref, onMounted, onUnmounted } from "vue";
 
@@ -42,25 +46,38 @@ withDefaults(
 
 // 软键盘是否打开：打开时隐藏协议，避免其被顶到键盘上方
 const keyboardOpen = ref(false);
+
+// H5 键盘避让：在 Android WebView / VIA 等浏览器中，软键盘常以「覆盖层」弹出，
+// 并不收缩 visualViewport，导致基于几何计算的检测失效、协议跟着键盘顶上来。
+// 因此改用「输入框聚焦」判定——任一表单字段获得焦点即视为键盘打开，隐藏协议；
+// 失焦后（或焦点移出表单）自动恢复。比 visualViewport 几何更可靠、跨端一致。
+const isField = (el: EventTarget | null): boolean => {
+  const node = el as HTMLElement | null;
+  return (
+    !!node &&
+    (node.tagName === "INPUT" ||
+      node.tagName === "TEXTAREA" ||
+      node.isContentEditable)
+  );
+};
+const syncKeyboard = () => {
+  keyboardOpen.value = isField(document.activeElement);
+};
+
 let detach: (() => void) | null = null;
 
 onMounted(() => {
   // #ifdef H5
-  const vv = window.visualViewport;
-  if (vv) {
-    const onResize = () => {
-      // 键盘高度 = 视口总高 - 可视高 - 偏移；大于 0 即键盘已弹出
-      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      keyboardOpen.value = kb > 0;
-    };
-    vv.addEventListener("resize", onResize);
-    vv.addEventListener("scroll", onResize);
-    onResize();
-    detach = () => {
-      vv.removeEventListener("resize", onResize);
-      vv.removeEventListener("scroll", onResize);
-    };
-  }
+  // focusin/focusout 冒泡，挂在 document 上即可捕获所有输入框的聚焦变化；
+  // focusout 用 rAF 延后一帧，确保焦点已真正转移到下一元素后再判定，
+  // 避免从密码框切到验证码框时的瞬间闪烁。
+  document.addEventListener("focusin", syncKeyboard);
+  document.addEventListener("focusout", () => requestAnimationFrame(syncKeyboard));
+  syncKeyboard();
+  detach = () => {
+    document.removeEventListener("focusin", syncKeyboard);
+    document.removeEventListener("focusout", syncKeyboard);
+  };
   // #endif
   // #ifndef H5
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

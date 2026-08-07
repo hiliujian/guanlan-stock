@@ -536,9 +536,6 @@ textarea {
   color: var(--primary);
 }
 
-/* .agree / .agree-text / .lk 已迁移至 AuthAgreement.vue 自带样式（组件自身 absolute 贴底），
-   旧规则保留为空类以避免外部旧选择器找不到节点；不再定义具体定位属性。 */
-
 /* 共享按钮内 spinner（处理中态）：全局统一，避免各组件重复定义，保证视觉一致 */
 .btn-spin {
   width: 28rpx;
