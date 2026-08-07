@@ -1112,6 +1112,8 @@ function saveAlert(dir: "above" | "below") {
   const merged = next.above == null && next.below == null ? undefined : next;
   setAlerts(it.code, it.market, merged);
   lpItem.value = { ...it, alerts: merged };
+  // 设置后即时重算命中态：若当前价已满足阈值，该行立即开始提示（与清除行为对称）
+  refreshAlertHits();
   alertEdit.value = null;
   uni.showToast({ title: "已保存", icon: "none" });
 }
@@ -1121,6 +1123,9 @@ function clearAlert() {
   if (!it) return;
   setAlerts(it.code, it.market, undefined);
   lpItem.value = { ...it, alerts: undefined };
+  // 清除后即时重算命中态：store 内存 alerts 已清空 → 该行不再进入命中集合，闪烁立即停止
+  // （无需等待下一次行情轮询 / 云端往返，修复「清除了预警还在闪烁」的问题）
+  refreshAlertHits();
   alertEdit.value = null;
   uni.showToast({ title: "已清除预警", icon: "none" });
 }

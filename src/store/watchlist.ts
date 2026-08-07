@@ -265,11 +265,13 @@ export async function applyGroupOrder(group: string, orderedKeys: string[]): Pro
 /** 设置某只自选的价格预警（传 undefined 即清空） */
 export async function setAlerts(code: string, market: string, alerts?: PriceAlert): Promise<void> {
   const json = toAlertJson(alerts);
+  // 乐观更新内存：清除 / 设置预警后立即生效，视图层（如命中闪烁 alertState）能即时反映，
+  // 不再依赖云端往返时机（云模式下 patchItem 的 loadCloud 重建为异步，会造成命中态滞后）。
+  state.items = state.items.map((i) =>
+    i.code === code && i.market === market ? { ...i, alerts: parseAlerts(json) } : i
+  );
   await patchItem(code, market, { alerts: json });
   if (state.mode !== "cloud") {
-    state.items = state.items.map((i) =>
-      i.code === code && i.market === market ? { ...i, alerts: parseAlerts(json) } : i
-    );
     saveLocal(state.items);
   }
 }
