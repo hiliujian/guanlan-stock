@@ -191,7 +191,7 @@ function openRow(r: { code: string; market: string }) {
   padding: 0 20rpx;
 }
 .rk-thead {
-  height: 64rpx;
+  height: 56rpx;
   border-bottom: 1rpx solid var(--tabbar-border);
 }
 /* 表头：比数据行股票名称(.rn) 小一号，与自选表头保持一致 */
