@@ -77,8 +77,6 @@
     <view class="auth-foot">
       <text>已有账号？<text class="auth-link" @click="goLogin">去登录</text></text>
     </view>
-    <!-- 协议贴底（fixed）：与表单整体垂直居中无关，始终在屏幕最底部 -->
-    <AuthAgreement action="使用" />
   </AuthShell>
   <view v-else class="auth-guard"><view class="auth-guard-spin" /></view>
 </template>
@@ -88,7 +86,6 @@ import { ref, reactive, onUnmounted } from "vue";
 import { onLoad } from "@dcloudio/uni-app";
 import AuthShell from "@/components/AuthShell.vue";
 import AuthField from "@/components/AuthField.vue";
-import AuthAgreement from "@/components/AuthAgreement.vue";
 import {
   requestSignupCode,
   verifySignupCode,

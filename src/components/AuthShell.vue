@@ -18,6 +18,10 @@
       <view class="auth-body">
         <slot />
       </view>
+
+      <!-- 协议贴底：作为 flex 列末尾项，始终落在屏幕最底部；
+           键盘弹起时不浮到键盘上、也不消失（由布局流自然定位，不再用 fixed） -->
+      <AuthAgreement :action="agreementAction" />
     </view>
   </view>
 </template>
@@ -25,10 +29,15 @@
 <script setup lang="ts">
 import BackgroundFX from "./BackgroundFX.vue";
 import OutlineIcon from "./OutlineIcon.vue";
+import AuthAgreement from "./AuthAgreement.vue";
 
-defineProps<{
-  title: string;
-}>();
+withDefaults(
+  defineProps<{
+    title: string;
+    agreementAction?: string;
+  }>(),
+  { agreementAction: "使用" }
+);
 
 function onBack() {
   // 返回来源页（如「我的」）；无上一页时兜底回首页

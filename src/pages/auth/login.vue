@@ -11,9 +11,6 @@
       </view>
       <view class="auth-foot-guide" @click="goReset">忘记密码？</view>
     </view>
-
-    <!-- 协议贴底（fixed）：与表单整体垂直居中无关，始终在屏幕最底部 -->
-    <AuthAgreement action="使用" />
   </AuthShell>
   <view v-else class="auth-guard"><view class="auth-guard-spin" /></view>
 </template>
@@ -22,7 +19,6 @@
 import { onLoad } from "@dcloudio/uni-app";
 import AuthShell from "@/components/AuthShell.vue";
 import AuthForm from "@/components/AuthForm.vue";
-import AuthAgreement from "@/components/AuthAgreement.vue";
 import { syncSession } from "@/store/user";
 import { goAfterAuth } from "@/store/nav";
 import { useAuthGuard } from "@/composables/useAuthGuard";

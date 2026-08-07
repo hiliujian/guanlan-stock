@@ -447,14 +447,16 @@ textarea {
 .auth-content {
   position: relative;
   z-index: 1;
-  /* 不再使用 min-height:calc(100vh - 安全区)：部分浏览器对 100vh 计算含地址栏高度，
-     双重 100vh 嵌套会让整页高度超出视口、配合安全区 padding 出现顶部大空白且可滚动。
-     改为继承父级 min-height:100vh（父级 .auth-page 已是 border-box），子级 height:100% 贴合。 */
-  height: 100%;
+  /* 至少撑满视口（vh 兜底 + dvh 动态视口高度）：内容少时整列高度=视口高，
+     末尾协议靠 margin-top:auto 自然落到屏幕最底部；键盘弹起（dvh 变小）时整页压缩，
+     协议仍在压缩后可视区底部。 */
+  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   justify-content: flex-start; /* 内容顶部对齐，不做垂直居中 */
-  /* 顶部预留返回导航高度（absolute 顶部导航 88rpx + 缓冲 24rpx）；底部不预留——协议已 fixed 贴底。 */
+  /* 顶部预留返回导航高度（absolute 顶部导航 88rpx + 缓冲 24rpx）；
+     底部不额外预留，协议自身 padding 已含安全区。 */
   padding: 112rpx 24rpx 24rpx;
 }
 .auth-nav {
