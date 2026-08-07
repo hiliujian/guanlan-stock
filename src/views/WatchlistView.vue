@@ -370,22 +370,43 @@
               </view>
             </template>
 
-            <!-- 编辑价格预警子面板：高于 / 低于 / 清除（清除直接生效，高于/低于用 showModal 输入阈值） -->
+            <!-- 编辑价格预警子面板：展示实时价供参考；高于/低于改为选项下方内联输入（替代原 uni-modal 弹窗） -->
             <template v-else-if="activePanel === 'alert'">
               <view class="grp-head">
                 <view class="grp-back" role="button" aria-label="返回" @click="activePanel = 'actions'"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
                 <text class="grp-title">价格预警</text>
               </view>
+              <!-- 实时价参考：进入面板即拉取最新成交价，供用户设定阈值时对照 -->
+              <view class="alert-rt">
+                <text class="alert-rt-label">当前实时价</text>
+                <text class="alert-rt-price" :class="trendCls(alertRT?.chg)">{{ alertRT ? fmtPrice(alertRT.price) : '—' }}</text>
+                <text class="alert-rt-sub" v-if="alertRT">{{ fmtSigned(alertRT.chg) }} · {{ fmtPct(alertRT.pct) }}</text>
+                <text class="alert-rt-sub" v-else>实时价获取中…</text>
+              </view>
               <view class="grp-list">
-                <view class="grp-item" role="button" @click="alertChoose('above')">
+                <view class="grp-item" :class="{ active: alertEdit === 'above' }" role="button" @click="startEdit('above')">
                   <OutlineIcon type="arrow-up" :size="28" color="var(--text-2)" />
-                  <text class="grp-label">设置高于预警</text>
+                  <text class="grp-label">设置高于预警<text v-if="aboveVal != null" class="alert-cur"> · ¥{{ fmtPrice(aboveVal) }}</text></text>
                 </view>
-                <view class="grp-item" role="button" @click="alertChoose('below')">
+                <view v-if="alertEdit === 'above'" class="alert-edit">
+                  <input class="alert-input" type="digit" v-model="alertInput" :placeholder="alertRT ? ('高于此价提醒（参考 ¥' + fmtPrice(alertRT.price) + '）') : '高于此价提醒，如 12.5'" />
+                  <view class="alert-edit-btns">
+                    <view class="grp-btn" role="button" @click="alertEdit = null">取消</view>
+                    <view class="grp-btn primary" role="button" @click="saveAlert('above')">保存</view>
+                  </view>
+                </view>
+                <view class="grp-item" :class="{ active: alertEdit === 'below' }" role="button" @click="startEdit('below')">
                   <OutlineIcon type="arrow-down" :size="28" color="var(--text-2)" />
-                  <text class="grp-label">设置低于预警</text>
+                  <text class="grp-label">设置低于预警<text v-if="belowVal != null" class="alert-cur"> · ¥{{ fmtPrice(belowVal) }}</text></text>
                 </view>
-                <view class="grp-item" role="button" @click="alertChoose('clear')">
+                <view v-if="alertEdit === 'below'" class="alert-edit">
+                  <input class="alert-input" type="digit" v-model="alertInput" :placeholder="alertRT ? ('低于此价提醒（参考 ¥' + fmtPrice(alertRT.price) + '）') : '低于此价提醒，如 12.5'" />
+                  <view class="alert-edit-btns">
+                    <view class="grp-btn" role="button" @click="alertEdit = null">取消</view>
+                    <view class="grp-btn primary" role="button" @click="saveAlert('below')">保存</view>
+                  </view>
+                </view>
+                <view class="grp-item" role="button" @click="clearAlert">
                   <OutlineIcon type="trash" :size="28" color="#ff3b30" />
                   <text class="grp-label danger">清除预警</text>
                 </view>
@@ -406,7 +427,7 @@ import RankView from "@/views/RankView.vue";
 import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, applyGroupOrder, type WatchItem, type PriceAlert } from "@/store/watchlist";
 import { userState } from "@/store/user";
 import { openAuth, goTab } from "@/store/nav";
-import { fetchSnapshot } from "@/api/quote";
+import { fetchSnapshot, type SnapResult } from "@/api/quote";
 import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
 import { getMarketStatus } from "@/utils/marketStatus";
@@ -1048,36 +1069,60 @@ function onRowLongPress(it: WatchItem) {
   activePanel.value = "actions";
   sheet.value?.expand();
 }
-// 长按菜单「编辑价格预警」：进入 alert 子面板（高于 / 低于 / 清除）
+// 价格预警：实时价参考（进入面板即拉取最新成交价）+ 选项下方内联输入（替代原 uni-modal 弹窗）
+const alertRT = ref<SnapResult | null>(null);
+const alertEdit = ref<"above" | "below" | null>(null);
+const alertInput = ref<string>("");
+// 当前已设阈值（响应式读取长按目标股，保存后随 lpItem 同步刷新）
+const aboveVal = computed(() => lpItem.value?.alerts?.above ?? null);
+const belowVal = computed(() => lpItem.value?.alerts?.below ?? null);
+
+// 长按菜单「编辑价格预警」：进入 alert 子面板并实时拉取当前价
+async function loadAlertRT() {
+  const it = lpItem.value;
+  if (!it) return;
+  try {
+    const secid = resolveSecid(it.code, it.market as any);
+    alertRT.value = await fetchSnapshot(secid); // 实时成交价，缓存 20s，确保为最新
+  } catch {
+    alertRT.value = null;
+  }
+}
 function openAlertPanel() {
   if (!lpItem.value) return;
   activePanel.value = "alert";
+  alertEdit.value = null;
+  alertRT.value = null;
+  loadAlertRT();
 }
-// 预警选择：清除直接生效并收起；高于/低于用 showModal 输入阈值
-function alertChoose(dir: "above" | "below" | "clear") {
+// 点击「设置高于/低于预警」：在选项下方动态展开内联输入框（再次点击收起）
+function startEdit(dir: "above" | "below") {
+  alertEdit.value = alertEdit.value === dir ? null : dir;
+  const cur = dir === "above" ? aboveVal.value : belowVal.value;
+  alertInput.value = cur != null ? String(cur) : "";
+}
+// 保存阈值：解析输入并写回；同时刷新本地 lpItem 使已设值即时回显
+function saveAlert(dir: "above" | "below") {
   const it = lpItem.value;
   if (!it) return;
   const a = it.alerts || {};
-  if (dir === "clear") {
-    setAlerts(it.code, it.market, undefined);
-    uni.showToast({ title: "已清除预警", icon: "none" });
-    sheet.value?.collapse();
-    return;
-  }
-  const cur = a[dir];
-  uni.showModal({
-    title: dir === "above" ? "高于此价提醒" : "低于此价提醒",
-    editable: true,
-    placeholderText: "输入价格，如 12.5",
-    content: cur != null ? String(cur) : "",
-    success: (r) => {
-      if (!r.confirm) return;
-      const v = parseFloat(r.content ?? "");
-      const next: PriceAlert = { ...a };
-      next[dir] = isFinite(v) ? v : null;
-      setAlerts(it.code, it.market, next.above == null && next.below == null ? undefined : next);
-    },
-  });
+  const v = parseFloat(alertInput.value);
+  const next: PriceAlert = { ...a };
+  next[dir] = isFinite(v) ? v : null;
+  const merged = next.above == null && next.below == null ? undefined : next;
+  setAlerts(it.code, it.market, merged);
+  lpItem.value = { ...it, alerts: merged };
+  alertEdit.value = null;
+  uni.showToast({ title: "已保存", icon: "none" });
+}
+// 清除预警：直接生效并即时回显
+function clearAlert() {
+  const it = lpItem.value;
+  if (!it) return;
+  setAlerts(it.code, it.market, undefined);
+  lpItem.value = { ...it, alerts: undefined };
+  alertEdit.value = null;
+  uni.showToast({ title: "已清除预警", icon: "none" });
 }
 // 长按菜单「移入分组」：复用「我的分组」面板的移入流程（已选定目标股，直接进入选择目标分组步骤）
 function openMoveFromSheet() {
@@ -1552,6 +1597,55 @@ function removeLp() {
 }
 .grp-back:active {
   background: var(--card-2);
+}
+/* 价格预警：实时价参考条 */
+.alert-rt {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  padding: 14rpx 26rpx;
+  margin: 4rpx 20rpx 10rpx;
+  background: var(--card-2);
+  border-radius: 14rpx;
+}
+.alert-rt-label {
+  font-size: 26rpx;
+  color: var(--text-2);
+}
+.alert-rt-price {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: var(--text);
+}
+.alert-rt-price.up { color: var(--up); }
+.alert-rt-price.down { color: var(--down); }
+.alert-rt-price.flat { color: var(--text); }
+.alert-rt-sub {
+  margin-left: auto;
+  font-size: 24rpx;
+  color: var(--text-3);
+}
+/* 已设阈值回显（选项标题内联） */
+.alert-cur {
+  color: var(--text-2);
+  font-size: 26rpx;
+}
+/* 选项下方动态内联输入区（替代原 uni-modal 弹窗） */
+.alert-edit {
+  padding: 0 26rpx 16rpx;
+}
+.alert-input {
+  height: 84rpx;
+  padding: 0 20rpx;
+  background: var(--card-2);
+  border-radius: 14rpx;
+  font-size: 28rpx;
+  color: var(--text);
+}
+.alert-edit-btns {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 14rpx;
 }
 /* 文本输入框（新建 / 重命名 / 移动内联新建） */
 .grp-input {
