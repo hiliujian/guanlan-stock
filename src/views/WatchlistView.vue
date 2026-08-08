@@ -1824,7 +1824,6 @@ function removeLp() {
 }
 .rs-tab.on {
   color: var(--primary);
-  font-weight: 700;
 }
 .rs-ink {
   position: absolute;
