@@ -1815,7 +1815,7 @@ function removeLp() {
 .rs-tab {
   flex: 1;
   text-align: center;
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   font-weight: 500;
   color: var(--text-2);
   padding: 2rpx 0;

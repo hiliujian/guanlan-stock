@@ -241,7 +241,7 @@ defineExpose({ refresh: load });
   box-shadow: inset 0 0 0 1rpx var(--border);
 }
 .cm-name {
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   font-weight: 400;
   color: var(--text);
   max-width: 180rpx;
