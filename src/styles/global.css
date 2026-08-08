@@ -27,22 +27,23 @@
   --radius-sm: 12rpx;
   /* ===== 全局阴影规范 =====
      统一色彩源：--shadow-color（中性）/ --shadow-color-strong（浮层）/ --shadow-primary（主色绿）/ --shadow-danger（警示红）
-     几何步长（y偏移 / 模糊）：sm 2/6 · md 6/18 · lg 12/34 · xl 24/60，扩散半径统一 0（语义需要除外）。
+     几何步长（y偏移 / 模糊）：sm 1/4 · md 4/12 · lg 8/22 · xl 16/40，扩散半径统一 0（语义需要除外）。
      所有 box-shadow 必须引用下列变量，禁止散写 rgba 值，确保全站视觉一致。 */
   --shadow-color: rgba(20, 30, 50, 0.12);
   --shadow-color-strong: rgba(20, 30, 50, 0.20);
   --shadow-primary: rgba(7, 193, 96, 0.28);
   --shadow-danger: rgba(229, 72, 77, 0.34);
-  --shadow-1: 0 2rpx 6rpx var(--shadow-color);
-  --shadow-2: 0 6rpx 18rpx var(--shadow-color);
-  --shadow-3: 0 12rpx 34rpx var(--shadow-color);
-  --shadow-4: 0 24rpx 60rpx var(--shadow-color-strong);
-  --shadow-primary-1: 0 2rpx 8rpx var(--shadow-primary);
-  --shadow-primary-2: 0 6rpx 18rpx var(--shadow-primary);
-  --shadow-primary-3: 0 12rpx 34rpx var(--shadow-primary);
-  --shadow-danger-1: 0 2rpx 8rpx var(--shadow-danger);
-  --shadow-ambient: 0 0 60rpx var(--shadow-color);
-  --shadow-sheet: 0 -2rpx 12rpx var(--shadow-color);
+  /* 精致化：y 偏移与模糊整体收约（约 -33% 模糊 / -50% 小阴影偏移），层级比例保持一致 */
+  --shadow-1: 0 1rpx 4rpx var(--shadow-color);
+  --shadow-2: 0 4rpx 12rpx var(--shadow-color);
+  --shadow-3: 0 8rpx 22rpx var(--shadow-color);
+  --shadow-4: 0 16rpx 40rpx var(--shadow-color-strong);
+  --shadow-primary-1: 0 1rpx 5rpx var(--shadow-primary);
+  --shadow-primary-2: 0 4rpx 12rpx var(--shadow-primary);
+  --shadow-primary-3: 0 8rpx 22rpx var(--shadow-primary);
+  --shadow-danger-1: 0 1rpx 5rpx var(--shadow-danger);
+  --shadow-ambient: 0 0 40rpx var(--shadow-color);
+  --shadow-sheet: 0 -1rpx 8rpx var(--shadow-color);
   /* 语义别名（向后兼容：现有组件引用的 --shadow / --sticky-shadow 等映射到统一规范） */
   --shadow: var(--shadow-3);
   --shadow-up: var(--shadow-primary-2);
@@ -100,16 +101,17 @@
   --shadow-color-strong: rgba(0, 0, 0, 0.62);
   --shadow-primary: rgba(7, 193, 96, 0.32);
   --shadow-danger: rgba(229, 72, 77, 0.42);
-  --shadow-1: 0 2rpx 6rpx var(--shadow-color);
-  --shadow-2: 0 6rpx 18rpx var(--shadow-color);
-  --shadow-3: 0 12rpx 34rpx var(--shadow-color);
-  --shadow-4: 0 24rpx 60rpx var(--shadow-color-strong);
-  --shadow-primary-1: 0 2rpx 8rpx var(--shadow-primary);
-  --shadow-primary-2: 0 6rpx 18rpx var(--shadow-primary);
-  --shadow-primary-3: 0 12rpx 34rpx var(--shadow-primary);
-  --shadow-danger-1: 0 2rpx 8rpx var(--shadow-danger);
-  --shadow-ambient: 0 0 60rpx var(--shadow-color);
-  --shadow-sheet: 0 -2rpx 12rpx var(--shadow-color);
+  /* 精致化：y 偏移与模糊整体收约（约 -33% 模糊 / -50% 小阴影偏移），层级比例保持一致 */
+  --shadow-1: 0 1rpx 4rpx var(--shadow-color);
+  --shadow-2: 0 4rpx 12rpx var(--shadow-color);
+  --shadow-3: 0 8rpx 22rpx var(--shadow-color);
+  --shadow-4: 0 16rpx 40rpx var(--shadow-color-strong);
+  --shadow-primary-1: 0 1rpx 5rpx var(--shadow-primary);
+  --shadow-primary-2: 0 4rpx 12rpx var(--shadow-primary);
+  --shadow-primary-3: 0 8rpx 22rpx var(--shadow-primary);
+  --shadow-danger-1: 0 1rpx 5rpx var(--shadow-danger);
+  --shadow-ambient: 0 0 40rpx var(--shadow-color);
+  --shadow-sheet: 0 -1rpx 8rpx var(--shadow-color);
   --shadow: var(--shadow-3);
   --shadow-up: var(--shadow-primary-2);
   --sticky-shadow: var(--shadow-2);
@@ -815,7 +817,7 @@ textarea {
 }
 @keyframes glowPulse {
   0%, 100% { filter: drop-shadow(0 0 0 rgba(7, 193, 96, 0)); }
-  50% { filter: drop-shadow(0 0 18rpx rgba(7, 193, 96, 0.5)); }
+  50% { filter: drop-shadow(0 0 12rpx rgba(7, 193, 96, 0.5)); }
 }
 
 /* 上浮动效：淡入 + 轻微上浮 + 缩放（卡片入场更顺滑） */
