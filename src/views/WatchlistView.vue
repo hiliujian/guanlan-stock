@@ -124,7 +124,7 @@
             <!-- 固定列：拖拽手柄(仅整理模式) + 预警点 + 名称 + (市场徽标 + 代码) -->
             <view class="td c-name" :class="{ 'has-handle': reorderMode }">
               <view
-                v-if="reorderMode && selectedGroup !== '__all__'"
+                v-if="reorderMode"
                 class="drag-handle"
                 :class="{ on: dragKey === keyOf(row.it) }"
                 role="button"
@@ -495,8 +495,15 @@ const groups = computed(() => {
 const filteredList = computed(() => {
   const base = list.value;
   if (selectedGroup.value === "__all__") {
-    // 「全部」视图：按创建时间（加入自选的时间）稳定排序；移组不改 created_at，位置不跳变
-    return base.slice().sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+    // 「全部」视图：默认按加入时间（created_at）稳定排序；若已做过全局拖拽重排
+    // （order 已被 applyGroupOrder("__all__") 连续编号），则按 order 优先、created_at 兜底，
+    // 使拖拽顺序在「全部」视图持久生效。
+    return base.slice().sort((a, b) => {
+      const oa = a.order ?? Infinity;
+      const ob = b.order ?? Infinity;
+      if (oa !== ob) return oa - ob;
+      return (a.created_at || "").localeCompare(b.created_at || "");
+    });
   }
   const grp = selectedGroup.value; // "" = 默认分组
   // 单分组视图：按「分组内 order」排序（即加入该分组的时间顺序，move/拖拽可改）
@@ -827,13 +834,8 @@ function toggleReorder() {
   // 进入整理模式：先捕获「当前可见顺序」(可能正处于列排序态) 作为拖拽基准，
   // 再清除列排序——避免「先点表头排序、再拖拽」时列表跳变、拖拽位置不生效。
   if (reorderMode.value) {
-    // 全部视图按加入时间排序、无分组内 order，拖拽无意义且手柄已隐藏；
-    // 自动切到首个有内容的分组（优先默认分组，其内容与「全部」通常一致、对用户无感），
-    // 使行前拖拽手柄出现、拖拽可立即使用，且不破坏「分组内 order」数据模型。
-    if (selectedGroup.value === "__all__") {
-      const hasDefault = list.value.some((i) => !i.group);
-      selectedGroup.value = hasDefault ? "" : groups.value[0] ?? "";
-    }
+    // 不再自动切分组：「全部」视图现已支持全局拖拽重排（applyGroupOrder("__all__")），
+    // 保留当前视图即可，避免点击拖拽图标后列表被过滤而「数据变少」的回归。
     manualOrder.value = renderRows.value.map((r) => keyOf(r.it));
     sortKey.value = "";
   }
@@ -856,7 +858,7 @@ const renderRows = computed(() => {
     .sort((a, b) => (idx.get(keyOf(a.it)) ?? 0) - (idx.get(keyOf(b.it)) ?? 0));
 });
 
-// 拖拽状态（仅单分组视图可拖拽；"全部"视图隐藏手柄）
+// 拖拽状态（整理模式下所有视图——含"全部"——均可拖拽重排）
 const dragKey = ref<string | null>(null);
 let dragStartY = 0;
 let rowHpx = 0;
@@ -909,8 +911,9 @@ function onDragMove(e: any) {
 function onDragEnd() {
   if (!dragKey.value) return;
   dragKey.value = null;
-  // 仅单分组视图可拖拽重排（order 为分组内权重，全部视图不提供整体重排，手柄已隐藏）
-  if (dragMoved && selectedGroup.value !== "__all__") {
+  // 拖拽结束后持久化重排结果：单分组按组内 order 持久化；"全部"视图按全局 order 持久化
+  // （applyGroupOrder 内部按 group 是否为 "__all__" 区分两种重排范围）。
+  if (dragMoved) {
     applyGroupOrder(selectedGroup.value, manualOrder.value);
   }
 }

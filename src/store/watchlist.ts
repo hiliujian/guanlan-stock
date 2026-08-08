@@ -68,9 +68,9 @@ function nextGroupOrder(grp: string): number {
   return m + 1;
 }
 
-// 内存数组默认按「创建时间 → 分组内 order → 分组名」稳定排序，作为「全部」视图的展示序。
-// 说明：order 是分组内权重（不跨分组比较），故「全部」视图改以 created_at 为主序；
-// 移入/移出分组只改 group 与组内 order，不会改变 created_at，个股在「全部」中的位置保持稳定。
+// 内存默认序：创建时间 → 分组内 order → 分组名。视图「全部」视图默认按此（created_at 为主）；
+// 若用户做过全局拖拽重排（applyGroupOrder("__all__")），视图 filteredList 会改按 order 优先，
+// 使拖拽结果在「全部」视图持久生效。移组不改 created_at，个体在「全部」中位置基本稳定。
 function sortItems(items: WatchItem[]): WatchItem[] {
   return items.slice().sort((a, b) => {
     const ca = a.created_at || "";
@@ -237,22 +237,27 @@ export async function setItemGroup(code: string, market: string, group: string):
 }
 
 /**
- * 拖拽重排：传入目标分组与该分组内重排后的可见键顺序（code|market），
- * 仅重排该分组内的 sort_order 为 0..n 并持久化（云：批量按 id 更新；本地：重存）。
- * order 为分组内权重，故「单分组视图」内拖拽只影响该分组内部顺序，不会干扰其它分组。
- * （「全部」视图不提供拖拽重排：因 order 是分组内权重，整体重排无法跨分组持久化，
- *   视图层已隐藏「全部」下的拖拽手柄，历史遗留的全局重排分支已移除。）
+ * 拖拽重排：传入目标分组（或 "__all__"）与该范围重排后的可见键顺序（code|market），
+ * 将对应项的 sort_order 连续重编为 0..n 并持久化（云：批量按 id 更新；本地：重存）。
+ * - 单分组视图（group 为具体分组名或 "" 默认分组）：仅重排该分组内的项，order 为分组内
+ *   权重，不会干扰其它分组。
+ * - 全部视图（group === "__all__"）：对所有可见项按拖拽后相对位置连续编号 0..n，跨分组
+ *   持久化全局顺序；视图层「全部」视图会按 order 优先排序以还原拖拽结果。
  */
 export async function applyGroupOrder(group: string, orderedKeys: string[]): Promise<void> {
   const grp = group || "";
+  const global = group === "__all__";
   const idxByKey = new Map<string, number>();
   orderedKeys.forEach((k, i) => idxByKey.set(k, i));
 
-  // 仅重排 grp 分组内的项：按其在新序列中的相对位置赋 order = 0..n，其它分组 order 不变。
+  // 全局重排（"全部"视图）：对所有出现在 orderedKeys 内的项按相对位置赋 order = 0..n；
+  // 单分组重排：仅重排 grp 分组内的项（其它分组 order 不变）。
   // 内存按 key(code|market) 更新（本地模式项无 id，亦能持久化）；云模式再按 id 批量写库。
   const newOrderByKey = new Map<string, number>();
   state.items
-    .filter((i) => (i.group || "") === grp)
+    .filter((i) =>
+      global ? idxByKey.has(`${i.code}|${i.market}`) : (i.group || "") === grp
+    )
     .sort(
       (a, b) =>
         (idxByKey.get(`${a.code}|${a.market}`) ?? 0) -
@@ -271,7 +276,11 @@ export async function applyGroupOrder(group: string, orderedKeys: string[]): Pro
     const sb = getSupabase()!;
     await Promise.all(
       state.items
-        .filter((i) => (i.group || "") === grp && !!i.id)
+        .filter((i) =>
+          global
+            ? newOrderByKey.has(`${i.code}|${i.market}`)
+            : (i.group || "") === grp && !!i.id
+        )
         .map((i) => sb.from("watchlists").update({ sort_order: i.order ?? 0 }).eq("id", i.id))
     );
   } else {
