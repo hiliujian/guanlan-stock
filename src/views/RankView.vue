@@ -317,7 +317,7 @@ function openRow(r: { code: string; market: string }) {
 .rh.star {
   flex: none;
   width: 64rpx;
-  height: 56rpx;
+  height: 64rpx;
   display: flex;
   align-items: center;
   justify-content: center;
