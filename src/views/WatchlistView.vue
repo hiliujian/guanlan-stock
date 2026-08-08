@@ -846,12 +846,8 @@ const manualOrder = ref<string[]>([]);
 // 原 watch 仅依赖键集（sorted key 串），当「全部」视图与某分组键集完全相同（如仅一个分组 /
 // 全部股票都在默认分组）时无法触发重置，导致上一视图的拖拽顺序串到下一视图（顺序互串 bug）。
 // 因此 watch 依赖必须同时包含 selectedGroup —— 切换分组即重置 manualOrder 为当前视图自然顺序。
-watch(
-  [selectedGroup, () => displayRows.value.map((r) => keyOf(r.it)).slice().sort().join(",")],
-  () => {
-    manualOrder.value = displayRows.value.map((r) => keyOf(r.it));
-  }
-);
+// （重置 watch 实际定义在 displayRows 之后：watch 源函数会在 setup 期立即求值，
+//   若此处提前访问 displayRows 会触发「Cannot access 'displayRows' before initialization」TDZ 错误。）
 // 渲染行：列排序优先；否则按手动顺序（拖拽结果）
 const renderRows = computed(() => {
   if (sortKey.value) return displayRows.value;
@@ -971,6 +967,15 @@ const displayRows = computed(() => {
     return cmp * dir;
   });
 });
+
+// 重置 manualOrder：视图切换或可见键集变化时，重设为「当前视图」自然顺序（修复顺序互串 bug）。
+// 必须置于 displayRows 之后——watch 源函数会在 setup 期立即求值，提前访问 displayRows 会触发 TDZ。
+watch(
+  [selectedGroup, () => displayRows.value.map((r) => keyOf(r.it)).slice().sort().join(",")],
+  () => {
+    manualOrder.value = displayRows.value.map((r) => keyOf(r.it));
+  }
+);
 
 // 顶部右侧：当前分组名（默认「全部」）+ 当前分组内实时涨/跌个股个数（随行情刷新）
 const upDown = computed(() => {
