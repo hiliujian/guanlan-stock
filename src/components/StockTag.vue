@@ -58,7 +58,6 @@ function onTap() {
   background: var(--primary-soft);
   color: var(--primary);
   font-size: var(--font-sm);
-  font-weight: 400;
   line-height: 1.2;
   white-space: nowrap;
   transition: transform 0.12s ease, background 0.15s ease, color 0.15s ease;
@@ -69,7 +68,6 @@ function onTap() {
   color: #fff;
 }
 .stag-h {
-  font-weight: 400;
   opacity: 0.85;
 }
 </style>
