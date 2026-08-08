@@ -422,10 +422,17 @@ textarea {
 /* ============ 独立登录 / 注册 / 验证页（navigationStyle:custom） ============ */
 /* 与主流小程序一致：登录注册为单独页面，自带返回按钮与品牌区，背景复用全局纵深。 */
 .auth-page {
-  position: relative;
+  /* 全屏固定层：inset:0 使高度 = 真实可视区（不受地址栏/键盘影响），
+     内部 .auth-content 用 min-height:100% + flex 列 margin-top:auto 把协议钉在可视底部。
+     覆盖层键盘下整层不收缩，协议被键盘自然遮住（不浮到键盘上、也不消失）；
+     收缩型键盘（iOS/部分 WebView）下可视区变小，整页压缩、协议仍在压缩后底部。 */
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   box-sizing: border-box;
-  min-height: 100vh;
-  min-height: 100dvh;
+  overflow-y: auto;
   /* 登录 / 注册 / 找回密码页背景统一为白色（浅色主题）；
      深色主题下沿用全局 --bg（深底），保证文字可读、不突兀。 */
   background: #fff;
@@ -447,11 +454,11 @@ textarea {
 .auth-content {
   position: relative;
   z-index: 1;
-  /* 至少撑满视口（vh 兜底 + dvh 动态视口高度）：内容少时整列高度=视口高，
-     末尾协议靠 margin-top:auto 自然落到屏幕最底部；键盘弹起（dvh 变小）时整页压缩，
-     协议仍在压缩后可视区底部。 */
-  min-height: 100vh;
-  min-height: 100dvh;
+  /* 至少撑满固定父层（.auth-page 为 inset:0 全屏层）：min-height:100% 解析为父层真实
+     可视高度，内容少时整列高度=可视高，末尾协议靠 margin-top:auto 自然落到屏幕最底部；
+     内容超出时随 .auth-page 内部滚动，协议落在文档末尾。相比 100dvh，用 100% 锚定
+     真实可视区，避免移动端地址栏导致协议被推到折叠线以下。 */
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: flex-start; /* 内容顶部对齐，不做垂直居中 */
