@@ -113,6 +113,7 @@ import { computed } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import { useUser } from "@/store/user";
+import { usePageGuard } from "@/store/guard";
 import {
   levelMeta,
   BAND_COLORS,
@@ -124,6 +125,8 @@ import {
 import type { Band } from "@/store/level";
 
 const user = useUser();
+// 全局页面守卫：等级页未对游客开放 + 未登录 → 跳转登录页
+usePageGuard("/pages/profile/level");
 
 const level = computed(() => {
   const l = user.profile?.level;

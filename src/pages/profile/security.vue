@@ -197,6 +197,7 @@ import BackgroundFX from "@/components/BackgroundFX.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import AuthField from "@/components/AuthField.vue";
 import { useUser, refreshProfile, syncSession } from "@/store/user";
+import { usePageGuard } from "@/store/guard";
 import {
   signIn,
   updatePassword,
@@ -211,6 +212,8 @@ import {
 } from "@/api/auth";
 
 const user = useUser();
+// 全局页面守卫：账号安全页未对游客开放 + 未登录 → 跳转登录页
+usePageGuard("/pages/profile/security");
 
 // —— 上次登录信息：每次打开本页都直接从云端 profiles 表查询（不依赖本地缓存 / 登录时的
 // 内存快照，避免快照为 null 时一直显示「暂无登录记录」）。仅当云端确实无记录，才以当前

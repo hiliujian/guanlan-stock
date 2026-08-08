@@ -32,6 +32,7 @@ import AuthCallback from "@/components/AuthCallback.vue";
 import AnnouncementOverlay from "@/components/AnnouncementOverlay.vue";
 import type { TabKey } from "@/config/app";
 import { enabledTabs } from "@/store/appConfig";
+import { showInMenu } from "@/store/access";
 import { useUser, userState } from "@/store/user";
 import { initWatchlist } from "@/store/watchlist";
 import { openInMarket, navTab, goTab } from "@/store/nav";
@@ -54,8 +55,9 @@ const COMP_REGISTRY: Record<TabKey, any> = {
   profile: markRaw(ProfileView),
 };
 
-// 配置驱动的 Tab 列表（响应式：远程关闭某模块后自动从底部导航消失）
-const tabKeys = computed(() => enabledTabs());
+// 配置驱动的 Tab 列表：远程关闭某模块（menus）或白名单 show_in_menu=false 时，自动从底部导航消失
+// （showInMenu 取 page_access 表字段，与 menus 双维度控制；默认种子均 true，当前无视觉变化）
+const tabKeys = computed(() => enabledTabs().filter((k) => showInMenu(k)));
 const tabs = computed(() => tabKeys.value.map((k) => TAB_DEFS[k]));
 const currentComp = computed(() => COMP_REGISTRY[currentKey.value]);
 // 当前 tab 对应的页面标识，供 AnnouncementOverlay 匹配公告的 pages 字段
@@ -127,7 +129,7 @@ onPullDownRefresh(async () => {
 });
 
 function onChange(key: TabKey) {
-  // goTab 不再强制登录：未登录访问「自选 / 社区」由各页自身渲染「未登录」空态
+  // goTab 已内置白名单拦截：未登录访问受限 Tab 会跳转登录页（见 src/store/nav.ts）
   goTab(key);
 }
 function onOpenMarket(payload: { code: string; market: string }) {

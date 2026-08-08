@@ -10,6 +10,7 @@ import { reactive } from "vue";
 import type { Market } from "@/utils/period";
 import type { TabKey } from "@/config/app";
 import { isTabEnabled } from "@/store/appConfig";
+import { canAccess } from "@/store/access";
 
 export const navState = reactive<{
   pendingCode: string;
@@ -22,12 +23,30 @@ export const navState = reactive<{
 export const navTab = reactive<{ currentKey: TabKey }>({ currentKey: "market" });
 
 /**
- * 切换底部 Tab（key 驱动，仅更新 navTab.currentKey，不做拦截）。
- * 「自选 / 社区」未登录的跳转登录页逻辑由各页自身的 onActivated 处理。
- * 目标 Tab 被远程配置关闭（menus.<key>=false）时忽略该次切换。
+ * 跳转登录页（带可选返回目标，供登录成功后回跳）。
+ * - 优先 reLaunch 到登录页（关闭所有页面，避免返回键回到受限页）；
+ * - 带 fail 兜底 navigateTo（极端环境 reLaunch 不可用时）。
+ * - 不拦截：登录 / 注册 / 找回本身永远可达，否则会拦截「去登录」自身造成死循环。
+ */
+export function redirectToLogin(redirect?: string) {
+  let url = "/pages/auth/login";
+  if (redirect) url += "?redirect=" + encodeURIComponent(redirect);
+  uni.reLaunch({ url, fail: () => uni.navigateTo({ url }) });
+}
+
+/**
+ * 切换底部 Tab（key 驱动，仅更新 navTab.currentKey）。
+ * - 目标 Tab 被远程菜单配置关闭（menus.<key>=false）时忽略该次切换；
+ * - 目标 Tab 未对游客开放（白名单 open=false）且用户未登录 → 跳转登录页拦截，
+ *   不再由各页自身 onActivated 重复处理（统一收敛到全局守卫）。
+ *   已登录用户访问任何 Tab 均放行（白名单只约束游客公开访问）。
  */
 export function goTab(key: TabKey) {
   if (!isTabEnabled(key)) return;
+  if (!canAccess(key)) {
+    redirectToLogin(key);
+    return;
+  }
   navTab.currentKey = key;
 }
 

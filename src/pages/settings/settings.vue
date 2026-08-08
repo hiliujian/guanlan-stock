@@ -130,8 +130,11 @@ import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { isDark, setTheme } from "@/utils/theme";
 import { cardOrder, hidden, metaOf, toggleCard, setOrder, resetCardLayout } from "@/utils/cardLayout";
 import { APP_VERSION } from "@/utils/version";
+import { usePageGuard } from "@/store/guard";
 
 const appVersion = APP_VERSION;
+// 全局页面守卫：设置页未对游客开放 + 未登录 → 跳转登录页
+usePageGuard("/pages/settings/settings");
 const showReset = ref(false);
 
 function back() {

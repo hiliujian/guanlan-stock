@@ -14,6 +14,16 @@ interface AppConfigRow {
   value: unknown;
 }
 
+// 页面白名单（page_access 表）单行结构
+export interface PageAccessRow {
+  path: string;
+  open: boolean;
+  show_in_menu: boolean;
+  sort_weight: number;
+  extra: Record<string, unknown> | null;
+  is_tab: boolean;
+}
+
 const TAB_KEYS: TabKey[] = ["market", "watch", "community", "profile"];
 
 export async function fetchRemoteSettings(): Promise<Partial<AppSettings>> {
@@ -36,4 +46,32 @@ export async function fetchRemoteSettings(): Promise<Partial<AppSettings>> {
     }
   }
   return out;
+}
+
+/**
+ * 拉取页面白名单配置（page_access 表）。
+ * - path：路由标识（Tab 用 "market"/"watch"…；真实页面用 "pages/xxx/yyy"）。
+ * - open：是否对游客开放（白名单开关）；closed + 未登录 → 拦截跳转登录页。
+ * - show_in_menu：是否在导航 / 菜单中展示（用于底部 Tab 栏 / 各页菜单过滤）。
+ * - sort_weight：排序权重（预留，未来排序用）。
+ * - extra：扩展字段（jsonb，预留角色权限 / 时间段开放等未来维度，不破坏表结构）。
+ * - is_tab：是否为底部 Tab 视图（与 TabKey 对应）。
+ * 表未建立 / 网络异常 → 返回空数组，由 store 层回退到内置默认白名单。
+ */
+export async function fetchPageAccess(): Promise<PageAccessRow[]> {
+  if (!isSupabaseConfigured) return [];
+  const sb = getSupabase();
+  if (!sb) return [];
+  const { data, error } = await sb
+    .from("page_access")
+    .select("path, open, show_in_menu, sort_weight, extra, is_tab");
+  if (error || !Array.isArray(data)) return [];
+  return (data as PageAccessRow[]).map((r) => ({
+    path: r.path,
+    open: !!r.open,
+    show_in_menu: !!r.show_in_menu,
+    sort_weight: Number(r.sort_weight) || 0,
+    extra: r.extra && typeof r.extra === "object" ? (r.extra as Record<string, unknown>) : null,
+    is_tab: !!r.is_tab,
+  }));
 }

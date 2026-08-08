@@ -77,8 +77,11 @@ import UserAvatar from "@/components/UserAvatar.vue";
 import { useUser, refreshProfile } from "@/store/user";
 import { updateProfile, uploadAvatar } from "@/api/auth";
 import { avatarSeed } from "@/utils/avatar";
+import { usePageGuard } from "@/store/guard";
 
 const user = useUser();
+// 全局页面守卫：个人资料页未对游客开放 + 未登录 → 跳转登录页
+usePageGuard("/pages/profile/edit");
 
 const displayName = ref("");
 const username = ref("");

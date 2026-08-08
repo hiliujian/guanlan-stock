@@ -82,7 +82,7 @@ import PostComposer from "./PostComposer.vue";
 import PostCard from "./PostCard.vue";
 import UserAvatar from "./UserAvatar.vue";
 import { useCommunity } from "@/store/community";
-import { openAuth } from "@/store/nav";
+import { usePageGuard } from "@/store/guard";
 import { getMyName, setMyName } from "@/store/identity";
 import { userState } from "@/store/user";
 import { updateProfile } from "@/api/auth";
@@ -92,8 +92,8 @@ import type { CommunityPost, PostCard as PostCardData, Topic } from "@/api/commu
 
 const { posts, loading, load, publishText, publishCard, like, reply, remove } = useCommunity();
 
-// 未登录且已配置后端（登录可达）时，进入本页自动跳转登录页（见 onActivated）
-const needLogin = computed(() => userState.supabaseEnabled && !userState.loggedIn);
+// 全局页面守卫：本页未对游客开放 + 未登录 → 跳转登录页（统一由 src/store/guard.ts 处理）
+usePageGuard("community");
 
 // ---------------- 我的身份（昵称，账号感知且响应式） ----------------
 // getMyName 已内置账号优先逻辑：登录后用账号资料，未登录回退本地。
@@ -199,12 +199,8 @@ async function onCard(card: PostCardData, images?: string[]) {
   }
 }
 
-// keep-alive 每次激活：未登录则自动跳转登录页，否则（首次 / 登录后）加载社区动态
+// keep-alive 每次激活：（已登录 / 公开页）加载社区动态；未授权由全局守卫跳转登录页
 onActivated(() => {
-  if (needLogin.value) {
-    openAuth("login");
-    return;
-  }
   if (!posts.value.length) load();
 });
 // 登录后：空态消失，立即加载社区动态

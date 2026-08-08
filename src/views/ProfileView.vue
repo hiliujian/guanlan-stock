@@ -145,6 +145,7 @@ import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import LevelTag from "@/components/LevelTag.vue";
 import { useUser } from "@/store/user";
 import { openAuth, goTab } from "@/store/nav";
+import { usePageGuard } from "@/store/guard";
 import { useWatchlist } from "@/store/watchlist";
 import { useCommunity } from "@/store/community";
 import { isTabEnabled } from "@/store/appConfig";
@@ -153,6 +154,8 @@ import { avatarGradient, avatarChar as avatarCharFn, avatarSeed } from "@/utils/
 import { signOut } from "@/api/auth";
 
 const user = useUser();
+// 全局页面守卫：「我的」页未对游客开放 + 未登录 → 跳转登录页
+usePageGuard("profile");
 const watch = useWatchlist();
 const { posts: communityPosts, load: loadCommunity } = useCommunity();
 

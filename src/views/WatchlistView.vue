@@ -429,7 +429,8 @@ import BackgroundFX from "@/components/BackgroundFX.vue";
 import RankView from "@/views/RankView.vue";
 import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, applyGroupOrder, type WatchItem, type PriceAlert } from "@/store/watchlist";
 import { userState } from "@/store/user";
-import { openAuth, goTab } from "@/store/nav";
+import { goTab } from "@/store/nav";
+import { usePageGuard } from "@/store/guard";
 import { fetchSnapshot, type SnapResult } from "@/api/quote";
 import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
@@ -654,6 +655,10 @@ function doManageDelete() {
 
 // 未登录且已配置后端（登录可达）时，进入本页自动跳转登录页（见 onActivated）
 const needLogin = computed(() => userState.supabaseEnabled && !userState.loggedIn);
+
+// 全局页面守卫：本页未对游客开放 + 未登录 → 跳转登录页（统一由 src/store/guard.ts 处理，
+// 不再在各页 onActivated 重复写跳转逻辑）
+usePageGuard("watch");
 
 interface Snap {
   price: number;
@@ -1012,10 +1017,6 @@ onMounted(() => {
   loadPeek();
 });
 onActivated(() => {
-  if (needLogin.value) {
-    openAuth("login");
-    return;
-  }
   loadQuotesSafe();
   startPolling();
   loadPeek(); // 回到本页即刷新「今日最热」预览，避免展示过期的空态
