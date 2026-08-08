@@ -1102,7 +1102,7 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-sm);
   background: var(--glass, rgba(255, 255, 255, 0.62));
   border: 1rpx solid var(--border);
-  box-shadow: 0 6rpx 18rpx rgba(20, 30, 50, 0.16);
+  box-shadow: var(--shadow-2);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8rpx);
 }
@@ -1184,7 +1184,7 @@ onBeforeUnmount(() => {
   max-width: 130px;
   border-radius: 4px;
   background: #5a5a5a;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-1);
   z-index: 5;
   animation: kc-timeline-in 80ms ease-out both;
 }

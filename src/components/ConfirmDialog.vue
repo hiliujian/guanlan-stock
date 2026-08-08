@@ -87,7 +87,7 @@ function onConfirm() {
   background: var(--card);
   border-radius: 32rpx;
   padding: 48rpx 40rpx 32rpx;
-  box-shadow: 0 24rpx 64rpx rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-4);
   display: flex;
   flex-direction: column;
   align-items: center;

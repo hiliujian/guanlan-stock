@@ -30,7 +30,7 @@ const style = computed(() => ({
   font-size: var(--font-xs);
   font-weight: 700;
   line-height: 1.3;
-  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-2);
   vertical-align: middle;
 }
 .lv-name {

@@ -250,7 +250,7 @@ async function save() {
   height: 148rpx;
   border-radius: 50%;
   border: 3rpx solid var(--card);
-  box-shadow: 0 0 0 6rpx rgba(7, 193, 96, 0.16), 0 10rpx 24rpx rgba(0, 0, 0, 0.22);
+  box-shadow: 0 0 0 6rpx var(--primary-soft), var(--shadow-3);
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -272,7 +272,7 @@ async function save() {
   align-items: center;
   justify-content: center;
   border: 3rpx solid #fff;
-  box-shadow: 0 4rpx 10rpx rgba(7, 193, 96, 0.4);
+  box-shadow: var(--shadow-primary-1);
 }
 .ep-spin {
   width: 26rpx;

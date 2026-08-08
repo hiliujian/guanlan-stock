@@ -583,7 +583,7 @@ onUnmounted(() => {
   justify-content: center;
   background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));
   flex: none;
-  box-shadow: 0 8rpx 20rpx rgba(7, 193, 96, 0.28);
+  box-shadow: var(--shadow-primary-2);
 }
 .sec-hero-body {
   flex: 1;

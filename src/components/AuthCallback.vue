@@ -137,7 +137,7 @@ function goRegister() {
   background: var(--card);
   border-radius: 32rpx;
   padding: 52rpx 40rpx 44rpx;
-  box-shadow: 0 24rpx 60rpx rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-4);
   display: flex;
   flex-direction: column;
   align-items: center;

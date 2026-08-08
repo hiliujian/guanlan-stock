@@ -408,7 +408,7 @@ function rowStyle(idx: number) {
   height: 42rpx;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.28);
+  box-shadow: var(--shadow-1);
   transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .cc-switch.on .cc-knob {

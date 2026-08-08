@@ -223,7 +223,7 @@ function back() {
   align-items: center;
   justify-content: center;
   flex: none;
-  box-shadow: 0 8rpx 22rpx rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-2);
 }
 .lv-hero-main {
   flex: 1;
@@ -373,7 +373,7 @@ function back() {
   align-items: center;
   justify-content: center;
   flex: none;
-  box-shadow: 0 4rpx 10rpx rgba(0, 0, 0, 0.16);
+  box-shadow: var(--shadow-1);
 }
 .lv-tier-info {
   flex: 1;

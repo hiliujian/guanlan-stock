@@ -412,7 +412,7 @@ function onConfirm() {
   background: var(--card);
   border-radius: 32rpx;
   padding: 36rpx 32rpx 28rpx;
-  box-shadow: 0 24rpx 64rpx rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-4);
   display: flex;
   flex-direction: column;
 }
@@ -524,7 +524,7 @@ function onConfirm() {
   background: #fff;
   border: 2rpx solid var(--primary);
   transform: translate(-50%, -50%);
-  box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-1);
   transition: left 0.12s ease;
 }
 

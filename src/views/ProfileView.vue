@@ -317,7 +317,7 @@ function onMenu(act: MenuItem["act"]) {
   border: 1rpx solid var(--border);
   overflow: hidden;
   flex: none;
-  box-shadow: 0 6rpx 18rpx rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-2);
 }
 .pf-avatar-img {
   width: 100%;

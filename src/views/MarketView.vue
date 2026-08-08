@@ -957,7 +957,7 @@ defineExpose({ refresh: () => refreshFull() });
   border-radius: 999rpx;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 50%), var(--primary);
   color: #fff;
-  box-shadow: 0 4rpx 14rpx rgba(7, 193, 96, 0.28);
+  box-shadow: var(--shadow-primary-2);
   font-size: var(--font-sm);
   font-weight: 600;
   letter-spacing: 1rpx;
@@ -965,14 +965,14 @@ defineExpose({ refresh: () => refreshFull() });
 }
 /* 聚焦联动：按钮轻微提亮 */
 .search-unit.focused .btn-primary.go {
-  box-shadow: 0 6rpx 18rpx rgba(7, 193, 96, 0.36);
+  box-shadow: var(--shadow-primary-2);
 }
 /* 按压态：轻微回弹 + 加深绿 + 收紧投影 */
 .btn-primary.go:active:not(:disabled) {
   transform: scale(0.95);
   background: var(--primary-dark);
   color: #fff;
-  box-shadow: 0 2rpx 8rpx rgba(6, 164, 84, 0.24);
+  box-shadow: var(--shadow-primary-1);
 }
 /* 加载中：保持绿色 + 转圈，不灰显 */
 .btn-primary.go:disabled,
@@ -980,7 +980,7 @@ defineExpose({ refresh: () => refreshFull() });
   opacity: 1;
   background: var(--primary-dark);
   color: #fff;
-  box-shadow: 0 4rpx 14rpx rgba(7, 193, 96, 0.2);
+  box-shadow: var(--shadow-primary-2);
 }
 .spinner {
   width: 24rpx;

@@ -1906,7 +1906,7 @@ function removeLp() {
 /* 按下：该侧抬起为高亮分段（浅浮起 + 主色图标），仅高亮被点击的一侧 */
 .th-ic:active {
   background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 2rpx 6rpx rgba(7, 193, 96, 0.18);
+  box-shadow: var(--shadow-primary-1);
 }
 .th-ic:active :deep(.outline-icon) {
   color: var(--primary) !important;

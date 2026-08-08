@@ -25,18 +25,36 @@
   --border: rgba(20, 30, 50, 0.10);
   --radius: 20rpx;
   --radius-sm: 12rpx;
-  --shadow: 0 12rpx 34rpx rgba(20, 30, 50, 0.10);
-  --shadow-up: 0 8rpx 28rpx rgba(7, 193, 96, 0.22);
+  /* ===== 全局阴影规范 =====
+     统一色彩源：--shadow-color（中性）/ --shadow-color-strong（浮层）/ --shadow-primary（主色绿）/ --shadow-danger（警示红）
+     几何步长（y偏移 / 模糊）：sm 2/6 · md 6/18 · lg 12/34 · xl 24/60，扩散半径统一 0（语义需要除外）。
+     所有 box-shadow 必须引用下列变量，禁止散写 rgba 值，确保全站视觉一致。 */
+  --shadow-color: rgba(20, 30, 50, 0.12);
+  --shadow-color-strong: rgba(20, 30, 50, 0.20);
+  --shadow-primary: rgba(7, 193, 96, 0.28);
+  --shadow-danger: rgba(229, 72, 77, 0.34);
+  --shadow-1: 0 2rpx 6rpx var(--shadow-color);
+  --shadow-2: 0 6rpx 18rpx var(--shadow-color);
+  --shadow-3: 0 12rpx 34rpx var(--shadow-color);
+  --shadow-4: 0 24rpx 60rpx var(--shadow-color-strong);
+  --shadow-primary-1: 0 2rpx 8rpx var(--shadow-primary);
+  --shadow-primary-2: 0 6rpx 18rpx var(--shadow-primary);
+  --shadow-primary-3: 0 12rpx 34rpx var(--shadow-primary);
+  --shadow-danger-1: 0 2rpx 8rpx var(--shadow-danger);
+  --shadow-ambient: 0 0 60rpx var(--shadow-color);
+  --shadow-sheet: 0 -2rpx 12rpx var(--shadow-color);
+  /* 语义别名（向后兼容：现有组件引用的 --shadow / --sticky-shadow 等映射到统一规范） */
+  --shadow: var(--shadow-3);
+  --shadow-up: var(--shadow-primary-2);
+  --sticky-shadow: var(--shadow-2);
+  --suggest-shadow: var(--shadow-3);
+  --shell-shadow: var(--shadow-ambient);
   --gap: 16rpx;
   --glass-blur: 18rpx;
   /* 跨主题专用表面（深浅色各自一套，避免硬编码导致切主题不彻底） */
   --tabbar-bg: rgba(255, 255, 255, 0.82);
-  --tabbar-shadow: 0 -6rpx 24rpx rgba(20, 30, 50, 0.12);
   --sticky-bg: rgba(238, 241, 246, 0.78);
-  --sticky-shadow: 0 6rpx 20rpx rgba(20, 30, 50, 0.10);
   --suggest-bg: rgba(255, 255, 255, 0.94);
-  --suggest-shadow: 0 14rpx 30rpx rgba(20, 30, 50, 0.14);
-  --shell-shadow: 0 0 60rpx rgba(20, 30, 50, 0.12);
   /* 统一动效参数：全站缓动曲线与入场时长集中管理，避免各组件硬编码导致风格漂移 */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --dur-fast: 0.25s;
@@ -77,17 +95,31 @@
   --border: rgba(255, 255, 255, 0.10);
   --radius: 20rpx;
   --radius-sm: 12rpx;
-  --shadow: 0 12rpx 34rpx rgba(0, 0, 0, 0.45);
-  --shadow-up: 0 8rpx 28rpx rgba(7, 193, 96, 0.30);
+  /* ===== 全局阴影规范（深色主题） ===== */
+  --shadow-color: rgba(0, 0, 0, 0.5);
+  --shadow-color-strong: rgba(0, 0, 0, 0.62);
+  --shadow-primary: rgba(7, 193, 96, 0.32);
+  --shadow-danger: rgba(229, 72, 77, 0.42);
+  --shadow-1: 0 2rpx 6rpx var(--shadow-color);
+  --shadow-2: 0 6rpx 18rpx var(--shadow-color);
+  --shadow-3: 0 12rpx 34rpx var(--shadow-color);
+  --shadow-4: 0 24rpx 60rpx var(--shadow-color-strong);
+  --shadow-primary-1: 0 2rpx 8rpx var(--shadow-primary);
+  --shadow-primary-2: 0 6rpx 18rpx var(--shadow-primary);
+  --shadow-primary-3: 0 12rpx 34rpx var(--shadow-primary);
+  --shadow-danger-1: 0 2rpx 8rpx var(--shadow-danger);
+  --shadow-ambient: 0 0 60rpx var(--shadow-color);
+  --shadow-sheet: 0 -2rpx 12rpx var(--shadow-color);
+  --shadow: var(--shadow-3);
+  --shadow-up: var(--shadow-primary-2);
+  --sticky-shadow: var(--shadow-2);
+  --suggest-shadow: var(--shadow-3);
+  --shell-shadow: var(--shadow-ambient);
   --gap: 16rpx;
   --glass-blur: 22rpx;
   --tabbar-bg: rgba(8, 13, 24, 0.72);
-  --tabbar-shadow: 0 -6rpx 24rpx rgba(0, 0, 0, 0.45);
   --sticky-bg: rgba(5, 8, 15, 0.6);
-  --sticky-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.35);
   --suggest-bg: rgba(10, 16, 28, 0.86);
-  --suggest-shadow: 0 14rpx 30rpx rgba(0, 0, 0, 0.4);
-  --shell-shadow: 0 0 60rpx rgba(0, 0, 0, 0.5);
 }
 
 /* 背景必须刷到整条根容器链（html、body、#app、uni-app、uni-page-wrapper、uni-page-body、page）。
@@ -255,13 +287,13 @@ textarea {
   background: var(--primary-dark);
   color: #fff;
   transform: translateY(1rpx);
-  box-shadow: 0 3rpx 12rpx rgba(7, 193, 96, 0.28), inset 0 1rpx 0 rgba(255, 255, 255, 0.22);
+  box-shadow: var(--shadow-primary-1), inset 0 1rpx 0 rgba(255, 255, 255, 0.22);
 }
 .btn-danger:active {
   background: var(--danger-dark);
   color: #fff;
   transform: translateY(1rpx);
-  box-shadow: 0 3rpx 12rpx rgba(229, 72, 77, 0.32), inset 0 1rpx 0 rgba(255, 255, 255, 0.22);
+  box-shadow: var(--shadow-danger-1), inset 0 1rpx 0 rgba(255, 255, 255, 0.22);
 }
 .btn-primary.is-disabled,
 .btn-danger.is-disabled {
