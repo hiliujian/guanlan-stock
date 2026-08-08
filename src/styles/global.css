@@ -497,25 +497,34 @@ textarea {
 
 /* ===== 登录 / 注册 / 找回密码 统一外壳（主流小程序格式：品牌标 + 欢迎语 + 表单 + 协议） =====
    与系统整体风格保持一致：深色玻璃卡片、微信绿主色、圆角与留白体系复用全局变量。 */
-/* 品牌标：与行情首页统一的「观澜」文字商标（绿字 + 辉光），作为全局记忆点 */
+/* 品牌标：经典双层结构——上方 LOGO 主体「观澜」，下方 SLOGAN「让数据说话」。
+   .auth-logo 宽度由 wordmark 内容决定（max-content），tagline 以 space-between 拉伸填满同宽，
+   使两行首/尾字符两端严格对齐；line-height:1 + 无间隙，两行紧密贴合。 */
 .auth-logo {
   display: flex;
-  flex-direction: column; /* 观澜 与 副标题纵向堆叠并居中 */
-  align-items: center;
-  justify-content: center;
-  gap: 16rpx;
+  flex-direction: column;
+  width: max-content; /* 宽度锚定 LOGO 主体，SLOGAN 拉伸到同宽，保证两端对齐 */
   margin: 52rpx auto; /* 加大上下留白，让品牌区更有存在感 */
+  line-height: 1;
 }
 .auth-wordmark {
+  text-align: center;
   font-size: 60rpx;
   font-weight: 800;
   color: var(--primary);
-  letter-spacing: 5rpx;
+  letter-spacing: 6rpx;
+  line-height: 1;
 }
-/* 品牌副标题：观澜下方小字，复用行情页 brand-sub 样式（22rpx / --text-2 / 无字距），点明产品定位 */
+/* 品牌副标题（SLOGAN）：单字拆为 flex 项，space-between 让首尾字严格贴合 LOGO 两端；
+   字号按 5 字≈LOGO 2 字宽度取值，自然填满同宽、两行之间不留间隙。 */
 .auth-tagline {
-  font-size: 25rpx;
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 0; /* 与 LOGO 紧密贴合，无间隙 */
+  font-size: 24rpx;
   color: var(--text-2);
+  line-height: 1;
 }
 .auth-body {
   flex: none; /* 取消 flex:1，让 logo + 表单作为整体贴合顶部 */
