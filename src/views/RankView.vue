@@ -313,7 +313,7 @@ function openRow(r: { code: string; market: string }) {
   width: 64rpx;
   text-align: center;
 }
-/* 自选星星：与行情页 .qh-star 一致——真正的圆形底，on 态浅绿、按下缩放 */
+/* 自选星星：列宽 64rpx 仅用于对齐表头「自选」；圆底尺寸/形状/背景与行情页 .qh-star 完全一致 */
 .rh.star {
   flex: none;
   width: 64rpx;
@@ -321,14 +321,33 @@ function openRow(r: { code: string; market: string }) {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+  background: transparent;
+  transition: transform 0.12s ease;
+}
+/* 圆底：52x52 正圆，背景 --card-2，on 态 --primary-soft，与行情页 .qh-star 一致 */
+.rh.star::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 52rpx;
+  height: 52rpx;
   border-radius: 50%;
   background: var(--card-2);
-  transition: transform 0.12s ease, background 0.15s ease;
+  transition: background 0.15s ease;
+  z-index: 0;
+}
+/* 图标在圆底之上 */
+.rh.star > * {
+  position: relative;
+  z-index: 1;
 }
 .rh.star:active {
   transform: scale(0.9);
 }
-.rh.star.on {
+.rh.star.on::before {
   background: var(--primary-soft);
 }
 
