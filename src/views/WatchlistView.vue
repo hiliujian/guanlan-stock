@@ -1744,14 +1744,14 @@ function removeLp() {
 }
 .rp-top {
   flex: none;
-  font-size: var(--font-xs);
+  font-size: var(--font-sm);
   color: var(--text-3);
 }
 /* 当日无新增自选时的诚实占位（绝不兜底完整榜单数据） */
 .rp-empty {
   flex: 1;
   min-width: 0;
-  font-size: var(--font-xs);
+  font-size: var(--font-sm);
   color: var(--text-3);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1770,7 +1770,7 @@ function removeLp() {
   flex: none;
   max-width: 220rpx;
   min-width: 0;
-  font-size: var(--font-xs);
+  font-size: var(--font-sm);
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1778,7 +1778,7 @@ function removeLp() {
 }
 .rp-code {
   flex: none;
-  font-size: var(--font-xs);
+  font-size: var(--font-sm);
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
