@@ -200,7 +200,7 @@ function preview(current: string) {
   justify-content: center;
   font-weight: 700;
   color: #fff;
-  font-size: 28rpx;
+  font-size: var(--font-md);
   background: linear-gradient(135deg, var(--primary), var(--primary-2));
 }
 .p-meta {
@@ -210,12 +210,12 @@ function preview(current: string) {
   min-width: 0;
 }
 .p-name {
-  font-size: 27rpx;
+  font-size: var(--font-md);
   font-weight: 600;
   color: var(--text);
 }
 .p-time {
-  font-size: 21rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
 }
 .p-del {
@@ -223,7 +223,7 @@ function preview(current: string) {
   padding: 6rpx;
 }
 .p-text {
-  font-size: 28rpx;
+  font-size: var(--font-md);
   line-height: 1.6;
   color: var(--text);
   word-break: break-word;
@@ -249,7 +249,7 @@ function preview(current: string) {
   margin-bottom: 14rpx;
 }
 .cs-tag {
-  font-size: 20rpx;
+  font-size: var(--font-xs);
   font-weight: 700;
   color: #fff;
   background: var(--primary);
@@ -257,7 +257,7 @@ function preview(current: string) {
   border-radius: 8rpx;
 }
 .cs-side {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   font-weight: 700;
   padding: 4rpx 14rpx;
   border-radius: 8rpx;
@@ -265,12 +265,12 @@ function preview(current: string) {
 .cs-side.buy { color: var(--up); background: rgba(255, 91, 91, 0.12); }
 .cs-side.sell { color: var(--down); background: rgba(31, 216, 116, 0.12); }
 .cs-title {
-  font-size: 28rpx;
+  font-size: var(--font-md);
   font-weight: 700;
   color: var(--text);
 }
 .cs-code {
-  font-size: 21rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
 }
 .cs-grid {
@@ -284,11 +284,11 @@ function preview(current: string) {
   gap: 4rpx;
 }
 .cs-k {
-  font-size: 20rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
 }
 .cs-v {
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   font-weight: 600;
   color: var(--text);
 }
@@ -301,11 +301,11 @@ function preview(current: string) {
   border-top: 1rpx solid var(--border);
 }
 .cs-pnl {
-  font-size: 27rpx;
+  font-size: var(--font-md);
   font-weight: 700;
 }
 .cs-big {
-  font-size: 52rpx;
+  font-size: var(--font-3xl);
   font-weight: 800;
   line-height: 1.1;
   letter-spacing: 1rpx;
@@ -314,7 +314,7 @@ function preview(current: string) {
 .cs-note {
   display: block;
   margin-top: 12rpx;
-  font-size: 23rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   font-style: italic;
 }
@@ -354,7 +354,7 @@ function preview(current: string) {
   transform: scale(0.9);
 }
 .p-act-t {
-  font-size: 24rpx;
+  font-size: var(--font-sm);
 }
 
 /* ---------- 回复区 ---------- */
@@ -364,7 +364,7 @@ function preview(current: string) {
   border-top: 1rpx solid var(--border);
 }
 .p-reply {
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   line-height: 1.5;
   padding: 6rpx 0;
 }
@@ -387,7 +387,7 @@ function preview(current: string) {
   flex: 1;
   height: 64rpx;
   padding: 0 18rpx;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   color: var(--text);
   background: var(--card-2);
   border-radius: 999rpx;

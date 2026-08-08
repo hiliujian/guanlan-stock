@@ -44,6 +44,18 @@
   --dur: 0.32s;
   --dur-slow: 0.42s;
   --dur-slower: 0.5s;
+  /* ===== 字号梯度（type scale）：全站唯一字号来源，禁止在别处写死 rpx 字号 =====
+     映射规则：原散落 23 种 rpx 字号按「就近（平局取较小档）」归并到以下 8 档。
+     例外（允许保留）：px 字号——canvas 覆盖层，如 klinecharts X 轴标签；inherit——继承父级。
+     约定：所有 font-size 必须写作 var(--font-*)；新增样式不得出现裸 rpx 字号（见 scripts/check-font-sizes.mjs）。 */
+  --font-xs: 20rpx;
+  --font-sm: 24rpx;
+  --font-md: 28rpx;
+  --font-lg: 32rpx;
+  --font-xl: 36rpx;
+  --font-2xl: 40rpx;
+  --font-3xl: 48rpx;
+  --font-4xl: 60rpx;
 }
 
 /* 深色主题：<html class="theme-dark"> 时覆盖变量（由 theme.ts 的 setTheme('dark') 切换）。
@@ -92,7 +104,7 @@ uni-page-body,
 page {
   background: var(--bg);
   color: var(--text);
-  font-size: 28rpx;
+  font-size: var(--font-md);
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC",
     "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -224,7 +236,7 @@ textarea {
 .btn-danger {
   border: none;
   border-radius: 999rpx;
-  font-size: 30rpx;
+  font-size: var(--font-md);
   font-weight: 600;
   height: 72rpx;
   line-height: 72rpx;
@@ -263,7 +275,7 @@ textarea {
   color: var(--text-2);
   border: 1rpx solid var(--border);
   border-radius: 999rpx;
-  font-size: 28rpx;
+  font-size: var(--font-md);
   height: 80rpx;
   line-height: 80rpx;
   text-align: center;
@@ -280,7 +292,7 @@ textarea {
   gap: 6rpx;
   padding: 4rpx 16rpx;
   border-radius: 999rpx;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   line-height: 1.6;
 }
 .tag-up {
@@ -490,7 +502,7 @@ textarea {
   background: var(--card-2);
 }
 .auth-nav-title {
-  font-size: 32rpx;
+  font-size: var(--font-lg);
   color: var(--text);
   margin-left: 8rpx;
 }
@@ -507,14 +519,14 @@ textarea {
   margin: 52rpx auto; /* 加大上下留白，让品牌区更有存在感 */
 }
 .auth-wordmark {
-  font-size: 60rpx;
+  font-size: var(--font-4xl);
   font-weight: 800;
   color: var(--primary);
   letter-spacing: 5rpx;
 }
 /* 品牌副标题：观澜下方小字，复用行情页 brand-sub 样式（22rpx / --text-2 / 无字距），点明产品定位 */
 .auth-tagline {
-  font-size: 25rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
 }
 .auth-body {
@@ -529,7 +541,7 @@ textarea {
   flex-direction: column;
   align-items: center;
   gap: 22rpx;
-  font-size: 25rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   line-height: 1.6;
 }
@@ -591,7 +603,7 @@ textarea {
 /* 引导语 */
 .auth-lead {
   display: block;
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   line-height: 1.7;
   margin-bottom: 6rpx;
@@ -616,12 +628,12 @@ textarea {
 .auth-input {
   flex: 1;
   min-width: 0; /* 关键：允许 flex 子项收缩到小于内容宽度，防止 suffix 被挤出裁剪 */
-  font-size: 31rpx;
+  font-size: var(--font-lg);
   color: var(--text);
 }
 /* 字段下方内联错误提示 */
 .auth-field-tip {
-  font-size: 23rpx;
+  font-size: var(--font-sm);
   margin: -8rpx 0 14rpx 8rpx;
 }
 .auth-field-tip.err {
@@ -630,13 +642,13 @@ textarea {
 /* 后端错误（保留输入，仅提示） */
 .auth-server-err {
   color: var(--up);
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   margin-bottom: 14rpx;
 }
 /* 验证码已发送等提示 */
 .auth-sent-tip {
   display: block;
-  font-size: 23rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   margin: -6rpx 0 14rpx 4rpx;
   word-break: break-all;
@@ -644,7 +656,7 @@ textarea {
 /* 用户名可用等正向提示（微信绿主色） */
 .auth-ok-tip {
   display: block;
-  font-size: 23rpx;
+  font-size: var(--font-sm);
   color: var(--primary);
   margin: -6rpx 0 14rpx 4rpx;
   word-break: break-all;
@@ -658,7 +670,7 @@ textarea {
   align-items: center;
   justify-content: center;
   height: 94rpx;
-  font-size: 33rpx;
+  font-size: var(--font-lg);
   margin-top: 18rpx;
 }
 .auth-submit::after {
@@ -671,7 +683,7 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 27rpx;
+  font-size: var(--font-md);
   color: var(--primary);
   font-weight: 400;
   white-space: nowrap;
@@ -693,7 +705,7 @@ textarea {
 .auth-switch {
   margin-top: 28rpx;
   text-align: center;
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
 }
 .auth-link {
@@ -703,7 +715,7 @@ textarea {
 .auth-forgot {
   margin-top: 18rpx;
   text-align: center;
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   transition: color 0.18s ease;
 }
@@ -731,19 +743,19 @@ textarea {
   margin-bottom: 24rpx;
 }
 .auth-done-title {
-  font-size: 38rpx;
+  font-size: var(--font-xl);
   font-weight: 800;
   color: var(--text);
 }
 .auth-done-sub {
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   margin-top: 12rpx;
 }
 /* 提示行（如：验证已失效，重新验证）——顶距沿用全局标准（与行情页 risk-note 一致） */
 .auth-hint {
   padding: 8rpx 0 0;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
   line-height: 1.5;
   text-align: center;

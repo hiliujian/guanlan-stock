@@ -57,7 +57,7 @@ function onTap() {
   border-radius: 999rpx;
   background: var(--primary-soft);
   color: var(--primary);
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;

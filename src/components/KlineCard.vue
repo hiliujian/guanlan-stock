@@ -120,7 +120,7 @@ function pick(p: PeriodKey) {
   align-items: center;
   justify-content: center;
   text-align: center;
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   border-radius: 999rpx;
   cursor: pointer;
@@ -154,7 +154,7 @@ function pick(p: PeriodKey) {
 .hint {
   padding: 40rpx 0;
   text-align: center;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
 }
 </style>

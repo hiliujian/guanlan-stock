@@ -220,7 +220,7 @@ async function save() {
   background: var(--card-2);
 }
 .ep-title {
-  font-size: 34rpx;
+  font-size: var(--font-lg);
   font-weight: 700;
   color: var(--text);
 }
@@ -284,7 +284,7 @@ async function save() {
 }
 .ep-hero-tip {
   display: block;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
 }
 
@@ -295,7 +295,7 @@ async function save() {
 }
 .ep-group-title {
   display: block;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   font-weight: 600;
   color: var(--text-2);
   letter-spacing: 1rpx;
@@ -322,18 +322,18 @@ async function save() {
 .ep-fl {
   flex: none;
   width: 130rpx;
-  font-size: 28rpx;
+  font-size: var(--font-md);
   color: var(--text-2);
 }
 .ep-fi {
   flex: 1;
-  font-size: 28rpx;
+  font-size: var(--font-md);
   text-align: right;
   color: var(--text);
 }
 .ep-fr {
   flex: 1;
-  font-size: 28rpx;
+  font-size: var(--font-md);
   text-align: right;
   color: var(--text-2);
 }
@@ -341,7 +341,7 @@ async function save() {
   width: 100%;
   box-sizing: border-box;
   min-height: 140rpx;
-  font-size: 28rpx;
+  font-size: var(--font-md);
   line-height: 1.6;
   background: var(--card-2);
   border-radius: var(--radius-sm);
@@ -350,7 +350,7 @@ async function save() {
 }
 .ep-count {
   align-self: flex-end;
-  font-size: 20rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
   margin-top: -6rpx;
 }

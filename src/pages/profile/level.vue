@@ -194,7 +194,7 @@ function back() {
   background: var(--card-2);
 }
 .lv-title {
-  font-size: 34rpx;
+  font-size: var(--font-lg);
   font-weight: 700;
   color: var(--text);
 }
@@ -235,12 +235,12 @@ function back() {
   gap: 16rpx;
 }
 .lv-hero-name {
-  font-size: 38rpx;
+  font-size: var(--font-xl);
   font-weight: 700;
   color: var(--text);
 }
 .lv-hero-no {
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   font-weight: 600;
   color: var(--text-2);
 }
@@ -251,11 +251,11 @@ function back() {
   margin-top: 8rpx;
 }
 .lv-exp-lab {
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
 }
 .lv-exp-num {
-  font-size: 34rpx;
+  font-size: var(--font-lg);
   font-weight: 800;
   color: var(--primary);
 }
@@ -274,7 +274,7 @@ function back() {
 }
 .lv-bar-tip {
   display: block;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   margin-top: 12rpx;
 }
@@ -293,14 +293,14 @@ function back() {
   display: flex;
   align-items: center;
   gap: 10rpx;
-  font-size: 28rpx;
+  font-size: var(--font-md);
   font-weight: 700;
   color: var(--text);
   margin-bottom: 16rpx;
 }
 .lv-note-text {
   display: block;
-  font-size: 25rpx;
+  font-size: var(--font-sm);
   line-height: 1.7;
   color: var(--text-2);
 }
@@ -320,13 +320,13 @@ function back() {
 }
 .lv-src-label {
   display: block;
-  font-size: 28rpx;
+  font-size: var(--font-md);
   font-weight: 600;
   color: var(--text);
 }
 .lv-src-desc {
   display: block;
-  font-size: 23rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   margin-top: 4rpx;
   line-height: 1.5;
@@ -338,12 +338,12 @@ function back() {
   align-items: flex-end;
 }
 .lv-src-exp {
-  font-size: 28rpx;
+  font-size: var(--font-md);
   font-weight: 800;
   color: var(--primary);
 }
 .lv-src-unit {
-  font-size: 20rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
 }
 
@@ -383,18 +383,18 @@ function back() {
   display: flex;
   align-items: baseline;
   gap: 12rpx;
-  font-size: 30rpx;
+  font-size: var(--font-md);
   font-weight: 600;
   color: var(--text);
 }
 .lv-tier-no {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
   font-weight: 600;
 }
 .lv-tier-range {
   display: block;
-  font-size: 23rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   margin-top: 4rpx;
 }
@@ -404,7 +404,7 @@ function back() {
   margin-top: 10rpx;
 }
 .lv-perk {
-  font-size: 23rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   line-height: 1.6;
 }
@@ -414,7 +414,7 @@ function back() {
   align-items: center;
 }
 .lv-flag {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   font-weight: 700;
   padding: 6rpx 16rpx;
   border-radius: 999rpx;
@@ -431,7 +431,7 @@ function back() {
 .lv-foot {
   padding: 8rpx 0 0;
   text-align: center;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
   line-height: 1.5;
 }

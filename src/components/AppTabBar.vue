@@ -81,7 +81,7 @@ function labelColor(t: TabDef) {
   transform: translateY(-2rpx);
 }
 .tab-label {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   transition: color 0.2s ease, font-weight 0.2s ease;
 }
 .tab.active .tab-label {

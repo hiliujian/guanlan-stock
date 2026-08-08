@@ -27,7 +27,7 @@ const style = computed(() => ({
   gap: 6rpx;
   padding: 6rpx 18rpx;
   border-radius: 999rpx;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   font-weight: 700;
   line-height: 1.3;
   box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.18);

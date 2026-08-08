@@ -101,12 +101,12 @@ function goRegister() {
   margin-bottom: 30rpx;
 }
 .ac-empty-title {
-  font-size: 38rpx;
+  font-size: var(--font-xl);
   font-weight: 800;
   color: var(--text);
 }
 .ac-empty-sub {
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   line-height: 1.7;
   margin-top: 14rpx;
@@ -175,12 +175,12 @@ function goRegister() {
   background: var(--up);
 }
 .ac-title {
-  font-size: 34rpx;
+  font-size: var(--font-lg);
   font-weight: 800;
   color: var(--text);
 }
 .ac-sub {
-  font-size: 25rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   line-height: 1.7;
   margin-top: 14rpx;
@@ -195,7 +195,7 @@ function goRegister() {
 }
 .ac-link {
   margin-top: 20rpx;
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   color: var(--primary);
 }
 </style>

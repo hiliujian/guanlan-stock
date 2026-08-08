@@ -552,7 +552,7 @@ onUnmounted(() => {
   background: var(--card-2);
 }
 .sec-title {
-  font-size: 34rpx;
+  font-size: var(--font-lg);
   font-weight: 700;
   color: var(--text);
 }
@@ -591,13 +591,13 @@ onUnmounted(() => {
 }
 .sec-hero-title {
   display: block;
-  font-size: 36rpx;
+  font-size: var(--font-xl);
   font-weight: 700;
   color: var(--text);
 }
 .sec-hero-sub {
   display: block;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   margin-top: 6rpx;
 }
@@ -609,7 +609,7 @@ onUnmounted(() => {
   border-radius: 999rpx;
   background: rgba(7, 193, 96, 0.14);
   color: var(--primary);
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   font-weight: 600;
   flex: none;
 }
@@ -627,7 +627,7 @@ onUnmounted(() => {
 }
 .sec-group-title {
   display: block;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   font-weight: 600;
   color: var(--text-2);
   letter-spacing: 1rpx;
@@ -667,12 +667,12 @@ onUnmounted(() => {
   min-width: 0;
 }
 .sec-row-label {
-  font-size: 30rpx;
+  font-size: var(--font-md);
   color: var(--text);
   font-weight: 600;
 }
 .sec-row-desc {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -693,13 +693,13 @@ onUnmounted(() => {
 }
 .sec-form-title {
   display: block;
-  font-size: 28rpx;
+  font-size: var(--font-md);
   font-weight: 700;
   color: var(--text);
   margin: 18rpx 0 14rpx;
 }
 .sec-err {
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   color: var(--danger);
   margin: 4rpx 0 8rpx;
 }
@@ -708,7 +708,7 @@ onUnmounted(() => {
 }
 .sec-tip {
   display: block;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
   margin-top: 16rpx;
   line-height: 1.5;
@@ -721,7 +721,7 @@ onUnmounted(() => {
 }
 .sec-danger-title {
   display: block;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   font-weight: 600;
   color: var(--text-2);
   letter-spacing: 1rpx;
@@ -729,7 +729,7 @@ onUnmounted(() => {
 }
 .sec-danger-warn {
   display: block;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   line-height: 1.6;
   color: var(--text-2);
   margin: 4rpx 0 24rpx;

@@ -61,7 +61,7 @@ function openUrl(url: string) {
   text-align: center;
 }
 .agree-text {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
   line-height: 1.6;
 }

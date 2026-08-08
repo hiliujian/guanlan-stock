@@ -85,7 +85,7 @@ withDefaults(
   flex: none;
 }
 .ph-brand-text {
-  font-size: 34rpx;
+  font-size: var(--font-lg);
   font-weight: 800;
   letter-spacing: 2rpx;
   line-height: 1.1;

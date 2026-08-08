@@ -164,7 +164,7 @@ onMounted(async () => {
   border-radius: var(--radius-sm);
   background: var(--primary-soft);
   color: var(--primary-dark);
-  font-size: 25rpx;
+  font-size: var(--font-sm);
   cursor: pointer;
   transition: opacity var(--dur-fast) var(--ease-out);
 }
@@ -201,7 +201,7 @@ onMounted(async () => {
   border-radius: 999rpx;
   background: rgba(0, 0, 0, 0.78);
   color: #fff;
-  font-size: 25rpx;
+  font-size: var(--font-sm);
   z-index: 9999;
   pointer-events: auto;
   cursor: pointer;
@@ -260,7 +260,7 @@ onMounted(async () => {
 }
 .ann-modal-title {
   flex: 1;
-  font-size: 32rpx;
+  font-size: var(--font-lg);
   font-weight: 700;
   color: var(--r-ink, var(--text));
 }
@@ -292,7 +292,7 @@ onMounted(async () => {
 }
 .ann-modal-content {
   display: block;
-  font-size: 27rpx;
+  font-size: var(--font-md);
   line-height: 1.7;
   color: var(--r-soft, var(--text-2));
   white-space: pre-wrap;
@@ -314,7 +314,7 @@ onMounted(async () => {
   border-radius: var(--radius-sm);
   background: var(--primary);
   color: #fff;
-  font-size: 27rpx;
+  font-size: var(--font-md);
   font-weight: 600;
   cursor: pointer;
   transition: transform var(--dur-fast) var(--ease-out);

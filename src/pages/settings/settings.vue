@@ -275,7 +275,7 @@ function rowStyle(idx: number) {
   background: var(--card-2);
 }
 .st-title {
-  font-size: 34rpx;
+  font-size: var(--font-lg);
   font-weight: 700;
   color: var(--text);
 }
@@ -329,13 +329,13 @@ function rowStyle(idx: number) {
   gap: 4rpx;
 }
 .st-reset-label {
-  font-size: 30rpx;
+  font-size: var(--font-md);
   font-weight: 500;
   color: var(--text);
   line-height: 1.3;
 }
 .st-reset-sub {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
   line-height: 1.4;
 }
@@ -377,7 +377,7 @@ function rowStyle(idx: number) {
   cursor: grabbing;
 }
 .cc-name {
-  font-size: 28rpx;
+  font-size: var(--font-md);
   color: var(--text);
 }
 .cc-ctrls {
@@ -419,7 +419,7 @@ function rowStyle(idx: number) {
 }
 .st-group-title {
   display: block;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   font-weight: 600;
   color: var(--text-2);
   letter-spacing: 1rpx;
@@ -440,12 +440,12 @@ function rowStyle(idx: number) {
   min-width: 0;
 }
 .st-row-label {
-  font-size: 30rpx;
+  font-size: var(--font-md);
   color: var(--text);
   flex-shrink: 0;
 }
 .st-row-val {
-  font-size: 28rpx;
+  font-size: var(--font-md);
   color: var(--text-2);
   text-align: right;
   min-width: 0;
@@ -453,7 +453,7 @@ function rowStyle(idx: number) {
 }
 .st-row-desc {
   display: block;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
   line-height: 1.6;
   margin-top: 10rpx;
@@ -461,7 +461,7 @@ function rowStyle(idx: number) {
 .st-foot {
   display: block;
   text-align: center;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
   line-height: 1.5;
   padding: 8rpx 0 0;
@@ -482,7 +482,7 @@ function rowStyle(idx: number) {
 }
 .seg-i {
   padding: 12rpx 28rpx;
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   border-radius: 999rpx;
   transition: background 0.2s ease, color 0.2s ease;

@@ -179,7 +179,7 @@ function openRow(r: { code: string; market: string }) {
   }
 }
 .rk-loading-t {
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
 }
 
@@ -200,14 +200,14 @@ function openRow(r: { code: string; market: string }) {
 }
 /* 表头：比数据行股票名称(.rn) 小一号，与自选表头保持一致 */
 .rk-thead .rh {
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   font-weight: 400;
   color: var(--text);
 }
 /* 表头排名列：仅做居中；显式声明字号/字重/颜色与表头统一，
    避免被数据行 .rh.rank 的奖牌高亮(30rpx/800/彩色) 样式污染表头 */
 .rk-thead .rh.rank {
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   font-weight: 400;
   color: var(--text);
   text-align: center;
@@ -226,7 +226,7 @@ function openRow(r: { code: string; market: string }) {
 /* 排名数字：参考主流热搜榜风格——前三名用红/橙/黄加粗高亮，其余用灰色 */
 .rh.rank {
   width: 72rpx;
-  font-size: 30rpx;
+  font-size: var(--font-md);
   font-weight: 800;
   color: var(--text-3);
   text-align: center;
@@ -251,7 +251,7 @@ function openRow(r: { code: string; market: string }) {
   margin-right: 10rpx;
 }
 .rn {
-  font-size: 28rpx;
+  font-size: var(--font-md);
   font-weight: 400;
   color: var(--text);
   max-width: 220rpx;
@@ -265,7 +265,7 @@ function openRow(r: { code: string; market: string }) {
   gap: 8rpx;
 }
 .rm {
-  font-size: 18rpx;
+  font-size: var(--font-xs);
   line-height: 1;
   padding: 2rpx 6rpx;
   border-radius: 6rpx;
@@ -274,7 +274,7 @@ function openRow(r: { code: string; market: string }) {
   border: 1rpx solid var(--border);
 }
 .rcode {
-  font-size: 20rpx;
+  font-size: var(--font-xs);
   color: var(--text-3);
 }
 /* 热度：火焰图标(OutlineIcon fire 实心) + 热度值并排，值用火焰橙红保证清晰可读 */
@@ -292,7 +292,7 @@ function openRow(r: { code: string; market: string }) {
   line-height: 1;
 }
 .heat-num {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   font-weight: 400;
   color: #ff5722;
   font-variant-numeric: tabular-nums;
@@ -340,12 +340,12 @@ function openRow(r: { code: string; market: string }) {
   padding: 56rpx 40rpx;
 }
 .rk-empty-t {
-  font-size: 30rpx;
+  font-size: var(--font-md);
   font-weight: 700;
   color: var(--text);
 }
 .rk-empty-s {
-  font-size: 23rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   text-align: center;
   line-height: 1.6;

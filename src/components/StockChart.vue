@@ -1078,7 +1078,7 @@ onBeforeUnmount(() => {
   padding: 12rpx 16rpx 4rpx;
 }
 .kc-panel__tag {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   font-weight: 600;
   letter-spacing: 1rpx;
   color: var(--text-2);
@@ -1114,7 +1114,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28rpx;
+  font-size: var(--font-md);
   line-height: 1;
   color: var(--text-2);
   border-radius: 10rpx;

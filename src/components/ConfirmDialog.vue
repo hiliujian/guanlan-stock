@@ -113,13 +113,13 @@ function onConfirm() {
   margin-bottom: 26rpx;
 }
 .cd-title {
-  font-size: 34rpx;
+  font-size: var(--font-lg);
   font-weight: 700;
   color: var(--text);
   text-align: center;
 }
 .cd-msg {
-  font-size: 27rpx;
+  font-size: var(--font-md);
   color: var(--text-2);
   line-height: 1.7;
   text-align: center;
@@ -138,7 +138,7 @@ function onConfirm() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 30rpx;
+  font-size: var(--font-md);
   font-weight: 600;
   transition: transform 0.12s ease, filter 0.18s ease;
 }

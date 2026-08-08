@@ -245,7 +245,7 @@ defineExpose({ refresh: load });
   box-shadow: inset 0 0 0 1rpx var(--tabbar-border);
 }
 .cm-name {
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   font-weight: 400;
   color: var(--text);
   max-width: 180rpx;
@@ -268,7 +268,7 @@ defineExpose({ refresh: load });
   flex: 1;
   height: 64rpx;
   padding: 0 18rpx;
-  font-size: 25rpx;
+  font-size: var(--font-sm);
   color: var(--text);
   background: var(--card-2);
   border-radius: 14rpx;
@@ -279,13 +279,13 @@ defineExpose({ refresh: load });
   border-radius: 999rpx;
   background: var(--primary);
   color: #fff;
-  font-size: 25rpx;
+  font-size: var(--font-sm);
   font-weight: 700;
 }
 .cm-edit-lbl {
   display: block;
   margin: 16rpx 0 10rpx;
-  font-size: 21rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
 }
 
@@ -298,7 +298,7 @@ defineExpose({ refresh: load });
   display: inline-block;
   margin-right: 14rpx;
   padding: 8rpx 22rpx;
-  font-size: 23rpx;
+  font-size: var(--font-sm);
   font-weight: 600;
   color: var(--text-2);
   background: var(--card-2);
@@ -317,7 +317,7 @@ defineExpose({ refresh: load });
   padding: 6rpx 26rpx 10rpx;
 }
 .cm-bar-t {
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   font-weight: 700;
   color: var(--text-2);
 }
@@ -341,7 +341,7 @@ defineExpose({ refresh: load });
   padding: 90rpx 0;
 }
 .cm-empty-t {
-  font-size: 25rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
 }
 

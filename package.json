@@ -12,6 +12,7 @@
     "type-check": "vue-tsc --noEmit",
     "preview": "npx vite preview --port 4173",
     "lint": "eslint . --ext .vue,.ts,.tsx",
+    "lint:font": "node scripts/check-font-sizes.mjs",
     "format": "prettier --write \"src/**/*.{vue,ts}\"",
     "clean": "rm -rf dist h5out h5out*",
     "supabase:login": "npx supabase login",

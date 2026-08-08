@@ -418,7 +418,7 @@ function onConfirm() {
 }
 .ac-title {
   text-align: center;
-  font-size: 30rpx;
+  font-size: var(--font-md);
   font-weight: 600;
   color: var(--text);
   margin-bottom: 20rpx;
@@ -532,7 +532,7 @@ function onConfirm() {
   display: block;
   margin-top: 18rpx;
   text-align: center;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
 }
 
@@ -548,7 +548,7 @@ function onConfirm() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28rpx;
+  font-size: var(--font-md);
   font-weight: 500;
   transition: transform 0.12s ease, filter 0.18s ease;
 }

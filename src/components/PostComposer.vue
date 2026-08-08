@@ -237,7 +237,7 @@ function resetProfit() {
 .cp-tab {
   flex: 1;
   text-align: center;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   font-weight: 600;
   padding: 12rpx 0;
   border-radius: 999rpx;
@@ -251,7 +251,7 @@ function resetProfit() {
 .cp-area {
   width: 100%;
   min-height: 120rpx;
-  font-size: 27rpx;
+  font-size: var(--font-md);
   line-height: 1.5;
   color: var(--text);
   background: transparent;
@@ -266,7 +266,7 @@ function resetProfit() {
   border-top: 1rpx solid var(--border);
 }
 .cp-topic-lbl {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
   flex: none;
 }
@@ -277,7 +277,7 @@ function resetProfit() {
 }
 .cp-topic-btn {
   padding: 8rpx 18rpx;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   font-weight: 600;
   border-radius: 999rpx;
   color: var(--text-2);
@@ -295,7 +295,7 @@ function resetProfit() {
   height: 60rpx;
   min-width: 0;
   padding: 0 18rpx;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   color: var(--text);
   background: var(--card-2);
   border-radius: 14rpx;
@@ -311,7 +311,7 @@ function resetProfit() {
 .cp-in {
   height: 70rpx;
   padding: 0 18rpx;
-  font-size: 25rpx;
+  font-size: var(--font-sm);
   color: var(--text);
   background: var(--card-2);
   border-radius: 14rpx;
@@ -333,7 +333,7 @@ function resetProfit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 25rpx;
+  font-size: var(--font-sm);
   font-weight: 600;
   border-radius: 14rpx;
   color: var(--text-2);
@@ -400,7 +400,7 @@ function resetProfit() {
   border: 2rpx dashed var(--border);
 }
 .cp-count {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
 }
 .cp-send {
@@ -419,7 +419,7 @@ function resetProfit() {
   opacity: 0.5;
 }
 .cp-send-t {
-  font-size: 25rpx;
+  font-size: var(--font-sm);
   font-weight: 700;
   color: #fff;
 }

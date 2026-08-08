@@ -748,7 +748,7 @@ defineExpose({ refresh: () => refreshFull() });
   gap: 8rpx;
   padding: 6rpx 16rpx;
   border-radius: 999rpx;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   font-weight: 600;
   flex: none;
 }
@@ -774,13 +774,13 @@ defineExpose({ refresh: () => refreshFull() });
   background: var(--card-2);
 }
 .brand-name {
-  font-size: 42rpx;
+  font-size: var(--font-2xl);
   font-weight: 800;
   color: var(--primary);
   letter-spacing: 3rpx;
 }
 .brand-sub {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
 }
 .search-bar {
@@ -837,7 +837,7 @@ defineExpose({ refresh: () => refreshFull() });
   flex: 1;
   min-width: 0;
   height: 100%;
-  font-size: 28rpx;
+  font-size: var(--font-md);
 }
 /* 清除键：圆形次表面按钮 */
 .si-clear {
@@ -880,13 +880,13 @@ defineExpose({ refresh: () => refreshFull() });
   padding: 8rpx 20rpx 14rpx;
 }
 .sg-head-t {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-3);
   font-weight: 600;
   letter-spacing: 1rpx;
 }
 .sg-clear {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
   padding: 6rpx 16rpx;
   border-radius: 999rpx;
@@ -922,7 +922,7 @@ defineExpose({ refresh: () => refreshFull() });
   gap: 2rpx;
 }
 .sg-name {
-  font-size: 28rpx;
+  font-size: var(--font-md);
   color: var(--text);
   font-weight: 600;
   white-space: nowrap;
@@ -930,12 +930,12 @@ defineExpose({ refresh: () => refreshFull() });
   text-overflow: ellipsis;
 }
 .sg-code {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
 }
 .sg-tag {
   flex: none;
-  font-size: 20rpx;
+  font-size: var(--font-xs);
   color: var(--primary);
   background: var(--primary-soft);
   border-radius: var(--radius-sm);
@@ -958,7 +958,7 @@ defineExpose({ refresh: () => refreshFull() });
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 50%), var(--primary);
   color: #fff;
   box-shadow: 0 4rpx 14rpx rgba(7, 193, 96, 0.28);
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   font-weight: 600;
   letter-spacing: 1rpx;
   transition: transform 0.12s var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
@@ -1016,13 +1016,13 @@ defineExpose({ refresh: () => refreshFull() });
   margin-bottom: 26rpx;
 }
 .empty-t {
-  font-size: 34rpx;
+  font-size: var(--font-lg);
   font-weight: 700;
   color: var(--text);
 }
 .empty-s {
   margin-top: 14rpx;
-  font-size: 25rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   line-height: 1.6;
   text-align: center;
@@ -1042,7 +1042,7 @@ defineExpose({ refresh: () => refreshFull() });
   align-items: center;
 }
 .hot-in-title {
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   font-weight: 700;
   color: var(--text);
   margin-bottom: 18rpx;
@@ -1054,7 +1054,7 @@ defineExpose({ refresh: () => refreshFull() });
   justify-content: center;
 }
 .hot-in-empty {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-3);
 }
 .quote-head {
@@ -1068,7 +1068,7 @@ defineExpose({ refresh: () => refreshFull() });
   margin-bottom: 14rpx;
 }
 .qh-name {
-  font-size: 34rpx;
+  font-size: var(--font-lg);
   font-weight: 700;
 }
 .qh-code-row {
@@ -1078,13 +1078,13 @@ defineExpose({ refresh: () => refreshFull() });
   margin-top: 4rpx;
 }
 .qh-code {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
 }
 /* 市场徽标：沪 / 深 / 港 / 北，对齐自选股 .mkt-tag 的经典简洁样式 */
 .mkt-tag {
   flex: none;
-  font-size: 18rpx;
+  font-size: var(--font-xs);
   line-height: 1;
   padding: 4rpx 10rpx;
   border-radius: 6rpx;
@@ -1125,7 +1125,7 @@ defineExpose({ refresh: () => refreshFull() });
   margin-top: 4rpx;
 }
 .qh-pct {
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   font-weight: 600;
 }
 
@@ -1140,7 +1140,7 @@ defineExpose({ refresh: () => refreshFull() });
   gap: 8rpx;
   margin: 0 8rpx;
   padding: 8rpx 0 0;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-2);
   line-height: 1.5;
   text-align: center;

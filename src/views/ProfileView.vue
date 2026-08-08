@@ -332,7 +332,7 @@ function onMenu(act: MenuItem["act"]) {
   justify-content: center;
   font-weight: 700;
   color: #fff;
-  font-size: 48rpx;
+  font-size: var(--font-3xl);
 }
 .pf-id {
   flex: 1;
@@ -352,7 +352,7 @@ function onMenu(act: MenuItem["act"]) {
 .pf-name {
   flex: none;
   max-width: calc(100% - 150rpx);
-  font-size: 38rpx;
+  font-size: var(--font-xl);
   font-weight: 700;
   color: var(--text);
   overflow: hidden;
@@ -361,7 +361,7 @@ function onMenu(act: MenuItem["act"]) {
 }
 .pf-sub {
   display: block;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   margin-top: 8rpx;
   overflow: hidden;
@@ -374,7 +374,7 @@ function onMenu(act: MenuItem["act"]) {
   border-radius: 999rpx;
   background: var(--primary);
   color: #fff;
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   font-weight: 600;
 }
 
@@ -397,13 +397,13 @@ function onMenu(act: MenuItem["act"]) {
   transform: scale(0.96);
 }
 .pf-stat-num {
-  font-size: 40rpx;
+  font-size: var(--font-2xl);
   font-weight: 700;
   color: var(--text);
   line-height: 1.1;
 }
 .pf-stat-lab {
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
 }
 .pf-divider {
@@ -421,7 +421,7 @@ function onMenu(act: MenuItem["act"]) {
 }
 .pf-group-title {
   display: block;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   font-weight: 600;
   color: var(--text-2);
   letter-spacing: 1rpx;
@@ -462,7 +462,7 @@ function onMenu(act: MenuItem["act"]) {
   flex: none;
 }
 .pf-row-label {
-  font-size: 30rpx;
+  font-size: var(--font-md);
   color: var(--text);
 }
 .pf-row-label.danger,
@@ -475,7 +475,7 @@ function onMenu(act: MenuItem["act"]) {
 .pf-hint {
   padding: 8rpx 0 0;
   text-align: center;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
 }
 .bottom-pad {

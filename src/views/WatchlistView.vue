@@ -1189,7 +1189,7 @@ function removeLp() {
   gap: 4rpx;
 }
 .ud-num {
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
@@ -1220,7 +1220,7 @@ function removeLp() {
   justify-content: center;
 }
 .cm-name {
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   font-weight: 400;
   color: var(--text);
   max-width: 140rpx;
@@ -1297,12 +1297,12 @@ function removeLp() {
   margin-bottom: 6rpx;
 }
 .empty-t {
-  font-size: 32rpx;
+  font-size: var(--font-lg);
   font-weight: 700;
   color: var(--text);
 }
 .empty-s {
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
   text-align: center;
   line-height: 1.7;
@@ -1370,7 +1370,7 @@ function removeLp() {
   justify-content: flex-end;
   height: 68rpx;
   padding: 0 16rpx;
-  font-size: 25rpx;
+  font-size: var(--font-sm);
   font-weight: 500;
   color: var(--text-2);
   text-align: right;
@@ -1496,7 +1496,7 @@ function removeLp() {
   min-width: 0;
 }
 .t-name {
-  font-size: 28rpx;
+  font-size: var(--font-md);
   font-weight: 400;
   color: var(--text);
   max-width: 160rpx;
@@ -1513,7 +1513,7 @@ function removeLp() {
 }
 .t-mkt {
   flex: none;
-  font-size: 18rpx;
+  font-size: var(--font-xs);
   line-height: 1;
   padding: 2rpx 6rpx;
   border-radius: 6rpx;
@@ -1522,7 +1522,7 @@ function removeLp() {
   border: 1rpx solid var(--border);
 }
 .t-code {
-  font-size: 20rpx;
+  font-size: var(--font-xs);
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
   max-width: 92rpx;
@@ -1549,7 +1549,7 @@ function removeLp() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   font-weight: 500;
   color: var(--text-2);
 }
@@ -1587,7 +1587,7 @@ function removeLp() {
 }
 .grp-label {
   flex: 1;
-  font-size: 30rpx;
+  font-size: var(--font-md);
   color: var(--text);
 }
 .grp-label.danger {
@@ -1623,11 +1623,11 @@ function removeLp() {
   border-radius: 14rpx;
 }
 .alert-rt-label {
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
 }
 .alert-rt-price {
-  font-size: 34rpx;
+  font-size: var(--font-lg);
   font-weight: 600;
   color: var(--text);
 }
@@ -1636,7 +1636,7 @@ function removeLp() {
 .alert-rt-price.flat { color: var(--text); }
 .alert-rt-sub {
   margin-left: auto;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   color: var(--text-3);
 }
 .alert-rt-sub.up { color: var(--up); }
@@ -1645,7 +1645,7 @@ function removeLp() {
 /* 已设阈值回显（选项标题内联） */
 .alert-cur {
   color: var(--text-2);
-  font-size: 26rpx;
+  font-size: var(--font-sm);
 }
 /* 选项下方动态内联输入区（替代原 uni-modal 弹窗） */
 .alert-edit {
@@ -1656,7 +1656,7 @@ function removeLp() {
   padding: 0 20rpx;
   background: var(--card-2);
   border-radius: 14rpx;
-  font-size: 28rpx;
+  font-size: var(--font-md);
   color: var(--text);
 }
 .alert-edit-btns {
@@ -1671,7 +1671,7 @@ function removeLp() {
   padding: 0 20rpx;
   background: var(--card-2);
   border-radius: 14rpx;
-  font-size: 28rpx;
+  font-size: var(--font-md);
   color: var(--text);
 }
 /* 底部操作条（取消 / 确定等）：无边框线，纯间距区分 */
@@ -1686,7 +1686,7 @@ function removeLp() {
   text-align: center;
   padding: 20rpx 0;
   border-radius: 999rpx;
-  font-size: 27rpx;
+  font-size: var(--font-md);
   font-weight: 500;
   /* 幽灵按钮：描边 + 主色字，与绿色 primary 按钮视觉协调，比灰底更有品质感 */
   color: var(--primary);
@@ -1733,14 +1733,14 @@ function removeLp() {
 }
 .rp-top {
   flex: none;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-3);
 }
 /* 当日无新增自选时的诚实占位（绝不兜底完整榜单数据） */
 .rp-empty {
   flex: 1;
   min-width: 0;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text-3);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1759,7 +1759,7 @@ function removeLp() {
   flex: none;
   max-width: 220rpx;
   min-width: 0;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1767,7 +1767,7 @@ function removeLp() {
 }
 .rp-code {
   flex: none;
-  font-size: 22rpx;
+  font-size: var(--font-xs);
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
@@ -1779,7 +1779,7 @@ function removeLp() {
   gap: 10rpx;
 }
 .rp-price {
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   font-variant-numeric: tabular-nums;
 }
 .rp-price.up,
@@ -1792,7 +1792,7 @@ function removeLp() {
 }
 .rp-pct {
   flex: none;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1808,7 +1808,7 @@ function removeLp() {
 .rs-tab {
   flex: 1;
   text-align: center;
-  font-size: 23rpx;
+  font-size: var(--font-sm);
   font-weight: 500;
   color: var(--text-2);
   padding: 2rpx 0;
@@ -1943,7 +1943,7 @@ function removeLp() {
 }
 .col-name {
   flex: 1;
-  font-size: 30rpx;
+  font-size: var(--font-md);
   color: var(--text);
 }
 .col-sw {
@@ -1972,7 +1972,7 @@ function removeLp() {
 }
 .col-tip {
   margin-top: 16rpx;
-  font-size: 20rpx;
+  font-size: var(--font-xs);
   color: var(--text-3);
   text-align: center;
 }
