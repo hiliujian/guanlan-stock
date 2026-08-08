@@ -645,7 +645,8 @@ textarea {
   background: var(--card-2);
   border: 2rpx solid transparent;
   border-radius: var(--radius-sm);
-  padding: 24rpx 20rpx;
+  /* 上下/左右 padding 统一为 24rpx，输入框四边对称，视觉更均衡 */
+  padding: 24rpx;
   margin-bottom: 18rpx;
   overflow: visible !important;
   transition: border-color 0.2s ease;
@@ -691,14 +692,14 @@ textarea {
   word-break: break-all;
 }
 /* 主 CTA：在表单内占满宽度、内容居中、去除 uni 默认边框。
-   形状复用全局 .btn-primary 的药丸；此处仅放大高度/字号并全宽（登录/注册/重设三页共用），
-   使之与放大后的输入框高度协调（约 92rpx，与字段内高接近）。 */
+   形状复用全局 .btn-primary 的药丸；此处仅放大字号并全宽（登录/注册/重设三页共用），
+   高度与输入框视觉协调统一：输入框四边 24rpx padding 自然高约 86–92rpx，按钮 88rpx 与之齐平。 */
 .auth-submit {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 94rpx;
+  height: 88rpx;
   font-size: var(--font-lg);
   margin-top: 18rpx;
 }
@@ -717,7 +718,8 @@ textarea {
   font-weight: 400;
   white-space: nowrap;
   padding: 10rpx 18rpx;
-  margin: -24rpx -20rpx -24rpx 10rpx;
+  /* 负 margin 必须匹配 .auth-field 的 padding（四边 24rpx），才能使附件贴到字段内缘 */
+  margin: -24rpx -24rpx -24rpx 10rpx;
 }
 .auth-suffix.disabled {
   color: var(--text-2);
