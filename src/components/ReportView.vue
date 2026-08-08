@@ -818,17 +818,18 @@ function openNews(it: NewsItem) {
   line-height: 1.6;
   margin-bottom: 18rpx;
 }
+/* 通知语义配色：绿=好事/偏强，红=紧急/风险（与行情涨跌红绿相反）。 */
 .banner.ok {
-  background: rgba(255, 91, 91, 0.1);
-  color: var(--up);
+  background: rgba(31, 216, 116, 0.1);
+  color: var(--down);
 }
 .banner.warn {
   background: rgba(255, 159, 28, 0.12);
   color: #c87f00;
 }
 .banner.bad {
-  background: rgba(31, 216, 116, 0.1);
-  color: var(--down);
+  background: rgba(255, 91, 91, 0.1);
+  color: var(--up);
 }
 .banner-text {
   flex: 1;
