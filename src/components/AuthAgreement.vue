@@ -61,7 +61,7 @@ function openUrl(url: string) {
   text-align: center;
 }
 .agree-text {
-  font-size: var(--font-xs);
+  font-size: var(--font-sm); /* 与「还没有账号？」引导语字号保持一致 */
   color: var(--text-2);
   line-height: 1.6;
 }
