@@ -1214,7 +1214,7 @@ function removeLp() {
   gap: 4rpx;
 }
 .ud-num {
-  font-size: var(--font-xs);
+  font-size: var(--font-md); /* 与分组面板 .grp-label 字号一致（28rpx） */
   font-weight: 400;
   font-variant-numeric: tabular-nums;
 }
@@ -1243,7 +1243,7 @@ function removeLp() {
   /* flex-center 已提升至全局 .flex-center */
 }
 .cm-name {
-  font-size: var(--font-sm);
+  font-size: var(--font-md); /* 与分组面板 .grp-label 字号一致（28rpx） */
   font-weight: 400;
   color: var(--text);
   max-width: 140rpx;
@@ -1560,7 +1560,7 @@ function removeLp() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--font-sm);
+  font-size: var(--font-md); /* 与 .grp-label（分组项）字号一致（28rpx） */
   font-weight: 500;
   color: var(--text-2);
 }
