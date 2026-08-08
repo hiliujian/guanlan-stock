@@ -875,7 +875,7 @@ function onDragStart(e: any, it: WatchItem) {
   try {
     const info: any = (uni as any).getWindowInfo ? (uni as any).getWindowInfo() : uni.getSystemInfoSync();
     const w = info.windowWidth || 375;
-    rowHpx = (w / 750) * 104; // .td 行高 104rpx → px
+    rowHpx = (w / 750) * 96; // .td 行高 96rpx → px（与热榜 .rk-row min-height:96rpx 对齐）
   } catch (_) {
     rowHpx = 50;
   }
@@ -1471,7 +1471,7 @@ function removeLp() {
   align-items: flex-end;
   justify-content: center;
   gap: 4rpx;
-  height: 104rpx;
+  min-height: 96rpx;
   padding: 0 18rpx;
   overflow: hidden;
   color: var(--text);
