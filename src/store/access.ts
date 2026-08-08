@@ -46,12 +46,19 @@ const BUILTIN_ACCESS: Record<string, AccessMeta> = {
 // 缓存 TTL：远程白名单 5 分钟内不重复拉取，导航时直接读内存（满足「缓存减少查询」）。
 const TTL = 5 * 60 * 1000;
 
+// 内置默认 → Map（模块加载即铺底，避免 initPageAccess 异步返回前 entries 为空导致误拦）
+function builtinEntries(): Map<string, AccessMeta> {
+  const m = new Map<string, AccessMeta>();
+  for (const [k, v] of Object.entries(BUILTIN_ACCESS)) m.set(k, { ...v });
+  return m;
+}
+
 export const accessState = reactive<{
   ready: boolean;
   entries: Map<string, AccessMeta>;
 }>({
   ready: false,
-  entries: new Map(),
+  entries: builtinEntries(),
 });
 
 let initialized = false;
@@ -84,8 +91,7 @@ export async function initPageAccess(): Promise<void> {
   if (initialized && now - lastFetched < TTL) return;
   initialized = true;
 
-  const merged = new Map<string, AccessMeta>();
-  for (const [k, v] of Object.entries(BUILTIN_ACCESS)) merged.set(k, { ...v });
+  const merged = builtinEntries();
 
   if (isSupabaseConfigured) {
     const sb = getSupabase();
