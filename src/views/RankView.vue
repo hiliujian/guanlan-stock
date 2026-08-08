@@ -22,7 +22,7 @@
           <view class="rh heat">
             <text>热度</text>
           </view>
-          <view class="rh star-head" />
+          <text class="rh star-head">自选</text>
         </view>
         <!-- 数据行 -->
         <view
@@ -307,15 +307,16 @@ function openRow(r: { code: string; market: string }) {
   width: 150rpx;
   text-align: right;
 }
-/* 表头星星占位：保留列宽对齐，无内容无背景 */
+/* 表头星星占位：本列显示「自选」列名，与数据行星标列同宽对齐 */
 .rh.star-head {
   flex: none;
-  width: 56rpx;
+  width: 64rpx;
+  text-align: center;
 }
 /* 自选星星：与行情页 .qh-star 一致——真正的圆形底，on 态浅绿、按下缩放 */
 .rh.star {
   flex: none;
-  width: 56rpx;
+  width: 64rpx;
   height: 56rpx;
   display: flex;
   align-items: center;
