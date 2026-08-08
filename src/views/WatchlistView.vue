@@ -827,6 +827,13 @@ function toggleReorder() {
   // 进入整理模式：先捕获「当前可见顺序」(可能正处于列排序态) 作为拖拽基准，
   // 再清除列排序——避免「先点表头排序、再拖拽」时列表跳变、拖拽位置不生效。
   if (reorderMode.value) {
+    // 全部视图按加入时间排序、无分组内 order，拖拽无意义且手柄已隐藏；
+    // 自动切到首个有内容的分组（优先默认分组，其内容与「全部」通常一致、对用户无感），
+    // 使行前拖拽手柄出现、拖拽可立即使用，且不破坏「分组内 order」数据模型。
+    if (selectedGroup.value === "__all__") {
+      const hasDefault = list.value.some((i) => !i.group);
+      selectedGroup.value = hasDefault ? "" : groups.value[0] ?? "";
+    }
     manualOrder.value = renderRows.value.map((r) => keyOf(r.it));
     sortKey.value = "";
   }
