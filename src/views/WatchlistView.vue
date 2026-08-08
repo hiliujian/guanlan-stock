@@ -1378,12 +1378,13 @@ function removeLp() {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  height: 68rpx;
+  height: 72rpx;
   padding: 0 16rpx;
-  /* 表头字号/字重/颜色与热榜榜单表头(.rk-thead .rh)保持一致：font-sm / 400 / --text */
-  font-size: var(--font-sm);
+  /* 表头统一规范（与热榜榜单表头 .rk-thead .rh 共用同一套 token）：
+     font-md(28rpx) / 400 / --text-2 —— 字号比正文大一号、颜色用次级文本(淡一点)，全站表格表头保持一致 */
+  font-size: var(--font-md);
   font-weight: 400;
-  color: var(--text);
+  color: var(--text-2);
   text-align: right;
   cursor: pointer;
   position: relative;

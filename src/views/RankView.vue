@@ -195,21 +195,22 @@ function openRow(r: { code: string; market: string }) {
   padding: 0 20rpx;
 }
 .rk-thead {
-  height: 64rpx;
+  height: 72rpx;
   border-bottom: 1rpx solid var(--tabbar-border);
 }
-/* 表头：比数据行股票名称(.rn) 小一号，与自选表头保持一致 */
+/* 表头统一规范（与自选表头 .th 共用同一套 token）：font-md(28rpx) / 400 / --text-2
+   —— 字号比正文大一号、颜色用次级文本(淡一点)，全站表格表头保持一致 */
 .rk-thead .rh {
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   font-weight: 400;
-  color: var(--text);
+  color: var(--text-2);
 }
 /* 表头排名列：仅做居中；显式声明字号/字重/颜色与表头统一，
    避免被数据行 .rh.rank 的奖牌高亮(30rpx/800/彩色) 样式污染表头 */
 .rk-thead .rh.rank {
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   font-weight: 400;
-  color: var(--text);
+  color: var(--text-2);
   text-align: center;
 }
 .rk-row {
