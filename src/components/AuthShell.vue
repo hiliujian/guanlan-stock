@@ -9,14 +9,11 @@
         <text class="auth-nav-title">{{ title }}</text>
       </view>
 
-      <!-- 品牌标：上下双层文字——上方「观澜」LOGO 主体，下方「让数据说话」SLOGAN；
-           两行两端严格对齐、紧密贴合，形成经典 LOGO + SLOGAN 组合结构 -->
-      <view class="auth-logo">
-        <view class="auth-wordmark anim-glow">观澜</view>
-        <view class="auth-tagline">
-          <text>让</text><text>数</text><text>据</text><text>说</text><text>话</text>
+      <!-- 品牌标：与行情首页统一的「观澜」文字商标（绿字 + 辉光），作为全局记忆点 -->
+        <view class="auth-logo">
+          <text class="auth-wordmark anim-glow">观澜</text>
+          <text class="auth-tagline">让数据说话</text>
         </view>
-      </view>
 
       <view class="auth-body">
         <slot />
