@@ -1190,7 +1190,7 @@ function removeLp() {
   gap: 10rpx;
   margin-left: 4rpx;
   padding-left: 12rpx;
-  border-left: 1rpx solid var(--tabbar-border);
+  border-left: 1rpx solid var(--border);
 }
 .ud-item {
   display: flex;
@@ -1216,7 +1216,7 @@ function removeLp() {
   padding: 6rpx 18rpx 6rpx 6rpx;
   border-radius: 999rpx;
   background: var(--card-2);
-  box-shadow: inset 0 0 0 1rpx var(--tabbar-border);
+  box-shadow: inset 0 0 0 1rpx var(--border);
 }
 .cm-avatar {
   width: 48rpx;
@@ -1368,9 +1368,9 @@ function removeLp() {
   top: 0;
   z-index: 5;
   background: var(--bg-2);
-  /* 表头上下边框，样式与底部今日最热卡片边框一致（1rpx solid var(--tabbar-border)） */
-  border-top: 1rpx solid var(--tabbar-border);
-  border-bottom: 1rpx solid var(--tabbar-border);
+  /* 表头上下边框，样式与底部今日最热卡片边框一致（1rpx solid var(--border)） */
+  border-top: 1rpx solid var(--border);
+  border-bottom: 1rpx solid var(--border);
 }
 .th {
   flex: none;
@@ -1591,7 +1591,7 @@ function removeLp() {
 }
 /* 我的分组列表：仅此区块底部保留一条分隔线，其余边框全部取消 */
 .grp-section {
-  border-bottom: 1rpx solid var(--tabbar-border);
+  border-bottom: 1rpx solid var(--border);
 }
 .grp-list {
   padding: 6rpx 0;
@@ -1719,12 +1719,12 @@ function removeLp() {
   border-color: var(--primary-dark, #06a752);
 }
 .grp-btn.danger {
-  color: #e35d6a;
+  color: var(--danger);
   background: transparent;
-  border: 2rpx solid #e35d6a;
+  border: 2rpx solid var(--danger);
 }
 .grp-btn.danger:active {
-  background: rgba(227, 93, 106, 0.08);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 /* 收起态一行 */
 .rp-row {

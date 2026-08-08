@@ -220,7 +220,7 @@ defineExpose({ expand, collapse });
   background: var(--tabbar-bg);
   backdrop-filter: blur(20rpx) saturate(150%);
   -webkit-backdrop-filter: blur(20rpx) saturate(150%);
-  border-top: 1rpx solid var(--tabbar-border);
+  border-top: 1rpx solid var(--border);
   box-shadow: 0 -2rpx 12rpx rgba(0, 0, 0, 0.08); /* 更克制的浅阴影，统一（榜单/分组/显示列共用） */
   transition: height var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
   animation: peekIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;

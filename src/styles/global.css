@@ -31,7 +31,6 @@
   --glass-blur: 18rpx;
   /* 跨主题专用表面（深浅色各自一套，避免硬编码导致切主题不彻底） */
   --tabbar-bg: rgba(255, 255, 255, 0.82);
-  --tabbar-border: rgba(20, 30, 50, 0.10);
   --tabbar-shadow: 0 -6rpx 24rpx rgba(20, 30, 50, 0.12);
   --sticky-bg: rgba(238, 241, 246, 0.78);
   --sticky-shadow: 0 6rpx 20rpx rgba(20, 30, 50, 0.10);
@@ -83,7 +82,6 @@
   --gap: 16rpx;
   --glass-blur: 22rpx;
   --tabbar-bg: rgba(8, 13, 24, 0.72);
-  --tabbar-border: rgba(255, 255, 255, 0.10);
   --tabbar-shadow: 0 -6rpx 24rpx rgba(0, 0, 0, 0.45);
   --sticky-bg: rgba(5, 8, 15, 0.6);
   --sticky-shadow: 0 6rpx 20rpx rgba(0, 0, 0, 0.35);

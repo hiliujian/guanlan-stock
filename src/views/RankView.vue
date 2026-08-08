@@ -196,7 +196,7 @@ function openRow(r: { code: string; market: string }) {
 }
 .rk-thead {
   height: 72rpx;
-  border-bottom: 1rpx solid var(--tabbar-border);
+  border-bottom: 1rpx solid var(--border);
 }
 /* 表头统一规范（与自选表头 .th 共用同一套 token）：font-md(28rpx) / 400 / --text-2
    —— 字号比正文大一号、颜色用次级文本(淡一点)，全站表格表头保持一致 */

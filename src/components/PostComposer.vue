@@ -372,7 +372,7 @@ function resetProfit() {
   border-radius: 14rpx;
   overflow: hidden;
   background: var(--card-2);
-  border: 2rpx solid var(--border);
+  border: 1rpx solid var(--border);
 }
 .cp-thumb-img {
   width: 100%;
@@ -397,7 +397,7 @@ function resetProfit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2rpx dashed var(--border);
+  border: 1rpx dashed var(--border);
 }
 .cp-count {
   font-size: var(--font-xs);

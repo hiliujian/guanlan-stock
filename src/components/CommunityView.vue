@@ -242,7 +242,7 @@ defineExpose({ refresh: load });
   padding: 6rpx 18rpx 6rpx 6rpx;
   border-radius: 999rpx;
   background: var(--card-2);
-  box-shadow: inset 0 0 0 1rpx var(--tabbar-border);
+  box-shadow: inset 0 0 0 1rpx var(--border);
 }
 .cm-name {
   font-size: var(--font-sm);
@@ -302,7 +302,7 @@ defineExpose({ refresh: load });
   font-weight: 600;
   color: var(--text-2);
   background: var(--card-2);
-  border: 2rpx solid var(--border);
+  border: 1rpx solid var(--border);
   border-radius: 999rpx;
 }
 .cm-chip.on {
