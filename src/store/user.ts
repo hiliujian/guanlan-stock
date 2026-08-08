@@ -4,7 +4,7 @@
 // =====================================================================
 import { reactive, readonly } from "vue";
 import { getSupabase, isSupabaseConfigured } from "@/api/supabase";
-import { onAuthChange, updateProfile, awardDailySignin, captureLoginInfo, type LoginInfo } from "@/api/auth";
+import { onAuthChange, awardDailySignin, captureLoginInfo, type LoginInfo } from "@/api/auth";
 
 interface Profile {
   id: string;

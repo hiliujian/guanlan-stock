@@ -11,7 +11,7 @@
 // 本文件只负责「解析」，URL 构建与多源冗余全部由后端网关完成（见
 // supabase/functions/guanlan-quote-proxy/index.ts）。
 // =====================================================================
-import type { PeriodKey, Kline, Trend } from "@/utils/period";
+import type { Kline, Trend } from "@/utils/period";
 import { parseTrend } from "@/utils/period";
 import type { RawRealtime, SearchHit } from "./types";
 

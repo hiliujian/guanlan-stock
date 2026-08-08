@@ -1,6 +1,6 @@
 <template>
   <view class="stext">
-    <template v-for="(seg, i) in segments" :key="i">
+    <template v-for="seg in segments" :key="seg.code || seg.text">
       <StockTag v-if="seg.code" :code="seg.code" />
       <text v-else>{{ seg.text }}</text>
     </template>

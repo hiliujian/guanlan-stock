@@ -297,7 +297,7 @@
         <text>关联资讯</text>
       </view>
       <view v-if="newsItems.length" class="news-list">
-        <view v-for="(it, i) in newsItems" :key="it.id" class="news-item" @click="openNews(it)">
+        <view v-for="it in newsItems" :key="it.id" class="news-item" @click="openNews(it)">
           <view class="ni-head">
             <text :class="['ni-tag', tagCls(it)]">{{ tagText(it) }}</text>
             <text class="ni-title">{{ it.title }}</text>

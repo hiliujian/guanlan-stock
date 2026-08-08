@@ -2,7 +2,7 @@
 // 分析引擎（纯函数，跨端通用，无任何 DOM / 平台依赖）
 // 指标计算 + 综合研判 + 白话报告所需的全部数据结构
 // =====================================================================
-import type { Kline, Trend } from "./period";
+import type { Kline } from "./period";
 import { UP, DOWN } from "./colors";
 import type { NewsSignal } from "./newsSentiment";
 

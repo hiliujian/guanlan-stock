@@ -54,7 +54,8 @@ function formatLocation(d: any): string | null {
 async function resolveLocation(ip: string): Promise<string | null> {
   if (!ip) return null; // 无客户端 IP 时无法定位（勿用服务端出口 IP 冒充）
   const services = [
-    `https://ip-api.com/json/${ip}?fields=status,message,city,regionName,country`,
+    // lang=zh-CN：ip-api 直接返回中文城市/省份（如「广州市」「广东省」「中国」），避免前端再做翻译。
+    `https://ip-api.com/json/${ip}?fields=status,message,city,regionName,country&lang=zh-CN`,
     `https://ipwho.is/${ip}`,
   ];
   for (const url of services) {

@@ -227,7 +227,7 @@ export interface LoginInfo {
   device?: string; // 设备型号（uni.getSystemInfoSync().model）
   platform?: string; // 平台标识（ios / android / web 等）
   time?: string; // 登录时刻 ISO 字符串
-  location?: string; // 登录地点（服务端 IP 地理定位，如「Beijing, China」；缺失时前端显示「未知」）
+  location?: string; // 登录地点（服务端 IP 地理定位，已本地化为中文，如「广州市, 广东省, 中国」；展示时取城市名「广州」；缺失时前端显示「未知」）
 }
 
 export interface UploadResult {

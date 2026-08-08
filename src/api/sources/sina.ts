@@ -8,7 +8,7 @@
 //
 // 本文件只负责「解析」，URL 构建与多源冗余全部由后端网关完成。
 // =====================================================================
-import type { PeriodKey, Kline, Trend } from "@/utils/period";
+import type { Kline, Trend } from "@/utils/period";
 import type { RawRealtime, SearchHit } from "./types";
 import { unwrapGlobalVar } from "./tencent";
 

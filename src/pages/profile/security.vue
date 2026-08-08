@@ -198,6 +198,7 @@ import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import AuthField from "@/components/AuthField.vue";
 import { useUser, refreshProfile, syncSession } from "@/store/user";
 import { usePageGuard } from "@/store/guard";
+import { formatLoginCity } from "@/utils/geo";
 import {
   signIn,
   updatePassword,
@@ -236,8 +237,8 @@ const loginSummary = computed(() => {
   const l = lastLogin.value;
   if (!l) return "暂无登录记录";
   const parts: string[] = [];
-  // 地点：服务端 IP 地理定位结果；解析失败/缺失时降级显示「未知」。
-  parts.push(l.location && l.location.trim() ? l.location : "未知");
+  // 地点：服务端 IP 地理定位结果（中文城市名，如「广州」）；解析失败/缺失时降级显示「未知」。
+  parts.push(formatLoginCity(l.location));
   if (l.time) parts.push(fmtLoginTime(l.time));
   // 设备名（不再附带操作系统/平台信息，如 android / iOS 等），仅展示设备名
   const dev = [l.device].filter(Boolean);
