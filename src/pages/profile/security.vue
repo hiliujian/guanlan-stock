@@ -1,11 +1,9 @@
 <template>
   <view class="app-shell sec-page page-col">
-    <BackgroundFX />
-
     <!-- 自定义导航头（navigationStyle:custom，需自带返回） -->
     <view class="sec-head sticky-head">
       <view class="sec-back nav-back" hover-class="sec-back-hover" @click="back" role="button" aria-label="返回">
-        <OutlineIcon type="arrow-left" :size="44" color="var(--text)" />
+        <OutlineIcon type="arrow-left" :size="30" color="var(--text)" />
       </view>
       <text class="sec-title nav-title">账号安全</text>
       <view class="sec-head-ph nav-ph" />
@@ -13,7 +11,7 @@
 
     <scroll-view class="sec-scroll" scroll-y>
       <!-- 顶部身份概览 -->
-      <view class="card sec-hero anim-fade-up">
+      <view class="sec-hero">
         <view class="sec-hero-ic">
           <OutlineIcon type="shield" :size="42" color="#fff" />
         </view>
@@ -29,7 +27,7 @@
 
       <!-- 账号与安全分组：上次登录 / 登录邮箱 / 登录密码（手风琴展开修改表单）。
            上次登录不再单列卡片，合并进本分组，与登录邮箱/密码统一管理。 -->
-      <view class="card sec-group anim-fade-up">
+      <view class="sec-group">
         <text class="sec-group-title">账号与安全</text>
 
         <!-- 上次登录（合并进本分组，不再单列卡片）：地点 · 时间 · 设备名 -->
@@ -159,7 +157,7 @@
       </view>
 
         <!-- 危险操作区：卡片样式与其他卡片一致（分节标题 + 内衬内容），仅按钮保留危险红 -->
-        <view class="card sec-danger-zone anim-fade-up" :style="{ animationDelay: '60ms' }">
+        <view class="sec-danger-zone">
           <text class="sec-danger-title">注销账号</text>
           <text class="sec-danger-warn">注销后，账号将被永久删除且不可恢复，请谨慎操作。</text>
           <button
@@ -171,8 +169,6 @@
             <text v-else>注销账号</text>
           </button>
         </view>
-
-      <view class="bottom-pad" />
     </scroll-view>
 
     <!-- 注销二次确认：复用全局统一 ConfirmDialog -->
@@ -193,7 +189,6 @@
 import { ref, reactive, computed, onUnmounted } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import OutlineIcon from "@/components/OutlineIcon.vue";
-import BackgroundFX from "@/components/BackgroundFX.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import AuthField from "@/components/AuthField.vue";
 import { useUser, refreshProfile, syncSession } from "@/store/user";
@@ -528,20 +523,21 @@ onUnmounted(() => {
 }
 /* .sec-title 布局属性已提升至全局 .nav-title */
 /* .sec-head-ph 布局属性已提升至全局 .nav-ph */
+.sec-page {
+  background: var(--bg);
+}
 .sec-scroll {
   flex: 1;
   height: 100%;
   box-sizing: border-box;
-  padding: 24rpx 24rpx 0;
 }
 
-/* 顶部身份概览：渐变营造纵深，盾牌徽章 + 状态徽标 */
 .sec-hero {
   display: flex;
   align-items: center;
   gap: 24rpx;
-  padding: 32rpx 28rpx;
-  background: linear-gradient(135deg, rgba(7, 193, 96, 0.18), rgba(7, 193, 96, 0.04) 60%, transparent);
+  padding: 32rpx 20rpx;
+  background: linear-gradient(135deg, rgba(7, 193, 96, 0.18), rgba(7, 193, 96, 0.04) 60%, transparent), var(--card);
 }
 .sec-hero-ic {
   width: 84rpx;
@@ -561,7 +557,6 @@ onUnmounted(() => {
 .sec-hero-title {
   display: block;
   font-size: var(--font-xl);
-  font-weight: 700;
   color: var(--text);
 }
 .sec-hero-sub {
@@ -579,7 +574,6 @@ onUnmounted(() => {
   background: rgba(7, 193, 96, 0.14);
   color: var(--primary);
   font-size: var(--font-xs);
-  font-weight: 600;
   flex: none;
 }
 .sec-dot {
@@ -589,24 +583,22 @@ onUnmounted(() => {
   background: var(--primary);
 }
 
-/* 账号与安全分组：与「我的」菜单分组视觉一致（标题 + 行 + 内联表单） */
 .sec-group {
-  margin-top: 20rpx;
   padding: 8rpx 0 16rpx;
+  background: var(--card);
+  border-top: 16rpx solid var(--bg);
 }
 .sec-group-title {
   display: block;
   font-size: var(--font-sm);
-  font-weight: 600;
-  color: var(--text-2);
-  letter-spacing: 1rpx;
-  margin: 14rpx 28rpx 6rpx;
+  color: var(--text-3);
+  margin: 14rpx 20rpx 6rpx;
 }
 .sec-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 26rpx 28rpx;
+  padding: 20rpx;
   transition: background 0.18s ease;
 }
 .sec-row-hover {
@@ -638,7 +630,6 @@ onUnmounted(() => {
 .sec-row-label {
   font-size: var(--font-md);
   color: var(--text);
-  font-weight: 600;
 }
 .sec-row-desc {
   font-size: var(--font-xs);
@@ -654,14 +645,13 @@ onUnmounted(() => {
 
 /* 内联修改表单 */
 .sec-form {
-  padding: 6rpx 28rpx 8rpx;
+  padding: 6rpx 20rpx 8rpx;
   border-top: 1rpx solid var(--border);
   margin-top: 6rpx;
 }
 .sec-form-title {
   display: block;
   font-size: var(--font-md);
-  font-weight: 700;
   color: var(--text);
   margin: 18rpx 0 14rpx;
 }
@@ -681,17 +671,15 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 
-/* 危险操作区：卡片与「账号与安全」分组一致（分节标题 + 28rpx 内衬），仅按钮保留危险红 */
 .sec-danger-zone {
-  margin-top: 20rpx;
-  padding: 8rpx 28rpx 16rpx;
+  padding: 8rpx 20rpx 16rpx;
+  background: var(--card);
+  border-top: 16rpx solid var(--bg);
 }
 .sec-danger-title {
   display: block;
   font-size: var(--font-sm);
-  font-weight: 600;
-  color: var(--text-2);
-  letter-spacing: 1rpx;
+  color: var(--text-3);
   margin: 14rpx 0 6rpx;
 }
 .sec-danger-warn {
@@ -702,7 +690,4 @@ onUnmounted(() => {
   margin: 4rpx 0 24rpx;
 }
 
-.bottom-pad {
-  height: 60rpx;
-}
 </style>

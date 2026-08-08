@@ -16,16 +16,15 @@
 </template>
 
 <script setup lang="ts">
-import { onLoad } from "@dcloudio/uni-app";
 import AuthShell from "@/components/AuthShell.vue";
 import AuthForm from "@/components/AuthForm.vue";
 import { syncSession } from "@/store/user";
 import { goAfterAuth } from "@/store/nav";
 import { useAuthGuard } from "@/composables/useAuthGuard";
 
-// 已登录用户访问登录页 → 自动 replace 到「我的」（不渲染表单、返回键不回登录页）
-const { ready, guard } = useAuthGuard();
-onLoad(() => guard());
+// 已登录用户访问登录页 → 自动 replace 到「我的」（不渲染表单、返回键不回登录页）。
+// guard() 的 onLoad/onShow 已由 useAuthGuard 内部注册，页面无需重复调用。
+const { ready } = useAuthGuard();
 
 function onAuthed() {
   // 主动同步一次会话（不阻塞跳转，确保 user store 切到已登录态）

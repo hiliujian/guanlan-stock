@@ -53,7 +53,6 @@ withDefaults(
   background: var(--sticky-bg);
   backdrop-filter: blur(16rpx) saturate(140%);
   -webkit-backdrop-filter: blur(16rpx) saturate(140%);
-  box-shadow: var(--sticky-shadow);
 }
 .ph-sticky {
   position: sticky;

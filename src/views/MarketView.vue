@@ -716,7 +716,6 @@ defineExpose({ refresh: () => refreshFull() });
   backdrop-filter: blur(16rpx) saturate(140%);
   -webkit-backdrop-filter: blur(16rpx) saturate(140%);
   padding: 12rpx 18rpx 8rpx;
-  box-shadow: var(--sticky-shadow);
 }
 .mk-body {
   padding: 18rpx 18rpx 0;

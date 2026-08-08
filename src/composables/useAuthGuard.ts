@@ -20,29 +20,36 @@ import { goToProfile } from "@/store/nav";
  */
 export function useAuthGuard() {
   const ready = ref(false);
+  const redirecting = ref(false); // 重入保护：guard() 可能被 onLoad + onShow 并发触发，
+  // 仅允许发起一次跳转，避免多次 goToProfile 互相取消导致「Navigation cancelled」未捕获报错。
   useUser(); // 确保登录态监听已就绪（幂等，不重复注册）
 
   async function guard() {
+    if (redirecting.value) return; // 另一条 onLoad/onShow 路径已发起跳转（或正在跳转）
     // 1) 内存态已登录：最快路径，立即跳转
     if (userState.loggedIn) {
+      redirecting.value = true;
       goToProfile();
       return;
     }
     // 2) 兜底：本地会话可能尚未恢复到内存态（App 刚启动 / onAuthChange 异步触发），
     //    主动读一次本地会话；已登录则跳转。
     const ok = await syncSession();
+    if (redirecting.value) return; // await 期间另一条路径已跳转，放弃本次
     if (ok && userState.loggedIn) {
+      redirecting.value = true;
       goToProfile();
       return;
     }
-  // 3) 确认未登录：放行渲染认证表单
-  ready.value = true;
+    // 3) 确认未登录：放行渲染认证表单
+    ready.value = true;
   }
 
   // onLoad + onShow 双重拦截：
   // - onLoad 覆盖正常进入场景；
   // - onShow 兜底页面「重新显示」类进入（如浏览器前进/后退、keep-alive 缓存复用），
   //   避免 onLoad 未触发导致已登录仍能停留在认证页。
+  // （页面自身无需再注册 onLoad，避免 guard() 被重复调用）
   onLoad(() => guard());
   onShow(() => guard());
 

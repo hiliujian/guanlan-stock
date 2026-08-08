@@ -4,9 +4,9 @@
     <view class="pf">
       <BackgroundFX />
 
-      <!-- 顶部个人卡片：登录态点击进「个人资料」，未登录点击去登录 -->
+      <!-- 顶部个人信息栏：登录态点击进「个人资料」，未登录点击去登录 -->
       <view
-        class="pf-head card anim-fade-up"
+        class="pf-head"
         :class="{ tappable: !user.loggedIn }"
         hover-class="pf-head-hover"
         role="button"
@@ -36,8 +36,8 @@
         <view v-else class="pf-login-btn">登录 / 注册</view>
       </view>
 
-      <!-- 数据概览：仅登录后展示（自选股 / 我的帖子 / 赞过 均为用户私有数据） -->
-      <view v-if="showStats" class="pf-stats card anim-fade-up" :style="{ animationDelay: '40ms' }">
+      <!-- 数据概览：仅登录后展示 -->
+      <view v-if="showStats" class="pf-stats">
         <view
           v-if="isTabEnabled('watch')"
           class="pf-stat"
@@ -78,47 +78,40 @@
       <!-- 菜单分组 -->
       <view v-for="g in menuGroups" :key="g.title" class="pf-group">
         <text class="pf-group-title">{{ g.title }}</text>
-        <view class="card">
-          <view
-            v-for="(it, idx) in g.items"
-            :key="it.act"
-            class="pf-row"
-            :class="{ 'pf-row-last': idx === g.items.length - 1 }"
-            hover-class="pf-row-hover"
-            role="button"
-            :aria-label="it.label"
-            @click="onMenu(it.act)"
-          >
-            <view class="pf-row-left">
-              <view class="pf-row-ic flex-center"><OutlineIcon :type="it.icon" :size="30" color="var(--text-2)" /></view>
-              <text class="pf-row-label">{{ it.label }}</text>
-            </view>
-            <OutlineIcon type="arrow-right" :size="28" color="var(--text-2)" />
+        <view
+          v-for="it in g.items"
+          :key="it.act"
+          class="pf-row"
+          hover-class="pf-row-hover"
+          role="button"
+          :aria-label="it.label"
+          @click="onMenu(it.act)"
+        >
+          <view class="pf-row-left">
+            <view class="pf-row-ic flex-center"><OutlineIcon :type="it.icon" :size="30" color="var(--text-2)" /></view>
+            <text class="pf-row-label">{{ it.label }}</text>
           </view>
+          <OutlineIcon type="arrow-right" :size="28" color="var(--text-2)" />
         </view>
       </view>
 
       <!-- 账号操作 -->
       <view v-if="user.loggedIn" class="pf-group">
-        <view class="card">
-          <view
-            class="pf-row pf-row-danger"
-            hover-class="pf-row-hover"
-            role="button"
-            aria-label="退出登录"
-            @click="logout"
-          >
-            <view class="pf-row-left">
-              <view class="pf-row-ic flex-center"><OutlineIcon type="close" :size="30" color="var(--danger)" /></view>
-              <text class="pf-row-label danger">退出登录</text>
-            </view>
-            <OutlineIcon type="arrow-right" :size="28" color="var(--text-2)" />
+        <view
+          class="pf-row pf-row-danger"
+          hover-class="pf-row-hover"
+          role="button"
+          aria-label="退出登录"
+          @click="logout"
+        >
+          <view class="pf-row-left">
+            <view class="pf-row-ic flex-center"><OutlineIcon type="close" :size="30" color="var(--danger)" /></view>
+            <text class="pf-row-label danger">退出登录</text>
           </view>
+          <OutlineIcon type="arrow-right" :size="28" color="var(--text-2)" />
         </view>
       </view>
       <view v-else class="pf-hint anim-fade-up">登录后同步自选股与云端资料</view>
-
-      <view class="bottom-pad" />
     </view>
   </scroll-view>
 
@@ -143,10 +136,10 @@ import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import LevelTag from "@/components/LevelTag.vue";
-import { useUser } from "@/store/user";
+import { useUser, refreshProfile } from "@/store/user";
 import { openAuth, goTab } from "@/store/nav";
 import { usePageGuard } from "@/store/guard";
-import { useWatchlist } from "@/store/watchlist";
+import { useWatchlist, initWatchlist } from "@/store/watchlist";
 import { useCommunity } from "@/store/community";
 import { isTabEnabled } from "@/store/appConfig";
 import { getMyName } from "@/store/identity";
@@ -192,6 +185,20 @@ const likedCount = computed(() => communityPosts.value.filter((p) => p.likedByMe
 onMounted(() => {
   if (user.loggedIn) loadCommunity();
 });
+
+// 下拉刷新（由 pages/index 的 onPullDownRefresh 路由到本方法）：
+// 重新拉取云端资料（昵称/头像/邮箱/等级）+ 社区帖子（我的帖子/赞过计数），
+// 并刷新自选单例（自选股计数），让「我的」页数据即时同步。无论成功/失败都被
+// index 的 safeRefresh 兜底收尾，不会卡 loading。
+async function refresh() {
+  if (!user.loggedIn) return;
+  await Promise.allSettled([
+    refreshProfile(),
+    loadCommunity(),
+    Promise.resolve(initWatchlist()),
+  ]);
+}
+defineExpose({ refresh });
 
 // —— 权限边界：登录态可见性规则（集中定义，便于审查） ——
 // 仅登录后展示：数据概览卡（自选股 / 我的帖子 / 赞过 均为用户私有数据，未登录无意义）。
@@ -293,20 +300,20 @@ function onMenu(act: MenuItem["act"]) {
   height: 100%;
 }
 .pf {
-  padding: 20rpx 24rpx 0;
+  padding: 0;
+  background: var(--bg); /* 间隙底色，区块之间自然形成色带分隔 */
 }
 
-/* 顶部个人卡片：轻微渐变营造纵深，不用纯色平铺 */
+/* 顶部个人信息栏 */
 .pf-head {
   display: flex;
   align-items: center;
-  gap: 24rpx;
-  padding: 24rpx;
-  background: linear-gradient(135deg, rgba(12, 110, 220, 0.16), rgba(12, 110, 220, 0.04) 60%, transparent);
+  gap: 20rpx;
+  padding: 24rpx 20rpx;
+  background: linear-gradient(135deg, rgba(12, 110, 220, 0.16), rgba(12, 110, 220, 0.04) 60%, transparent), var(--card);
 }
 .pf-head-hover {
-  transform: scale(0.99);
-  filter: brightness(1.03);
+  background: var(--card-2);
 }
 .pf-head.tappable {
   cursor: pointer;
@@ -330,7 +337,6 @@ function onMenu(act: MenuItem["act"]) {
 .pf-avatar-char {
   width: 100%;
   height: 100%;
-  font-weight: 700;
   color: #fff;
   font-size: var(--font-3xl);
   /* flex-center 已提升至全局 .flex-center */
@@ -347,14 +353,12 @@ function onMenu(act: MenuItem["act"]) {
 }
 .pf-lvtag {
   flex: none;
-  margin-left: 0;
   align-self: center;
 }
 .pf-name {
   flex: none;
   max-width: calc(100% - 150rpx);
   font-size: var(--font-xl);
-  font-weight: 700;
   color: var(--text);
   /* 截断属性已提升至全局 .truncate */
 }
@@ -372,15 +376,14 @@ function onMenu(act: MenuItem["act"]) {
   background: var(--primary);
   color: #fff;
   font-size: var(--font-sm);
-  font-weight: 600;
 }
 
 /* 数据概览 */
 .pf-stats {
   display: flex;
   align-items: center;
-  margin-top: 16rpx;
-  padding: 18rpx 24rpx;
+  padding: 20rpx;
+  background: var(--card);
 }
 .pf-stat {
   flex: 1;
@@ -395,7 +398,6 @@ function onMenu(act: MenuItem["act"]) {
 }
 .pf-stat-num {
   font-size: var(--font-2xl);
-  font-weight: 700;
   color: var(--text);
   line-height: 1.1;
 }
@@ -409,38 +411,31 @@ function onMenu(act: MenuItem["act"]) {
   background: var(--border);
 }
 
-/* 菜单分组 */
+/* 菜单分组：粗分隔线隔开 */
 .pf-group {
-  margin-top: 16rpx;
-}
-.pf-group .card {
-  padding: 12rpx 24rpx 18rpx;
+  border-top: 16rpx solid var(--bg);
 }
 .pf-group-title {
   display: block;
   font-size: var(--font-sm);
-  font-weight: 600;
-  color: var(--text-2);
-  letter-spacing: 1rpx;
-  margin: 0 6rpx 6rpx;
+  color: var(--text-3);
+  padding: 16rpx 20rpx 6rpx;
 }
 .pf-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   min-height: 80rpx;
-  padding: 0;
-  border-top: 1rpx solid var(--border);
+  padding: 20rpx;
+  background: var(--card);
+  border-top: 2rpx solid var(--bg); /* 行间间隙 */
   transition: background 0.18s ease;
 }
 .pf-row:first-child {
   border-top: none;
 }
-.pf-row-last {
-  border-bottom: none;
-}
 .pf-row-hover {
-  background: var(--card-2);
+  background: var(--card-2) !important;
 }
 .pf-row-left {
   display: flex;
@@ -471,9 +466,6 @@ function onMenu(act: MenuItem["act"]) {
   padding: 8rpx 0 0;
   text-align: center;
   font-size: var(--font-sm);
-  color: var(--text-2);
-}
-.bottom-pad {
-  height: 80rpx;
+  color: var(--text-3);
 }
 </style>

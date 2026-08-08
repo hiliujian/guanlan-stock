@@ -5,7 +5,7 @@
     <!-- 自定义导航头（navigationStyle:custom，需自带返回） -->
     <view class="lv-head">
       <view class="lv-back" hover-class="lv-back-hover" @click="back" role="button" aria-label="返回">
-        <OutlineIcon type="arrow-left" :size="44" color="var(--text)" />
+        <OutlineIcon type="arrow-left" :size="30" color="var(--text)" />
       </view>
       <text class="lv-title">我的等级</text>
       <view class="lv-head-ph" />
@@ -181,14 +181,13 @@ function back() {
   background: var(--sticky-bg);
   backdrop-filter: blur(16rpx) saturate(140%);
   -webkit-backdrop-filter: blur(16rpx) saturate(140%);
-  box-shadow: var(--sticky-shadow);
 }
 .lv-back {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 72rpx;
-  height: 72rpx;
+  width: 64rpx;
+  height: 64rpx;
   border-radius: 50%;
   margin-left: 6rpx;
   transition: background 0.18s ease;
@@ -198,11 +197,10 @@ function back() {
 }
 .lv-title {
   font-size: var(--font-lg);
-  font-weight: 700;
   color: var(--text);
 }
 .lv-head-ph {
-  width: 72rpx;
+  width: 64rpx;
 }
 .lv-scroll {
   flex: 1;

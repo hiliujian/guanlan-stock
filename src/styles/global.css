@@ -44,10 +44,9 @@
   --shadow-danger-1: 0 1rpx 5rpx var(--shadow-danger);
   --shadow-ambient: 0 0 40rpx var(--shadow-color);
   --shadow-sheet: 0 -1rpx 8rpx var(--shadow-color);
-  /* 语义别名（向后兼容：现有组件引用的 --shadow / --sticky-shadow 等映射到统一规范） */
+  /* 语义别名（向后兼容：现有组件引用的 --shadow 等映射到统一规范） */
   --shadow: var(--shadow-3);
   --shadow-up: var(--shadow-primary-2);
-  --sticky-shadow: var(--shadow-2);
   --suggest-shadow: var(--shadow-3);
   --shell-shadow: var(--shadow-ambient);
   --gap: 16rpx;
@@ -114,7 +113,6 @@
   --shadow-sheet: 0 -1rpx 8rpx var(--shadow-color);
   --shadow: var(--shadow-3);
   --shadow-up: var(--shadow-primary-2);
-  --sticky-shadow: var(--shadow-2);
   --suggest-shadow: var(--shadow-3);
   --shell-shadow: var(--shadow-ambient);
   --gap: 16rpx;
@@ -813,52 +811,6 @@ textarea {
   box-sizing: border-box;
   overflow-x: hidden;
 }
-/* 吸顶导航条：返回 + 标题居中 + 右侧占位，三页共用同一套 */
-.sticky-head {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 88rpx;
-  padding: 0 12rpx;
-  background: var(--sticky-bg);
-  backdrop-filter: blur(16rpx) saturate(140%);
-  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
-  box-shadow: var(--sticky-shadow);
-}
-/* 导航返回按钮圆形容器 */
-.nav-back {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
-  margin-left: 6rpx;
-  transition: background 0.18s ease;
-}
-/* 导航标题 */
-.nav-title {
-  font-size: var(--font-lg);
-  font-weight: 700;
-  color: var(--text);
-}
-/* 导航右侧对称占位（与返回按钮 72rpx 等宽） */
-.nav-ph { width: 72rpx; }
-
-/* ============ 市场标签工具类 ============ */
-/* 沪深港北市场小标签：行情页 / 热榜 / 自选股三处共用 */
-.mkt-label {
-  font-size: var(--font-xs);
-  line-height: 1;
-  padding: 4rpx 10rpx;
-  border-radius: 6rpx;
-  color: var(--text-2);
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
-}
 
 @media (prefers-reduced-motion: reduce) {
   .anim-glow,
@@ -908,15 +860,14 @@ textarea {
   background: var(--sticky-bg);
   backdrop-filter: blur(16rpx) saturate(140%);
   -webkit-backdrop-filter: blur(16rpx) saturate(140%);
-  box-shadow: var(--sticky-shadow);
 }
 /* 导航返回按钮圆形容器 */
 .nav-back {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 72rpx;
-  height: 72rpx;
+  width: 64rpx;
+  height: 64rpx;
   border-radius: 50%;
   margin-left: 6rpx;
   transition: background 0.18s ease;
@@ -924,11 +875,10 @@ textarea {
 /* 导航标题 */
 .nav-title {
   font-size: var(--font-lg);
-  font-weight: 700;
   color: var(--text);
 }
-/* 导航右侧对称占位（与返回按钮 72rpx 等宽） */
-.nav-ph { width: 72rpx; }
+/* 导航右侧对称占位（与返回按钮 64rpx 等宽） */
+.nav-ph { width: 64rpx; }
 
 /* ============ 市场标签工具类 ============ */
 /* 沪深港北市场小标签：行情页 / 热榜 / 自选股三处共用 */

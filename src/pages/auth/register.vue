@@ -83,7 +83,6 @@
 
 <script setup lang="ts">
 import { ref, reactive, onUnmounted } from "vue";
-import { onLoad } from "@dcloudio/uni-app";
 import AuthShell from "@/components/AuthShell.vue";
 import AuthField from "@/components/AuthField.vue";
 import {
@@ -99,9 +98,9 @@ import { syncSession, refreshProfile } from "@/store/user";
 import { goHome } from "@/store/nav";
 import { useAuthGuard } from "@/composables/useAuthGuard";
 
-// 已登录用户访问注册页 → 自动 replace 到「我的」（不渲染表单、返回键不回注册页）
-const { ready, guard } = useAuthGuard();
-onLoad(() => guard());
+// 已登录用户访问注册页 → 自动 replace 到「我的」（不渲染表单、返回键不回注册页）。
+// guard() 的 onLoad/onShow 已由 useAuthGuard 内部注册，页面无需重复调用。
+const { ready } = useAuthGuard();
 
 const email = ref("");
 const username = ref("");

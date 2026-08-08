@@ -1,11 +1,9 @@
 <template>
   <view class="app-shell st-page page-col">
-    <BackgroundFX />
-
     <!-- 自定义导航头（navigationStyle:custom，需自带返回） -->
     <view class="st-head sticky-head">
       <view class="st-back nav-back" hover-class="st-back-hover" @click="back">
-        <OutlineIcon type="arrow-left" :size="44" color="var(--text)" />
+        <OutlineIcon type="arrow-left" :size="30" color="var(--text)" />
       </view>
       <text class="st-title nav-title">设置</text>
       <view class="st-head-ph nav-ph" />
@@ -13,7 +11,7 @@
 
     <scroll-view class="st-scroll" :scroll-y="!drag.active">
       <!-- 外观 -->
-      <view class="st-group card anim-fade-up">
+      <view class="st-group">
         <text class="st-group-title">外观</text>
         <view class="st-row">
           <view class="st-row-left">
@@ -41,7 +39,7 @@
       </view>
 
       <!-- 行情卡片：拖拽排序 + 显隐 -->
-      <view class="st-group card anim-fade-up" :style="{ animationDelay: '30ms' }">
+      <view class="st-group">
         <text class="st-group-title">行情卡片</text>
         <text class="st-row-desc">拖动左侧手柄调整卡片位置，开关控制是否显示。</text>
         <view
@@ -77,7 +75,7 @@
       </view>
 
       <!-- 关于 -->
-      <view class="st-group card anim-fade-up" :style="{ animationDelay: '60ms' }">
+      <view class="st-group">
         <text class="st-group-title">关于</text>
         <view class="st-row">
           <text class="st-row-label">应用</text>
@@ -105,7 +103,6 @@
       </view>
 
       <text class="st-foot">观澜 · 让数据说话</text>
-      <view class="bottom-pad" />
     </scroll-view>
 
     <!-- 重置确认弹窗：自定义样式，替代原生 showModal -->
@@ -125,7 +122,6 @@
 <script setup lang="ts">
 import { reactive, ref } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
-import BackgroundFX from "@/components/BackgroundFX.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { isDark, setTheme } from "@/utils/theme";
 import { cardOrder, hidden, metaOf, toggleCard, setOrder, resetCardLayout } from "@/utils/cardLayout";
@@ -250,26 +246,29 @@ function rowStyle(idx: number) {
 }
 /* .st-title 布局属性已提升至全局 .nav-title */
 /* .st-head-ph 布局属性已提升至全局 .nav-ph */
+.st-page {
+  background: var(--bg);
+}
 .st-scroll {
   flex: 1;
   height: 100%;
   box-sizing: border-box;
-  padding: 20rpx 24rpx 0;
 }
 .st-group {
-  box-sizing: border-box;
-  width: 100%;
-  overflow: hidden;
-  padding: 12rpx 24rpx 18rpx;
+  padding: 12rpx 20rpx 18rpx;
+  background: var(--card);
+  border-top: 16rpx solid var(--bg);
+}
+.st-group:first-of-type {
+  border-top: none;
 }
 /* 重置应用：系统设置风格的可点击条目（整行可点） */
 .st-reset-row {
   display: flex;
   align-items: center;
   gap: 16rpx;
-  /* 拉伸到卡片左右边缘、抵住底部，形成独立条目 */
-  margin: 16rpx -24rpx -18rpx;
-  padding: 24rpx 24rpx;
+  margin: 16rpx -20rpx -18rpx;
+  padding: 24rpx 20rpx;
   border-top: 1rpx solid var(--border);
   transition: background 0.18s ease, transform 0.1s ease;
 }
@@ -298,7 +297,6 @@ function rowStyle(idx: number) {
 }
 .st-reset-label {
   font-size: var(--font-md);
-  font-weight: 500;
   color: var(--text);
   line-height: 1.3;
 }
@@ -388,9 +386,7 @@ function rowStyle(idx: number) {
 .st-group-title {
   display: block;
   font-size: var(--font-sm);
-  font-weight: 600;
-  color: var(--text-2);
-  letter-spacing: 1rpx;
+  color: var(--text-3);
   margin: 8rpx 0 14rpx;
 }
 .st-row {
@@ -434,10 +430,6 @@ function rowStyle(idx: number) {
   line-height: 1.5;
   padding: 8rpx 0 0;
 }
-.bottom-pad {
-  height: 40rpx;
-}
-
 /* 主题分段控件（与「我的」原外观切换一致） */
 .seg {
   display: inline-flex;
@@ -459,6 +451,5 @@ function rowStyle(idx: number) {
 .seg-i.active {
   background: var(--primary);
   color: #fff;
-  font-weight: 600;
 }
 </style>

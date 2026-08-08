@@ -106,7 +106,7 @@ onMounted(() => {
 // - 行情：路由到 MarketView.refresh()（全量刷新图表+资讯）
 // - 自选：路由到 WatchlistView.refresh()（复载自选行情；自选不再用 scroll-view refresher，避免双 loading）
 // - 社区：路由到 CommunityView.refresh()（重载帖子列表）
-// - 我的：无刷新目标，直接收尾
+// - 我的：路由到 ProfileView.refresh()（重载个人资料 + 社区帖子，刷新我的帖子/赞过计数）
 // 下拉刷新安全兜底：给每个 tab 的 refresh() 套一层硬超时（Promise.race），
 // 避免任一 tab 的刷新 Promise 在网络异常时永不 settle，导致页面级 loading 动画
 // （下拉刷新指示器）一直转、无法关闭。无论成功/失败/超时，最终都收起 loading。
@@ -123,6 +123,7 @@ onPullDownRefresh(async () => {
     if (currentKey.value === "market") await safeRefresh(tabRef.value?.refresh);
     else if (currentKey.value === "watch") await safeRefresh(tabRef.value?.refresh);
     else if (currentKey.value === "community") await safeRefresh(tabRef.value?.refresh);
+    else if (currentKey.value === "profile") await safeRefresh(tabRef.value?.refresh);
   } finally {
     uni.stopPullDownRefresh();
   }

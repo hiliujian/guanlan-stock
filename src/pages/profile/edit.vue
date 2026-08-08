@@ -1,11 +1,9 @@
 <template>
   <view class="app-shell ep-page page-col">
-    <BackgroundFX />
-
     <!-- 自定义导航头（navigationStyle:custom，需自带返回） -->
     <view class="ep-head sticky-head">
       <view class="ep-back nav-back" hover-class="ep-back-hover" @click="back" role="button" aria-label="返回">
-        <OutlineIcon type="arrow-left" :size="44" color="var(--text)" />
+        <OutlineIcon type="arrow-left" :size="30" color="var(--text)" />
       </view>
       <text class="ep-title nav-title">个人资料</text>
       <view class="ep-head-ph nav-ph" />
@@ -13,7 +11,7 @@
 
     <scroll-view class="ep-scroll" scroll-y>
       <!-- 头像（点击更换）：居中展示 -->
-      <view class="card ep-hero anim-fade-up">
+      <view class="ep-hero">
         <view class="ep-avatar" hover-class="ep-av-hover" @click="chooseAvatar" role="button" aria-label="更换头像">
           <UserAvatar :url="avatarUrl" :seed="seedName" :size="148" />
           <view class="ep-cam">
@@ -31,26 +29,40 @@
         @confirm="onCropped"
       />
 
-      <!-- 基本资料（含保存按钮） -->
-      <view class="card ep-card anim-fade-up" :style="{ animationDelay: '60ms' }">
-        <text class="ep-group-title">基本资料</text>
+      <!-- 基本资料（与账号安全页 sec-group 结构/样式一致：整块白卡 + 标题 + 行） -->
+      <view class="sec-group">
+        <text class="sec-group-title">基本资料</text>
 
-        <view class="ep-field">
-          <text class="ep-fl">昵称</text>
-          <input v-model="displayName" class="ep-fi" placeholder="输入昵称" placeholder-class="ep-ph" maxlength="20" />
+        <!-- 昵称 -->
+        <view class="sec-row">
+          <view class="sec-row-left">
+            <view class="sec-row-text">
+              <text class="sec-row-label">昵称</text>
+            </view>
+          </view>
+          <input v-model="displayName" class="sec-field-input" placeholder="输入昵称" placeholder-class="ep-ph" maxlength="20" />
         </view>
 
         <!-- 用户名：唯一且不可修改；空则保持空白展示，不隐藏、不加占位 -->
-        <view class="ep-field read">
-          <text class="ep-fl">用户名</text>
-          <text class="ep-fr">{{ username }}</text>
+        <view class="sec-row">
+          <view class="sec-row-left">
+            <view class="sec-row-text">
+              <text class="sec-row-label">用户名</text>
+            </view>
+          </view>
+          <text class="sec-field-value">{{ username }}</text>
         </view>
 
-        <view class="ep-field col">
-          <text class="ep-fl">个人简介</text>
+        <!-- 个人简介：多行 -->
+        <view class="sec-row sec-row-col">
+          <view class="sec-row-left">
+            <view class="sec-row-text">
+              <text class="sec-row-label">个人简介</text>
+            </view>
+          </view>
           <textarea
             v-model="bio"
-            class="ep-ta"
+            class="sec-field-ta"
             placeholder="选填，介绍一下自己"
             placeholder-class="ep-ph"
             maxlength="200"
@@ -58,12 +70,13 @@
           <text class="ep-count">{{ bio.length }}/200</text>
         </view>
 
-        <button class="btn-primary ep-save" :disabled="saving" @click="save">
-          <text>{{ saving ? "保存中…" : "保存资料" }}</text>
-        </button>
+        <!-- 保存资料：组内最后一行，铺满白卡；形态与账号安全页「注销账号」按钮完全一致（仅主色绿 vs 危险红） -->
+        <view class="sec-save-row">
+          <button class="btn-primary" :disabled="saving" @click="save">
+            <text>{{ saving ? "保存中…" : "保存资料" }}</text>
+          </button>
+        </view>
       </view>
-
-      <view class="bottom-pad" />
     </scroll-view>
   </view>
 </template>
@@ -71,7 +84,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
-import BackgroundFX from "@/components/BackgroundFX.vue";
 import AvatarCropper from "@/components/AvatarCropper.vue";
 import UserAvatar from "@/components/UserAvatar.vue";
 import { useUser, refreshProfile } from "@/store/user";
@@ -187,29 +199,22 @@ async function save() {
 </script>
 
 <style scoped>
-/* .ep-page 布局属性已提升至全局 .page-col */
-/* .ep-head 布局属性已提升至全局 .sticky-head */
-/* .ep-back 布局属性已提升至全局 .nav-back */
 .ep-back-hover {
   background: var(--card-2);
 }
-/* .ep-title 布局属性已提升至全局 .nav-title */
-/* .ep-head-ph 布局属性已提升至全局 .nav-ph */
 .ep-scroll {
   flex: 1;
   height: 100%;
   box-sizing: border-box;
-  padding: 24rpx 24rpx 0;
 }
 
-/* 头像卡：头像居中展示（紧凑留白） */
 .ep-hero {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 16rpx;
-  padding: 30rpx 24rpx 26rpx;
-  background: linear-gradient(135deg, rgba(7, 193, 96, 0.16), rgba(7, 193, 96, 0.04) 60%, transparent);
+  padding: 30rpx 20rpx 26rpx;
+  background: linear-gradient(135deg, rgba(7, 193, 96, 0.16), rgba(7, 193, 96, 0.04) 60%, transparent), var(--card);
 }
 .ep-avatar {
   position: relative;
@@ -256,56 +261,65 @@ async function save() {
   color: var(--text-2);
 }
 
-/* 基本资料表单：分组 + 分行，与「账号安全」视觉一致 */
-.ep-card {
-  margin-top: 20rpx;
-  padding: 8rpx 26rpx 10rpx;
+/* 基本资料分组：与安全页 .sec-group 视觉一致（整块白卡 + 顶部 16rpx 背景色分隔带 + 行内间距分隔） */
+.sec-group {
+  padding: 8rpx 0 16rpx;
+  background: var(--card);
+  border-top: 16rpx solid var(--bg);
 }
-.ep-group-title {
+.sec-group-title {
   display: block;
   font-size: var(--font-sm);
-  font-weight: 600;
-  color: var(--text-2);
-  letter-spacing: 1rpx;
-  margin: 12rpx 2rpx 4rpx;
+  color: var(--text-3);
+  margin: 14rpx 20rpx 6rpx;
 }
-.ep-field {
+.sec-row {
   display: flex;
   align-items: center;
-  gap: 20rpx;
-  padding: 26rpx 0;
-  border-bottom: 1rpx solid var(--border);
+  justify-content: space-between;
+  padding: 20rpx;
+  transition: background 0.18s ease;
 }
-.ep-field.col {
+.sec-row-col {
   flex-direction: column;
   align-items: stretch;
-  gap: 14rpx;
+  gap: 12rpx;
 }
-.ep-field.read {
-  color: var(--text-2);
-}
-.ep-field:last-child {
-  border-bottom: none;
-}
-.ep-fl {
-  flex: none;
-  width: 130rpx;
-  font-size: var(--font-md);
-  color: var(--text-2);
-}
-.ep-fi {
+.sec-row-left {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  min-width: 0;
   flex: 1;
+}
+.sec-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  min-width: 0;
+}
+.sec-row-label {
+  font-size: var(--font-md);
+  color: var(--text);
+}
+/* 行内表单控件：右侧与左侧标签对齐，右对齐文本，与 sec-row 节奏一致 */
+.sec-field-input {
+  flex: 1;
+  min-width: 0;
+  margin-left: 20rpx;
   font-size: var(--font-md);
   text-align: right;
   color: var(--text);
 }
-.ep-fr {
+.sec-field-value {
   flex: 1;
+  min-width: 0;
+  margin-left: 20rpx;
   font-size: var(--font-md);
   text-align: right;
   color: var(--text-2);
 }
-.ep-ta {
+.sec-field-ta {
   width: 100%;
   box-sizing: border-box;
   min-height: 140rpx;
@@ -326,12 +340,15 @@ async function save() {
   color: var(--text-2);
 }
 
-/* 保存按钮：位于基本资料卡片底部，上下留白均衡 */
-.ep-save {
-  width: 100%;
-  margin: 30rpx 0 22rpx;
+/* 保存按钮容器：与账号安全页 .sec-danger-zone 的按钮容器形态一致（左右 20rpx 内衬、顶部 8rpx，
+   底部留白由 .sec-group 的 16rpx 提供）。
+   按钮显式 display:block + width:100%，与「注销账号」(.btn-danger) 完全一致：
+   仅按钮颜色不同（主色绿 vs 危险红），形状 / 高度（72rpx 药丸）/ 间距 / 宽度完全相同。 */
+.sec-save-row {
+  padding: 8rpx 20rpx 0;
 }
-.bottom-pad {
-  height: 60rpx;
+.sec-save-row .btn-primary {
+  display: block;
+  width: 100%;
 }
 </style>

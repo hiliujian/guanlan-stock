@@ -1173,9 +1173,12 @@ function openMoveFromSheet() {
   groupView.value = "move";
   activePanel.value = "group";
 }
-// 长按菜单「删除自选」
+// 长按菜单「删除自选」：移除后直接收起底部面板（collapse 会复位 activePanel / lpItem / sheetExpanded），
+// 否则删除后 actions 面板仍停留在已删除的个股上，看起来「没关掉」。
 function removeLp() {
-  if (lpItem.value) doRemove(lpItem.value);
+  if (!lpItem.value) return;
+  doRemove(lpItem.value);
+  sheet.value?.collapse();
 }
 </script>
 

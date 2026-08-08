@@ -23,6 +23,22 @@ export const navState = reactive<{
 export const navTab = reactive<{ currentKey: TabKey }>({ currentKey: "market" });
 
 /**
+ * 吞掉 uni 导航 Promise 的良性拒绝（如「Navigation cancelled / interrupted」——
+ * 多由并发导航互相取消引起），避免控制台「Uncaught (in promise)」噪声；
+ * 真实失败（URL 非法等）仍 warn 出来便于排查。
+ */
+function swallow(p: any): void {
+  if (p && typeof p.catch === "function") {
+    p.catch((e: any) => {
+      const msg = (e && (e.errMsg || e.message)) || "";
+      if (!/cancel|interrupt|navigateTo:fail|redirectTo:fail|reLaunch:fail/i.test(msg)) {
+        console.warn("[nav] 导航异常:", msg || e);
+      }
+    });
+  }
+}
+
+/**
  * 跳转登录页（带可选返回目标，供登录成功后回跳）。
  * - 优先 reLaunch 到登录页（关闭所有页面，避免返回键回到受限页）；
  * - 带 fail 兜底 navigateTo（极端环境 reLaunch 不可用时）。
@@ -31,7 +47,12 @@ export const navTab = reactive<{ currentKey: TabKey }>({ currentKey: "market" })
 export function redirectToLogin(redirect?: string) {
   let url = "/pages/auth/login";
   if (redirect) url += "?redirect=" + encodeURIComponent(redirect);
-  uni.reLaunch({ url, fail: () => uni.navigateTo({ url }) });
+  swallow(
+    uni.reLaunch({
+      url,
+      fail: () => swallow(uni.navigateTo({ url })),
+    })
+  );
 }
 
 /**
@@ -68,18 +89,24 @@ export function openAuth(mode: "login" | "register" = "login") {
 export function goAfterAuth() {
   const pages = getCurrentPages();
   if (pages && pages.length > 1) {
-    uni.navigateBack({ fail: () => uni.reLaunch({ url: "/pages/index/index" }) });
+    swallow(
+      uni.navigateBack({
+        fail: () => swallow(uni.reLaunch({ url: "/pages/index/index" })),
+      })
+    );
   } else {
-    uni.reLaunch({ url: "/pages/index/index" });
+    swallow(uni.reLaunch({ url: "/pages/index/index" }));
   }
 }
 
 /** 注册 / 找回密码等「终点动作」成功后直接进首页（不回退来源）。带 fail 兜底。 */
 export function goHome() {
-  uni.reLaunch({
-    url: "/pages/index/index",
-    fail: () => uni.navigateTo({ url: "/pages/index/index" }),
-  });
+  swallow(
+    uni.reLaunch({
+      url: "/pages/index/index",
+      fail: () => swallow(uni.navigateTo({ url: "/pages/index/index" })),
+    })
+  );
 }
 
 /**
@@ -90,10 +117,12 @@ export function goHome() {
  */
 export function goToProfile() {
   navTab.currentKey = "profile";
-  uni.reLaunch({
-    url: "/pages/index/index",
-    fail: () => uni.navigateTo({ url: "/pages/index/index" }),
-  });
+  swallow(
+    uni.reLaunch({
+      url: "/pages/index/index",
+      fail: () => swallow(uni.navigateTo({ url: "/pages/index/index" })),
+    })
+  );
 }
 
 export function openInMarket(code: string, market: Market = "auto") {
