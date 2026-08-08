@@ -2,7 +2,7 @@
   <view class="legal-page app-shell">
     <BackgroundFX />
 
-    <!-- 自定义导航头（navigationStyle:custom，需自带返回） -->
+    <!-- 自定义导航头：与「设置」页 .st-head 完全一致（返回 + 标题居中 + 右侧占位对称） -->
     <view class="legal-head">
       <view class="legal-back" hover-class="legal-back-hover" role="button" aria-label="返回" @click="onBack">
         <OutlineIcon type="arrow-left" :size="44" color="var(--text)" />
@@ -12,12 +12,16 @@
     </view>
 
     <scroll-view class="legal-scroll" :scroll-y="true">
-      <view class="legal-doc">
-        <text class="legal-h1">{{ title }}</text>
-        <text v-if="updatedAt" class="legal-updated">最近更新：{{ updatedAt }}</text>
+      <view class="legal-wrap">
+        <!-- 头部主标题卡片 -->
+        <view class="legal-hero card">
+          <text class="legal-h1">{{ title }}</text>
+          <text v-if="updatedAt" class="legal-updated">最近更新：{{ updatedAt }}</text>
+        </view>
 
-        <view v-for="(s, i) in sections" :key="i" class="legal-sec">
-          <text class="legal-h2">{{ s.heading }}</text>
+        <!-- 各章节：复用系统 .card 玻璃卡片分组，与「设置」分组风格统一 -->
+        <view v-for="(s, i) in sections" :key="i" class="legal-sec card">
+          <text class="legal-sec-title">{{ s.heading }}</text>
           <text
             v-for="(p, j) in s.paras || []"
             :key="'p' + j"
@@ -72,7 +76,7 @@ function onBack() {
   box-sizing: border-box;
   overflow-x: hidden;
 }
-/* 自定义导航头：与「设置」页一致（返回 + 标题居中 + 右侧占位对称） */
+/* 自定义导航头：与「设置」页 .st-head 完全一致 */
 .legal-head {
   position: sticky;
   top: 0;
@@ -102,7 +106,6 @@ function onBack() {
 }
 .legal-title {
   font-size: var(--font-lg);
-  font-weight: 700;
   color: var(--text);
 }
 .legal-head-ph {
@@ -113,31 +116,29 @@ function onBack() {
   height: 100%;
   box-sizing: border-box;
 }
-.legal-doc {
-  padding: 28rpx 28rpx 0;
+.legal-wrap {
+  padding: 20rpx 24rpx 0;
   box-sizing: border-box;
 }
+/* 头部主标题卡片（复用全局 .card 玻璃卡片） */
+.legal-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
 .legal-h1 {
-  display: block;
   font-size: var(--font-2xl);
-  font-weight: 700;
   color: var(--text);
   line-height: 1.4;
-  margin-bottom: 8rpx;
 }
 .legal-updated {
-  display: block;
   font-size: var(--font-xs);
   color: var(--text-3);
-  margin-bottom: 22rpx;
 }
-.legal-sec {
-  margin-bottom: 26rpx;
-}
-.legal-h2 {
+/* 章节卡片：.card 已提供背景/圆角/边框/内边距/间距，这里仅补充分组内文本间距 */
+.legal-sec-title {
   display: block;
-  font-size: var(--font-lg);
-  font-weight: 600;
+  font-size: var(--font-md);
   color: var(--text);
   line-height: 1.5;
   margin-bottom: 10rpx;
