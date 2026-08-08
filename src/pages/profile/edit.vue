@@ -1,14 +1,14 @@
 <template>
-  <view class="app-shell ep-page">
+  <view class="app-shell ep-page page-col">
     <BackgroundFX />
 
     <!-- 自定义导航头（navigationStyle:custom，需自带返回） -->
-    <view class="ep-head">
-      <view class="ep-back" hover-class="ep-back-hover" @click="back" role="button" aria-label="返回">
+    <view class="ep-head sticky-head">
+      <view class="ep-back nav-back" hover-class="ep-back-hover" @click="back" role="button" aria-label="返回">
         <OutlineIcon type="arrow-left" :size="44" color="var(--text)" />
       </view>
-      <text class="ep-title">个人资料</text>
-      <view class="ep-head-ph" />
+      <text class="ep-title nav-title">个人资料</text>
+      <view class="ep-head-ph nav-ph" />
     </view>
 
     <scroll-view class="ep-scroll" scroll-y>
@@ -187,49 +187,14 @@ async function save() {
 </script>
 
 <style scoped>
-.ep-page {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
-  box-sizing: border-box;
-  overflow-x: hidden;
-}
-.ep-head {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 88rpx;
-  padding: 0 12rpx;
-  background: var(--sticky-bg);
-  backdrop-filter: blur(16rpx) saturate(140%);
-  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
-  box-shadow: var(--sticky-shadow);
-}
-.ep-back {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
-  margin-left: 6rpx;
-  transition: background 0.18s ease;
-}
+/* .ep-page 布局属性已提升至全局 .page-col */
+/* .ep-head 布局属性已提升至全局 .sticky-head */
+/* .ep-back 布局属性已提升至全局 .nav-back */
 .ep-back-hover {
   background: var(--card-2);
 }
-.ep-title {
-  font-size: var(--font-lg);
-  font-weight: 700;
-  color: var(--text);
-}
-.ep-head-ph {
-  width: 72rpx;
-}
+/* .ep-title 布局属性已提升至全局 .nav-title */
+/* .ep-head-ph 布局属性已提升至全局 .nav-ph */
 .ep-scroll {
   flex: 1;
   height: 100%;

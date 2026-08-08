@@ -1,14 +1,14 @@
 <template>
-  <view class="app-shell sec-page">
+  <view class="app-shell sec-page page-col">
     <BackgroundFX />
 
     <!-- 自定义导航头（navigationStyle:custom，需自带返回） -->
-    <view class="sec-head">
-      <view class="sec-back" hover-class="sec-back-hover" @click="back" role="button" aria-label="返回">
+    <view class="sec-head sticky-head">
+      <view class="sec-back nav-back" hover-class="sec-back-hover" @click="back" role="button" aria-label="返回">
         <OutlineIcon type="arrow-left" :size="44" color="var(--text)" />
       </view>
-      <text class="sec-title">账号安全</text>
-      <view class="sec-head-ph" />
+      <text class="sec-title nav-title">账号安全</text>
+      <view class="sec-head-ph nav-ph" />
     </view>
 
     <scroll-view class="sec-scroll" scroll-y>
@@ -38,7 +38,7 @@
             <view class="sec-row-ic"><OutlineIcon type="clock" :size="28" color="var(--text-2)" /></view>
             <view class="sec-row-text">
               <text class="sec-row-label">上次登录</text>
-              <text class="sec-row-desc">{{ loginSummary }}</text>
+              <text class="sec-row-desc truncate">{{ loginSummary }}</text>
             </view>
           </view>
         </view>
@@ -49,7 +49,7 @@
             <view class="sec-row-ic"><OutlineIcon type="mail" :size="28" color="var(--text-2)" /></view>
             <view class="sec-row-text">
               <text class="sec-row-label">登录邮箱</text>
-              <text class="sec-row-desc">{{ maskedEmail }}</text>
+              <text class="sec-row-desc truncate">{{ maskedEmail }}</text>
             </view>
           </view>
           <view class="sec-row-action">
@@ -107,7 +107,7 @@
             <view class="sec-row-ic"><OutlineIcon type="locked" :size="28" color="var(--text-2)" /></view>
             <view class="sec-row-text">
               <text class="sec-row-label">登录密码</text>
-              <text class="sec-row-desc">定期更换密码，保障账号安全</text>
+              <text class="sec-row-desc truncate">定期更换密码，保障账号安全</text>
             </view>
           </view>
           <view class="sec-row-action">
@@ -520,49 +520,14 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.sec-page {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
-  box-sizing: border-box;
-  overflow-x: hidden;
-}
-.sec-head {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 88rpx;
-  padding: 0 12rpx;
-  background: var(--sticky-bg);
-  backdrop-filter: blur(16rpx) saturate(140%);
-  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
-  box-shadow: var(--sticky-shadow);
-}
-.sec-back {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
-  margin-left: 6rpx;
-  transition: background 0.18s ease;
-}
+/* .sec-page 布局属性已提升至全局 .page-col */
+/* .sec-head 布局属性已提升至全局 .sticky-head */
+/* .sec-back 布局属性已提升至全局 .nav-back */
 .sec-back-hover {
   background: var(--card-2);
 }
-.sec-title {
-  font-size: var(--font-lg);
-  font-weight: 700;
-  color: var(--text);
-}
-.sec-head-ph {
-  width: 72rpx;
-}
+/* .sec-title 布局属性已提升至全局 .nav-title */
+/* .sec-head-ph 布局属性已提升至全局 .nav-ph */
 .sec-scroll {
   flex: 1;
   height: 100%;
@@ -678,10 +643,8 @@ onUnmounted(() => {
 .sec-row-desc {
   font-size: var(--font-xs);
   color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   max-width: 400rpx;
+  /* 截断属性已提升至全局 .truncate */
 }
 .sec-row-action {
   display: flex;

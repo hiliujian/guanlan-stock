@@ -55,7 +55,7 @@
             >
               <OutlineIcon type="search" :size="26" color="var(--text-2)" class="sg-ic" />
               <view class="sg-main">
-                <text class="sg-name">{{ h.name }}</text>
+                <text class="sg-name truncate">{{ h.name }}</text>
                 <text class="sg-code">{{ h.code }}</text>
               </view>
               <text class="sg-tag">{{ historyMode ? "历史" : mktLabel(h.code) }}</text>
@@ -70,7 +70,7 @@
       <!-- 空态 -->
       <view v-if="!result" class="empty anim-fade-up">
         <view class="empty-card glass">
-          <view class="empty-ic">
+          <view class="empty-ic flex-center">
             <OutlineIcon type="search" :size="54" color="var(--primary)" />
           </view>
           <text class="empty-t">开始智能分析</text>
@@ -96,13 +96,13 @@
       <block v-else>
         <!-- 头部：名称 + 价格 + 自选星标（右上角） -->
         <view class="glass quote-head anim-fade-up">
-          <view class="qh-star" :class="{ on: watched }" @click="toggleWatch">
+          <view class="qh-star flex-center" :class="{ on: watched }" @click="toggleWatch">
             <OutlineIcon type="star" :size="30" :color="watched ? 'var(--primary)' : 'var(--text-3)'" />
           </view>
           <view class="qh-left">
             <text class="qh-name">{{ name }}</text>
             <view class="qh-code-row">
-              <view class="mkt-tag">{{ marketChar }}</view>
+              <view class="mkt-tag mkt-label">{{ marketChar }}</view>
               <text class="qh-code">{{ rawCode }}</text>
             </view>
           </view>
@@ -925,9 +925,7 @@ defineExpose({ refresh: () => refreshFull() });
   font-size: var(--font-md);
   color: var(--text);
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* 截断属性已提升至全局 .truncate */
 }
 .sg-code {
   font-size: var(--font-xs);
@@ -1009,11 +1007,9 @@ defineExpose({ refresh: () => refreshFull() });
   width: 108rpx;
   height: 108rpx;
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: var(--primary-soft);
   margin-bottom: 26rpx;
+  /* flex-center 已提升至全局 .flex-center */
 }
 .empty-t {
   font-size: var(--font-lg);
@@ -1084,13 +1080,7 @@ defineExpose({ refresh: () => refreshFull() });
 /* 市场徽标：沪 / 深 / 港 / 北，对齐自选股 .mkt-tag 的经典简洁样式 */
 .mkt-tag {
   flex: none;
-  font-size: var(--font-xs);
-  line-height: 1;
-  padding: 4rpx 10rpx;
-  border-radius: 6rpx;
-  color: var(--text-2);
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
+  /* 布局属性已提升至全局 .mkt-label */
 }
 /* 自选星标：与自选页热搜榜单图标一致——描边星星 + 圆形底，加入自选时底变 primary-soft */
 .qh-star {
@@ -1101,12 +1091,10 @@ defineExpose({ refresh: () => refreshFull() });
   /* 触摸目标 ≥44px（固定 px 保证任意屏不缩水），图标在圈内居中 */
   width: 52rpx;
   height: 52rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   border-radius: 50%;
   background: var(--card-2);
   transition: transform 0.12s ease, background 0.15s ease;
+  /* flex-center 已提升至全局 .flex-center */
 }
 .qh-star:active {
   transform: translateY(-50%) scale(0.9);

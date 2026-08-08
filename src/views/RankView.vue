@@ -34,7 +34,7 @@
         >
           <text class="rh rank" :class="rankCls(i)">{{ i + 1 }}</text>
           <view class="rh name">
-            <text class="rn">{{ r.name || r.code }}</text>
+            <text class="rn truncate">{{ r.name || r.code }}</text>
             <view class="rc">
               <text class="rm">{{ marketCharFor(r.code, r.market) }}</text>
               <text class="rcode">{{ r.code }}</text>
@@ -256,9 +256,7 @@ function openRow(r: { code: string; market: string }) {
   font-weight: 400;
   color: var(--text);
   max-width: 220rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 截断属性已提升至全局 .truncate */
 }
 .rc {
   display: flex;

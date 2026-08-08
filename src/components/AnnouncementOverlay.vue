@@ -2,15 +2,15 @@
   <!-- 横幅模式：页面顶部条幅，可关闭 -->
   <view v-if="bannerAnn" class="ann-banner anim-fade-up" @click="onAction(bannerAnn)">
     <OutlineIcon type="bell" :size="26" />
-    <text class="ann-banner-text">{{ bannerAnn.title }}</text>
-    <view class="ann-banner-close" @click.stop="dismiss(bannerAnn)">
+    <text class="ann-banner-text truncate">{{ bannerAnn.title }}</text>
+    <view class="ann-banner-close flex-center" @click.stop="dismiss(bannerAnn)">
       <OutlineIcon type="close" :size="22" />
     </view>
   </view>
 
   <!-- 轻提示模式：底部 toast，点击关闭 -->
   <view v-if="toastAnn" class="ann-toast anim-fade-up" @click="dismiss(toastAnn)">
-    <text class="ann-toast-text">{{ toastAnn.title }}</text>
+    <text class="ann-toast-text truncate">{{ toastAnn.title }}</text>
   </view>
 
   <!-- 弹窗模式：居中/顶部/底部 modal，支持图文 -->
@@ -18,7 +18,7 @@
     <view :class="['ann-modal', 'pos-' + modalAnn.position]" @click.stop>
       <view class="ann-modal-hd">
         <text class="ann-modal-title">{{ modalAnn.title }}</text>
-        <view class="ann-modal-close" @click="dismiss(modalAnn)">
+        <view class="ann-modal-close flex-center" @click="dismiss(modalAnn)">
           <OutlineIcon type="close" :size="28" />
         </view>
       </view>
@@ -170,15 +170,10 @@ onMounted(async () => {
 }
 .ann-banner-text {
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 截断属性已提升至全局 .truncate */
 }
 .ann-banner-close {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  /* 布局属性已提升至全局 .flex-center */
   width: 40rpx;
   height: 40rpx;
   border-radius: 50%;
@@ -207,9 +202,7 @@ onMounted(async () => {
   cursor: pointer;
 }
 .ann-toast-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 截断属性已提升至全局 .truncate */
 }
 
 /* ---- 弹窗模式 ---- */
@@ -265,10 +258,7 @@ onMounted(async () => {
   color: var(--r-ink, var(--text));
 }
 .ann-modal-close {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  /* 布局属性已提升至全局 .flex-center */
   width: 48rpx;
   height: 48rpx;
   border-radius: 50%;

@@ -1,14 +1,14 @@
 <template>
-  <view class="app-shell st-page">
+  <view class="app-shell st-page page-col">
     <BackgroundFX />
 
     <!-- 自定义导航头（navigationStyle:custom，需自带返回） -->
-    <view class="st-head">
-      <view class="st-back" hover-class="st-back-hover" @click="back">
+    <view class="st-head sticky-head">
+      <view class="st-back nav-back" hover-class="st-back-hover" @click="back">
         <OutlineIcon type="arrow-left" :size="44" color="var(--text)" />
       </view>
-      <text class="st-title">设置</text>
-      <view class="st-head-ph" />
+      <text class="st-title nav-title">设置</text>
+      <view class="st-head-ph nav-ph" />
     </view>
 
     <scroll-view class="st-scroll" :scroll-y="!drag.active">
@@ -241,50 +241,15 @@ function rowStyle(idx: number) {
 </script>
 
 <style scoped>
-.st-page {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
-  box-sizing: border-box;
-  overflow-x: hidden;
-}
+/* .st-page 布局属性已提升至全局 .page-col */
 /* 自定义导航头：返回 + 标题居中 + 右侧占位保持对称 */
-.st-head {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 88rpx;
-  padding: 0 12rpx;
-  background: var(--sticky-bg);
-  backdrop-filter: blur(16rpx) saturate(140%);
-  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
-  box-shadow: var(--sticky-shadow);
-}
-.st-back {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
-  margin-left: 6rpx;
-  transition: background 0.18s ease;
-}
+/* .st-head 布局属性已提升至全局 .sticky-head */
+/* .st-back 布局属性已提升至全局 .nav-back */
 .st-back-hover {
   background: var(--card-2);
 }
-.st-title {
-  font-size: var(--font-lg);
-  font-weight: 700;
-  color: var(--text);
-}
-.st-head-ph {
-  width: 72rpx;
-}
+/* .st-title 布局属性已提升至全局 .nav-title */
+/* .st-head-ph 布局属性已提升至全局 .nav-ph */
 .st-scroll {
   flex: 1;
   height: 100%;

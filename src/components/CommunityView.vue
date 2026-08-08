@@ -5,7 +5,7 @@
       <template #right>
         <view class="cm-me" @click="toggleEdit">
           <UserAvatar :url="myAvatarUrl" :seed="mySeed" :size="48" />
-          <text class="cm-name">{{ myName }}</text>
+          <text class="cm-name truncate">{{ myName }}</text>
           <OutlineIcon type="gear" :size="24" color="var(--text-2)" />
         </view>
       </template>
@@ -38,7 +38,7 @@
     </scroll-view>
 
     <!-- 动态栏目标题 + 刷新 -->
-    <view class="cm-bar">
+    <view class="cm-bar flex-between">
       <text class="cm-bar-t">{{ activeTopic === "all" ? "最新动态" : "# " + activeLabel }}</text>
       <view class="cm-refresh" :class="{ 'anim-spin': loading }" @click="load">
         <OutlineIcon type="refresh" :size="30" color="var(--text-2)" />
@@ -245,9 +245,7 @@ defineExpose({ refresh: load });
   font-weight: 400;
   color: var(--text);
   max-width: 180rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 截断属性已提升至全局 .truncate */
 }
 .cm-edit {
   /* 顶部与 header 保持 14rpx 间距，底部归零由评论框的 margin-top 接管，避免展开态出现双倍间距 */
@@ -307,9 +305,7 @@ defineExpose({ refresh: load });
 }
 
 .cm-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  /* 布局属性已提升至全局 .flex-between */
   padding: 6rpx 26rpx 10rpx;
 }
 .cm-bar-t {

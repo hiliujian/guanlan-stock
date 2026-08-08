@@ -4,10 +4,10 @@
     <PageHeader brand-text="自选" brand-icon="star">
       <template #right>
         <view class="cm-me" role="button" aria-label="分组切换" @click="openGroups">
-          <view class="cm-avatar" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
+          <view class="cm-avatar flex-center" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
             <OutlineIcon type="layers" :size="24" color="#fff" />
           </view>
-          <text class="cm-name">{{ upDown.currentGroup }}</text>
+          <text class="cm-name truncate">{{ upDown.currentGroup }}</text>
           <!-- 当前分组内实时涨/跌个数（随行情实时刷新）：并入分组按钮，避免割裂 -->
           <view class="ud-pill">
             <view class="ud-item">
@@ -33,7 +33,7 @@
         <!-- 空态 -->
         <view v-if="!list.length" class="empty-wrap anim-fade-up">
           <view class="empty-card glass">
-            <view class="empty-ic">
+            <view class="empty-ic flex-center">
               <OutlineIcon type="star" :size="60" color="var(--primary)" />
             </view>
             <text class="empty-t">还没有自选股</text>
@@ -142,10 +142,10 @@
                 <OutlineIcon type="grip" :size="30" :color="dragKey === keyOf(row.it) ? 'var(--primary)' : 'var(--text-3)'" />
               </view>
               <view class="t-block">
-                <text class="t-name">{{ row.it.name || row.it.code }}</text>
+                <text class="t-name truncate">{{ row.it.name || row.it.code }}</text>
                 <view class="t-sub">
-                  <text class="t-mkt">{{ row.mkt }}</text>
-                  <text class="t-code">{{ row.it.code }}</text>
+                  <text class="t-mkt mkt-label">{{ row.mkt }}</text>
+                  <text class="t-code truncate">{{ row.it.code }}</text>
                 </view>
               </view>
             </view>
@@ -183,7 +183,7 @@
               <text class="rp-top">今日最热</text>
               <template v-if="peek">
                 <view class="rp-main">
-                  <text class="rp-name">{{ peek.name }}</text>
+                  <text class="rp-name truncate">{{ peek.name }}</text>
                   <text class="rp-code">{{ peek.code }}</text>
                 </view>
                 <view class="rp-right">
@@ -191,7 +191,7 @@
                   <text class="rp-pct" :class="peek.pct != null ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
                 </view>
               </template>
-              <text v-else class="rp-empty">今日暂无人气新增</text>
+              <text v-else class="rp-empty truncate">今日暂无人气新增</text>
               <OutlineIcon class="rp-caret" type="chevron-up" :size="20" color="var(--text-2)" />
             </view>
           </template>
@@ -1240,18 +1240,14 @@ function removeLp() {
   border-radius: 50%;
   overflow: hidden;
   flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  /* flex-center 已提升至全局 .flex-center */
 }
 .cm-name {
   font-size: var(--font-sm);
   font-weight: 400;
   color: var(--text);
   max-width: 140rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 截断属性已提升至全局 .truncate */
 }
 
 /* ===== 价格预警命中：对应行闪烁提示（替代原横幅卡片） =====
@@ -1316,10 +1312,8 @@ function removeLp() {
   height: 120rpx;
   border-radius: 50%;
   background: var(--primary-soft);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   margin-bottom: 6rpx;
+  /* flex-center 已提升至全局 .flex-center */
 }
 .empty-t {
   font-size: var(--font-lg);
@@ -1527,10 +1521,8 @@ function removeLp() {
   font-weight: 400;
   color: var(--text);
   max-width: 160rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   line-height: 1.25;
+  /* 截断属性已提升至全局 .truncate */
 }
 .t-sub {
   display: flex;
@@ -1540,22 +1532,14 @@ function removeLp() {
 }
 .t-mkt {
   flex: none;
-  font-size: var(--font-xs);
-  line-height: 1;
-  padding: 2rpx 6rpx;
-  border-radius: 6rpx;
-  color: var(--text-2);
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
+  /* 布局属性已提升至全局 .mkt-label */
 }
 .t-code {
   font-size: var(--font-xs);
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
   max-width: 92rpx;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* 截断属性已提升至全局 .truncate */
 }
 /* ===== 分组切换面板：与热榜/显示列同款统一窗体(PeekSheet)——固定底部、无遮罩、玻璃质感 ===== */
 .grp-head {
@@ -1769,9 +1753,7 @@ function removeLp() {
   min-width: 0;
   font-size: var(--font-sm);
   color: var(--text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 截断属性已提升至全局 .truncate */
 }
 .rp-main {
   flex: none;
@@ -1788,9 +1770,7 @@ function removeLp() {
   min-width: 0;
   font-size: var(--font-sm);
   color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 截断属性已提升至全局 .truncate */
 }
 .rp-code {
   flex: none;

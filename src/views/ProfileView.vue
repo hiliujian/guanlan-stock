@@ -21,16 +21,16 @@
             mode="aspectFill"
             @click.stop="previewAvatar"
           />
-          <text v-else class="pf-avatar-char" :style="{ background: avatarBg }">{{ avatarChar }}</text>
+          <text v-else class="pf-avatar-char flex-center" :style="{ background: avatarBg }">{{ avatarChar }}</text>
         </view>
         <view class="pf-id">
           <view class="pf-name-row">
-            <text class="pf-name">{{ nameText }}</text>
+            <text class="pf-name truncate">{{ nameText }}</text>
             <view v-if="user.loggedIn" class="pf-lvtag" @click.stop="goLevel" role="button" aria-label="查看我的等级">
               <LevelTag :level="userLevel" />
             </view>
           </view>
-          <text class="pf-sub">{{ subText }}</text>
+          <text class="pf-sub truncate">{{ subText }}</text>
         </view>
         <OutlineIcon v-if="user.loggedIn" type="arrow-right" :size="34" color="var(--text-2)" />
         <view v-else class="pf-login-btn">登录 / 注册</view>
@@ -90,7 +90,7 @@
             @click="onMenu(it.act)"
           >
             <view class="pf-row-left">
-              <view class="pf-row-ic"><OutlineIcon :type="it.icon" :size="30" color="var(--text-2)" /></view>
+              <view class="pf-row-ic flex-center"><OutlineIcon :type="it.icon" :size="30" color="var(--text-2)" /></view>
               <text class="pf-row-label">{{ it.label }}</text>
             </view>
             <OutlineIcon type="arrow-right" :size="28" color="var(--text-2)" />
@@ -109,7 +109,7 @@
             @click="logout"
           >
             <view class="pf-row-left">
-              <view class="pf-row-ic"><OutlineIcon type="close" :size="30" color="var(--danger)" /></view>
+              <view class="pf-row-ic flex-center"><OutlineIcon type="close" :size="30" color="var(--danger)" /></view>
               <text class="pf-row-label danger">退出登录</text>
             </view>
             <OutlineIcon type="arrow-right" :size="28" color="var(--text-2)" />
@@ -330,12 +330,10 @@ function onMenu(act: MenuItem["act"]) {
 .pf-avatar-char {
   width: 100%;
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   font-weight: 700;
   color: #fff;
   font-size: var(--font-3xl);
+  /* flex-center 已提升至全局 .flex-center */
 }
 .pf-id {
   flex: 1;
@@ -358,18 +356,14 @@ function onMenu(act: MenuItem["act"]) {
   font-size: var(--font-xl);
   font-weight: 700;
   color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 截断属性已提升至全局 .truncate */
 }
 .pf-sub {
   display: block;
   font-size: var(--font-sm);
   color: var(--text-2);
   margin-top: 8rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 截断属性已提升至全局 .truncate */
 }
 .pf-login-btn {
   flex: none;
@@ -455,14 +449,12 @@ function onMenu(act: MenuItem["act"]) {
   min-width: 0;
 }
 .pf-row-ic {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 60rpx;
   height: 60rpx;
   border-radius: 16rpx;
   background: var(--card-2);
   flex: none;
+  /* flex-center 已提升至全局 .flex-center */
 }
 .pf-row-label {
   font-size: var(--font-md);

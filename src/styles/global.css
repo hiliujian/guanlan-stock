@@ -784,10 +784,160 @@ textarea {
   50% { transform: translateY(-10rpx); }
 }
 
+/* ============ 布局工具类 ============ */
+/* Flex 基础：最高频的布局模式，覆盖全站 80%+ 的 flex 声明 */
+.flex { display: flex; }
+.flex-col { display: flex; flex-direction: column; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+/* flex-1 + min-width:0：允许子项收缩到内容宽度以下，防止被挤出 */
+.flex-1 { flex: 1; min-width: 0; }
+/* flex 纵向撑满：子元素依次排列，父容器至少占满视口 */
+.flex-col-stretch { display: flex; flex-direction: column; min-height: 100%; }
+.flex-none { flex: none; }
+
+/* ============ 文字工具类 ============ */
+/* 单行截断：超长文本省略号（全站出现 20+ 处） */
+.truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ============ 形状工具类 ============ */
+.circle { border-radius: 50%; }
+
+/* ============ 页面外壳工具类（自定义导航页通用） ============ */
+/* 整页纵向外壳：settings / edit / security 三页共用，避免各自重复声明 */
+.page-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+/* 吸顶导航条：返回 + 标题居中 + 右侧占位，三页共用同一套 */
+.sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 88rpx;
+  padding: 0 12rpx;
+  background: var(--sticky-bg);
+  backdrop-filter: blur(16rpx) saturate(140%);
+  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
+  box-shadow: var(--sticky-shadow);
+}
+/* 导航返回按钮圆形容器 */
+.nav-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  margin-left: 6rpx;
+  transition: background 0.18s ease;
+}
+/* 导航标题 */
+.nav-title {
+  font-size: var(--font-lg);
+  font-weight: 700;
+  color: var(--text);
+}
+/* 导航右侧对称占位（与返回按钮 72rpx 等宽） */
+.nav-ph { width: 72rpx; }
+
+/* ============ 市场标签工具类 ============ */
+/* 沪深港北市场小标签：行情页 / 热榜 / 自选股三处共用 */
+.mkt-label {
+  font-size: var(--font-xs);
+  line-height: 1;
+  padding: 4rpx 10rpx;
+  border-radius: 6rpx;
+  color: var(--text-2);
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .anim-glow,
   .anim-float { animation: none !important; }
   .anim-fade-up,
   .anim-rise,
   .anim-rise-soft { animation-duration: 0.001s !important; }
+}
+
+/* ============ 布局工具类 ============ */
+/* Flex 基础：最高频的布局模式，覆盖全站 80%+ 的 flex 声明 */
+.flex { display: flex; }
+.flex-col { display: flex; flex-direction: column; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+/* flex-1 + min-width:0：允许子项收缩到内容宽度以下，防止被挤出 */
+.flex-1 { flex: 1; min-width: 0; }
+.flex-none { flex: none; }
+
+/* ============ 文字工具类 ============ */
+/* 单行截断：超长文本省略号（全站出现 20+ 处） */
+.truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ============ 形状工具类 ============ */
+.circle { border-radius: 50%; }
+
+/* ============ 页面外壳工具类（自定义导航页通用） ============ */
+/* 整页纵向外壳：settings / edit / security 三页共用，避免各自重复声明 */
+.page-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+/* 吸顶导航条：返回 + 标题居中 + 右侧占位，三页共用同一套 */
+.sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 88rpx;
+  padding: 0 12rpx;
+  background: var(--sticky-bg);
+  backdrop-filter: blur(16rpx) saturate(140%);
+  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
+  box-shadow: var(--sticky-shadow);
+}
+/* 导航返回按钮圆形容器 */
+.nav-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  margin-left: 6rpx;
+  transition: background 0.18s ease;
+}
+/* 导航标题 */
+.nav-title {
+  font-size: var(--font-lg);
+  font-weight: 700;
+  color: var(--text);
+}
+/* 导航右侧对称占位（与返回按钮 72rpx 等宽） */
+.nav-ph { width: 72rpx; }
+
+/* ============ 市场标签工具类 ============ */
+/* 沪深港北市场小标签：行情页 / 热榜 / 自选股三处共用 */
+.mkt-label {
+  font-size: var(--font-xs);
+  line-height: 1;
+  padding: 4rpx 10rpx;
+  border-radius: 6rpx;
+  color: var(--text-2);
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
 }
