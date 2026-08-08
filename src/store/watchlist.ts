@@ -22,6 +22,7 @@ export interface WatchItem {
   note: string;
   group?: string; // 分组名，'' = 默认分组
   order?: number; // 分组内自定义排序权重（对应 DB sort_order）；本地模式同样保留
+  globalOrder?: number; // 「全部」视图排序权重（对应 DB global_sort_order）；与分组内 order 互相独立
   alerts?: PriceAlert; // 价格预警配置
   created_at?: string;
 }
@@ -56,10 +57,9 @@ function saveLocal(items: WatchItem[]) {
 }
 
 // 取「目标分组内」当前最大的 sort_order，+1 作为新项在该分组内的排序权重。
-// 设计：order 是「分组内」权重（各分组各自从 0 起算，不跨分组比较）。
-// 「全部」视图的展示序由 created_at 决定（见 sortItems / 视图 filteredList）；
-// 「单分组」视图则按组内 order 展示。移入某分组时 order = 组内最大+1，即按「加入
-// 该分组的时间」追加到目标分组末尾，满足「目标分组内按加入顺序排列」的诉求。
+// 设计：order 是「分组内」权重（各分组各自从 0 起算，不跨分组比较），仅用于单分组视图。
+// 「全部」视图的展示序由独立的 globalOrder 决定（见视图 filteredList，未拖拽时回落 created_at），
+// 与 order 互不干扰。移入某分组时 order = 组内最大+1，即按「加入该分组的时间」追加到目标分组末尾。
 function nextGroupOrder(grp: string): number {
   let m = -1;
   for (const i of state.items) {
@@ -68,9 +68,9 @@ function nextGroupOrder(grp: string): number {
   return m + 1;
 }
 
-// 内存默认序：创建时间 → 分组内 order → 分组名。视图「全部」视图默认按此（created_at 为主）；
-// 若用户做过全局拖拽重排（applyGroupOrder("__all__")），视图 filteredList 会改按 order 优先，
-// 使拖拽结果在「全部」视图持久生效。移组不改 created_at，个体在「全部」中位置基本稳定。
+// 内存默认序：创建时间 → 分组内 order → 分组名。该序仅作内存兜底（如本地模式列表维护）；
+// 视图展示由 filteredList 决定——单分组按 order，全部视图按独立字段 globalOrder（见视图）。
+// 移组不改 created_at，个体在「全部」中位置基本稳定。
 function sortItems(items: WatchItem[]): WatchItem[] {
   return items.slice().sort((a, b) => {
     const ca = a.created_at || "";
@@ -104,6 +104,7 @@ async function loadCloud(userId: string) {
         note: d.note || "",
         group: d.group_name || "",
         order: typeof d.sort_order === "number" ? d.sort_order : 0,
+        globalOrder: typeof d.global_sort_order === "number" ? d.global_sort_order : undefined,
         alerts: parseAlerts(d.alerts),
         created_at: d.created_at,
       }))
@@ -237,12 +238,13 @@ export async function setItemGroup(code: string, market: string, group: string):
 }
 
 /**
- * 拖拽重排：传入目标分组（或 "__all__"）与该范围重排后的可见键顺序（code|market），
- * 将对应项的 sort_order 连续重编为 0..n 并持久化（云：批量按 id 更新；本地：重存）。
- * - 单分组视图（group 为具体分组名或 "" 默认分组）：仅重排该分组内的项，order 为分组内
- *   权重，不会干扰其它分组。
- * - 全部视图（group === "__all__"）：对所有可见项按拖拽后相对位置连续编号 0..n，跨分组
- *   持久化全局顺序；视图层「全部」视图会按 order 优先排序以还原拖拽结果。
+ * 拖拽重排：传入目标范围（具体分组名 / "" 默认分组 / "__all__" 全部视图）与该范围内
+ * 重排后的可见键顺序（code|market），将对应项的排序权重连续重编为 0..n 并持久化。
+ * 两套权重彼此独立，确保「各分组的顺序互相不影响」：
+ * - 单分组视图（group 为具体分组名或 ""）：仅修改该分组的「分组内权重」order
+ *   （对应 DB sort_order），不影响其它分组，也不触碰「全部」视图的全局顺序。
+ * - 全部视图（group === "__all__"）：仅修改「全局权重」globalOrder
+ *   （对应 DB global_sort_order），不影响任何分组的内部顺序。
  */
 export async function applyGroupOrder(group: string, orderedKeys: string[]): Promise<void> {
   const grp = group || "";
@@ -250,10 +252,9 @@ export async function applyGroupOrder(group: string, orderedKeys: string[]): Pro
   const idxByKey = new Map<string, number>();
   orderedKeys.forEach((k, i) => idxByKey.set(k, i));
 
-  // 全局重排（"全部"视图）：对所有出现在 orderedKeys 内的项按相对位置赋 order = 0..n；
-  // 单分组重排：仅重排 grp 分组内的项（其它分组 order 不变）。
-  // 内存按 key(code|market) 更新（本地模式项无 id，亦能持久化）；云模式再按 id 批量写库。
-  const newOrderByKey = new Map<string, number>();
+  // 单选范围：全局重排作用于所有 orderedKeys 内的项；单分组重排仅作用于该分组内的项。
+  // 写入字段彼此独立（globalOrder vs order），互不污染。
+  const newValByKey = new Map<string, number>();
   state.items
     .filter((i) =>
       global ? idxByKey.has(`${i.code}|${i.market}`) : (i.group || "") === grp
@@ -264,24 +265,30 @@ export async function applyGroupOrder(group: string, orderedKeys: string[]): Pro
         (idxByKey.get(`${b.code}|${b.market}`) ?? 0)
     )
     .forEach((i, n) => {
-      newOrderByKey.set(`${i.code}|${i.market}`, n);
+      newValByKey.set(`${i.code}|${i.market}`, n);
     });
 
   state.items = state.items.map((i) => {
     const k = `${i.code}|${i.market}`;
-    return newOrderByKey.has(k) ? { ...i, order: newOrderByKey.get(k)! } : i;
+    if (!newValByKey.has(k)) return i;
+    return global
+      ? { ...i, globalOrder: newValByKey.get(k)! }
+      : { ...i, order: newValByKey.get(k)! };
   });
 
   if (state.mode === "cloud" && userState.userId) {
     const sb = getSupabase()!;
+    const col = global ? "global_sort_order" : "sort_order";
+    const pick = (i: WatchItem) => (global ? i.globalOrder : i.order) ?? 0;
     await Promise.all(
       state.items
-        .filter((i) =>
-          global
-            ? newOrderByKey.has(`${i.code}|${i.market}`)
-            : (i.group || "") === grp && !!i.id
+        .filter(
+          (i) =>
+            newValByKey.has(`${i.code}|${i.market}`) &&
+            (global || (i.group || "") === grp) &&
+            !!i.id
         )
-        .map((i) => sb.from("watchlists").update({ sort_order: i.order ?? 0 }).eq("id", i.id))
+        .map((i) => sb.from("watchlists").update({ [col]: pick(i) }).eq("id", i.id))
     );
   } else {
     saveLocal(state.items);

@@ -75,7 +75,8 @@ create table public.watchlists (
   note       text not null default '',
   -- 扩展预留
   group_name text not null default '',                   -- 自选分组名（未来支持分组管理）
-  sort_order integer not null default 0,                 -- 自定义排序权重
+  sort_order integer not null default 0,                 -- 分组内自定义排序权重（单分组视图用）
+  global_sort_order integer,                             -- 「全部」视图独立排序权重（与 sort_order 互不影响；可空，未拖拽时回落 created_at）
   is_hidden  boolean not null default false,             -- 归档 / 隐藏
   alerts     jsonb not null default '{}'::jsonb,         -- 价格提醒等配置占位（避免将来为提醒另建表 / 加多列）
   created_at timestamptz not null default now()

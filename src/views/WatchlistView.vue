@@ -495,12 +495,11 @@ const groups = computed(() => {
 const filteredList = computed(() => {
   const base = list.value;
   if (selectedGroup.value === "__all__") {
-    // 「全部」视图：默认按加入时间（created_at）稳定排序；若已做过全局拖拽重排
-    // （order 已被 applyGroupOrder("__all__") 连续编号），则按 order 优先、created_at 兜底，
-    // 使拖拽顺序在「全部」视图持久生效。
+    // 「全部」视图：按独立字段 globalOrder 排序（与分组内 order 互不干扰）；
+    // 未做过全局拖拽时 globalOrder 为 undefined → 回落到加入时间 created_at，顺序稳定。
     return base.slice().sort((a, b) => {
-      const oa = a.order ?? Infinity;
-      const ob = b.order ?? Infinity;
+      const oa = a.globalOrder ?? Infinity;
+      const ob = b.globalOrder ?? Infinity;
       if (oa !== ob) return oa - ob;
       return (a.created_at || "").localeCompare(b.created_at || "");
     });
