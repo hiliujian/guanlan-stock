@@ -467,7 +467,8 @@ textarea {
 /* 与主流小程序一致：登录注册为单独页面，自带返回按钮与品牌区，背景复用全局纵深。 */
 .auth-page {
   /* 全屏固定层：inset:0 使高度 = 真实可视区（不受地址栏/键盘影响），
-     内部 .auth-content 用 min-height:100% + flex 列 margin-top:auto 把协议钉在可视底部。
+     内部 .auth-content 用 min-height:100% 撑满，并由 flex 列让 .auth-body(flex:1)
+     吸收剩余空间，把末尾协议钉在可视底部。
      覆盖层键盘下整层不收缩，协议被键盘自然遮住（不浮到键盘上、也不消失）；
      收缩型键盘（iOS/部分 WebView）下可视区变小，整页压缩、协议仍在压缩后底部。 */
   position: fixed;
@@ -499,9 +500,9 @@ textarea {
   position: relative;
   z-index: 1;
   /* 至少撑满固定父层（.auth-page 为 inset:0 全屏层）：min-height:100% 解析为父层真实
-     可视高度，内容少时整列高度=可视高，末尾协议靠 margin-top:auto 自然落到屏幕最底部；
-     内容超出时随 .auth-page 内部滚动，协议落在文档末尾。相比 100dvh，用 100% 锚定
-     真实可视区，避免移动端地址栏导致协议被推到折叠线以下。 */
+     可视高度，内容少时整列高度=可视高，末尾协议随 .auth-body(flex:1) 吸收剩余空间
+     自然落到屏幕最底部；内容超出时随 .auth-page 内部滚动，协议落在文档末尾。相比
+     100dvh，用 100% 锚定真实可视区，避免移动端地址栏导致协议被推到折叠线以下。 */
   min-height: 100%;
   display: flex;
   flex-direction: column;
@@ -515,6 +516,7 @@ textarea {
   top: 0;
   left: 0;
   right: 0;
+  z-index: 2; /* 始终高于 .auth-content(z-index:1)，确保返回按钮在协议页等 nav 为 content 兄弟节点时仍可点击 */
   display: flex;
   align-items: center;
   height: 88rpx;
@@ -562,7 +564,7 @@ textarea {
   color: var(--text-2);
 }
 .auth-body {
-  flex: none; /* 取消 flex:1，让 logo + 表单作为整体贴合顶部 */
+  flex: 1 1 auto; /* 吸收剩余空间，把末尾协议稳定推到屏幕底部（替代 margin-top:auto，跨设备更可靠） */
   display: flex;
   flex-direction: column;
 }

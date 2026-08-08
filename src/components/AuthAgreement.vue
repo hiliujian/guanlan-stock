@@ -15,13 +15,9 @@
  * - 使用即视为已同意（主流小程序做法），不需要勾选
  * - 链接通过 uni API 打开，便于后续接入内置 H5 预览
  *
- * 贴底实现：本组件由 AuthShell 作为 flex 列末尾项渲染，并靠 `margin-top:auto`
- * 推到屏幕最底部，完全基于正常文档流定位，不再使用 position:fixed——
- * fixed 在 VIA 等「覆盖层键盘」下会浮到键盘上方（即「条例跟着弹上来」），
- * 且需额外的键盘高度/聚焦探测逻辑。改回文档流后：
- *   - 收缩型键盘（iOS / 部分 WebView）：dvh 变小，整页压缩，协议仍在可视区底部；
- *   - 覆盖层键盘（VIA 等不收缩视口）：页面不压缩，协议固定在屏幕底、被键盘自然遮挡，
- *     既不浮到键盘上方，也不是主动隐藏（display:none），位置始终固定在底部。
+ * 贴底实现：本组件作为 AuthShell flex 列的末尾项渲染，由 `.auth-body(flex:1)`
+ * 吸收剩余空间后自然落在屏幕最底部（基于正常文档流，不依赖 margin-top:auto）。
+ * 非 position:fixed，因此覆盖层键盘（VIA 等）下协议被键盘自然遮挡，不会浮到键盘上方。
  */
 const props = withDefaults(
   defineProps<{
@@ -69,11 +65,10 @@ function openPrivacy() {
 </script>
 
 <style scoped>
-/* 协议贴底：作为 AuthShell flex 列的末尾项，margin-top:auto 把本身推到
-   屏幕最底部；不再 fixed，避免覆盖层键盘下浮到键盘上。自带安全区内边距，
+/* 协议贴底：作为 AuthShell flex 列的末尾项，由 .auth-body(flex:1) 吸收剩余空间后
+   自然落在屏幕最底部；非 fixed，避免覆盖层键盘下浮到键盘上。自带安全区内边距，
    避免被底部 Home 指示条遮挡。 */
 .agree {
-  margin-top: auto;
   padding: 16rpx 24rpx calc(24rpx + env(safe-area-inset-bottom));
   text-align: center;
 }
