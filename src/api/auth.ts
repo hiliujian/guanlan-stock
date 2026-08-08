@@ -222,10 +222,8 @@ export interface ProfilePatch {
   last_login?: LoginInfo | null;
 }
 
-/** 最近一次登录信息（供「账号安全」页展示）：地点 / 时间 / 设备 */
+/** 最近一次登录信息（供「账号安全」页展示）：时间 / 设备 */
 export interface LoginInfo {
-  ip?: string; // 登录 IP（最佳努力获取，失败为空）
-  city?: string; // 登录城市（由 IP 地理定位，失败为「未知」）
   device?: string; // 设备型号（uni.getSystemInfoSync().model）
   platform?: string; // 平台标识（ios / android / web 等）
   time?: string; // 登录时刻 ISO 字符串
@@ -435,12 +433,8 @@ export async function captureLoginInfo(): Promise<void> {
       /* 设备信息不可用时仅留空 */
     }
 
-    // 地点：最佳努力 IP 地理定位（超时即放弃，不影响其余字段）
-    const geo = await fetchLoginGeo();
-
+    // 设备信息已就绪，构造登录信息（地点/IP 地理定位已移除：第三方接口不稳定且非核心展示）
     const info: LoginInfo = {
-      ip: geo?.ip || "",
-      city: geo?.city || "",
       device,
       platform,
       time: new Date().toISOString(),
@@ -481,25 +475,6 @@ export async function fetchLoginInfo(): Promise<LoginInfo | null> {
       return null;
     }
     return (data?.last_login as LoginInfo) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** 最佳努力 IP 地理定位：返回 { ip, city }，失败返回 null。3s 超时，绝不抛出。 */
-async function fetchLoginGeo(): Promise<{ ip?: string; city?: string } | null> {
-  try {
-    const res: any = await uni.request({
-      url: "https://ipwho.is/json",
-      method: "GET",
-      timeout: 3000,
-      dataType: "json",
-    });
-    const body = res?.data;
-    if (body && body.success !== false && (body.city || body.ip)) {
-      return { ip: body.ip || "", city: body.city || "" };
-    }
-    return null;
   } catch {
     return null;
   }

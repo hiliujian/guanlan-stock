@@ -523,6 +523,7 @@ const groupRows = computed(() => {
 });
 function pickGroup(key: string) {
   selectedGroup.value = key;
+  manualOrderGroup.value = null; // 切换视图即令手工顺序失效，renderRows 回落 displayRows
   sheet.value?.collapse();
 }
 
@@ -641,7 +642,10 @@ function doManageRename() {
 function doManageDelete() {
   if (!manageTarget.value) return;
   deleteGroup(manageTarget.value);
-  if (selectedGroup.value === manageTarget.value) selectedGroup.value = '__all__';
+  if (selectedGroup.value === manageTarget.value) {
+    selectedGroup.value = '__all__';
+    manualOrderGroup.value = null; // 视图切回全部，手工顺序失效
+  }
   manageTarget.value = '';
   renameName.value = '';
   manageDel.value = false;
@@ -840,30 +844,29 @@ function toggleReorder() {
   }
 }
 
-// 可见顺序（键序列），拖拽时实时重排；默认随 displayRows（按分组 + sort_order）
+// 拖拽顺序缓冲（键序列），仅作用于「当前视图」并与 selectedGroup 强绑定，杜绝跨视图互串。
 const manualOrder = ref<string[]>([]);
-// 关键修复：manualOrder 是「全局共享」的单一数组，必须按「当前视图」隔离。
-// 原 watch 仅依赖键集（sorted key 串），当「全部」视图与某分组键集完全相同（如仅一个分组 /
-// 全部股票都在默认分组）时无法触发重置，导致上一视图的拖拽顺序串到下一视图（顺序互串 bug）。
-// 因此 watch 依赖必须同时包含 selectedGroup —— 切换分组即重置 manualOrder 为当前视图自然顺序。
-// （重置 watch 实际定义在 displayRows 之后：watch 源函数会在 setup 期立即求值，
-//   若此处提前访问 displayRows 会触发「Cannot access 'displayRows' before initialization」TDZ 错误。）
-// 渲染行：列排序优先；否则按手动顺序（拖拽结果）
+// manualOrder 所属视图；与 selectedGroup 不一致即视为失效，renderRows 回落 displayRows（store 的 per-view 排序）。
+const manualOrderGroup = ref<string | null>(null);
+// 渲染行：列排序优先；否则按手动顺序（仅限当前视图的拖拽结果）
 const renderRows = computed(() => {
   if (sortKey.value) return displayRows.value;
-  const idx = new Map(manualOrder.value.map((k, i) => [k, i]));
-  return displayRows.value
-    .slice()
-    .sort((a, b) => {
-      const ia = idx.get(keyOf(a.it));
-      const ib = idx.get(keyOf(b.it));
-      // manualOrder 与 displayRows 键集偶发不一致（异步刷新竞态）时，缺键项保持原相对位置，
-      // 避免被挤到列表顶部造成视觉跳变。
-      if (ia != null && ib != null) return ia - ib;
-      if (ia != null) return -1;
-      if (ib != null) return 1;
-      return 0;
-    });
+  // 仅当 manualOrder 属于「当前视图」时才应用：切换分组后 manualOrderGroup 被置空/不匹配，
+  // 直接回落到 displayRows（store 的 per-view order / globalOrder 排序），从根上杜绝顺序互串。
+  if (manualOrderGroup.value === selectedGroup.value && manualOrder.value.length) {
+    const idx = new Map(manualOrder.value.map((k, i) => [k, i]));
+    return displayRows.value
+      .slice()
+      .sort((a, b) => {
+        const ia = idx.get(keyOf(a.it));
+        const ib = idx.get(keyOf(b.it));
+        if (ia != null && ib != null) return ia - ib;
+        if (ia != null) return -1;
+        if (ib != null) return 1;
+        return 0;
+      });
+  }
+  return displayRows.value;
 });
 
 // 拖拽状态（整理模式下所有视图——含"全部"——均可拖拽重排）
@@ -880,6 +883,9 @@ function onDragStart(e: any, it: WatchItem) {
   if (sortKey.value) sortKey.value = ""; // 拖拽即自定义顺序，清除列排序
   dragKey.value = keyOf(it);
   dragStartY = dragPtY(e);
+  // 以「当前视图」展示顺序初始化拖拽缓冲，并标记所属视图——保证只影响当前视图、不串入其它分组。
+  manualOrder.value = displayRows.value.map((r) => keyOf(r.it));
+  manualOrderGroup.value = selectedGroup.value;
   dragMoved = false;
   try {
     const info: any = (uni as any).getWindowInfo ? (uni as any).getWindowInfo() : uni.getSystemInfoSync();
@@ -967,15 +973,6 @@ const displayRows = computed(() => {
     return cmp * dir;
   });
 });
-
-// 重置 manualOrder：视图切换或可见键集变化时，重设为「当前视图」自然顺序（修复顺序互串 bug）。
-// 必须置于 displayRows 之后——watch 源函数会在 setup 期立即求值，提前访问 displayRows 会触发 TDZ。
-watch(
-  [selectedGroup, () => displayRows.value.map((r) => keyOf(r.it)).slice().sort().join(",")],
-  () => {
-    manualOrder.value = displayRows.value.map((r) => keyOf(r.it));
-  }
-);
 
 // 顶部右侧：当前分组名（默认「全部」）+ 当前分组内实时涨/跌个股个数（随行情刷新）
 const upDown = computed(() => {
