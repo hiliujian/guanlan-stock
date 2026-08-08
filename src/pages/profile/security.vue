@@ -233,8 +233,8 @@ const loginSummary = computed(() => {
   const l = lastLogin.value;
   if (!l) return "暂无登录记录";
   const parts: string[] = [];
-  // 地点：原依赖第三方 IP 地理定位（接口不稳定，已移除），统一显示「未知」，避免无效网络请求。
-  parts.push("未知");
+  // 地点：服务端 IP 地理定位结果；解析失败/缺失时降级显示「未知」。
+  parts.push(l.location && l.location.trim() ? l.location : "未知");
   if (l.time) parts.push(fmtLoginTime(l.time));
   // 设备名（不再附带操作系统/平台信息，如 android / iOS 等），仅展示设备名
   const dev = [l.device].filter(Boolean);

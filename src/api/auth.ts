@@ -222,11 +222,12 @@ export interface ProfilePatch {
   last_login?: LoginInfo | null;
 }
 
-/** 最近一次登录信息（供「账号安全」页展示）：时间 / 设备 */
+/** 最近一次登录信息（供「账号安全」页展示）：地点 / 时间 / 设备 */
 export interface LoginInfo {
   device?: string; // 设备型号（uni.getSystemInfoSync().model）
   platform?: string; // 平台标识（ios / android / web 等）
   time?: string; // 登录时刻 ISO 字符串
+  location?: string; // 登录地点（服务端 IP 地理定位，如「Beijing, China」；缺失时前端显示「未知」）
 }
 
 export interface UploadResult {
@@ -433,11 +434,23 @@ export async function captureLoginInfo(): Promise<void> {
       /* 设备信息不可用时仅留空 */
     }
 
-    // 设备信息已就绪，构造登录信息（地点/IP 地理定位已移除：第三方接口不稳定且非核心展示）
+    // 登录地点：交由服务端 Edge Function（guanlan-login-geo）解析客户端真实 IP，
+    // 避免浏览器直连第三方地理定位接口不稳定（CORS / 偶发 404）。最佳努力，失败留空。
+    let location = "";
+    try {
+      const { data, error } = await sb.functions.invoke("guanlan-login-geo");
+      if (!error && data && typeof (data as any).location === "string") {
+        location = (data as any).location;
+      }
+    } catch {
+      /* 地点解析失败仅留空，不影响登录信息其余字段 */
+    }
+
     const info: LoginInfo = {
       device,
       platform,
       time: new Date().toISOString(),
+      location: location || undefined,
     };
     // 原子交换：服务端把「本次登录」写入 login_current，并把旧 login_current 移为 last_login，
     // 使「上次登录」严格等于上一次成功登录（而非本次）。函数以 auth.uid() 限定仅改写本人记录。
