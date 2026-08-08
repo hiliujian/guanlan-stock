@@ -269,7 +269,7 @@ textarea {
   border: none;
   border-radius: 999rpx;
   font-size: var(--font-md);
-  font-weight: 600;
+  /* 按钮文字不加粗：移除 font-weight，继承常规字重（400），与全站非强调文本一致 */
   height: 72rpx;
   line-height: 72rpx;
   text-align: center;
@@ -656,7 +656,7 @@ textarea {
 .auth-input {
   flex: 1;
   min-width: 0; /* 关键：允许 flex 子项收缩到小于内容宽度，防止 suffix 被挤出裁剪 */
-  font-size: var(--font-lg);
+  font-size: var(--font-md); /* 比标题小一号（lg→md），输入文字更紧凑精致 */
   color: var(--text);
   font-weight: 400; /* 输入框文字不加粗，保持常规字重 */
 }

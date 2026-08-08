@@ -41,6 +41,9 @@ const BUILTIN_ACCESS: Record<string, AccessMeta> = {
   "pages/profile/edit": { path: "pages/profile/edit", open: false, showInMenu: false, sortWeight: 0, extra: {}, isTab: false },
   "pages/profile/security": { path: "pages/profile/security", open: false, showInMenu: false, sortWeight: 0, extra: {}, isTab: false },
   "pages/profile/level": { path: "pages/profile/level", open: false, showInMenu: false, sortWeight: 0, extra: {}, isTab: false },
+  /* 协议页对游客开放：登录页脚可点击查看，未登录亦不被拦截（fail-closed 不应误拦协议） */
+  "pages/legal/terms": { path: "pages/legal/terms", open: true, showInMenu: false, sortWeight: 0, extra: {}, isTab: false },
+  "pages/legal/privacy": { path: "pages/legal/privacy", open: true, showInMenu: false, sortWeight: 0, extra: {}, isTab: false },
 };
 
 // 缓存 TTL：远程白名单 5 分钟内不重复拉取，导航时直接读内存（满足「缓存减少查询」）。

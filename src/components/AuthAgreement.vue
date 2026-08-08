@@ -2,9 +2,9 @@
   <view class="agree">
     <text class="agree-text">
       {{ action }}{{ productName }}即视为同意
-      <text class="lk" @click="openUrl(termsUrl)">《服务协议》</text>
+      <text class="lk" @click="openTerms">《服务协议》</text>
       与
-      <text class="lk" @click="openUrl(privacyUrl)">《隐私政策》</text>
+      <text class="lk" @click="openPrivacy">《隐私政策》</text>
     </text>
   </view>
 </template>
@@ -23,18 +23,23 @@
  *   - 覆盖层键盘（VIA 等不收缩视口）：页面不压缩，协议固定在屏幕底、被键盘自然遮挡，
  *     既不浮到键盘上方，也不是主动隐藏（display:none），位置始终固定在底部。
  */
-withDefaults(
+const props = withDefaults(
   defineProps<{
     action?: string;
     productName?: string;
     termsUrl?: string;
     privacyUrl?: string;
+    /** 内部协议页路径：默认跳本平台内置协议页；termsUrl/privacyUrl 有值则优先走外部链接 */
+    termsPath?: string;
+    privacyPath?: string;
   }>(),
   {
     action: "继续",
     productName: "观澜",
     termsUrl: "",
     privacyUrl: "",
+    termsPath: "/pages/legal/terms",
+    privacyPath: "/pages/legal/privacy",
   }
 );
 
@@ -48,6 +53,18 @@ function openUrl(url: string) {
   (uni as any).setClipboardData({ data: url });
   uni.showToast({ title: "链接已复制", icon: "none" });
   // #endif
+}
+
+/** 点击《服务协议》：有外部链接走外链，否则跳本平台内置协议页 */
+function openTerms() {
+  if (props.termsUrl) return openUrl(props.termsUrl);
+  uni.navigateTo({ url: props.termsPath });
+}
+
+/** 点击《隐私政策》：有外部链接走外链，否则跳本平台内置协议页 */
+function openPrivacy() {
+  if (props.privacyUrl) return openUrl(props.privacyUrl);
+  uni.navigateTo({ url: props.privacyPath });
 }
 </script>
 
