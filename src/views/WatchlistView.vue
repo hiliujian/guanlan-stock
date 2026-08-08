@@ -1370,9 +1370,10 @@ function removeLp() {
   justify-content: flex-end;
   height: 68rpx;
   padding: 0 16rpx;
+  /* 表头字号/字重/颜色与热榜榜单表头(.rk-thead .rh)保持一致：font-sm / 400 / --text */
   font-size: var(--font-sm);
-  font-weight: 500;
-  color: var(--text-2);
+  font-weight: 400;
+  color: var(--text);
   text-align: right;
   cursor: pointer;
   position: relative;
