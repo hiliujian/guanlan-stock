@@ -19,6 +19,10 @@ const props = defineProps<{
   /** 实时最新价（与头部同源 5s 快照），分时模式同步到走势图最后一根，确保与卡片一致 */
   livePrice?: number;
   livePreClose?: number;
+  /** 当前股票代码：透传给 StockChart 用于看盘画线按股票持久化 */
+  code?: string;
+  /** 是否显示看盘画线工具栏（仅行情页主图启用） */
+  showTools?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -72,6 +76,8 @@ function pick(p: PeriodKey) {
     :show-macd="true"
     :live-price="livePrice"
     :live-pre-close="livePreClose"
+    :code="code"
+    :show-tools="showTools"
   />
   <view v-else-if="period === 'm'" class="hint">暂无数据</view>
   <StockChart
@@ -81,6 +87,8 @@ function pick(p: PeriodKey) {
     :height="height ?? 460"
     :show-ma="true"
     :show-macd="true"
+    :code="code"
+    :show-tools="showTools"
   />
 </template>
 

@@ -5,6 +5,14 @@
     <div ref="chartEl" class="kc-chart" :style="{ height: props.height + 'px' }"></div>
     <!-- 筹码分布叠加层（右侧横向直方图，与蜡烛同坐标系），默认不拦截指针 -->
     <canvas ref="cyqEl" class="kc-ov kc-ov--cyq"></canvas>
+    <!-- 看盘画线工具栏：点击后在图上拖拽绘制；支撑=绿、压力=红、趋势/分割=主色绿 -->
+    <view v-if="showTools" class="kc-tools">
+      <view class="kct-btn" role="button" @click="drawLine('horizontalStraightLine', DOWN)">支撑</view>
+      <view class="kct-btn" role="button" @click="drawLine('horizontalStraightLine', UP)">压力</view>
+      <view class="kct-btn" role="button" @click="drawLine('straightLine')">趋势</view>
+      <view class="kct-btn" role="button" @click="drawLine('fibonacciLine')">分割</view>
+      <view class="kct-btn kct-clear" role="button" @click="clearOverlays">清除</view>
+    </view>
   </div>
 </template>
 
@@ -60,8 +68,14 @@ const props = withDefaults(
     livePrice?: number;
     /** 实时昨收（与 livePrice 同源） */
     livePreClose?: number;
+    /** 是否显示看盘画线工具栏（支撑/压力/趋势/黄金分割/清除），默认关 */
+    showTools?: boolean;
+    /** 是否把用户画的线持久化到本地（按 code 区分），默认开 */
+    persist?: boolean;
+    /** 当前股票代码，用于持久化 key；不传则不持久化（仅当前会话有效） */
+    code?: string;
   }>(),
-  { height: 440, showMA: true, showMacd: true }
+  { height: 440, showMA: true, showMacd: true, showTools: false, persist: true }
 );
 
 // ---- 类型别名（klinecharts 运行时实例）----
@@ -204,9 +218,9 @@ function buildStyles(): Record<string, unknown> {
     },
     separator: { color: sep, size: 1 },
     overlay: {
-      point: { color: "#1677ff", radius: 4, borderColor: "#1677ff", borderSize: 1 },
-      line: { color: "#1677ff", size: 1, style: "dashed" },
-      text: { color: "#ffffff", backgroundColor: "#1677ff" },
+      point: { color: "#07c160", radius: 4, borderColor: "#07c160", borderSize: 1 },
+      line: { color: "#07c160", size: 1, style: "dashed" },
+      text: { color: "#ffffff", backgroundColor: "#07c160" },
     },
   };
 }
@@ -301,6 +315,82 @@ function destroyChart() {
     }
   }
   chart = null;
+  overlayIds.length = 0;
+}
+
+// ---- 看盘画线工具：用户在图上拖拽绘制支撑/压力/趋势/黄金分割线 ----
+// 绘制的线按股票 code 持久化到本地（localStorage），重进自动恢复；不传 code 则仅当前会话。
+const overlayIds: string[] = [];
+function genOverlayId(): string {
+  return `ol_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+function persistKey(): string {
+  return props.code ? `kc_ol_${props.code}` : "";
+}
+// 把当前所有已画线同步进本地存储（绘制完成 / 清除时调用）
+function persistSave() {
+  const key = persistKey();
+  if (!props.persist || !key || !chart) return;
+  const list = overlayIds
+    .map((id) => {
+      const o: any = chart!.getOverlayById(id);
+      if (!o || !o.points || !o.points.length) return null;
+      return { id, type: o.name ?? o.type, points: o.points, styles: o.styles };
+    })
+    .filter(Boolean) as any[];
+  try {
+    uni.setStorageSync(key, list);
+  } catch {
+    /* noop */
+  }
+}
+// 调用 KLineCharts 进入绘制交互；绘制完成后 onDrawEnd 落盘
+function drawLine(type: string, color?: string) {
+  if (!chart) return;
+  const id = genOverlayId();
+  overlayIds.push(id);
+  const created = chart.createOverlay({
+    id,
+    type,
+    styles: color ? { line: { color } } : undefined,
+    onDrawEnd: () => persistSave(),
+  } as never);
+  if (!created) overlayIds.pop(); // 创建失败（如已有绘制进行中）回退
+}
+// 清除全部已画线并清本地存储
+function clearOverlays() {
+  if (chart) overlayIds.forEach((id) => { try { chart!.removeOverlay(id); } catch { /* noop */ } });
+  overlayIds.length = 0;
+  const key = persistKey();
+  if (key) {
+    try {
+      uni.removeStorageSync(key);
+    } catch {
+      /* noop */
+    }
+  }
+}
+// 从本地存储恢复已画线（在 applyNewData 之后调用，依赖数据坐标系）
+function restoreOverlays() {
+  const key = persistKey();
+  if (!props.persist || !key || !chart) return;
+  let saved: any[] = [];
+  try {
+    saved = uni.getStorageSync(key) || [];
+  } catch {
+    saved = [];
+  }
+  if (!Array.isArray(saved)) return;
+  for (const it of saved) {
+    if (!it || !it.type || !Array.isArray(it.points) || !it.points.length) continue;
+    try {
+      const id = it.id || genOverlayId();
+      chart.createOverlay({ id, type: it.type, points: it.points, styles: it.styles } as never);
+      if (!overlayIds.includes(id)) overlayIds.push(id);
+    } catch {
+      /* noop */
+    }
+  }
 }
 
 function setup() {
@@ -331,6 +421,7 @@ function setup() {
     if (!chart || !chartEl.value) return;
     chart.resize();
     drawCyq();
+    restoreOverlays();
   });
 }
 
@@ -405,5 +496,42 @@ onBeforeUnmount(() => {
 }
 .kc-ov--cyq {
   z-index: 2;
+}
+/* 看盘画线工具栏：浮于图表右上角，玻璃药丸 */
+.kc-tools {
+  position: absolute;
+  top: 12rpx;
+  right: 12rpx;
+  z-index: 6;
+  display: flex;
+  gap: 8rpx;
+  padding: 6rpx;
+  background: var(--card);
+  border: 1rpx solid var(--border);
+  border-radius: 999rpx;
+  box-shadow: var(--shadow-1);
+}
+.kct-btn {
+  flex: 0 0 auto;
+  height: 52rpx;
+  line-height: 52rpx;
+  padding: 0 18rpx;
+  font-size: var(--font-xs);
+  color: var(--text-2);
+  background: var(--card-2);
+  border-radius: 999rpx;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  cursor: pointer;
+}
+.kct-btn:active {
+  background: var(--primary-soft);
+  color: var(--primary);
+  transform: scale(0.96);
+}
+.kct-clear {
+  color: var(--danger);
+}
+.kct-clear:active {
+  background: rgba(229, 72, 77, 0.12);
 }
 </style>
