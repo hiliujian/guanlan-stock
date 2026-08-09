@@ -1121,10 +1121,13 @@ defineExpose({ refresh: () => refreshFull() });
   height: 140rpx;
 }
 .risk-note {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8rpx;
+  text-align: center;
+  padding: 8rpx 0 0;
   margin: 0 8rpx;
+}
+/* 免责图标 + 文字保持同一行：用 vertical-align:middle 对齐，避免 flex 把图标按整行行高居中导致偏高 */
+.risk-note .foot-note {
+  display: inline;
+  padding: 0;
 }
 </style>
