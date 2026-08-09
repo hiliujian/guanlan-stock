@@ -5,12 +5,12 @@
     <div ref="chartEl" class="kc-chart" :style="{ height: props.height + 'px' }"></div>
     <!-- 筹码分布叠加层（右侧横向直方图，与蜡烛同坐标系），默认不拦截指针 -->
     <canvas ref="cyqEl" class="kc-ov kc-ov--cyq"></canvas>
-    <!-- 看盘画线工具栏：点击后在图上拖拽绘制；支撑=绿、压力=红、趋势/分割=主色绿 -->
+    <!-- 看盘画线工具栏：点击后在图上点击/拖拽绘制；支撑=绿、压力=红、趋势/分割=主色绿 -->
     <view v-if="showTools" class="kc-tools">
-      <view class="kct-btn" role="button" @click="drawLine('horizontalStraightLine', DOWN)">支撑</view>
-      <view class="kct-btn" role="button" @click="drawLine('horizontalStraightLine', UP)">压力</view>
-      <view class="kct-btn" role="button" @click="drawLine('straightLine')">趋势</view>
-      <view class="kct-btn" role="button" @click="drawLine('fibonacciLine')">分割</view>
+      <view class="kct-btn" :class="{ active: activeAction === 'support' }" role="button" @click="drawLine('support', 'horizontalStraightLine', DOWN)">支撑</view>
+      <view class="kct-btn" :class="{ active: activeAction === 'pressure' }" role="button" @click="drawLine('pressure', 'horizontalStraightLine', UP)">压力</view>
+      <view class="kct-btn" :class="{ active: activeAction === 'trend' }" role="button" @click="drawLine('trend', 'straightLine')">趋势</view>
+      <view class="kct-btn" :class="{ active: activeAction === 'fib' }" role="button" @click="drawLine('fib', 'fibonacciLine')">分割</view>
       <view class="kct-btn kct-clear" role="button" @click="clearOverlays">清除</view>
     </view>
   </div>
@@ -345,22 +345,32 @@ function persistSave() {
   }
 }
 // 调用 KLineCharts 进入绘制交互；绘制完成后 onDrawEnd 落盘
-function drawLine(type: string, color?: string) {
+type DrawAction = "support" | "pressure" | "trend" | "fib";
+const activeAction = ref<DrawAction | "">("");
+function drawLine(action: DrawAction, type: string, color?: string) {
   if (!chart) return;
   const id = genOverlayId();
   overlayIds.push(id);
+  activeAction.value = action;
   const created = chart.createOverlay({
     id,
-    type,
+    name: type, // 关键：KLineCharts 用 overlay.name 匹配内置类型，不是 type
     styles: color ? { line: { color } } : undefined,
-    onDrawEnd: () => persistSave(),
+    onDrawEnd: () => {
+      activeAction.value = "";
+      persistSave();
+    },
   } as never);
-  if (!created) overlayIds.pop(); // 创建失败（如已有绘制进行中）回退
+  if (!created) {
+    overlayIds.pop(); // 创建失败（如已有绘制进行中）回退
+    activeAction.value = "";
+  }
 }
 // 清除全部已画线并清本地存储
 function clearOverlays() {
   if (chart) overlayIds.forEach((id) => { try { chart!.removeOverlay(id); } catch { /* noop */ } });
   overlayIds.length = 0;
+  activeAction.value = "";
   const key = persistKey();
   if (key) {
     try {
@@ -385,7 +395,7 @@ function restoreOverlays() {
     if (!it || !it.type || !Array.isArray(it.points) || !it.points.length) continue;
     try {
       const id = it.id || genOverlayId();
-      chart.createOverlay({ id, type: it.type, points: it.points, styles: it.styles } as never);
+      chart.createOverlay({ id, name: it.type, points: it.points, styles: it.styles } as never);
       if (!overlayIds.includes(id)) overlayIds.push(id);
     } catch {
       /* noop */
@@ -527,6 +537,11 @@ onBeforeUnmount(() => {
   background: var(--primary-soft);
   color: var(--primary);
   transform: scale(0.96);
+}
+/* 绘制中：按钮高亮，提示用户正在图上画线（KLineCharts 进入绘制交互） */
+.kct-btn.active {
+  background: var(--primary);
+  color: #fff;
 }
 .kct-clear {
   color: var(--danger);
