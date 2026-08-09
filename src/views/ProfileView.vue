@@ -26,7 +26,7 @@
         <view class="pf-id">
           <view class="pf-name-row">
             <text class="pf-name truncate">{{ nameText }}</text>
-            <view v-if="user.loggedIn" class="pf-lvtag" @click.stop="goLevel" role="button" aria-label="查看我的等级">
+            <view v-if="user.loggedIn && isRouteOpen('pages/profile/level')" class="pf-lvtag" @click.stop="goLevel" role="button" aria-label="查看我的等级">
               <LevelTag :level="userLevel" />
             </view>
           </view>
@@ -139,6 +139,7 @@ import LevelTag from "@/components/LevelTag.vue";
 import { useUser, refreshProfile } from "@/store/user";
 import { openAuth, goTab } from "@/store/nav";
 import { usePageGuard } from "@/store/guard";
+import { isRouteOpen } from "@/store/access";
 import { useWatchlist, initWatchlist } from "@/store/watchlist";
 import { useCommunity } from "@/store/community";
 import { isTabEnabled } from "@/store/appConfig";
@@ -200,37 +201,45 @@ async function refresh() {
 }
 defineExpose({ refresh });
 
-// —— 权限边界：登录态可见性规则（集中定义，便于审查） ——
-// 仅登录后展示：数据概览卡（自选股 / 我的帖子 / 赞过 均为用户私有数据，未登录无意义）。
-//   卡内子项仍各自受 watch / community 功能开关约束，故整体需「已登录 且 至少开启一个相关 Tab」才显示。
-// 无需登录即可访问：顶部个人卡片（同时充当登录引导）、「通用」菜单（设置 / 意见反馈）。
-//   （未登录不再在菜单内提供「个人资料」入口，登录引导统一由顶部个人卡片承担，
-//    避免与「个人资料=仅登录功能」的权限边界冲突。）
-// 其余菜单（「我的」组、退出登录）已在下方以 user.loggedIn 控制，未登录不会渲染任何仅限登录入口。
+// 数据概览卡（自选股 / 我的帖子 / 赞过）：均为用户私有数据，仅登录后展示；
+//   子项另受 watch / community 功能开关约束，故需「已登录 且 至少开启一个相关 Tab」才显示。
 const showStats = computed(
   () => user.loggedIn && (isTabEnabled("watch") || isTabEnabled("community"))
 );
 
+// 菜单项与「页面白名单」联动：每项绑定对应 page_access 路由（route），
+// 仅当该路由开放（open=true）才显示入口；路由未开放（如二级页未上线）→ 入口自动隐藏，
+// 空分组（如「我的」组全部未开放）整组不渲染。不再以「是否登录」硬编码控制入口显隐
+// （旧逻辑已删除）：白名单为唯一开关，在 Supabase 翻 open 即实时生效，无需改代码重发。
+// 无对应页面的常驻工具项（如意见反馈）不参与过滤，始终显示。
 interface MenuItem {
   icon: string;
   label: string;
   act: "edit" | "settings" | "feedback" | "security";
+  route?: string;
 }
-const menuGroups = computed(() => {
-  const groups: { title: string; items: MenuItem[] }[] = [];
-  if (user.loggedIn) {
-    const mine: MenuItem[] = [
-      { icon: "person", label: "个人资料", act: "edit" },
-      { icon: "shield", label: "账号安全", act: "security" },
-    ];
-    groups.push({ title: "我的", items: mine });
-  }
-  const common: MenuItem[] = [];
-  common.push({ icon: "gear", label: "设置", act: "settings" });
-  common.push({ icon: "mail", label: "意见反馈", act: "feedback" });
-  groups.push({ title: "通用", items: common });
-  return groups;
-});
+const RAW_MENU: { title: string; items: MenuItem[] }[] = [
+  {
+    title: "我的",
+    items: [
+      { icon: "person", label: "个人资料", act: "edit", route: "pages/profile/edit" },
+      { icon: "shield", label: "账号安全", act: "security", route: "pages/profile/security" },
+    ],
+  },
+  {
+    title: "通用",
+    items: [
+      { icon: "gear", label: "设置", act: "settings", route: "pages/settings/settings" },
+      { icon: "mail", label: "意见反馈", act: "feedback" }, // 工具项，无对应页面，常驻
+    ],
+  },
+];
+const menuGroups = computed(() =>
+  RAW_MENU.map((g) => ({
+    title: g.title,
+    items: g.items.filter((it) => !it.route || isRouteOpen(it.route)),
+  })).filter((g) => g.items.length > 0)
+);
 
 function onHeaderTap() {
   user.loggedIn ? goEdit() : openAuth("login");
