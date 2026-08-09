@@ -78,6 +78,7 @@ function pick(p: PeriodKey) {
     :live-pre-close="livePreClose"
     :code="code"
     :show-tools="showTools"
+    :auto-draw="showTools"
   />
   <view v-else-if="period === 'm'" class="hint">暂无数据</view>
   <StockChart
@@ -89,6 +90,7 @@ function pick(p: PeriodKey) {
     :show-macd="true"
     :code="code"
     :show-tools="showTools"
+    :auto-draw="showTools"
   />
 </template>
 

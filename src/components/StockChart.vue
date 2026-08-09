@@ -7,11 +7,12 @@
     <canvas ref="cyqEl" class="kc-ov kc-ov--cyq"></canvas>
     <!-- 看盘画线工具栏：点击后在图上点击/拖拽绘制；支撑=绿、压力=红、趋势/分割=主色绿 -->
     <view v-if="showTools" class="kc-tools">
+      <view v-if="autoDraw" class="kct-btn kct-auto" :class="{ active: autoEnabled }" role="button" @click="toggleAuto">自动</view>
       <view class="kct-btn" :class="{ active: activeAction === 'support' }" role="button" @click="drawLine('support', 'horizontalStraightLine', DOWN)">支撑</view>
       <view class="kct-btn" :class="{ active: activeAction === 'pressure' }" role="button" @click="drawLine('pressure', 'horizontalStraightLine', UP)">压力</view>
       <view class="kct-btn" :class="{ active: activeAction === 'trend' }" role="button" @click="drawLine('trend', 'straightLine')">趋势</view>
       <view class="kct-btn" :class="{ active: activeAction === 'fib' }" role="button" @click="drawLine('fib', 'fibonacciLine')">分割</view>
-      <view class="kct-btn kct-clear" role="button" @click="clearOverlays">清除</view>
+      <view class="kct-btn kct-clear" role="button" @click="clearUserOverlays">清空</view>
     </view>
   </div>
 </template>
@@ -21,6 +22,8 @@ import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import { init, dispose, registerIndicator } from "klinecharts";
 import { isDark } from "@/utils/theme";
 import { UP, DOWN } from "@/utils/colors";
+const PRIMARY = "#07c160"; // 主色绿（自动趋势线）
+const FIB = "#f5a623"; // 黄金分割线（橙）
 import { computeChip, type ChipResult } from "@/utils/analyzer";
 import type { Kline, Trend } from "@/utils/period";
 
@@ -68,14 +71,16 @@ const props = withDefaults(
     livePrice?: number;
     /** 实时昨收（与 livePrice 同源） */
     livePreClose?: number;
-    /** 是否显示看盘画线工具栏（支撑/压力/趋势/黄金分割/清除），默认关 */
+    /** 是否显示看盘画线工具栏（支撑/压力/趋势/黄金分割/自动/清空），默认关 */
     showTools?: boolean;
+    /** 是否启用「自动画线」：系统按行情自动标注支撑/压力/趋势/黄金分割（半透明虚线、锁定不可拖拽）；默认关，仅看盘主图开启。手动绘制仍可用。 */
+    autoDraw?: boolean;
     /** 是否把用户画的线持久化到本地（按 code 区分），默认开 */
     persist?: boolean;
     /** 当前股票代码，用于持久化 key；不传则不持久化（仅当前会话有效） */
     code?: string;
   }>(),
-  { height: 440, showMA: true, showMacd: true, showTools: false, persist: true }
+  { height: 440, showMA: true, showMacd: true, showTools: false, autoDraw: false, persist: true }
 );
 
 // ---- 类型别名（klinecharts 运行时实例）----
@@ -355,7 +360,7 @@ function drawLine(action: DrawAction, type: string, color?: string) {
   const created = chart.createOverlay({
     id,
     name: type, // 关键：KLineCharts 用 overlay.name 匹配内置类型，不是 type
-    styles: color ? { line: { color } } : undefined,
+    styles: color ? { line: { color, style: "solid", size: 1.4 } } : undefined,
     onDrawEnd: () => {
       activeAction.value = "";
       persistSave();
@@ -366,8 +371,8 @@ function drawLine(action: DrawAction, type: string, color?: string) {
     activeAction.value = "";
   }
 }
-// 清除全部已画线并清本地存储
-function clearOverlays() {
+// 清空用户手动画的线（不影响系统自动线），并清本地存储
+function clearUserOverlays() {
   if (chart) overlayIds.forEach((id) => { try { chart!.removeOverlay(id); } catch { /* noop */ } });
   overlayIds.length = 0;
   activeAction.value = "";
@@ -379,6 +384,129 @@ function clearOverlays() {
       /* noop */
     }
   }
+}
+// ---- 自动画线（小白友好）：系统按行情自动标注支撑/压力/趋势/黄金分割 ----
+// 半透明虚线 + 锁定（不可拖拽编辑），与用户手绘的浓实线明显区分；不持久化，随数据刷新。
+const autoIds: string[] = [];
+const autoEnabled = ref(true);
+function hexA(hex: string, a: number): string {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+type Pt = { t: number; price: number };
+function localMins(arr: Pt[]): Pt[] {
+  const out: Pt[] = [];
+  for (let i = 1; i < arr.length - 1; i++) {
+    if (arr[i - 1].price >= arr[i].price && arr[i + 1].price >= arr[i].price) out.push(arr[i]);
+  }
+  return out;
+}
+function localMaxs(arr: Pt[]): Pt[] {
+  const out: Pt[] = [];
+  for (let i = 1; i < arr.length - 1; i++) {
+    if (arr[i - 1].price <= arr[i].price && arr[i + 1].price <= arr[i].price) out.push(arr[i]);
+  }
+  return out;
+}
+interface AutoLine {
+  type: "horizontalStraightLine" | "straightLine" | "fibonacciLine";
+  points: { timestamp: number; price: number }[];
+  color: string;
+  label: string;
+}
+// 根据当前行情计算系统画线：日K 画支撑/压力/趋势/黄金分割；分时只画当日支撑/压力
+function computeAutoLines(): AutoLine[] {
+  const lines: AutoLine[] = [];
+  if (props.mode === "intraday") {
+    const ts = props.trends;
+    if (ts && ts.length >= 5) {
+      const base = new Date();
+      base.setHours(0, 0, 0, 0);
+      const baseMs = base.getTime();
+      const pts = ts
+        .map((t) => {
+          const tStr = t.t || "";
+          const timePart = tStr.includes(" ") ? tStr.split(" ").pop()! : tStr;
+          const p = timePart.split(":");
+          const sec = baseMs + ((Number(p[0]) || 0) * 60 + (Number(p[1]) || 0)) * 60 * 1000;
+          return { t: sec, high: t.high, low: t.low };
+        })
+        .filter((x) => isFinite(x.t));
+      if (pts.length >= 5) {
+        const pHigh = Math.max(...pts.map((x) => x.high));
+        const pLow = Math.min(...pts.map((x) => x.low));
+        lines.push({ type: "horizontalStraightLine", points: [{ timestamp: pts[0].t, price: pLow }], color: hexA(DOWN, 0.5), label: "支撑" });
+        lines.push({ type: "horizontalStraightLine", points: [{ timestamp: pts[0].t, price: pHigh }], color: hexA(UP, 0.5), label: "压力" });
+      }
+    }
+    return lines;
+  }
+  const ks = props.klines;
+  if (!ks || ks.length < 5) return lines;
+  const arr = ks
+    .map((k) => ({ t: Date.parse(k.date), high: k.high, low: k.low, close: k.close }))
+    .filter((x) => isFinite(x.t))
+    .sort((a, b) => a.t - b.t);
+  if (arr.length < 5) return lines;
+  const N = Math.min(arr.length, 60);
+  const recent = arr.slice(-N);
+  const pHigh = Math.max(...recent.map((x) => x.high));
+  const pLow = Math.min(...recent.map((x) => x.low));
+  const t0 = recent[0].t;
+  // 支撑（绿）/ 压力（红）水平线：近 60 日高低
+  lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, price: pLow }], color: hexA(DOWN, 0.5), label: "支撑" });
+  lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, price: pHigh }], color: hexA(UP, 0.5), label: "压力" });
+  // 趋势线：上升连低点、下降连高点
+  const lows = localMins(recent.map((x) => ({ t: x.t, price: x.low })));
+  const highs = localMaxs(recent.map((x) => ({ t: x.t, price: x.high })));
+  if (lows.length >= 2) {
+    const a = lows[lows.length - 2];
+    const b = lows[lows.length - 1];
+    if (b.price > a.price) {
+      lines.push({ type: "straightLine", points: [{ timestamp: a.t, price: a.price }, { timestamp: b.t, price: b.price }], color: hexA(PRIMARY, 0.5), label: "上升趋势" });
+    }
+  }
+  if (highs.length >= 2) {
+    const a = highs[highs.length - 2];
+    const b = highs[highs.length - 1];
+    if (b.price < a.price) {
+      lines.push({ type: "straightLine", points: [{ timestamp: a.t, price: a.high }, { timestamp: b.t, price: b.high }], color: hexA(PRIMARY, 0.5), label: "下降趋势" });
+    }
+  }
+  // 黄金分割：近 60 日高点到低点
+  const hi = recent.reduce((m, x) => (x.high > m.high ? x : m), recent[0]);
+  const lo = recent.reduce((m, x) => (x.low < m.low ? x : m), recent[0]);
+  lines.push({ type: "fibonacciLine", points: [{ timestamp: hi.t, price: hi.high }, { timestamp: lo.t, price: lo.low }], color: hexA(FIB, 0.5), label: "黄金分割" });
+  return lines;
+}
+// 清旧自动线并按当前开关重画
+function drawAutoLines() {
+  autoIds.forEach((id) => { try { chart?.removeOverlay(id); } catch { /* noop */ } });
+  autoIds.length = 0;
+  if (!props.autoDraw || !chart || !autoEnabled.value) return;
+  for (const ln of computeAutoLines()) {
+    try {
+      const id = `auto_${ln.label}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
+      chart.createOverlay({
+        id,
+        name: ln.type,
+        points: ln.points,
+        lock: true,
+        styles: { line: { color: ln.color, style: "dashed", size: 1.2, dashedValue: [4, 3] } },
+      } as never);
+      autoIds.push(id);
+    } catch {
+      /* noop */
+    }
+  }
+}
+// 切换自动画线开关
+function toggleAuto() {
+  autoEnabled.value = !autoEnabled.value;
+  drawAutoLines();
 }
 // 从本地存储恢复已画线（在 applyNewData 之后调用，依赖数据坐标系）
 function restoreOverlays() {
@@ -432,6 +560,7 @@ function setup() {
     chart.resize();
     drawCyq();
     restoreOverlays();
+    drawAutoLines();
   });
 }
 
