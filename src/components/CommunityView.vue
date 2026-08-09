@@ -62,7 +62,7 @@
     <!-- 空态 -->
     <view v-if="!loading && !displayPosts.length" class="cm-empty">
       <OutlineIcon type="chatbubble" :size="84" color="var(--border)" />
-      <text class="cm-empty-t">{{ activeTopic === "all" ? "还没有动态，来发第一条吧" : "该话题下还没有动态" }}</text>
+      <text class="empty-title">{{ activeTopic === "all" ? "还没有动态，来发第一条吧" : "该话题下还没有动态" }}</text>
     </view>
 
     <!-- 底部留白（避免被固定 tabbar 遮挡） -->
@@ -332,10 +332,7 @@ defineExpose({ refresh: load });
   gap: 18rpx;
   padding: 90rpx 0;
 }
-.cm-empty-t {
-  font-size: var(--font-sm);
-  color: var(--text-2);
-}
+/* 空态标题已统一为全局 .empty-title（见 global.css） */
 
 .cm-pad {
   height: calc(140rpx + env(safe-area-inset-bottom));

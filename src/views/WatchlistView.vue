@@ -36,7 +36,7 @@
             <view class="empty-ic flex-center">
               <OutlineIcon type="star" :size="60" color="var(--primary)" />
             </view>
-            <text class="empty-t">还没有自选股</text>
+            <text class="empty-title">还没有自选股</text>
             <text class="empty-s">在「行情」页搜索分析后点击星标加入自选，实时价格与价格预警将同步展示在这里。</text>
             <button class="btn-primary empty-btn" @click="goPickMarket">去行情页选股</button>
           </view>
@@ -1318,11 +1318,7 @@ function removeLp() {
   margin-bottom: 6rpx;
   /* flex-center 已提升至全局 .flex-center */
 }
-.empty-t {
-  font-size: var(--font-lg);
-  font-weight: 700;
-  color: var(--text);
-}
+/* 空态标题已统一为全局 .empty-title（见 global.css） */
 .empty-s {
   font-size: var(--font-sm);
   color: var(--text-2);

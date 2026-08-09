@@ -6,7 +6,7 @@
       <view class="ac-empty-ic">
         <OutlineIcon type="person" :size="58" color="var(--text-2)" />
       </view>
-      <text class="ac-empty-title">当前未登录</text>
+      <text class="empty-title">当前未登录</text>
       <text class="ac-empty-sub">登录后即可同步自选股与资料，畅享完整功能</text>
       <button class="btn-primary ac-empty-btn" @click="goLogin">去登录 / 注册</button>
     </view>
@@ -100,11 +100,7 @@ function goRegister() {
   justify-content: center;
   margin-bottom: 30rpx;
 }
-.ac-empty-title {
-  font-size: var(--font-xl);
-  font-weight: 800;
-  color: var(--text);
-}
+/* 空态标题已统一为全局 .empty-title（见 global.css） */
 .ac-empty-sub {
   font-size: var(--font-sm);
   color: var(--text-2);

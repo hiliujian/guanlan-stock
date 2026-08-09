@@ -335,6 +335,13 @@ textarea {
   line-height: 1.5;
   padding: 8rpx 0 0;
 }
+/* 空态卡片标题：自选股 / 行情 / 热榜 / 社区 / 未登录 等所有空态统一字号与字重，
+   替代各页散写的 .empty-t / .rk-empty-t / .ac-empty-title / .cm-empty-t，避免字号漂移与重复样式 */
+.empty-title {
+  font-size: var(--font-lg);
+  color: var(--text);
+  line-height: 1.4;
+}
 .tag-up {
   color: var(--up);
   background: rgba(250, 81, 81, 0.1);

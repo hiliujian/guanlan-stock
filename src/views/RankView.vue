@@ -8,7 +8,7 @@
     <template v-else>
       <view v-if="!rows.length" class="rk-empty glass">
         <OutlineIcon type="star" :size="56" color="var(--primary)" />
-        <text class="rk-empty-t">暂无数据</text>
+        <text class="empty-title">暂无数据</text>
         <text class="rk-empty-s">还没有足够的自选股人气数据，快去行情页添加人气股吧</text>
       </view>
 
@@ -358,11 +358,7 @@ function openRow(r: { code: string; market: string }) {
   margin: 40rpx 24rpx 0;
   padding: 56rpx 40rpx;
 }
-.rk-empty-t {
-  font-size: var(--font-md);
-  font-weight: 700;
-  color: var(--text);
-}
+/* 空态标题已统一为全局 .empty-title（见 global.css） */
 .rk-empty-s {
   font-size: var(--font-sm);
   color: var(--text-2);

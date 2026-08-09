@@ -73,7 +73,7 @@
           <view class="empty-ic flex-center">
             <OutlineIcon type="search" :size="54" color="var(--primary)" />
           </view>
-          <text class="empty-t">开始智能分析</text>
+          <text class="empty-title">开始智能分析</text>
           <text class="empty-s">输入代码或名称，查看行情、K 线与 AI 研判</text>
           <view class="empty-divider" />
           <!-- 热门搜索：后端当日真实搜索行为统计，以标签形式展示（最多 9 个），点击即搜索 -->
@@ -748,7 +748,6 @@ defineExpose({ refresh: () => refreshFull() });
   padding: 6rpx 16rpx;
   border-radius: 999rpx;
   font-size: var(--font-xs);
-  font-weight: 600;
   flex: none;
 }
 .ms-dot {
@@ -837,6 +836,7 @@ defineExpose({ refresh: () => refreshFull() });
   min-width: 0;
   height: 100%;
   font-size: var(--font-md);
+  font-weight: 400;
 }
 /* 清除键：圆形次表面按钮 */
 .si-clear {
@@ -881,7 +881,6 @@ defineExpose({ refresh: () => refreshFull() });
 .sg-head-t {
   font-size: var(--font-xs);
   color: var(--text-3);
-  font-weight: 600;
   letter-spacing: 1rpx;
 }
 .sg-clear {
@@ -923,7 +922,6 @@ defineExpose({ refresh: () => refreshFull() });
 .sg-name {
   font-size: var(--font-md);
   color: var(--text);
-  font-weight: 600;
   /* 截断属性已提升至全局 .truncate */
 }
 .sg-code {
@@ -956,7 +954,6 @@ defineExpose({ refresh: () => refreshFull() });
   color: #fff;
   box-shadow: var(--shadow-primary-2);
   font-size: var(--font-sm);
-  font-weight: 600;
   letter-spacing: 1rpx;
   transition: transform 0.12s var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
 }
@@ -1010,11 +1007,7 @@ defineExpose({ refresh: () => refreshFull() });
   margin-bottom: 26rpx;
   /* flex-center 已提升至全局 .flex-center */
 }
-.empty-t {
-  font-size: var(--font-lg);
-  font-weight: 700;
-  color: var(--text);
-}
+/* 空态标题已统一为全局 .empty-title（见 global.css） */
 .empty-s {
   margin-top: 14rpx;
   font-size: var(--font-sm);
@@ -1038,7 +1031,6 @@ defineExpose({ refresh: () => refreshFull() });
 }
 .hot-in-title {
   font-size: var(--font-sm);
-  font-weight: 700;
   color: var(--text);
   margin-bottom: 18rpx;
 }
