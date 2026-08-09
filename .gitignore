@@ -34,7 +34,8 @@ _uniui_src
 # 后端已统一迁移至 Supabase（deploy.sql + Edge Function，纳入版本库）；
 # 本地 Node 代理服务 server/ 已废弃删除。webapp（旧构建产物）仍排除。
 webapp
-.shim/  # 本地构建垫片（绕过环境 safe-delete 守卫的 rm 替代脚本），非项目源码，不入库
+# 本地构建垫片（绕过环境 safe-delete 守卫的 rm 替代脚本），非项目源码，不入库
+.shim/
 
 # ---- 本地临时 / scratch / 开发期产物（不入库） ----
 Microsoft/
