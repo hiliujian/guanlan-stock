@@ -45,7 +45,7 @@ insert into public.page_access (path, open, show_in_menu, is_tab, sort_weight) v
   ('watch',               false, true,  true,  20),
   ('community',           false, true,  true,  30),
   ('profile',             true,  true,  true,  40),
-  ('pages/settings/settings',   false, false, false, 0),
+  ('pages/settings/settings',   true,  false, false, 0),
   ('pages/profile/edit',       false, false, false, 0),
   ('pages/profile/security',   false, false, false, 0),
   ('pages/profile/level',      false, false, false, 0)

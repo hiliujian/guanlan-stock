@@ -325,6 +325,16 @@ textarea {
   font-size: var(--font-xs);
   line-height: 1.6;
 }
+/* 底部脚注 / 免责提示统一样式：全站所有 footer 小字（st-foot / risk-note / pf-hint）共用，
+   避免三处散写导致样式漂移。font 大一号(--font-sm)、淡黑色(--text-3)、居中。 */
+.foot-note {
+  display: block;
+  text-align: center;
+  font-size: var(--font-sm);
+  color: var(--text-3);
+  line-height: 1.5;
+  padding: 8rpx 0 0;
+}
 .tag-up {
   color: var(--up);
   background: rgba(250, 81, 81, 0.1);

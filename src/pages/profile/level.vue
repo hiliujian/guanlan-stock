@@ -3,12 +3,12 @@
     <BackgroundFX />
 
     <!-- 自定义导航头（navigationStyle:custom，需自带返回） -->
-    <view class="lv-head">
-      <view class="lv-back" hover-class="lv-back-hover" @click="back" role="button" aria-label="返回">
+    <view class="lv-head sticky-head">
+      <view class="lv-back nav-back" hover-class="lv-back-hover" @click="back" role="button" aria-label="返回">
         <OutlineIcon type="arrow-left" :size="30" color="var(--text)" />
       </view>
-      <text class="lv-title">我的等级</text>
-      <view class="lv-head-ph" />
+      <text class="lv-title nav-title">我的等级</text>
+      <view class="lv-head-ph nav-ph" />
     </view>
 
     <scroll-view class="lv-scroll" scroll-y>
@@ -100,9 +100,7 @@
         </view>
       </view>
 
-      <view class="lv-foot">
-        <text>等级与经验由系统根据活跃行为自动计算，最终解释权归观澜所有</text>
-      </view>
+      <text class="foot-note">等级与经验由系统根据活跃行为自动计算，最终解释权归观澜所有</text>
       <view class="bottom-pad" />
     </scroll-view>
   </view>
@@ -169,38 +167,13 @@ function back() {
   box-sizing: border-box;
   overflow-x: hidden;
 }
-.lv-head {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 88rpx;
-  padding: 0 12rpx;
-  background: var(--sticky-bg);
-  backdrop-filter: blur(16rpx) saturate(140%);
-  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
-}
-.lv-back {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 50%;
-  margin-left: 6rpx;
-  transition: background 0.18s ease;
-}
+/* 返回按钮按压态：与「个人资料」等页共用同一视觉 */
 .lv-back-hover {
   background: var(--card-2);
 }
+/* 主标题保留加粗（nav-title 默认常规字重） */
 .lv-title {
-  font-size: var(--font-lg);
-  color: var(--text);
-}
-.lv-head-ph {
-  width: 64rpx;
+  font-weight: 700;
 }
 .lv-scroll {
   flex: 1;
@@ -237,12 +210,10 @@ function back() {
 }
 .lv-hero-name {
   font-size: var(--font-xl);
-  font-weight: 700;
   color: var(--text);
 }
 .lv-hero-no {
   font-size: var(--font-sm);
-  font-weight: 600;
   color: var(--text-2);
 }
 .lv-exp-row {
@@ -257,7 +228,6 @@ function back() {
 }
 .lv-exp-num {
   font-size: var(--font-lg);
-  font-weight: 800;
   color: var(--primary);
 }
 .lv-bar {
@@ -281,7 +251,6 @@ function back() {
 }
 .lv-need {
   color: var(--primary);
-  font-weight: 700;
 }
 
 /* 区块通用 */
@@ -295,7 +264,6 @@ function back() {
   align-items: center;
   gap: 10rpx;
   font-size: var(--font-md);
-  font-weight: 700;
   color: var(--text);
   margin-bottom: 16rpx;
 }
@@ -322,7 +290,6 @@ function back() {
 .lv-src-label {
   display: block;
   font-size: var(--font-md);
-  font-weight: 600;
   color: var(--text);
 }
 .lv-src-desc {
@@ -340,7 +307,6 @@ function back() {
 }
 .lv-src-exp {
   font-size: var(--font-md);
-  font-weight: 800;
   color: var(--primary);
 }
 .lv-src-unit {
@@ -385,13 +351,11 @@ function back() {
   align-items: baseline;
   gap: 12rpx;
   font-size: var(--font-md);
-  font-weight: 600;
   color: var(--text);
 }
 .lv-tier-no {
   font-size: var(--font-xs);
   color: var(--text-2);
-  font-weight: 600;
 }
 .lv-tier-range {
   display: block;
@@ -416,7 +380,6 @@ function back() {
 }
 .lv-flag {
   font-size: var(--font-xs);
-  font-weight: 700;
   padding: 6rpx 16rpx;
   border-radius: 999rpx;
 }
@@ -429,13 +392,6 @@ function back() {
   color: var(--text-2);
 }
 
-.lv-foot {
-  padding: 8rpx 0 0;
-  text-align: center;
-  font-size: var(--font-xs);
-  color: var(--text-2);
-  line-height: 1.5;
-}
 .bottom-pad {
   height: 80rpx;
 }

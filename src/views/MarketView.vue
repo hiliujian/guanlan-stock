@@ -133,8 +133,8 @@
       </block>
 
       <view v-if="result" class="risk-note">
-        <OutlineIcon type="info" :size="22" color="var(--text-2)" />
-        <text>以上分析仅供参考，不构成任何投资建议</text>
+        <OutlineIcon type="info" :size="28" color="var(--text-3)" />
+        <text class="foot-note">以上分析仅供参考，不构成任何投资建议</text>
       </view>
 
       <view class="bottom-pad" />
@@ -1126,10 +1126,5 @@ defineExpose({ refresh: () => refreshFull() });
   justify-content: center;
   gap: 8rpx;
   margin: 0 8rpx;
-  padding: 8rpx 0 0;
-  font-size: var(--font-xs);
-  color: var(--text-2);
-  line-height: 1.5;
-  text-align: center;
 }
 </style>

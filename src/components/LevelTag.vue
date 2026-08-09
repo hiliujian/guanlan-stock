@@ -30,7 +30,7 @@ const style = computed(() => ({
   padding: 6rpx 18rpx;
   border-radius: 999rpx;
   font-size: var(--font-xs);
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1.3;
   box-shadow: var(--shadow-2);
   vertical-align: middle;

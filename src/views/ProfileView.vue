@@ -26,7 +26,7 @@
         <view class="pf-id">
           <view class="pf-name-row">
             <text class="pf-name truncate">{{ nameText }}</text>
-            <view v-if="user.loggedIn && isRouteOpen('pages/profile/level')" class="pf-lvtag" @click.stop="goLevel" role="button" aria-label="查看我的等级">
+            <view v-if="user.loggedIn && canAccess('pages/profile/level')" class="pf-lvtag" @click.stop="goLevel" role="button" aria-label="查看我的等级">
               <LevelTag :level="userLevel" />
             </view>
           </view>
@@ -111,7 +111,7 @@
           <OutlineIcon type="arrow-right" :size="28" color="var(--text-2)" />
         </view>
       </view>
-      <view v-else class="pf-hint anim-fade-up">登录后同步自选股与云端资料</view>
+      <text v-else class="foot-note anim-fade-up">登录后同步自选股与云端资料</text>
     </view>
   </scroll-view>
 
@@ -139,7 +139,7 @@ import LevelTag from "@/components/LevelTag.vue";
 import { useUser, refreshProfile } from "@/store/user";
 import { openAuth, goTab } from "@/store/nav";
 import { usePageGuard } from "@/store/guard";
-import { isRouteOpen } from "@/store/access";
+import { canAccess } from "@/store/access";
 import { useWatchlist, initWatchlist } from "@/store/watchlist";
 import { useCommunity } from "@/store/community";
 import { isTabEnabled } from "@/store/appConfig";
@@ -207,11 +207,11 @@ const showStats = computed(
   () => user.loggedIn && (isTabEnabled("watch") || isTabEnabled("community"))
 );
 
-// 菜单项与「页面白名单」联动：每项绑定对应 page_access 路由（route），
-// 仅当该路由开放（open=true）才显示入口；路由未开放（如二级页未上线）→ 入口自动隐藏，
-// 空分组（如「我的」组全部未开放）整组不渲染。不再以「是否登录」硬编码控制入口显隐
-// （旧逻辑已删除）：白名单为唯一开关，在 Supabase 翻 open 即实时生效，无需改代码重发。
-// 无对应页面的常驻工具项（如意见反馈）不参与过滤，始终显示。
+// 菜单项与「页面白名单」联动：入口显隐统一用 canAccess(route) 判定，与路由守卫语义一致——
+// 已登录用户一律可见（白名单只约束游客，登录用户不被 open 二次限制）；游客仅能见到
+// open=true 的页面。这样「我的」二级页（个人资料 / 账号安全 / 设置）登录后即全部显示，
+// 游客则因这些页 open=false 而被隐藏且点击会被守卫拦截。无对应页面的常驻工具项
+// （如意见反馈，无 route）不参与过滤，始终显示。
 interface MenuItem {
   icon: string;
   label: string;
@@ -237,7 +237,7 @@ const RAW_MENU: { title: string; items: MenuItem[] }[] = [
 const menuGroups = computed(() =>
   RAW_MENU.map((g) => ({
     title: g.title,
-    items: g.items.filter((it) => !it.route || isRouteOpen(it.route)),
+    items: g.items.filter((it) => !it.route || canAccess(it.route)),
   })).filter((g) => g.items.length > 0)
 );
 
@@ -470,11 +470,5 @@ function onMenu(act: MenuItem["act"]) {
 }
 .pf-row-danger .pf-row-ic {
   background: rgba(229, 72, 77, 0.12);
-}
-.pf-hint {
-  padding: 8rpx 0 0;
-  text-align: center;
-  font-size: var(--font-sm);
-  color: var(--text-3);
 }
 </style>

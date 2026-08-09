@@ -152,16 +152,6 @@ function buildStyles(): Record<string, unknown> {
         downWickColor: DOWN,
         noChangeWickColor: "#888888",
       },
-      area: {
-        lineSize: 2,
-        lineColor: "#1677ff",
-        value: "close",
-        smooth: false,
-        backgroundColor: [
-          { offset: 0, color: "rgba(22,119,255,0.28)" },
-          { offset: 1, color: "rgba(22,119,255,0.02)" },
-        ],
-      },
       priceMark: {
         high: { show: false },
         low: { show: false },
@@ -175,6 +165,16 @@ function buildStyles(): Record<string, unknown> {
         },
       },
       tooltip: { showRule: "always" },
+      area: {
+        lineSize: 2,
+        lineColor: "#1677ff",
+        value: "close",
+        smooth: false,
+        backgroundColor: [
+          { offset: 0, color: "rgba(22,119,255,0.12)" },
+          { offset: 1, color: "rgba(22,119,255,0.01)" },
+        ],
+      },
     },
     indicator: {
       bars: [

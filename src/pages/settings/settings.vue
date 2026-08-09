@@ -102,7 +102,7 @@
         </view>
       </view>
 
-      <text class="st-foot">观澜 · 让数据说话</text>
+      <text class="foot-note">观澜 · 让数据说话</text>
     </scroll-view>
 
     <!-- 重置确认弹窗：自定义样式，替代原生 showModal -->
@@ -421,14 +421,6 @@ function rowStyle(idx: number) {
   color: var(--text-2);
   line-height: 1.6;
   margin-top: 10rpx;
-}
-.st-foot {
-  display: block;
-  text-align: center;
-  font-size: var(--font-xs);
-  color: var(--text-2);
-  line-height: 1.5;
-  padding: 8rpx 0 0;
 }
 /* 主题分段控件（与「我的」原外观切换一致） */
 .seg {
