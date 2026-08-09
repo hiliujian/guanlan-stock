@@ -132,10 +132,7 @@
 
       </block>
 
-      <view v-if="result" class="risk-note">
-        <OutlineIcon type="info" :size="28" color="var(--text-3)" />
-        <text class="foot-note">以上分析仅供参考，不构成任何投资建议</text>
-      </view>
+      <text v-if="result" class="foot-note">以上分析仅供参考，不构成任何投资建议</text>
 
       <view class="bottom-pad" />
       </view><!-- /mk-body -->
@@ -1119,15 +1116,5 @@ defineExpose({ refresh: () => refreshFull() });
 .bottom-pad {
   /* 留出底部导航栏高度，避免末尾内容被 tab 栏遮挡 */
   height: 140rpx;
-}
-.risk-note {
-  text-align: center;
-  padding: 8rpx 0 0;
-  margin: 0 8rpx;
-}
-/* 免责图标 + 文字保持同一行：用 vertical-align:middle 对齐，避免 flex 把图标按整行行高居中导致偏高 */
-.risk-note .foot-note {
-  display: inline;
-  padding: 0;
 }
 </style>
