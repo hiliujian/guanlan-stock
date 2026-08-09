@@ -14,6 +14,13 @@
       <view class="kct-btn" :class="{ active: activeAction === 'fib' }" role="button" @click="drawLine('fib', 'fibonacciLine')">分割</view>
       <view class="kct-btn kct-clear" role="button" @click="clearUserOverlays">清空</view>
     </view>
+    <!-- 自动线颜色图例（小白友好）：绿=支撑 红=压力 绿=趋势 橙=黄金分割 -->
+    <view v-if="showTools && autoDraw" class="kc-legend">
+      <text class="kcl-it"><text class="kcl-dot s"></text>支撑</text>
+      <text class="kcl-it"><text class="kcl-dot p"></text>压力</text>
+      <text class="kcl-it"><text class="kcl-dot t"></text>趋势</text>
+      <text class="kcl-it"><text class="kcl-dot f"></text>黄金分割</text>
+    </view>
   </div>
 </template>
 
@@ -417,69 +424,61 @@ interface AutoLine {
   color: string;
   label: string;
 }
-// 根据当前行情计算系统画线：日K 画支撑/压力/趋势/黄金分割；分时只画当日支撑/压力
+// 根据当前已 setData 的行情计算系统画线：日K 画支撑/压力/趋势/黄金分割；分时只画当日支撑/压力
+// 统一使用 chart 内部的 dataList（已 applyNewData），保证时间戳/价格与坐标系完全一致，避免异步 props 错位
 function computeAutoLines(): AutoLine[] {
   const lines: AutoLine[] = [];
+  const dl = dataList;
+  if (!dl || dl.length < 5) return lines;
   if (props.mode === "intraday") {
-    const ts = props.trends;
-    if (ts && ts.length >= 5) {
-      const base = new Date();
-      base.setHours(0, 0, 0, 0);
-      const baseMs = base.getTime();
-      const pts = ts
-        .map((t) => {
-          const tStr = t.t || "";
-          const timePart = tStr.includes(" ") ? tStr.split(" ").pop()! : tStr;
-          const p = timePart.split(":");
-          const sec = baseMs + ((Number(p[0]) || 0) * 60 + (Number(p[1]) || 0)) * 60 * 1000;
-          return { t: sec, high: t.high, low: t.low };
-        })
-        .filter((x) => isFinite(x.t));
-      if (pts.length >= 5) {
-        const pHigh = Math.max(...pts.map((x) => x.high));
-        const pLow = Math.min(...pts.map((x) => x.low));
-        lines.push({ type: "horizontalStraightLine", points: [{ timestamp: pts[0].t, price: pLow }], color: hexA(DOWN, 0.5), label: "支撑" });
-        lines.push({ type: "horizontalStraightLine", points: [{ timestamp: pts[0].t, price: pHigh }], color: hexA(UP, 0.5), label: "压力" });
-      }
+    let pHigh = -Infinity;
+    let pLow = Infinity;
+    for (const x of dl) {
+      if (x.high > pHigh) pHigh = x.high;
+      if (x.low < pLow) pLow = x.low;
     }
+    const t0 = dl[0].timestamp;
+    lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, price: pLow }], color: hexA(DOWN, 0.6), label: "支撑" });
+    lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, price: pHigh }], color: hexA(UP, 0.6), label: "压力" });
     return lines;
   }
-  const ks = props.klines;
-  if (!ks || ks.length < 5) return lines;
-  const arr = ks
-    .map((k) => ({ t: Date.parse(k.date), high: k.high, low: k.low, close: k.close }))
-    .filter((x) => isFinite(x.t))
-    .sort((a, b) => a.t - b.t);
-  if (arr.length < 5) return lines;
-  const N = Math.min(arr.length, 60);
-  const recent = arr.slice(-N);
-  const pHigh = Math.max(...recent.map((x) => x.high));
-  const pLow = Math.min(...recent.map((x) => x.low));
-  const t0 = recent[0].t;
+  const N = Math.min(dl.length, 60);
+  const recent = dl.slice(-N);
+  let pHigh = -Infinity;
+  let pLow = Infinity;
+  for (const x of recent) {
+    if (x.high > pHigh) pHigh = x.high;
+    if (x.low < pLow) pLow = x.low;
+  }
+  const t0 = recent[0].timestamp;
   // 支撑（绿）/ 压力（红）水平线：近 60 日高低
-  lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, price: pLow }], color: hexA(DOWN, 0.5), label: "支撑" });
-  lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, price: pHigh }], color: hexA(UP, 0.5), label: "压力" });
-  // 趋势线：上升连低点、下降连高点
-  const lows = localMins(recent.map((x) => ({ t: x.t, price: x.low })));
-  const highs = localMaxs(recent.map((x) => ({ t: x.t, price: x.high })));
+  lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, price: pLow }], color: hexA(DOWN, 0.6), label: "支撑" });
+  lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, price: pHigh }], color: hexA(UP, 0.6), label: "压力" });
+  // 趋势线：上升连低点、下降连高点（注意元素只有 t/price 字段，必须用 price）
+  const lows = localMins(recent.map((x) => ({ t: x.timestamp, price: x.low })));
+  const highs = localMaxs(recent.map((x) => ({ t: x.timestamp, price: x.high })));
   if (lows.length >= 2) {
     const a = lows[lows.length - 2];
     const b = lows[lows.length - 1];
     if (b.price > a.price) {
-      lines.push({ type: "straightLine", points: [{ timestamp: a.t, price: a.price }, { timestamp: b.t, price: b.price }], color: hexA(PRIMARY, 0.5), label: "上升趋势" });
+      lines.push({ type: "straightLine", points: [{ timestamp: a.t, price: a.price }, { timestamp: b.t, price: b.price }], color: hexA(PRIMARY, 0.6), label: "上升趋势" });
     }
   }
   if (highs.length >= 2) {
     const a = highs[highs.length - 2];
     const b = highs[highs.length - 1];
     if (b.price < a.price) {
-      lines.push({ type: "straightLine", points: [{ timestamp: a.t, price: a.high }, { timestamp: b.t, price: b.high }], color: hexA(PRIMARY, 0.5), label: "下降趋势" });
+      lines.push({ type: "straightLine", points: [{ timestamp: a.t, price: a.price }, { timestamp: b.t, price: b.price }], color: hexA(PRIMARY, 0.6), label: "下降趋势" });
     }
   }
   // 黄金分割：近 60 日高点到低点
-  const hi = recent.reduce((m, x) => (x.high > m.high ? x : m), recent[0]);
-  const lo = recent.reduce((m, x) => (x.low < m.low ? x : m), recent[0]);
-  lines.push({ type: "fibonacciLine", points: [{ timestamp: hi.t, price: hi.high }, { timestamp: lo.t, price: lo.low }], color: hexA(FIB, 0.5), label: "黄金分割" });
+  let hi = recent[0];
+  let lo = recent[0];
+  for (const x of recent) {
+    if (x.high > hi.high) hi = x;
+    if (x.low < lo.low) lo = x;
+  }
+  lines.push({ type: "fibonacciLine", points: [{ timestamp: hi.timestamp, price: hi.high }, { timestamp: lo.timestamp, price: lo.low }], color: hexA(FIB, 0.6), label: "黄金分割" });
   return lines;
 }
 // 清旧自动线并按当前开关重画
@@ -558,9 +557,15 @@ function setup() {
   nextTick(() => {
     if (!chart || !chartEl.value) return;
     chart.resize();
-    drawCyq();
-    restoreOverlays();
-    drawAutoLines();
+    // 等主图比例尺测量完成再叠加 overlay，避免价格→像素映射过早被钳到顶部（表现为所有线堆在顶部一条虚线）
+    const drawOverlays = () => {
+      if (!chart || !chartEl.value) return;
+      drawCyq();
+      restoreOverlays();
+      drawAutoLines();
+    };
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => requestAnimationFrame(drawOverlays));
+    else setTimeout(drawOverlays, 60);
   });
 }
 
@@ -677,5 +682,45 @@ onBeforeUnmount(() => {
 }
 .kct-clear:active {
   background: rgba(229, 72, 77, 0.12);
+}
+/* 自动线颜色图例：浮于图表左下角，小白一眼看懂颜色含义 */
+.kc-legend {
+  position: absolute;
+  left: 12rpx;
+  bottom: 12rpx;
+  z-index: 5;
+  display: flex;
+  gap: 16rpx;
+  padding: 6rpx 14rpx;
+  background: var(--card);
+  border: 1rpx solid var(--border);
+  border-radius: 999rpx;
+  box-shadow: var(--shadow-1);
+  font-size: var(--font-xs);
+  color: var(--text-2);
+  pointer-events: none;
+}
+.kcl-it {
+  display: inline-flex;
+  align-items: center;
+  gap: 5rpx;
+}
+.kcl-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  display: inline-block;
+}
+.kcl-dot.s {
+  background: #09b07a;
+}
+.kcl-dot.p {
+  background: #ef232a;
+}
+.kcl-dot.t {
+  background: #07c160;
+}
+.kcl-dot.f {
+  background: #f5a623;
 }
 </style>
