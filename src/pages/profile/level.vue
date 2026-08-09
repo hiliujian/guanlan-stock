@@ -171,10 +171,6 @@ function back() {
 .lv-back-hover {
   background: var(--card-2);
 }
-/* 主标题保留加粗（nav-title 默认常规字重） */
-.lv-title {
-  font-weight: 700;
-}
 .lv-scroll {
   flex: 1;
   height: 100%;
