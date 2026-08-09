@@ -54,6 +54,10 @@ const ICONS: Record<string, { body: string; filled?: boolean }> = {
   },
   plus: { body: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>' },
   minus: { body: '<line x1="5" y1="12" x2="19" y2="12"/>' },
+  user: {
+    body:
+      '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>',
+  },
   "arrow-down": { body: '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="6 13 12 19 18 13"/>' },
   "arrow-up": { body: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="6 11 12 5 18 11"/>' },
   "arrow-left": { body: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="11 6 5 12 11 18"/>' },

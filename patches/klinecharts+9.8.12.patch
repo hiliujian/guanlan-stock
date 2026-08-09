@@ -1,0 +1,80 @@
+diff --git a/node_modules/klinecharts/dist/index.esm.js b/node_modules/klinecharts/dist/index.esm.js
+index 86b1dce..42c371d 100644
+--- a/node_modules/klinecharts/dist/index.esm.js
++++ b/node_modules/klinecharts/dist/index.esm.js
+@@ -315,12 +315,12 @@ function getDefaultCandleStyle() {
+             showRule: TooltipShowRule.Always,
+             showType: TooltipShowType.Standard,
+             custom: [
+-                { title: 'time', value: '{time}' },
+-                { title: 'open', value: '{open}' },
+-                { title: 'high', value: '{high}' },
+-                { title: 'low', value: '{low}' },
+-                { title: 'close', value: '{close}' },
+-                { title: 'volume', value: '{volume}' }
++                { title: '时间:', value: '{time}' },
++                { title: '开:', value: '{open}' },
++                { title: '高:', value: '{high}' },
++                { title: '低:', value: '{low}' },
++                { title: '收:', value: '{close}' },
++                { title: '成交量:', value: '{volume}' }
+             ],
+             defaultValue: 'n/a',
+             rect: {
+@@ -628,7 +628,6 @@ function logError(api, invalidParam, append) {
+     log('%c😟 klinecharts error%c %s%s%s', 'padding:3px 4px;border-radius:2px;color:#ffffff;background-color:#F92855;', 'color:#F92855;', api, invalidParam, append );
+ }
+ function logTag() {
+-    log('%c❤️ Welcome to klinecharts. Version is 9.8.12', 'border-radius:4px;border:dashed 1px #1677FF;line-height:70px;padding:0 20px;margin:16px 0;font-size:14px;color:#1677FF;', '', '', '', '');
+ }
+ 
+ /**
+@@ -3856,7 +3855,7 @@ var tripleExponentiallySmoothedAverage = {
+ function getVolumeFigure() {
+     return {
+         key: 'volume',
+-        title: 'VOLUME: ',
++        title: '成交量: ',
+         type: 'bar',
+         baseValue: 0,
+         styles: function (data, indicator, defaultStyles) {
+@@ -3876,7 +3875,7 @@ function getVolumeFigure() {
+ }
+ var volume = {
+     name: 'VOL',
+-    shortName: 'VOL',
++    shortName: '成交量',
+     series: IndicatorSeries.Volume,
+     calcParams: [5, 10, 20],
+     shouldFormatBigNumber: true,
+diff --git a/node_modules/klinecharts/dist/umd/klinecharts.js b/node_modules/klinecharts/dist/umd/klinecharts.js
+index 6fdd79f..b94ec94 100644
+--- a/node_modules/klinecharts/dist/umd/klinecharts.js
++++ b/node_modules/klinecharts/dist/umd/klinecharts.js
+@@ -321,12 +321,12 @@ function getDefaultCandleStyle() {
+             showRule: exports.TooltipShowRule.Always,
+             showType: exports.TooltipShowType.Standard,
+             custom: [
+-                { title: 'time', value: '{time}' },
+-                { title: 'open', value: '{open}' },
+-                { title: 'high', value: '{high}' },
+-                { title: 'low', value: '{low}' },
+-                { title: 'close', value: '{close}' },
+-                { title: 'volume', value: '{volume}' }
++                { title: '时间:', value: '{time}' },
++                { title: '开:', value: '{open}' },
++                { title: '高:', value: '{high}' },
++                { title: '低:', value: '{low}' },
++                { title: '收:', value: '{close}' },
++                { title: '成交量:', value: '{volume}' }
+             ],
+             defaultValue: 'n/a',
+             rect: {
+@@ -633,7 +633,6 @@ function logError(api, invalidParam, append) {
+     log('%c😟 klinecharts error%c %s%s%s', 'padding:3px 4px;border-radius:2px;color:#ffffff;background-color:#F92855;', 'color:#F92855;', api, invalidParam, append );
+ }
+ function logTag() {
+-    log('%c❤️ Welcome to klinecharts. Version is 9.8.12', 'border-radius:4px;border:dashed 1px #1677FF;line-height:70px;padding:0 20px;margin:16px 0;font-size:14px;color:#1677FF;', '', '', '', '');
+ }
+ 
+ /**

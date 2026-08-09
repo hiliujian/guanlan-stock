@@ -11,7 +11,7 @@
 
     <!-- 用户名或邮箱（统一输入框，后端按实际类型判定登录方式） -->
     <AuthField
-      icon="person"
+      icon="user"
       v-model="identifier"
       placeholder="用户名或邮箱"
       :error="errors.identifier"
@@ -22,7 +22,7 @@
     <AuthField
       icon="locked"
       v-model="password"
-      placeholder="密码"
+      placeholder="密码（至少 6 位）"
       show-toggle
       :error="errors.password"
       @input="errors.password = ''"
@@ -81,6 +81,10 @@ async function submit() {
     errors.identifier = "用户名须为 3-20 位中英文 / 数字 / 下划线";
     return;
   }
+  if (p.length < 6) {
+    errors.password = "密码至少 6 位";
+    return;
+  }
   loading.value = true;
   try {
     const r = await signInByIdentifier(id, p);
@@ -111,7 +115,7 @@ async function submit() {
   background: rgba(255, 159, 64, 0.14);
   border: 1rpx solid rgba(255, 159, 64, 0.45);
   color: #b26a00;
-  font-size: var(--font-sm);
+  font-size: 24rpx;
   line-height: 1.65;
 }
 .auth-warn-code {

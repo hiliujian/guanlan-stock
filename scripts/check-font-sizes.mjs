@@ -5,7 +5,7 @@
  * 约束：全站 font-size 必须写成 var(--font-*)（8 档梯度，定义于 src/styles/global.css 的 :root）。
  * 允许例外：
  *   - inherit            ：继承父级字号
- *   - <num>px            ：px 字号仅用于 canvas 覆盖层（如 klinecharts X 轴标签），与画布渲染保持一致
+ *   - <num>px            ：px 字号仅用于 canvas 覆盖层（如图表 X 轴标签），与画布渲染保持一致
  * 任何裸 rpx / 其它单位 / 其它字面量字号都会被判为违规并令进程退出码为 1，
  * 可直接接入 CI 或 git 提交钩子，防止引入非标准字号。
  *

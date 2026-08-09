@@ -1,7 +1,7 @@
 # 股票智能分析 · 跨端版（H5 网页 + 微信小程序）
 
 一套代码同时运行在 **Web 网页（H5）** 与 **微信小程序**，基于 **uni-app (Vue 3 + TypeScript)**
-+ **Supabase**（PostgreSQL / Auth / Storage / Realtime / Edge Functions）+ **uCharts** + **uni-icons**。
++ **Supabase**（PostgreSQL / Auth / Storage / Realtime / Edge Functions）+ **KLineCharts** + **uni-icons**。
 
 > 设计目标：Web 端与微信小程序端视觉 / 交互 / 业务逻辑完全一致，后续接入小程序为「编译」而非「重写」。
 
@@ -28,9 +28,8 @@ stock-analyzer-uni/
 │  ├─ config/remote.ts       # 从 Supabase app_config 表拉取远程配置（菜单显隐 / 数据源顺序）
 │  ├─ utils/                 # 纯业务逻辑（跨端，零平台依赖）
 │  │  ├─ analyzer.ts         #   分析引擎（指标 + 综合研判 + 白话报告）
-│  │  ├─ chart.ts            #   图表配置构建器（转 uCharts 配置）
 │  │  ├─ period.ts           #   周期配置 + 代码解析 + 行情行解析
-│  │  ├─ colors.ts / format.ts
+│  │  └─ colors.ts / format.ts
 │  ├─ api/                   # 数据 / 服务隔离层
 │  │  ├─ supabase.ts         #   Supabase 客户端（H5 原生 / 小程序 uni.request 垫片）
 │  │  ├─ quote.ts            #   跨端行情统一入口
@@ -47,13 +46,13 @@ stock-analyzer-uni/
 │  │  ├─ nav.ts              #   UI 桥接（底部导航 key、登录弹窗、跳转行情）
 │  ├─ components/            # 跨端 UI 组件
 │  │  ├─ OutlineIcon.vue     #   线条图标封装（uni-icons）
-│  │  ├─ PriceText.vue / AnalysisCard.vue / KlineChart.vue
-│  │  ├─ ReportView.vue / AuthModal.vue / AppTabBar.vue（tabs 由系统配置下发）
+│  │  ├─ PriceText.vue / AnalysisCard.vue / StockChart.vue（行情图引擎）
+│  │  ├─ ReportView.vue / AuthShell.vue / AppTabBar.vue（tabs 由系统配置下发）
 │  ├─ views/                 # 四个页面视图（Market / Watchlist / Community / Profile）
 │  ├─ pages/index/index.vue  # 壳页：底部导航（按配置显隐）+ 视图切换 + 认证弹窗
 │  ├─ styles/global.css      # 全局设计系统（颜色 / 间距 / 圆角 / 动效）
 │  ├─ App.vue / main.ts
-├─ uni_modules/              # 跨端组件（qiun-data-charts、uni-icons，已 vendored）
+├─ uni_modules/              # 跨端组件（uni-icons，已 vendored）
 ├─ supabase/
 │  ├─ deploy.sql            # 建表 / RLS / 存储桶 / Realtime（公告、系统配置、社区等）
 │  ├─ DEPLOY.md             # Supabase 部署指引（SQL + Edge Function + 环境变量）
@@ -143,7 +142,7 @@ npm run dev:app / npm run build:app
 ## 🎨 跨端设计要点
 
 - **业务逻辑与 UI 分离**：`utils/` 为纯函数，H5 / 小程序零改动复用。
-- **图表用 uCharts**：微信小程序无 DOM / Canvas 适配负担，蜡烛 / 量 / MACD / 分时 / 筹码全支持。
+- **图表用 KLineCharts**：H5 端专用 K 线框架（蜡烛 / 量 / MACD / 分时 / 筹码 / 预置画线），专业且无水印。
 - **图标用字体图标**：小程序不支持内联 SVG，统一走 `uni-icons` 字体方案。
 - **避免 Web-only API**：不依赖 `window` / `document`（仅在 `isH5()` 守卫内使用），动效纯 CSS。
 - **响应式布局**：以 `rpx` 为单位自适应屏宽；H5 桌面端用 `.app-shell` 居中成手机宽度，保证两端视觉一致。

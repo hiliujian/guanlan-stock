@@ -63,7 +63,7 @@
   --dur-slower: 0.5s;
   /* ===== 字号梯度（type scale）：全站唯一字号来源，禁止在别处写死 rpx 字号 =====
      映射规则：原散落 23 种 rpx 字号按「就近（平局取较小档）」归并到以下 8 档。
-     例外（允许保留）：px 字号——canvas 覆盖层，如 klinecharts X 轴标签；inherit——继承父级。
+     例外（允许保留）：px 字号——canvas 覆盖层，如图表 X 轴标签；inherit——继承父级。
      约定：所有 font-size 必须写作 var(--font-*)；新增样式不得出现裸 rpx 字号（见 scripts/check-font-sizes.mjs）。 */
   --font-xs: 20rpx;
   --font-sm: 24rpx;
