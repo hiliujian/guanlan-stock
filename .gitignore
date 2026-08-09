@@ -20,6 +20,7 @@ node_modules
 # ---- Build outputs (NOT project source) ----
 dist
 dist_bak_old
+dist_bak_*
 dist_old_*
 h5out/
 h5out*/
