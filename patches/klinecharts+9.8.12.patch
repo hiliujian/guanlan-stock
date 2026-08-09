@@ -12,12 +12,12 @@ index 86b1dce..42c371d 100644
 -                { title: 'low', value: '{low}' },
 -                { title: 'close', value: '{close}' },
 -                { title: 'volume', value: '{volume}' }
-+                { title: '时间:', value: '{time}' },
-+                { title: '开:', value: '{open}' },
-+                { title: '高:', value: '{high}' },
-+                { title: '低:', value: '{low}' },
-+                { title: '收:', value: '{close}' },
-+                { title: '成交量:', value: '{volume}' }
++                { title: '时间: ', value: '{time}' },
++                { title: '开: ', value: '{open}' },
++                { title: '高: ', value: '{high}' },
++                { title: '低: ', value: '{low}' },
++                { title: '收: ', value: '{close}' },
++                { title: '成交量: ', value: '{volume}' }
              ],
              defaultValue: 'n/a',
              rect: {
@@ -61,12 +61,12 @@ index 6fdd79f..b94ec94 100644
 -                { title: 'low', value: '{low}' },
 -                { title: 'close', value: '{close}' },
 -                { title: 'volume', value: '{volume}' }
-+                { title: '时间:', value: '{time}' },
-+                { title: '开:', value: '{open}' },
-+                { title: '高:', value: '{high}' },
-+                { title: '低:', value: '{low}' },
-+                { title: '收:', value: '{close}' },
-+                { title: '成交量:', value: '{volume}' }
++                { title: '时间: ', value: '{time}' },
++                { title: '开: ', value: '{open}' },
++                { title: '高: ', value: '{high}' },
++                { title: '低: ', value: '{low}' },
++                { title: '收: ', value: '{close}' },
++                { title: '成交量: ', value: '{volume}' }
              ],
              defaultValue: 'n/a',
              rect: {
