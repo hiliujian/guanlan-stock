@@ -119,7 +119,6 @@ async function submit() {
   line-height: 1.65;
 }
 .auth-warn-code {
-  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   font-weight: 600;
   color: #8a5200;
 }

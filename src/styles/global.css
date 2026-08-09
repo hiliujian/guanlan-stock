@@ -135,8 +135,8 @@ page {
   background: var(--bg);
   color: var(--text);
   font-size: var(--font-md);
-  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC",
-    "Microsoft YaHei", sans-serif;
+  /* 不指定 font-family：交给各平台系统默认字体（iOS SF / Windows 微软雅黑 / 安卓系默认无衬线），
+     避免显式字体栈覆盖系统观感；button 仍用 font-family:inherit 继承该默认字体。 */
   -webkit-font-smoothing: antialiased;
 }
 
