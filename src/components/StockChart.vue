@@ -403,29 +403,35 @@ function hexA(hex: string, a: number): string {
   const b = parseInt(h.slice(4, 6), 16);
   return `rgba(${r},${g},${b},${a})`;
 }
-type Pt = { t: number; price: number };
-function localMins(arr: Pt[]): Pt[] {
+type Pt = { t: number; value: number; idx: number };
+function localMins(arr: Pt[], gap = 3): Pt[] {
   const out: Pt[] = [];
   for (let i = 1; i < arr.length - 1; i++) {
-    if (arr[i - 1].price >= arr[i].price && arr[i + 1].price >= arr[i].price) out.push(arr[i]);
+    if (arr[i - 1].value >= arr[i].value && arr[i + 1].value >= arr[i].value) {
+      if (out.length && i - out[out.length - 1].idx < gap) continue; // 间隔过滤，避免碎波
+      out.push(arr[i]);
+    }
   }
   return out;
 }
-function localMaxs(arr: Pt[]): Pt[] {
+function localMaxs(arr: Pt[], gap = 3): Pt[] {
   const out: Pt[] = [];
   for (let i = 1; i < arr.length - 1; i++) {
-    if (arr[i - 1].price <= arr[i].price && arr[i + 1].price <= arr[i].price) out.push(arr[i]);
+    if (arr[i - 1].value <= arr[i].value && arr[i + 1].value <= arr[i].value) {
+      if (out.length && i - out[out.length - 1].idx < gap) continue;
+      out.push(arr[i]);
+    }
   }
   return out;
 }
 interface AutoLine {
   type: "horizontalStraightLine" | "straightLine" | "fibonacciLine";
-  points: { timestamp: number; price: number }[];
+  points: { timestamp: number; value: number }[];
   color: string;
   label: string;
 }
 // 根据当前已 setData 的行情计算系统画线：日K 画支撑/压力/趋势/黄金分割；分时只画当日支撑/压力
-// 统一使用 chart 内部的 dataList（已 applyNewData），保证时间戳/价格与坐标系完全一致，避免异步 props 错位
+// 关键：KLineCharts overlay 的 point 字段是 { timestamp, value }（不是 price）；用错字段会导致价格→y 坐标失败被钳到顶部
 function computeAutoLines(): AutoLine[] {
   const lines: AutoLine[] = [];
   const dl = dataList;
@@ -438,11 +444,12 @@ function computeAutoLines(): AutoLine[] {
       if (x.low < pLow) pLow = x.low;
     }
     const t0 = dl[0].timestamp;
-    lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, price: pLow }], color: hexA(DOWN, 0.6), label: "支撑" });
-    lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, price: pHigh }], color: hexA(UP, 0.6), label: "压力" });
+    lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, value: pLow }], color: hexA(DOWN, 0.6), label: "支撑" });
+    lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, value: pHigh }], color: hexA(UP, 0.6), label: "压力" });
     return lines;
   }
-  const N = Math.min(dl.length, 60);
+  // 日K：支撑/压力取近 30 日高低（贴近近期走势，比 60 日更准）
+  const N = Math.min(dl.length, 30);
   const recent = dl.slice(-N);
   let pHigh = -Infinity;
   let pLow = Infinity;
@@ -451,34 +458,39 @@ function computeAutoLines(): AutoLine[] {
     if (x.low < pLow) pLow = x.low;
   }
   const t0 = recent[0].timestamp;
-  // 支撑（绿）/ 压力（红）水平线：近 60 日高低
-  lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, price: pLow }], color: hexA(DOWN, 0.6), label: "支撑" });
-  lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, price: pHigh }], color: hexA(UP, 0.6), label: "压力" });
-  // 趋势线：上升连低点、下降连高点（注意元素只有 t/price 字段，必须用 price）
-  const lows = localMins(recent.map((x) => ({ t: x.timestamp, price: x.low })));
-  const highs = localMaxs(recent.map((x) => ({ t: x.timestamp, price: x.high })));
-  if (lows.length >= 2) {
-    const a = lows[lows.length - 2];
-    const b = lows[lows.length - 1];
-    if (b.price > a.price) {
-      lines.push({ type: "straightLine", points: [{ timestamp: a.t, price: a.price }, { timestamp: b.t, price: b.price }], color: hexA(PRIMARY, 0.6), label: "上升趋势" });
+  lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, value: pLow }], color: hexA(DOWN, 0.6), label: "支撑" });
+  lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, value: pHigh }], color: hexA(UP, 0.6), label: "压力" });
+  // 趋势线：只画当前主趋势方向一条（上升连最后两个抬高低点，下降连最后两个降低高点），间隔过滤避免碎波
+  const upTrend = recent[recent.length - 1].close >= recent[0].close;
+  if (upTrend) {
+    const ls = localMins(recent.map((x, i) => ({ t: x.timestamp, value: x.low, idx: i })), 3);
+    if (ls.length >= 2) {
+      const a = ls[ls.length - 2];
+      const b = ls[ls.length - 1];
+      if (b.value > a.value) {
+        lines.push({ type: "straightLine", points: [{ timestamp: a.t, value: a.value }, { timestamp: b.t, value: b.value }], color: hexA(PRIMARY, 0.6), label: "上升趋势" });
+      }
+    }
+  } else {
+    const hs = localMaxs(recent.map((x, i) => ({ t: x.timestamp, value: x.high, idx: i })), 3);
+    if (hs.length >= 2) {
+      const a = hs[hs.length - 2];
+      const b = hs[hs.length - 1];
+      if (b.value < a.value) {
+        lines.push({ type: "straightLine", points: [{ timestamp: a.t, value: a.value }, { timestamp: b.t, value: b.value }], color: hexA(PRIMARY, 0.6), label: "下降趋势" });
+      }
     }
   }
-  if (highs.length >= 2) {
-    const a = highs[highs.length - 2];
-    const b = highs[highs.length - 1];
-    if (b.price < a.price) {
-      lines.push({ type: "straightLine", points: [{ timestamp: a.t, price: a.price }, { timestamp: b.t, price: b.price }], color: hexA(PRIMARY, 0.6), label: "下降趋势" });
-    }
-  }
-  // 黄金分割：近 60 日高点到低点
-  let hi = recent[0];
-  let lo = recent[0];
-  for (const x of recent) {
+  // 黄金分割：近 60 日显著高低（高点→低点），fibonacciLine 自动画 0/0.382/0.5/0.618/0.786/1 回撤
+  const N60 = Math.min(dl.length, 60);
+  const big = dl.slice(-N60);
+  let hi = big[0];
+  let lo = big[0];
+  for (const x of big) {
     if (x.high > hi.high) hi = x;
     if (x.low < lo.low) lo = x;
   }
-  lines.push({ type: "fibonacciLine", points: [{ timestamp: hi.timestamp, price: hi.high }, { timestamp: lo.timestamp, price: lo.low }], color: hexA(FIB, 0.6), label: "黄金分割" });
+  lines.push({ type: "fibonacciLine", points: [{ timestamp: hi.timestamp, value: hi.high }, { timestamp: lo.timestamp, value: lo.low }], color: hexA(FIB, 0.6), label: "黄金分割" });
   return lines;
 }
 // 清旧自动线并按当前开关重画
