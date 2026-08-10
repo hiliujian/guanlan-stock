@@ -2,7 +2,7 @@
   <view class="post glass anim-fade-up">
     <!-- 头部：头像 + 昵称 + 时间 + 话题 + 删除 -->
     <view class="p-head">
-      <view class="p-avatar" :style="{ background: avatarBg }">{{ ch }}</view>
+      <UserAvatar :url="post.authorAvatarUrl || ''" :seed="post.author" :size="60" :frame="post.authorFrame" />
       <view class="p-meta">
         <text class="p-name">{{ post.author }}</text>
         <text class="p-time">{{ timeText }}</text>
@@ -111,8 +111,9 @@
 import { ref, computed } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import StockText from "./StockText.vue";
+import UserAvatar from "./UserAvatar.vue";
 import { formatRelative, type CommunityPost } from "@/api/community";
-import { avatarGradient, avatarChar, topicColor } from "@/utils/avatar";
+import { topicColor } from "@/utils/avatar";
 
 const props = defineProps<{ post: CommunityPost; mine: boolean }>();
 const emit = defineEmits<{
@@ -123,10 +124,6 @@ const emit = defineEmits<{
 
 const showReply = ref(false);
 const replyText = ref("");
-
-// 头像：按昵称生成的「字」头像（渐变底 + 首字），无需任何图片 / emoji
-const avatarBg = computed(() => avatarGradient(props.post.author));
-const ch = computed(() => avatarChar(props.post.author));
 
 // 话题（股票 / 板块）标签配色，便于一眼区分标的归属
 const topicStyle = computed(() => {
@@ -188,20 +185,6 @@ function preview(current: string) {
   align-items: center;
   gap: 14rpx;
   margin-bottom: 14rpx;
-}
-.p-avatar {
-  width: 60rpx;
-  height: 60rpx;
-  border-radius: 50%;
-  overflow: hidden;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  color: #fff;
-  font-size: var(--font-md);
-  background: linear-gradient(135deg, var(--primary), var(--primary-2));
 }
 .p-meta {
   display: flex;

@@ -13,15 +13,8 @@
         :aria-label="user.loggedIn ? '编辑个人资料' : '登录或注册'"
         @click="onHeaderTap"
       >
-        <view class="pf-avatar">
-          <image
-            v-if="user.loggedIn && avatarUrl"
-            :src="avatarUrl"
-            class="pf-avatar-img"
-            mode="aspectFill"
-            @click.stop="previewAvatar"
-          />
-          <text v-else class="pf-avatar-char flex-center" :style="{ background: avatarBg }">{{ avatarChar }}</text>
+        <view class="pf-avatar" @click.stop="previewAvatar">
+          <UserAvatar :url="avatarUrl" :seed="avatarName" :size="116" :frame="user.profile?.avatar_frame" />
         </view>
         <view class="pf-id">
           <view class="pf-name-row">
@@ -144,7 +137,8 @@ import { useWatchlist, initWatchlist } from "@/store/watchlist";
 import { useCommunity } from "@/store/community";
 import { isTabEnabled } from "@/store/appConfig";
 import { getMyName } from "@/store/identity";
-import { avatarGradient, avatarChar as avatarCharFn, avatarSeed } from "@/utils/avatar";
+import { avatarSeed } from "@/utils/avatar";
+import UserAvatar from "@/components/UserAvatar.vue";
 import { signOut } from "@/api/auth";
 
 const user = useUser();
@@ -168,8 +162,6 @@ const subText = computed(() =>
 const avatarName = computed(() =>
   user.loggedIn ? avatarSeed(user.profile?.username || "") || "我" : "我"
 );
-const avatarBg = computed(() => avatarGradient(avatarName.value));
-const avatarChar = computed(() => avatarCharFn(avatarName.value));
 const avatarUrl = computed(() => user.profile?.avatar_url || "");
 const userLevel = computed(() => {
   const l = user.profile?.level;
@@ -334,21 +326,8 @@ function onMenu(act: MenuItem["act"]) {
   border-radius: 50%;
   background: var(--card-2);
   border: 1rpx solid var(--border);
-  overflow: hidden;
   flex: none;
   box-shadow: var(--shadow-2);
-}
-.pf-avatar-img {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-}
-.pf-avatar-char {
-  width: 100%;
-  height: 100%;
-  color: #fff;
-  font-size: var(--font-3xl);
-  /* flex-center 已提升至全局 .flex-center */
 }
 .pf-id {
   flex: 1;

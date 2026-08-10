@@ -73,6 +73,8 @@ export interface CommunityPost {
   type: "text" | "card";
   author: string;
   userId?: string | null; // 发布者账号 id（登录后写入，用于判定"我的"帖子）
+  authorAvatarUrl?: string; // 作者头像 URL（联表 profiles 取得，缺省回退「字」头像）
+  authorFrame?: string; // 作者头像框 id（联表 profiles 取得；'' = 无边框）
   topic?: Topic; // 关联标的（个股 / 板块），用于分类
   createdAt: number;
   content?: string;
@@ -173,25 +175,32 @@ async function listRemote(): Promise<CommunityPost[]> {
   if (error || !data) return [];
   // 点赞态以服务端 community_likes 为唯一权威（不再本地缓存）
   const liked = await loadLikedFromServer(sb);
-  return (data as any[]).map((r) => ({
-    id: r.id,
-    type: r.type,
-    author: r.author,
-    userId: r.user_id || null,
-    topic: r.topic || undefined,
-    createdAt: new Date(r.created_at).getTime(),
-    content: r.content ?? undefined,
-    card: r.card ? toClientCard(r.card) : undefined,
-    images: (r.images as string[] | undefined) || [],
-    likes: r.likes ?? 0,
-    likedByMe: liked.has(r.id),
-    replies: (r.replies || []).map((x: any) => ({
-      id: x.id,
-      author: x.author,
-      content: x.content,
-      createdAt: new Date(x.created_at).getTime(),
-    })),
-  }));
+  // 联表批量取作者头像 / 头像框（一次查询，避免每条再发请求）
+  const profileMap = await loadProfilesForPosts(sb, data as any[]);
+  return (data as any[]).map((r) => {
+    const ai = profileMap.get(r.user_id) || { avatar_url: "", avatar_frame: "" };
+    return {
+      id: r.id,
+      type: r.type,
+      author: r.author,
+      userId: r.user_id || null,
+      authorAvatarUrl: ai.avatar_url,
+      authorFrame: ai.avatar_frame,
+      topic: r.topic || undefined,
+      createdAt: new Date(r.created_at).getTime(),
+      content: r.content ?? undefined,
+      card: r.card ? toClientCard(r.card) : undefined,
+      images: (r.images as string[] | undefined) || [],
+      likes: r.likes ?? 0,
+      likedByMe: liked.has(r.id),
+      replies: (r.replies || []).map((x: any) => ({
+        id: x.id,
+        author: x.author,
+        content: x.content,
+        createdAt: new Date(x.created_at).getTime(),
+      })),
+    };
+  });
 }
 
 // 当前用户点赞集合的内存缓存：listRemote 每次加载都会用到，避免「每次列表刷新都多发一次
@@ -208,6 +217,37 @@ async function loadLikedFromServer(sb: any): Promise<Set<string>> {
   const ids = new Set<string>((data || []).map((x: any) => x.post_id as string));
   likedCache = { uid, ids };
   return ids;
+}
+
+// 作者资料缓存：listRemote 批量联表后写入，供 createRemote / toggleLikeRemote 即时取用，
+// 避免单帖回查或丢失头像框。键为 user_id → { 头像 URL, 头像框 id }。
+let profileCache: Map<string, { avatar_url: string; avatar_frame: string }> | null = null;
+
+/**
+ * 批量联表取作者头像 / 头像框：从帖子列表收集 user_id，一次 queries profiles，
+ * 返回 user_id → { avatar_url, avatar_frame } 映射，并写入 profileCache 供后续复用。
+ * 旧帖 / 游客帖 user_id 为空：对应项缺省为「字」头像（无边框），由 PostCard 回退。
+ */
+async function loadProfilesForPosts(
+  sb: any,
+  rows: any[]
+): Promise<Map<string, { avatar_url: string; avatar_frame: string }>> {
+  const ids = Array.from(new Set(rows.map((r) => r.user_id).filter(Boolean))) as string[];
+  const map = new Map<string, { avatar_url: string; avatar_frame: string }>();
+  if (ids.length) {
+    const { data } = await sb.from("profiles").select("id, avatar_url, avatar_frame").in("id", ids);
+    for (const p of (data as any[]) || []) {
+      map.set(p.id, { avatar_url: p.avatar_url || "", avatar_frame: p.avatar_frame || "" });
+    }
+  }
+  profileCache = map;
+  return map;
+}
+
+/** 从缓存取某作者的头像 / 头像框（无缓存则回退「字」头像、无边框） */
+function authorInfoOf(userId?: string | null): { avatar_url: string; avatar_frame: string } {
+  if (userId && profileCache && profileCache.has(userId)) return profileCache.get(userId)!;
+  return { avatar_url: "", avatar_frame: "" };
 }
 
 async function createRemote(
@@ -235,6 +275,8 @@ async function createRemote(
     type: d.type,
     author: d.author,
     userId: d.user_id || null,
+    authorAvatarUrl: userState.profile?.avatar_url || "",
+    authorFrame: userState.profile?.avatar_frame || "",
     topic: d.topic || undefined,
     createdAt: new Date(d.created_at).getTime(),
     content: d.content ?? undefined,
@@ -271,11 +313,14 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
     .single();
   if (ferr || !fresh) return null;
   const f = fresh as any;
+  const ai = authorInfoOf(f.user_id);
   return {
     id: f.id,
     type: f.type,
     author: f.author,
     userId: f.user_id || null,
+    authorAvatarUrl: ai.avatar_url,
+    authorFrame: ai.avatar_frame,
     topic: f.topic || undefined,
     createdAt: new Date(f.created_at).getTime(),
     content: f.content ?? undefined,

@@ -12,6 +12,7 @@ interface Profile {
   username: string;
   bio: string;
   avatar_url: string;
+  avatar_frame?: string; // 头像框 id（'' = 无边框）；见 src/utils/avatarFrame.ts
   level?: number; // 用户等级序号（0=新手散户）；由后端维护，前端只读
   exp?: number; // 用户经验值；由后端维护，缺省 0
   last_login?: LoginInfo | null; // 最近一次登录的地点/时间/设备（账号安全页展示）
@@ -46,6 +47,7 @@ async function loadProfile(userId: string) {
       display_name: data.display_name || "",
       bio: data.bio || "",
       avatar_url: data.avatar_url || "",
+      avatar_frame: data.avatar_frame || "",
       level: typeof data.level === "number" ? data.level : 0,
       exp: typeof data.exp === "number" ? data.exp : 0,
       last_login: (data.last_login as LoginInfo) ?? null,

@@ -2,7 +2,7 @@
   <view class="app-shell ep-page page-col">
     <!-- 自定义导航头（navigationStyle:custom，需自带返回） -->
     <view class="ep-head sticky-head">
-      <view class="ep-back nav-back" hover-class="ep-back-hover" @click="back" role="button" aria-label="返回">
+      <view class="ep-back nav-back" hover-class="nav-back-hover" @click="back" role="button" aria-label="返回">
         <OutlineIcon type="arrow-left" :size="30" color="var(--text)" />
       </view>
       <text class="ep-title nav-title">个人资料</text>
@@ -13,7 +13,7 @@
       <!-- 头像（点击更换）：居中展示 -->
       <view class="ep-hero">
         <view class="ep-avatar" hover-class="ep-av-hover" @click="chooseAvatar" role="button" aria-label="更换头像">
-          <UserAvatar :url="avatarUrl" :seed="seedName" :size="148" />
+          <UserAvatar :url="avatarUrl" :seed="seedName" :size="148" :frame="frame" />
           <view class="ep-cam">
             <OutlineIcon v-if="!uploading" type="camera" :size="20" color="#fff" />
             <view v-else class="ep-spin" />
@@ -77,6 +77,26 @@
           </button>
         </view>
       </view>
+
+      <!-- 头像框：点击选择，下方用「当前头像 + 该框」实时预览；保存时随资料一起写入 profiles.avatar_frame -->
+      <view class="sec-group">
+        <text class="sec-group-title">头像框</text>
+        <view class="ep-frames">
+          <view
+            v-for="f in AVATAR_FRAMES"
+            :key="f.id || 'none'"
+            class="ep-frame"
+            :class="{ on: frame === f.id }"
+            role="button"
+            :aria-label="f.name"
+            @click="frame = f.id"
+          >
+            <UserAvatar :url="framePreviewUrl" :seed="framePreviewSeed" :size="84" :frame="f.id" />
+            <text class="ep-frame-name">{{ f.name }}</text>
+          </view>
+        </view>
+        <text class="ep-frame-tip">{{ currentFrameDesc }}</text>
+      </view>
     </scroll-view>
   </view>
 </template>
@@ -89,6 +109,7 @@ import UserAvatar from "@/components/UserAvatar.vue";
 import { useUser, refreshProfile } from "@/store/user";
 import { updateProfile, uploadAvatar } from "@/api/auth";
 import { avatarSeed } from "@/utils/avatar";
+import { AVATAR_FRAMES } from "@/utils/avatarFrame";
 import { usePageGuard } from "@/store/guard";
 
 const user = useUser();
@@ -101,6 +122,7 @@ const bio = ref("");
 const saving = ref(false);
 const avatarUrl = ref("");
 const uploading = ref(false);
+const frame = ref(""); // 头像框 id（'' = 无边框）
 
 // 裁剪弹窗状态
 const cropperVisible = ref(false);
@@ -108,6 +130,13 @@ const cropperSrc = ref("");
 
 // 字头像种子：用户名（不可变身份），与社区页等其他场景共用
 const seedName = computed(() => avatarSeed(username.value) || "我");
+
+// 头像框选择器的实时预览：复用当前头像（或字头像），切换框时下方小样同步变化
+const framePreviewUrl = computed(() => avatarUrl.value);
+const framePreviewSeed = computed(() => seedName.value);
+const currentFrameDesc = computed(
+  () => AVATAR_FRAMES.find((f) => f.id === frame.value)?.desc || ""
+);
 
 watch(
   () => [user.loggedIn, user.profile],
@@ -117,8 +146,10 @@ watch(
       username.value = user.profile.username || "";
       bio.value = user.profile.bio || "";
       avatarUrl.value = user.profile.avatar_url || "";
+      frame.value = user.profile.avatar_frame || "";
     } else {
       avatarUrl.value = "";
+      frame.value = "";
     }
   },
   { immediate: true }
@@ -185,6 +216,7 @@ async function save() {
     const r = await updateProfile({
       display_name: dn,
       bio: bio.value.trim(),
+      avatar_frame: frame.value,
     });
     if (!r.ok) {
       uni.showToast({ title: r.error || "保存失败", icon: "none" });
@@ -199,9 +231,6 @@ async function save() {
 </script>
 
 <style scoped>
-.ep-back-hover {
-  background: var(--card-2);
-}
 .ep-scroll {
   flex: 1;
   height: 100%;
@@ -224,7 +253,6 @@ async function save() {
   border-radius: 50%;
   border: 3rpx solid var(--card);
   box-shadow: 0 0 0 6rpx var(--primary-soft), var(--shadow-3);
-  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -257,6 +285,44 @@ async function save() {
 }
 .ep-hero-tip {
   display: block;
+  font-size: var(--font-xs);
+  color: var(--text-2);
+}
+
+/* 头像框选择器：横向滚动的一排小样，选中态加主色高亮边框 */
+.ep-frames {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22rpx;
+  padding: 18rpx 20rpx 6rpx;
+}
+.ep-frame {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+  padding: 12rpx;
+  border-radius: var(--radius);
+  background: var(--card-2);
+  box-shadow: inset 0 0 0 1rpx var(--border);
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
+}
+.ep-frame.on {
+  box-shadow: inset 0 0 0 2rpx var(--primary), var(--shadow-primary-1);
+}
+.ep-frame:active {
+  transform: scale(0.96);
+}
+.ep-frame-name {
+  font-size: var(--font-xs);
+  color: var(--text-2);
+}
+.ep-frame.on .ep-frame-name {
+  color: var(--primary);
+}
+.ep-frame-tip {
+  display: block;
+  padding: 4rpx 20rpx 14rpx;
   font-size: var(--font-xs);
   color: var(--text-2);
 }

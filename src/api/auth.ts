@@ -219,6 +219,7 @@ export interface ProfilePatch {
   username?: string;
   bio?: string;
   avatar_url?: string;
+  avatar_frame?: string;
   last_login?: LoginInfo | null;
 }
 

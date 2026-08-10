@@ -4,7 +4,7 @@
     <PageHeader brand-text="社区" brand-icon="chatbubble">
       <template #right>
         <view class="cm-me" @click="toggleEdit">
-          <UserAvatar :url="myAvatarUrl" :seed="mySeed" :size="48" />
+          <UserAvatar :url="myAvatarUrl" :seed="mySeed" :size="48" :frame="myFrame" />
           <text class="cm-name truncate">{{ myName }}</text>
           <OutlineIcon type="gear" :size="24" color="var(--text-2)" />
         </view>
@@ -110,6 +110,10 @@ const mySeed = computed(() =>
 // 未登录时无 url，回退到「字」头像。这是修复「社区头像不同步」的根因。
 const myAvatarUrl = computed(() =>
   userState.loggedIn ? userState.profile?.avatar_url || "" : ""
+);
+// 自己的头像框：已登录读 profiles.avatar_frame；未登录无边框
+const myFrame = computed(() =>
+  userState.loggedIn ? userState.profile?.avatar_frame || "" : ""
 );
 
 function isMine(p: CommunityPost): boolean {
@@ -225,10 +229,6 @@ defineExpose({ refresh: load });
   flex: 1;
   min-height: 0;
   height: auto;
-}
-.cm-header,
-.cm-brand {
-  /* 顶部栏外壳已迁出至 PageHeader.vue，保留空规则兼容历史选择器 */
 }
 /* 「我」的胶囊：自选/社区共用，与新顶部栏高度协调：头像 48rpx + 字 26rpx */
 .cm-me {
