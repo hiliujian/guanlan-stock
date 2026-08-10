@@ -19,6 +19,7 @@
       <text class="kcl-it"><text class="kcl-dot s"></text>支撑</text>
       <text class="kcl-it"><text class="kcl-dot p"></text>压力</text>
       <text class="kcl-it"><text class="kcl-dot t"></text>趋势</text>
+      <text class="kcl-it"><text class="kcl-dot z"></text>关键区间</text>
     </view>
     <!-- 自动线悬浮提示：跟随十字光标显示每条线的类型/价位/区间/触及次数/方向 -->
     <view v-if="tip.show" class="kc-tip" :style="tipStyle">
@@ -37,6 +38,8 @@ import { init, dispose, registerIndicator, registerOverlay, ActionType } from "k
 import { isDark } from "@/utils/theme";
 import { UP, DOWN } from "@/utils/colors";
 const TREND = "#2f74ff"; // 趋势线专用蓝（与压力红/支撑绿三色区分，互不混淆，且对红绿色盲更友好）
+const ZONE_FILL = "rgba(108,122,145,0.13)"; // 关键区间阴影填充（中性石板灰，深浅主题均可见）
+const ZONE_TEXT = "rgba(125,140,165,0.95)"; // 关键区间标签文字
 import { computeChip, type ChipResult } from "@/utils/analyzer";
 import type { Kline, Trend } from "@/utils/period";
 
@@ -531,7 +534,29 @@ function drawAutoLevels() {
   autoIds.length = 0;
   autoLevels.length = 0;
   if (!props.autoDraw || !chart || !autoEnabled.value) return;
-  for (const lv of computeAutoLevels()) {
+  const levels = computeAutoLevels();
+  // 先画「阻力组 ↔ 支撑组」中间的阴影带（关键区间），置于线下方，避免遮挡虚线
+  const pressures = levels.filter((l) => l.kind === "pressure" && typeof l.price === "number").map((l) => l.price as number);
+  const supports = levels.filter((l) => l.kind === "support" && typeof l.price === "number").map((l) => l.price as number);
+  if (pressures.length && supports.length && dataList.length) {
+    const topPrice = Math.min(...pressures); // 阻力区下沿（最低压力）
+    const botPrice = Math.max(...supports); // 支撑区上沿（最高支撑）
+    if (topPrice > botPrice) {
+      const zid = `auto_zone_${Math.random().toString(36).slice(2, 7)}`;
+      try {
+        chart.createOverlay({
+          id: zid, name: "autoZone",
+          points: [{ timestamp: dataList[0].timestamp, value: topPrice }, { timestamp: dataList[dataList.length - 1].timestamp, value: botPrice }],
+          lock: true,
+        } as never);
+        autoIds.push(zid);
+      } catch {
+        /* noop */
+      }
+    }
+  }
+  // 再画支撑/压力/趋势线
+  for (const lv of levels) {
     try {
       const id = `auto_${lv.kind}_${Math.random().toString(36).slice(2, 7)}`;
       if (lv.kind === "trend" && lv.points) {
@@ -584,6 +609,37 @@ function ensureTrendOverlay() {
         return [
           { type: "line", attrs: { coordinates: [a, b] }, styles: { style: "dashed", size: 1.4, color: col, dashedValue: [4, 3] }, ignoreEvent: true },
           { type: "polygon", attrs: { coordinates: arrow }, styles: { style: "fill", color: col, borderColor: col, borderSize: 1 }, ignoreEvent: true },
+        ];
+      },
+    } as never);
+    // 关键区间阴影带（阻力组与支撑组之间的中间地带），横跨面板宽度，置于线下方
+    registerOverlay({
+      name: "autoZone",
+      needDefaultPointFigure: false,
+      needDefaultXAxisFigure: false,
+      needDefaultYAxisFigure: false,
+      createPointFigures: (params: any) => {
+        const coordinates = params.coordinates as { x: number; y: number }[];
+        const bounding = params.bounding as { left: number; right: number; top: number; bottom: number };
+        if (!coordinates || coordinates.length < 2 || !bounding) return [];
+        const ys = [coordinates[0].y, coordinates[1].y].sort((a, b) => a - b);
+        const topY = ys[0];
+        const botY = ys[1];
+        const x0 = bounding.left;
+        const x1 = bounding.right;
+        return [
+          {
+            type: "polygon",
+            attrs: { coordinates: [{ x: x0, y: topY }, { x: x1, y: topY }, { x: x1, y: botY }, { x: x0, y: botY }] },
+            styles: { style: "fill", color: ZONE_FILL },
+            ignoreEvent: true,
+          },
+          {
+            type: "text",
+            attrs: { x: x1 - 6, y: topY + 3, text: "关键区间", align: "right", baseline: "top" },
+            styles: { color: ZONE_TEXT, size: 10, family: "sans-serif", weight: "normal" },
+            ignoreEvent: true,
+          },
         ];
       },
     } as never);
@@ -888,6 +944,9 @@ onBeforeUnmount(() => {
 }
 .kcl-dot.t {
   background: #2f74ff;
+}
+.kcl-dot.z {
+  background: rgba(108, 122, 145, 0.55);
 }
 /* 自动线悬浮提示框：跟随十字光标，玻璃卡片，不拦截指针 */
 .kc-tip {
