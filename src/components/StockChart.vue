@@ -54,12 +54,12 @@ function ensureAvp() {
       shortName: "均价",
       series: "price" as never, // 运行时即字符串 'price'，minified 枚举无值，直接传字面量
       calc: (dataList: any[]) => {
-        let cumVol = 0;
-        let cumAmt = 0;
+        // 直接用数据源已正确算好的每股均价（东财 f58 / 腾讯 cumAmt÷(手×100) / 新浪兜底 close）。
+        // ⚠️ 旧逻辑 cumAmt/cumVol 自算存在单位错误：东财 vol 单位为「手」、amount 为「元」，
+        // 相除得「元/手」≈ 真实价的 100 倍；而 AVP 与价格共用坐标轴，会把 y 轴撑爆、
+        // 把真实价格线压成底部一条平直线（即「分时走势图变直线」的根因）。
         return dataList.map((d) => {
-          cumVol += d.volume || 0;
-          cumAmt += d.turnover || 0;
-          const v = cumVol > 0 ? cumAmt / cumVol : d.close;
+          const v = d && Number.isFinite(d.avg) && d.avg > 0 ? d.avg : (d?.close ?? 0);
           return { avp: v };
         });
       },
@@ -218,6 +218,7 @@ function toKLineData(): any[] {
         close: t.price,
         volume: t.vol,
         turnover: t.amount,
+        avg: t.avg,
       });
     }
   }
