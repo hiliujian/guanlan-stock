@@ -147,7 +147,8 @@ function ensureIntradayVol() {
 //   DIF = SMA(close,12) − SMA(close,26)
 //   DEA = SMA(DIF,9)
 //   MACD = 2 × (DIF − DEA)
-// 量柱不设自定义 styles → klinecharts 引擎自动按值正负选用 indicator.bars 的 upColor/downColor
+// 量柱必须设自定义 styles（klinecharts 自定义指标不会自动按值正负选色，内置 MACD 才会）：
+//   在 bar figure 的 styles 回调中读 data.current.indicatorData.macd → >0 红 / <0 绿
 let smaMacdRegistered = false;
 function ensureSmaMacd() {
   if (smaMacdRegistered) return;
@@ -159,8 +160,27 @@ function ensureSmaMacd() {
       figures: [
         { key: "dif", title: "DIF: ", type: "line" },
         { key: "dea", title: "DEA: ", type: "line" },
-        // bar 不传 styles → 引擎自动按 macd 值 >0 用 upColor(红) / <0 用 downColor(绿)
-        { key: "macd", title: "MACD: ", type: "bar" },
+// 量柱逐根着色：klinecharts 自定义指标不会自动按值正负选色（内置 MACD 才会），
+// 必须在 bar figure 的 styles 回调中显式返回 { color }。
+// 正确的数据路径：data.current.indicatorData.macd（不是 indicator.data.macd）
+        {
+          key: "macd",
+          title: "MACD: ",
+          type: "bar",
+          styles: (data: any, _indicator: any, defaultStyles: any) => {
+            const base = (defaultStyles?.bars && defaultStyles.bars[0]) || {};
+            const up = base.upColor || UP;
+            const down = base.downColor || DOWN;
+            const noChange = base.noChangeColor || "#888888";
+            // klinecharts FigureStylesCallback 的指标数据在 data.current.indicatorData 上
+            const macdVal = data?.current?.indicatorData?.macd;
+            if (typeof macdVal === "number") {
+              if (macdVal > 0) return { color: up };
+              if (macdVal < 0) return { color: down };
+            }
+            return { color: noChange };
+          },
+        },
       ],
       calc: (dataList: any[], indicator: any) => {
         const params = indicator.calcParams || [12, 26, 9];
