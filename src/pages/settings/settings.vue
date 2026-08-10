@@ -349,37 +349,7 @@ function rowStyle(idx: number) {
   gap: 10rpx;
   flex: none;
 }
-/* iOS 风格开关 */
-.cc-switch {
-  position: relative;
-  width: 92rpx;
-  height: 52rpx;
-  border-radius: 999rpx;
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
-  transition: background 0.22s ease;
-}
-.cc-switch.on {
-  background: var(--primary);
-  border-color: var(--primary);
-}
-.cc-knob {
-  position: absolute;
-  top: 4rpx;
-  left: 4rpx;
-  width: 42rpx;
-  height: 42rpx;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: var(--shadow-1);
-  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.cc-switch.on .cc-knob {
-  transform: translateX(40rpx);
-}
-.cc-switch-hover {
-  opacity: 0.85;
-}
+/* iOS 风格开关样式已提升到全局（global.css），此处不再重复定义 */
 .st-group-title {
   display: block;
   font-size: var(--font-sm);

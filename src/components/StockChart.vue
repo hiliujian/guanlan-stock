@@ -7,19 +7,18 @@
     <canvas ref="cyqEl" class="kc-ov kc-ov--cyq"></canvas>
     <!-- 看盘画线工具栏：点击后在图上点击/拖拽绘制；支撑=绿、压力=红、趋势/分割=主色绿 -->
     <view v-if="showTools" class="kc-tools">
-      <view v-if="autoDraw" class="kct-btn kct-auto" :class="{ active: autoEnabled }" role="button" @click="toggleAuto">自动</view>
       <view class="kct-btn" :class="{ active: activeAction === 'support' }" role="button" @click="drawLine('support', 'horizontalStraightLine', DOWN)">支撑</view>
       <view class="kct-btn" :class="{ active: activeAction === 'pressure' }" role="button" @click="drawLine('pressure', 'horizontalStraightLine', UP)">压力</view>
       <view class="kct-btn" :class="{ active: activeAction === 'trend' }" role="button" @click="drawLine('trend', 'straightLine', TREND)">趋势</view>
       <view class="kct-btn" :class="{ active: activeAction === 'fib' }" role="button" @click="drawLine('fib', 'fibonacciLine')">分割</view>
       <view class="kct-btn kct-clear" role="button" @click="clearUserOverlays">清空</view>
     </view>
-    <!-- 自动线颜色图例（小白友好）：绿=支撑 红=压力 绿=趋势 -->
-    <view v-if="showTools && autoDraw" class="kc-legend">
-      <text class="kcl-it"><text class="kcl-dot s"></text>支撑</text>
-      <text class="kcl-it"><text class="kcl-dot p"></text>压力</text>
-      <text class="kcl-it"><text class="kcl-dot t"></text>趋势</text>
-      <text class="kcl-it"><text class="kcl-dot z"></text>关键区间</text>
+    <!-- 自动线颜色图例（小白友好）：仅显示当前已开启的辅助线种类，开关关闭即隐藏对应项 -->
+    <view v-if="showTools && autoDraw && auxConfig?.enabled" class="kc-legend">
+      <text v-if="auxConfig.pressure" class="kcl-it"><text class="kcl-dot p"></text>压力</text>
+      <text v-if="auxConfig.support" class="kcl-it"><text class="kcl-dot s"></text>支撑</text>
+      <text v-if="auxConfig.trend" class="kcl-it"><text class="kcl-dot t"></text>趋势</text>
+      <text v-if="auxConfig.zone" class="kcl-it"><text class="kcl-dot z"></text>关键区间</text>
     </view>
     <!-- 自动线悬浮提示：跟随十字光标显示每条线的类型/价位/区间/触及次数/方向 -->
     <view v-if="tip.show" class="kc-tip" :style="tipStyle">
@@ -43,6 +42,7 @@ const ZONE_EDGE = "rgba(108,122,145,0.55)"; // 关键区间边界描边（与填
 const ZONE_TEXT = "rgba(125,140,165,0.95)"; // 关键区间标签文字
 import { computeChip, type ChipResult } from "@/utils/analyzer";
 import type { Kline, Trend } from "@/utils/period";
+import type { ChartAuxConfig } from "@/store/chartAux";
 
 // ---- 分时均价（AVP）自定义指标：累计成交额 / 累计成交量，叠加在主图 ----
 let avpRegistered = false;
@@ -100,6 +100,8 @@ const props = withDefaults(
     autoPeriod?: number;
     /** 自动画线灵敏度 1-10（越大越敏感→更多/更密价位与更紧聚类）；默认 5 */
     autoSensitivity?: number;
+    /** 辅助线显示配置（总开关 + 压力/支撑/趋势/关键区间逐线开关）；不传则按组件默认全开 */
+    auxConfig?: ChartAuxConfig;
   }>(),
   { height: 440, showMA: true, showMacd: true, showTools: false, autoDraw: false, persist: true }
 );
@@ -419,7 +421,6 @@ function clearUserOverlays() {
 // 关键：KLineCharts overlay 的 point 字段是 { timestamp, value }（不是 price）；用错字段会导致价格→y 坐标失败被钳到顶部。
 const autoIds: string[] = [];
 const autoLevels: AutoLevel[] = [];
-const autoEnabled = ref(true);
 function hexA(hex: string, a: number): string {
   const h = hex.replace("#", "");
   const r = parseInt(h.slice(0, 2), 16);
@@ -536,12 +537,14 @@ function computeAutoLevels(): AutoLevel[] {
   if (tr) out.push({ kind: "trend", points: tr.points, dir: tr.dir, touches: tr.points.length, color: hexA(TREND, 0.72), label: tr.dir === "up" ? "上升趋势" : "下降趋势" });
   return out;
 }
-// 清旧自动线并按当前开关重画
+// 清旧自动线并按当前辅助线开关重画
 function drawAutoLevels() {
   autoIds.forEach((id) => { try { chart?.removeOverlay(id); } catch { /* noop */ } });
   autoIds.length = 0;
   autoLevels.length = 0;
-  if (!props.autoDraw || !chart || !autoEnabled.value) return;
+  const cfg = props.auxConfig;
+  // 总开关关闭（或根本未启用自动画线）→ 不绘制任何辅助线
+  if (!props.autoDraw || !chart || !cfg || !cfg.enabled) return;
   const levels = computeAutoLevels();
   // 过滤：只保留「压力线整体在支撑线之上」的干净层级，避免红绿线倒置、区间失效
   let pres = levels.filter((l) => l.kind === "pressure" && typeof l.price === "number").map((l) => l.price as number);
@@ -556,8 +559,9 @@ function drawAutoLevels() {
   }
   const presSet = new Set(pres);
   const supSet = new Set(sup);
-  // 先画「阻力组 ↔ 支撑组」中间的阴影带（关键区间），置于线下方，避免遮挡虚线
-  if (pres.length && sup.length && dataList.length) {
+  // 先画「阻力组 ↔ 支撑组」中间的阴影带（关键区间），置于线下方，避免遮挡虚线；
+  // 仅当关键区间开关开启时绘制
+  if (cfg.zone && pres.length && sup.length && dataList.length) {
     const topPrice = Math.min(...pres); // 阻力区下沿（最低压力）
     const botPrice = Math.max(...sup);  // 支撑区上沿（最高支撑）
     if (topPrice > botPrice) {
@@ -574,10 +578,11 @@ function drawAutoLevels() {
       }
     }
   }
-  // 再画支撑/压力/趋势线（仅画过滤后仍保留的层级）
+  // 再画支撑/压力/趋势线（仅画过滤后仍保留且对应开关开启的层级）
   for (const lv of levels) {
-    if (lv.kind === "pressure" && typeof lv.price === "number" && !presSet.has(lv.price)) continue;
-    if (lv.kind === "support" && typeof lv.price === "number" && !supSet.has(lv.price)) continue;
+    if (lv.kind === "pressure" && typeof lv.price === "number" && (!cfg.pressure || !presSet.has(lv.price))) continue;
+    if (lv.kind === "support" && typeof lv.price === "number" && (!cfg.support || !supSet.has(lv.price))) continue;
+    if (lv.kind === "trend" && !cfg.trend) continue;
     try {
       const id = `auto_${lv.kind}_${Math.random().toString(36).slice(2, 7)}`;
       if (lv.kind === "trend" && lv.points) {
@@ -598,11 +603,6 @@ function drawAutoLevels() {
       /* noop */
     }
   }
-}
-// 切换自动画线开关
-function toggleAuto() {
-  autoEnabled.value = !autoEnabled.value;
-  drawAutoLevels();
 }
 
 // ---- 自动趋势线自定义 overlay（线段 + 末端三角箭头标示方向）----
@@ -854,6 +854,12 @@ watch(
   () => applyLivePrice()
 );
 watch(isDark, () => applyTheme());
+// 辅助线开关变化（总开关 / 压力 / 支撑 / 趋势 / 关键区间任一）→ 重画自动线
+watch(
+  () => props.auxConfig,
+  () => drawAutoLevels(),
+  { deep: true }
+);
 
 onBeforeUnmount(() => {
   if (ro) {

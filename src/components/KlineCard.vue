@@ -3,11 +3,13 @@
 // 统一的 rendererMap（新增分析卡只需在注册表加一项，无需改动 MarketView 模板）。
 //
 // 周期切换轴与行情图「合为同一张卡片」：分段控件直接渲染在本卡片顶部、图表上方，
-// 而非行情头部下方那个独立的悬浮胶囊。切换周期时分段控件保持常驻（仅图表区转圈），
-// 不抢走用户对周期的控制权。
+// 切换周期时分段控件保持常驻（仅图表区转圈），不抢走用户对周期的控制权。
+// 年K 末尾附带「辅助线设置」齿轮，点击弹出底部抽屉，逐线开关压力/支撑/趋势/关键区间。
 import StockChart from "./StockChart.vue";
+import OutlineIcon from "@/components/OutlineIcon.vue";
 import { PERIODS, PERIOD_ORDER, type PeriodKey } from "@/utils/period";
-import { computed } from "vue";
+import { auxConfig } from "@/store/chartAux";
+import { computed, ref } from "vue";
 
 const props = defineProps<{
   period: PeriodKey;
@@ -46,20 +48,47 @@ function pick(p: PeriodKey) {
   if (p === props.period) return;
   emit("pick", p);
 }
+
+// ---- 辅助线设置抽屉 ----
+const auxOpen = ref(false);
+type AuxKey = "pressure" | "support" | "trend" | "zone";
+const auxItems: { key: AuxKey; label: string; desc: string }[] = [
+  { key: "pressure", label: "压力线", desc: "红色虚线：上方阻力位" },
+  { key: "support", label: "支撑线", desc: "绿色虚线：下方支撑位" },
+  { key: "trend", label: "趋势线", desc: "蓝色箭头：上行 / 下行方向" },
+  { key: "zone", label: "关键区间", desc: "阻力与支撑之间的阴影带" },
+];
+function toggleAux(key: AuxKey) {
+  auxConfig[key] = !auxConfig[key];
+}
+function closeAux() {
+  auxOpen.value = false;
+}
 </script>
 
 <template>
-  <!-- 周期切换：与行情图同一张卡片，置于图表上方 -->
-  <view class="period-seg">
-    <view class="ps-ind" :style="indStyle" />
-    <text
-      v-for="p in periodOrder"
-      :key="p"
-      :class="['ps', period === p ? 'active' : '']"
+  <!-- 周期切换 + 辅助线设置：与行情图同一张卡片，置于图表上方 -->
+  <view class="period-bar">
+    <view class="period-seg">
+      <view class="ps-ind" :style="indStyle" />
+      <text
+        v-for="p in periodOrder"
+        :key="p"
+        :class="['ps', period === p ? 'active' : '']"
+        role="button"
+        @click="pick(p)"
+        >{{ periodMeta[p].label }}</text
+      >
+    </view>
+    <!-- 年K 末尾的设置齿轮：控制行情图辅助线（压力/支撑/趋势/关键区间）显隐 -->
+    <view
+      class="period-gear"
+      :class="{ on: auxConfig.enabled }"
       role="button"
-      @click="pick(p)"
-      >{{ periodMeta[p].label }}</text
+      @click="auxOpen = true"
     >
+      <OutlineIcon type="gear" :size="30" :color="auxConfig.enabled ? 'var(--primary)' : 'var(--text-2)'" />
+    </view>
   </view>
 
   <!-- 切换周期时仅图表区转圈，分段控件保持常驻 -->
@@ -79,6 +108,7 @@ function pick(p: PeriodKey) {
     :code="code"
     :show-tools="showTools"
     :auto-draw="showTools"
+    :aux-config="auxConfig"
   />
   <view v-else-if="period === 'm'" class="hint">暂无数据</view>
   <StockChart
@@ -91,17 +121,71 @@ function pick(p: PeriodKey) {
     :code="code"
     :show-tools="showTools"
     :auto-draw="showTools"
+    :aux-config="auxConfig"
   />
+
+  <!-- 辅助线设置底部抽屉 -->
+  <view v-if="auxOpen" class="sheet-mask anim-mask" @click="closeAux" />
+  <view v-if="auxOpen" class="sheet-panel anim-sheet">
+    <view class="sheet-head">
+      <text class="sheet-title">辅助线设置</text>
+      <view class="sheet-close" role="button" @click="closeAux">
+        <OutlineIcon type="close" :size="32" color="var(--text-2)" />
+      </view>
+    </view>
+    <view class="sheet-body">
+      <!-- 总开关 -->
+      <view class="aux-row">
+        <view class="aux-left">
+          <text class="aux-label">显示辅助线</text>
+          <text class="aux-desc">系统自动标注的压力 / 支撑 / 趋势与关键区间</text>
+        </view>
+        <view
+          class="cc-switch"
+          :class="{ on: auxConfig.enabled }"
+          hover-class="cc-switch-hover"
+          role="button"
+          @click="auxConfig.enabled = !auxConfig.enabled"
+        >
+          <view class="cc-knob" />
+        </view>
+      </view>
+      <view class="aux-sep" />
+      <!-- 逐线开关 -->
+      <view v-for="it in auxItems" :key="it.key" class="aux-row">
+        <view class="aux-left">
+          <text class="aux-label">{{ it.label }}</text>
+          <text class="aux-desc">{{ it.desc }}</text>
+        </view>
+        <view
+          class="cc-switch"
+          :class="{ on: auxConfig[it.key] }"
+          hover-class="cc-switch-hover"
+          role="button"
+          @click="toggleAux(it.key)"
+        >
+          <view class="cc-knob" />
+        </view>
+      </view>
+    </view>
+  </view>
 </template>
 
 <style scoped>
-/* 周期分段控件：与行情图同一张卡片，作为卡片内顶部的一行控件 */
+/* 周期 + 设置：同一行，与行情图同一张卡片，作为卡片内顶部的一行控件 */
+.period-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 10rpx;
+  margin-bottom: 12rpx;
+}
+/* 周期分段控件：药丸底（--card-2），内部 5 段均分 */
 .period-seg {
   position: relative;
+  flex: 1;
   display: flex;
   gap: 8rpx;
   padding: 6rpx;
-  margin-bottom: 12rpx;
   background: var(--card-2);
   border-radius: 999rpx;
 }
@@ -145,7 +229,24 @@ function pick(p: PeriodKey) {
   font-weight: 600;
   letter-spacing: 0.5rpx;
 }
-/* 切换周期时的图表区加载态：居中转圈，不替换整张卡片（控件常驻） */
+/* 设置齿轮：与分段控件同款药丸，置于年K 末尾；总开关开启时图标显主色，关闭时显次级灰 */
+.period-gear {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  background: var(--card-2);
+  border-radius: 999rpx;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease, color 0.2s ease;
+}
+.period-gear:active {
+  background: var(--primary-soft);
+  transform: scale(0.94);
+}
+/* 切换到图表区的加载态：居中转圈，不替换整张卡片（控件常驻） */
 .chart-loading {
   display: flex;
   align-items: center;
@@ -159,5 +260,34 @@ function pick(p: PeriodKey) {
   text-align: center;
   font-size: var(--font-sm);
   color: var(--text-2);
+}
+
+/* 辅助线设置抽屉内的行布局 */
+.aux-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  min-height: 98rpx;
+}
+.aux-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  min-width: 0;
+}
+.aux-label {
+  font-size: var(--font-md);
+  color: var(--text);
+}
+.aux-desc {
+  font-size: var(--font-xs);
+  color: var(--text-2);
+  line-height: 1.4;
+}
+.aux-sep {
+  height: 1rpx;
+  background: var(--border);
+  margin: 6rpx 0;
 }
 </style>
