@@ -543,6 +543,43 @@ function applyLivePrice() {
   });
 }
 
+// ---- 分时图整日全貌：默认铺满可视宽度显示当日完整分时 ----
+// 根因：klinecharts 默认 barSpace=8px，分时 240 根柱需约 1920px，远超手机容器（约 350px），
+// 导致默认只渲染末尾约 40 分钟、需手动左拖才能看全天（即用户反馈的现象）。
+// 解决：右留白归零 + 二分搜索最大 barSpace，使 from=0 且 to=数据总量（整日完整可见）。
+// 日K/周K 等模式不调用本函数，保留可滚动浏览历史的交互。
+function fitIntradayAll() {
+  if (!chart || !chartEl.value || props.mode !== "intraday") return;
+  const count = dataList.length;
+  if (count <= 1) return;
+  const w = chartEl.value.clientWidth;
+  if (!w) return;
+  // 末根留 6px 给「最新价」标签呼吸空间（像素单位；缩放到 fit 后约 1px，可忽略）
+  chart.setOffsetRightDistance(6);
+  // 二分搜索最大 barSpace（API 内部 clamp [1,50]），使整日数据全部落入可视区
+  let lo = 1;
+  let hi = 50;
+  let best = 1;
+  for (let i = 0; i < 22; i++) {
+    const mid = (lo + hi) / 2;
+    chart.setBarSpace(mid);
+    const vr = chart.getVisibleRange() as any;
+    const allVisible = vr && vr.from <= 0 && vr.to >= count;
+    if (allVisible) {
+      best = mid;
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  chart.setBarSpace(Math.max(1, best));
+}
+
+// 数据就绪回调：分时模式每次数据变化（首载 / 刷新 / 实时末根）后保持整日全貌
+function onDataReady() {
+  fitIntradayAll();
+}
+
 // ---- 生命周期 ----
 function destroyChart() {
   if (crosshairCb && chart) {
@@ -552,6 +589,14 @@ function destroyChart() {
       /* noop */
     }
     crosshairCb = null;
+  }
+  if (dataReadyCb && chart) {
+    try {
+      chart.unsubscribeAction(ActionType.OnDataReady, dataReadyCb);
+    } catch {
+      /* noop */
+    }
+    dataReadyCb = null;
   }
   if (chart) {
     try {
@@ -894,6 +939,7 @@ const tipStyle = computed(() => {
   return { left: left + "px", top: top + "px" };
 });
 let crosshairCb: ((d: any) => void) | null = null;
+let dataReadyCb: (() => void) | null = null;
 function onCrosshair(c: any) {
   if (!chart || !c || !c.paneId || c.paneId !== "candle_pane" || c.x == null || c.y == null) {
     tip.show = false;
@@ -989,6 +1035,9 @@ function buildChart() {
   // 十字光标订阅（驱动自动线悬浮提示）；单实例，销毁时已解除订阅
   crosshairCb = onCrosshair;
   chart.subscribeAction(ActionType.OnCrosshairChange, crosshairCb as never);
+  // 数据就绪订阅：分时模式首载/刷新/实时末根后保持「整日全貌」铺满视图
+  dataReadyCb = onDataReady;
+  chart.subscribeAction(ActionType.OnDataReady, dataReadyCb as never);
 
   chart.applyNewData(dataList);
   nextTick(() => {
@@ -997,6 +1046,9 @@ function buildChart() {
     // 等主图比例尺测量完成再叠加 overlay，避免价格→像素映射过早被钳到顶部（表现为所有线堆在顶部一条虚线）
     const drawOverlays = () => {
       if (!chart || !chartEl.value) return;
+      // 分时图首载兜底：确保整日铺满（OnDataReady 在 applyNewData 异步解析后才触发，
+      // 此处保证容器尺寸确定后也对齐一次）
+      if (props.mode === "intraday") fitIntradayAll();
       drawCyq();
       restoreOverlays();
       drawAutoLevels();
@@ -1034,6 +1086,8 @@ function resizeAll() {
       /* noop */
     }
   }
+  // 容器尺寸变化（旋转/布局）后：分时图重新铺满整日，避免回到默认 barSpace 只显示末尾片段
+  if (props.mode === "intraday" && chart) fitIntradayAll();
   drawCyq();
 }
 
