@@ -90,6 +90,8 @@ export function parseTXTrend(text: string, sym: string): { trends: Trend[]; preC
   const rows: string[] = node.data;
   const preClose = +node.preClose || (rows.length ? parseFloat(rows[0].split(/\s+/)[1]) : 0);
   const trends: Trend[] = [];
+  let prevVolHand = 0; // 上一根累计成交量（手），用于差分还原每分钟量
+  let prevAmt = 0; // 上一根累计成交额（元）
   for (const r of rows) {
     const a = r.split(/\s+/).filter(Boolean);
     if (a.length < 4) continue;
@@ -97,12 +99,21 @@ export function parseTXTrend(text: string, sym: string): { trends: Trend[]; preC
     if (!isFinite(price) || price <= 0) continue;
     const cumVolHand = +a[2]; // 累计成交量（手）
     const cumAmount = +a[3]; // 累计成交额（元）
-    const cumVol = cumVolHand * 100; // 手 → 股
-    const avg = cumVol ? cumAmount / cumVol : price;
+    // 东财/新浪分时量是「每分钟成交量(手)」。腾讯这里给的是累计量，为避免 VOL 面板画出
+    // 100 倍过大且单调向上的阶梯，差分还原成每分钟量（手），且不再 ×100 转成股。
+    // 非累计（异常/字段变动）时退回原始值，避免负量或丢量。
+    let volHand = cumVolHand - prevVolHand;
+    if (!(volHand >= 0)) volHand = cumVolHand;
+    prevVolHand = cumVolHand;
+    let amt = cumAmount - prevAmt;
+    if (!(amt >= 0)) amt = cumAmount;
+    prevAmt = cumAmount;
+    // 均价仍是「累计成交额 / 累计成交量」(元/股)，与东财语义一致
+    const avg = cumVolHand ? cumAmount / (cumVolHand * 100) : price;
     const hh = a[0].slice(0, 2);
     const mm = a[0].slice(2, 4);
     const t = dateStr ? `${dateStr} ${hh}:${mm}` : `${hh}:${mm}`;
-    trends.push({ t, open: price, price, high: price, low: price, vol: cumVol, amount: cumAmount, avg });
+    trends.push({ t, open: price, price, high: price, low: price, vol: volHand, amount: amt, avg });
   }
   if (!trends.length) return null;
   return { trends, preClose };
