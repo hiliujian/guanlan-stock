@@ -137,6 +137,30 @@
       <view class="bottom-pad" />
       </view><!-- /mk-body -->
       </scroll-view>
+
+      <!-- 底部默认指数卡片：复用自选页同款 PeekSheet 统一底部窗体（固定常驻于菜单栏上方），
+           折叠露出「大盘」预览（按当前股票匹配对应指数），展开态内容暂未确定 -->
+      <PeekSheet>
+        <template #peek>
+          <view class="idx-row" role="button" aria-label="展开指数面板">
+            <text class="idx-label">大盘</text>
+            <view class="idx-main">
+              <text class="idx-name truncate">{{ idxName }}</text>
+            </view>
+            <view class="idx-right">
+              <text class="idx-price" :class="idxCls">{{ idxPriceText }}</text>
+              <text class="idx-pct" :class="idxCls">{{ idxPctText }}</text>
+            </view>
+            <OutlineIcon class="idx-caret" type="chevron-up" :size="20" color="var(--text-2)" />
+          </view>
+        </template>
+        <template #default>
+          <!-- 展开态内容暂未确定（当前阶段仅实现收起态显示） -->
+          <view class="idx-expand">
+            <text class="idx-expand-tip">敬请期待</text>
+          </view>
+        </template>
+      </PeekSheet>
     </view>
 </template>
 
@@ -149,11 +173,12 @@ import OutlineIcon from "@/components/OutlineIcon.vue";
 import PriceText from "@/components/PriceText.vue";
 import AnalysisCard from "@/components/AnalysisCard.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
+import PeekSheet from "@/components/PeekSheet.vue";
 import ReportView from "@/components/ReportView.vue";
 import KlineCard from "@/components/KlineCard.vue";
 import StockTag from "@/components/StockTag.vue";
 import { fetchHotSearches, recordSearch, type HotStock } from "@/api/hot";
-import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, type SearchHit, type QuoteBundle, type NewsItem } from "@/api/quote";
+import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, resolveIndexForStock, type SearchHit, type QuoteBundle, type NewsItem } from "@/api/quote";
 import { getMarketStatus } from "@/utils/marketStatus";
 import {
   resolveSecid,
@@ -190,6 +215,48 @@ const newsSig = ref<NewsSignal | null>(null);
 // 不再依赖 run()/switchPeriod() 里的手动赋值。
 const watched = computed(() => isWatched(curCode.value, curMarket.value));
 const realtime = ref<{ price: number; preClose: number; open?: number; high?: number; low?: number; time?: string } | null>(null);
+
+// 底部默认指数卡片（复用自选页同款 PeekSheet 统一底部窗体）：收起态展示「默认指数」——
+// 按当前查看的股票所属板块自动匹配对应大盘指数（创业板/科创板→创业板指、沪A→上证指数、
+// 深A→深证成指、北A→北证50），无股票时默认上证指数；展开态内容暂未确定，先给最小占位。
+const DEFAULT_INDEX = { secid: "1.000001", name: "上证指数" };
+const idxSecid = ref(DEFAULT_INDEX.secid);
+const idxName = ref(DEFAULT_INDEX.name);
+const idxSnap = ref<{ price: number; preClose: number; pct: number; chg: number } | null>(null);
+// 依据当前股票代码匹配对应大盘指数（无股票 → 默认上证指数）；沿用 quote.ts 既有判定，避免重复逻辑。
+function resolveIdx() {
+  const r = curCode.value ? resolveIndexForStock(curCode.value) : null;
+  const t = r ?? DEFAULT_INDEX;
+  idxSecid.value = t.secid;
+  idxName.value = t.name;
+}
+// 轻量拉取当前匹配指数的实时快照（复用 fetchSnapshot，20s 缓存；失败保留上次值）
+async function refreshIndex() {
+  try {
+    const s = await fetchSnapshot(idxSecid.value);
+    idxSnap.value = { price: s.price, preClose: s.preClose, pct: s.pct, chg: s.chg };
+  } catch {
+    /* 保留上次快照，下一拍重试 */
+  }
+}
+// 股票变化：重新匹配指数并拉取快照
+async function loadIndex() {
+  resolveIdx();
+  await refreshIndex();
+}
+function fmtPrice(v: number | null | undefined): string {
+  return v != null && Number.isFinite(v) ? v.toFixed(2) : "--";
+}
+function fmtPct(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "--";
+  return (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
+}
+const idxCls = computed(() => {
+  const s = idxSnap.value;
+  return s ? (s.pct >= 0 ? "up" : "down") : "";
+});
+const idxPriceText = computed(() => fmtPrice(idxSnap.value?.price));
+const idxPctText = computed(() => fmtPct(idxSnap.value?.pct));
 
 // 卡片渲染注册表：新增分析卡只需在此加一项（comp + props 工厂），
 // MarketView 模板无需再写 v-if 分支，彻底解耦「卡片种类」与「渲染逻辑」。
@@ -430,6 +497,8 @@ async function refreshFull() {
 // 统一心跳：每 5s 刷新一次状态标识；交易时段内刷新行情（轻量为主，周期性全量）
 async function onTick() {
   updateStatus();
+  // 底部大盘指数卡片：独立于个股，交易时段内轻量刷新（无股票时默认上证指数亦刷新）
+  if (status.value.open) refreshIndex();
   if (!secid.value || loading.value || refreshing.value) return;
   if (!status.value.open) return; // 非交易时段不拉取，避免无谓请求
   refreshing.value = true;
@@ -665,6 +734,9 @@ watch(
     }
   }
 );
+
+// 当前查看的股票变化（或首次进入）时，重新匹配对应大盘指数并拉取实时快照
+watch(secid, loadIndex, { immediate: true });
 
 onMounted(() => {
   loadHistory();
@@ -1103,7 +1175,73 @@ defineExpose({ refresh: () => refreshFull() });
 }
 
 .bottom-pad {
-  /* 留出底部导航栏高度，避免末尾内容被 tab 栏遮挡 */
-  height: 140rpx;
+  /* 留出底部导航栏 + 默认指数卡片(收起态)高度，避免末尾内容被遮挡 */
+  height: 200rpx;
+}
+/* 底部默认指数卡片：收起态一行（布局/视觉与自选「今日最热」PeekSheet 一致，共用同一套窗体） */
+.idx-row {
+  flex: 1;
+  height: 76rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 0 28rpx;
+  cursor: pointer;
+}
+.idx-row:active {
+  background: var(--card-2);
+}
+.idx-caret {
+  flex: none;
+}
+.idx-label {
+  flex: none;
+  font-size: var(--font-sm);
+  color: var(--text-3);
+}
+.idx-main {
+  flex: none;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+.idx-name {
+  flex: none;
+  max-width: 240rpx;
+  min-width: 0;
+  font-size: var(--font-sm);
+  color: var(--text);
+}
+.idx-right {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
+}
+.idx-price,
+.idx-pct {
+  font-size: var(--font-sm);
+  font-variant-numeric: tabular-nums;
+}
+.idx-price.up,
+.idx-pct.up {
+  color: var(--up);
+}
+.idx-price.down,
+.idx-pct.down {
+  color: var(--down);
+}
+/* 展开态占位（内容暂未确定） */
+.idx-expand {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.idx-expand-tip {
+  font-size: var(--font-sm);
+  color: var(--text-3);
 }
 </style>

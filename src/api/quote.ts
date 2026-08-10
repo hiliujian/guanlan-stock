@@ -101,12 +101,13 @@ export async function searchStocks(keyword: string): Promise<SearchHit[]> {
 }
 
 // 根据股票代码自动匹配对应大盘指数（行业/板块指数暂不细分，按市场主指数兜底）
-//   688xxx/300xxx/301xxx → 创业板指(399006)
+//   688xxx/300xxx/301xxx → 创业板指(399006)（科创板与创业板共用创业板指，沿用现有口径）
 //   沪A(6xxxxx)           → 上证指数(000001)
 //   深A(0xxxxx 非创业板)  → 深证成指(399001)
 //   北A(4/8/9xxxxx)       → 北证50(899050)
-//   港股                  → 恒生指数(HSI，本地联想兜底；接口无则忽略)
-function resolveIndexForStock(code: string): { secid: string; name: string } | null {
+//   港股/兜底             → 沪深300(000300)
+// 复用入口：行情页底部默认指数卡片据此展示「默认指数」，避免重复判定逻辑。
+export function resolveIndexForStock(code: string): { secid: string; name: string } | null {
   const c = (code || "").trim();
   if (/^\d{5}$/.test(c)) return null; // 港股：主指数代码不匹配 getKline 口径，跳过避免报错
   if (/^(688|300|301)/.test(c)) return { secid: "0.399006", name: "创业板指" };
