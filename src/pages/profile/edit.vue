@@ -10,25 +10,16 @@
     </view>
 
     <scroll-view class="ep-scroll" scroll-y>
-      <!-- 头像（点击更换照片）：居中展示 -->
+      <!-- 头像（点击弹出操作菜单：上传头像 / 设置头像框）：居中展示 -->
       <view class="ep-hero">
-        <view class="ep-avatar" hover-class="ep-av-hover" @click="chooseAvatar" role="button" aria-label="更换头像">
+        <view class="ep-avatar" hover-class="ep-av-hover" @click="openAvatarMenu" role="button" aria-label="头像设置">
           <UserAvatar :url="avatarUrl" :seed="seedName" :size="148" :frame="frame" />
           <view class="ep-cam">
             <OutlineIcon v-if="!uploading" type="camera" :size="20" color="#fff" />
             <view v-else class="ep-spin" />
           </view>
-          <!-- 头像框编辑入口：右上角，点击弹出框选择（stop 避免误触更换头像）。
-               图标采用「半圆」风格：上半圆弧（下半隐藏）+ 极简铅笔，呼应头像框轮廓，精致协调。 -->
-          <view class="ep-frame-edit" role="button" aria-label="编辑头像框" hover-class="ep-frame-edit-hover" @click.stop="openFrameSheet">
-            <svg class="fe-ico" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M4 12 A8 8 0 0 1 20 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-              <path d="M12 12 L16.5 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-              <circle cx="16.5" cy="7.5" r="1.3" fill="currentColor" />
-            </svg>
-          </view>
         </view>
-        <text class="ep-hero-tip">点击头像可更换照片，右上角图标可换头像框</text>
+        <text class="ep-hero-tip">点击头像可更换照片</text>
       </view>
 
       <!-- 头像裁剪弹窗：选图后弹出，确认后上传 -->
@@ -87,8 +78,8 @@
         </view>
       </view>
 
-      <!-- 头像框选择弹窗：点头像右上角编辑图标弹出，横向展示全部可选框（头像预览 + 名称），
-           选中即写入 frame 并自动关闭；选中态用主色高亮 + 对勾标记。 -->
+      <!-- 头像框选择弹窗：从「头像设置」菜单点「设置头像框」进入，横向展示全部可选框
+           （头像预览 + 名称），选中即写入并自动关闭；选中态用主色高亮 + 对勾标记。 -->
       <BottomSheet v-model="frameSheetVisible" title="选择头像框">
         <scroll-view class="af-scroll" scroll-x :show-scrollbar="false">
           <view class="af-row">
@@ -109,6 +100,27 @@
             </view>
           </view>
         </scroll-view>
+      </BottomSheet>
+
+      <!-- 头像设置菜单：点击头像弹出，含「上传头像」「设置头像框」两项操作 -->
+      <BottomSheet v-model="avatarMenuVisible" title="头像设置">
+        <view class="am-list">
+          <view class="am-item" role="button" hover-class="am-item-hover" @click="onPickPhoto">
+            <view class="am-ico">
+              <OutlineIcon type="camera" :size="26" color="var(--primary)" />
+            </view>
+            <text class="am-label">上传头像</text>
+          </view>
+          <view class="am-item" role="button" hover-class="am-item-hover" @click="onPickFrame">
+            <view class="am-ico">
+              <svg class="am-frame-ico" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2" />
+                <rect x="8" y="8" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="2" />
+              </svg>
+            </view>
+            <text class="am-label">设置头像框</text>
+          </view>
+        </view>
       </BottomSheet>
     </scroll-view>
   </view>
@@ -148,7 +160,19 @@ const seedName = computed(() => avatarSeed(username.value) || "我");
 // 头像框选择弹窗状态
 const frameSheetVisible = ref(false);
 const frameSaving = ref(false);
-function openFrameSheet() {
+
+// 头像操作菜单：点头像弹出，含「上传头像」「设置头像框」两项操作
+const avatarMenuVisible = ref(false);
+function openAvatarMenu() {
+  if (uploading.value) return;
+  avatarMenuVisible.value = true;
+}
+function onPickPhoto() {
+  avatarMenuVisible.value = false;
+  chooseAvatar();
+}
+function onPickFrame() {
+  avatarMenuVisible.value = false;
   frameSheetVisible.value = true;
 }
 // 选中某头像框：立即写入并自动关闭弹窗，且直接提交到后端（无需等待「保存资料」）
@@ -321,30 +345,43 @@ async function save() {
   color: var(--text-2);
 }
 
-/* 头像框编辑入口：头像右上角的圆形按钮（与左下角相机对称，主色绿 + 白边，统一视觉）。
-   图标内联 svg：上半圆弧（下半隐藏，呼应「半圆」） + 极简铅笔，白色 currentColor。 */
-.ep-frame-edit {
-  position: absolute;
-  right: 6rpx;
-  top: 6rpx;
-  width: 52rpx;
-  height: 52rpx;
+/* 头像设置菜单：两行操作（上传头像 / 设置头像框），图标圆形徽标 + 文字，主色按压反馈 */
+.am-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  padding: 10rpx 0 4rpx;
+}
+.am-item {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  padding: 24rpx 16rpx;
+  border-radius: var(--radius);
+  transition: background 0.18s ease;
+}
+.am-item-hover {
+  background: var(--card-2);
+}
+.am-ico {
+  flex: none;
+  width: 56rpx;
+  height: 56rpx;
   border-radius: 50%;
-  background: var(--primary);
+  background: var(--primary-soft);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 3rpx solid #fff;
-  box-shadow: var(--shadow-primary-1);
+  color: var(--primary);
 }
-.ep-frame-edit-hover {
-  opacity: 0.85;
+.am-frame-ico {
+  width: 28rpx;
+  height: 28rpx;
+  color: var(--primary);
 }
-/* 漏半圆图标：白色描边（currentColor），与徽标白边协调 */
-.fe-ico {
-  width: 24rpx;
-  height: 24rpx;
-  color: #fff;
+.am-label {
+  font-size: var(--font-md);
+  color: var(--text);
 }
 
 /* 头像框弹窗：横向滚动的一排选项，选中态加主色高亮边框 + 对勾标记 */
