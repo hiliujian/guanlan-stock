@@ -18,9 +18,14 @@
             <OutlineIcon v-if="!uploading" type="camera" :size="20" color="#fff" />
             <view v-else class="ep-spin" />
           </view>
-          <!-- 头像框编辑入口：右上角，点击弹出框选择（stop 避免误触更换头像） -->
+          <!-- 头像框编辑入口：右上角，点击弹出框选择（stop 避免误触更换头像）。
+               图标采用「漏半圆」风格：白色半环（呼应头像框轮廓）+ 极简铅笔，精致协调。 -->
           <view class="ep-frame-edit" role="button" aria-label="编辑头像框" hover-class="ep-frame-edit-hover" @click.stop="openFrameSheet">
-            <OutlineIcon type="edit" :size="20" color="#fff" />
+            <svg class="fe-ico" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 4 A8 8 0 0 0 12 20" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              <path d="M13 13 L16.4 9.6" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              <circle cx="12.7" cy="13.3" r="1.3" fill="currentColor" />
+            </svg>
           </view>
         </view>
         <text class="ep-hero-tip">点击头像可更换照片，右上角图标可换头像框</text>
@@ -302,7 +307,7 @@ async function save() {
   color: var(--text-2);
 }
 
-/* 头像框编辑入口：头像右上角的圆形按钮（与左下角相机对称） */
+/* 头像框编辑入口：头像右上角的圆形按钮（与左下角相机对称，主色绿 + 白边，统一视觉） */
 .ep-frame-edit {
   position: absolute;
   right: 6rpx;
@@ -310,7 +315,7 @@ async function save() {
   width: 52rpx;
   height: 52rpx;
   border-radius: 50%;
-  background: var(--primary-dark);
+  background: var(--primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -319,6 +324,12 @@ async function save() {
 }
 .ep-frame-edit-hover {
   opacity: 0.85;
+}
+/* 漏半圆图标：白色描边（currentColor），与徽标白边协调 */
+.fe-ico {
+  width: 24rpx;
+  height: 24rpx;
+  color: #fff;
 }
 
 /* 头像框弹窗：横向滚动的一排选项，选中态加主色高亮边框 + 对勾标记 */
