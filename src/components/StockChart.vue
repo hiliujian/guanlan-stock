@@ -536,12 +536,23 @@ function drawAutoLevels() {
   autoLevels.length = 0;
   if (!props.autoDraw || !chart || !autoEnabled.value) return;
   const levels = computeAutoLevels();
+  // 过滤：只保留「压力线整体在支撑线之上」的干净层级，避免红绿线倒置、区间失效
+  let pres = levels.filter((l) => l.kind === "pressure" && typeof l.price === "number").map((l) => l.price as number);
+  let sup = levels.filter((l) => l.kind === "support" && typeof l.price === "number").map((l) => l.price as number);
+  if (pres.length && sup.length) {
+    const hiSup = Math.max(...sup);
+    pres = pres.filter((p) => p > hiSup);           // 丢弃落在支撑区下方的"伪压力"
+    if (pres.length) {
+      const loPres = Math.min(...pres);
+      sup = sup.filter((s) => s < loPres);           // 丢弃落在压力区上方的"伪支撑"
+    }
+  }
+  const presSet = new Set(pres);
+  const supSet = new Set(sup);
   // 先画「阻力组 ↔ 支撑组」中间的阴影带（关键区间），置于线下方，避免遮挡虚线
-  const pressures = levels.filter((l) => l.kind === "pressure" && typeof l.price === "number").map((l) => l.price as number);
-  const supports = levels.filter((l) => l.kind === "support" && typeof l.price === "number").map((l) => l.price as number);
-  if (pressures.length && supports.length && dataList.length) {
-    const topPrice = Math.min(...pressures); // 阻力区下沿（最低压力）
-    const botPrice = Math.max(...supports); // 支撑区上沿（最高支撑）
+  if (pres.length && sup.length && dataList.length) {
+    const topPrice = Math.min(...pres); // 阻力区下沿（最低压力）
+    const botPrice = Math.max(...sup);  // 支撑区上沿（最高支撑）
     if (topPrice > botPrice) {
       const zid = `auto_zone_${Math.random().toString(36).slice(2, 7)}`;
       try {
@@ -556,8 +567,10 @@ function drawAutoLevels() {
       }
     }
   }
-  // 再画支撑/压力/趋势线
+  // 再画支撑/压力/趋势线（仅画过滤后仍保留的层级）
   for (const lv of levels) {
+    if (lv.kind === "pressure" && typeof lv.price === "number" && !presSet.has(lv.price)) continue;
+    if (lv.kind === "support" && typeof lv.price === "number" && !supSet.has(lv.price)) continue;
     try {
       const id = `auto_${lv.kind}_${Math.random().toString(36).slice(2, 7)}`;
       if (lv.kind === "trend" && lv.points) {
