@@ -137,42 +137,44 @@ function ensureIntradayVol() {
   }
 }
 
-// ---- SMA-MACD 自定义指标（仅分时模式，解决 EMA 前截空白） ----
-// klinecharts 内置 MACD 用 EMA(12,26,9)，需要 ~35 个数据点才能输出第一个有效值。
-// 分时图每分钟一根 → 开盘后前半小时空白。
-// 日K/周K等 K 线模式数据量大（通常 >100 根），前截仅 ~35 根可接受 → 继续用内置 EMA 版。
+// ---- EMA-MACD 自定义指标（仅分时模式，与内置 MACD 算法完全一致） ----
+// klinecharts 内置 MACD 用 EMA(12,26,9)，需要 ~35 个数据点才能输出第一个有效值
+//（因为内置实现前 35 个点返回 null/undefined，导致分时开盘后前半小时空白）。
+// 本指标采用**完全相同的 EMA 公式**，但从第 1 根 K 线起就输出值（无需预热期），
+// 使分时图 MACD 与日K/周K等 K 线模式的内置 MACD 数值和形状一致。
 //
-// 本指标仅用于分时模式，采用 **SMA + 渐进窗口** 策略使第 2 根起即有输出。
-// 公式与标准 MACD 完全一致（12/26/9 + 2倍柱）：
-//   DIF = SMA(close,12) − SMA(close,26)
-//   DEA = SMA(DIF,9)
+// 标准 EMA 公式：
+//   α = 2 / (N + 1)
+//   EMA₁ = seed（首根价格或 SMA 种子）
+//   EMAₙ = close × α + EMAₙ₋₁ × (1 − α)
+//
+// MACD（12,26,9 + 2倍柱）：
+//   DIF  = EMA(close,12) − EMA(close,26)
+//   DEA  = EMA(DIF,9)
 //   MACD = 2 × (DIF − DEA)
-// 量柱必须设自定义 styles（klinecharts 自定义指标不会自动按值正负选色，内置 MACD 才会）：
-//   在 bar figure 的 styles 回调中读 data.current.indicatorData.macd → >0 红 / <0 绿
-let smaMacdRegistered = false;
-function ensureSmaMacd() {
-  if (smaMacdRegistered) return;
+//   柱 > 0 红(UP)  柱 < 0 绿(DOWN)  柱 = 0 灰
+let emaMacdRegistered = false;
+function ensureEmaMacd() {
+  if (emaMacdRegistered) return;
   try {
     registerIndicator({
-      name: "SMA_MACD",
+      name: "EMA_MACD",
       shortName: "MACD",
       calcParams: [12, 26, 9],
       figures: [
         { key: "dif", title: "DIF: ", type: "line" },
         { key: "dea", title: "DEA: ", type: "line" },
-// 量柱逐根着色：klinecharts 自定义指标不会自动按值正负选色（内置 MACD 才会），
-// 必须在 bar figure 的 styles 回调中显式返回 { color }。
-// 正确的数据路径：data.current.indicatorData.macd（不是 indicator.data.macd）
         {
           key: "macd",
           title: "MACD: ",
           type: "bar",
+          // 量柱逐根着色：klinecharts 自定义指标不会自动按值正负选色（内置 MACD 才会）
+          // 正确数据路径：data.current.indicatorData.macd（已验证 v3 修复）
           styles: (data: any, _indicator: any, defaultStyles: any) => {
             const base = (defaultStyles?.bars && defaultStyles.bars[0]) || {};
             const up = base.upColor || UP;
             const down = base.downColor || DOWN;
             const noChange = base.noChangeColor || "#888888";
-            // klinecharts FigureStylesCallback 的指标数据在 data.current.indicatorData 上
             const macdVal = data?.current?.indicatorData?.macd;
             if (typeof macdVal === "number") {
               if (macdVal > 0) return { color: up };
@@ -185,29 +187,35 @@ function ensureSmaMacd() {
       calc: (dataList: any[], indicator: any) => {
         const params = indicator.calcParams || [12, 26, 9];
         const [p1, p2, p3] = params as number[];
-        // 渐进 SMA：窗口不足周期长度时，用已有数据个数做除数（逐步收敛到标准 SMA）
-        const sma = (arr: number[], len: number): number => {
-          if (!arr.length) return 0;
-          const n = Math.min(arr.length, len);
-          const slice = arr.slice(-n);
-          return slice.reduce((s, v) => s + v, 0) / n;
+        // EMA 指数移动平均：α = 2/(N+1), 从第1根即有输出
+        const ema = (arr: number[], period: number): number => {
+          const n = arr.length;
+          if (!n) return 0;
+          const alpha = 2 / (period + 1);
+          if (n === 1) return arr[0];
+          // 种子：用第一根价格（与 klinecharts 内置行为一致）
+          let prev = arr[0];
+          for (let i = 1; i < n; i++) {
+            prev = arr[i] * alpha + prev * (1 - alpha);
+          }
+          return prev;
         };
         const closes: number[] = [];
         const difs: number[] = [];
         return dataList.map((kLineData) => {
           const c = Number(kLineData.close) || 0;
           closes.push(c);
-          const ma1 = sma(closes, p1); // SMA(close, 12)
-          const ma2 = sma(closes, p2); // SMA(close, 26)
-          const dif = ma1 - ma2;       // DIF
+          const ema1 = ema(closes, p1); // EMA(close, 12)
+          const ema2 = ema(closes, p2); // EMA(close, 26)
+          const dif = ema1 - ema2;       // DIF
           difs.push(dif);
-          const dea = sma(difs, p3);   // DEA = SMA(DIF, 9)
-          const macd = 2 * (dif - dea); // MACD 柱（2 倍差，与标准定义一致）
+          const dea = ema(difs, p3);    // DEA = EMA(DIF, 9)
+          const macd = 2 * (dif - dea);  // MACD 柱（2 倍差，标准定义）
           return { dif, dea, macd };
         });
       },
     } as never);
-    smaMacdRegistered = true;
+    emaMacdRegistered = true;
   } catch {
     /* noop */
   }
@@ -461,7 +469,7 @@ function buildLayout(): any[] {
     // 分时模式用 INTRADAY_VOL（图例显示「分时量」），K 线模式用内置 VOL（显示「成交量」）
     { type: "indicator", content: [props.mode === "intraday" ? "INTRADAY_VOL" : "VOL"], options: { id: "vol_pane", height: volH, minHeight: 40 } },
   ];
-  if (props.showMacd) layout.push({ type: "indicator", content: [props.mode === "intraday" ? "SMA_MACD" : "MACD"], options: { id: "macd_pane", height: macdH, minHeight: 60 } });
+  if (props.showMacd) layout.push({ type: "indicator", content: [props.mode === "intraday" ? "EMA_MACD" : "MACD"], options: { id: "macd_pane", height: macdH, minHeight: 60 } });
   return layout;
 }
 
@@ -950,7 +958,7 @@ function buildChart() {
   destroyChart();
   ensureAvp();
   ensureIntradayVol();
-  ensureSmaMacd();
+  ensureEmaMacd();
   ensureMaIndicators();
   ensureTrendOverlay();
   dataList = toKLineData();
