@@ -43,6 +43,7 @@ const ZONE_TEXT = "rgba(125,140,165,0.95)"; // 关键区间标签文字
 import { computeChip, type ChipResult } from "@/utils/analyzer";
 import type { Kline, Trend } from "@/utils/period";
 import type { ChartAuxConfig } from "@/store/chartAux";
+import type { ChartMaConfig } from "@/store/chartMa";
 
 // ---- 分时均价（AVP）自定义指标：累计成交额 / 累计成交量，叠加在主图 ----
 let avpRegistered = false;
@@ -204,6 +205,47 @@ function ensureIntradayMacd() {
   }
 }
 
+// ---- 主图均线（MA）独立指标：MA5/MA10/MA20/MA60 各自注册为单线指标 ----
+// klinecharts 内置 "MA" 指标一次渲染 4 条（calcParams=[5,10,20,60]）无法独立开关，
+// 故注册 4 个独立指标，buildLayout 按 maConfig 决定往主图 push 哪几条。
+// 每条线颜色由 buildStyles 的 indicator.lines 调色板按 content 顺序循环分配（橙/蓝/紫/绿）。
+const MA_DEFS: { key: string; period: number }[] = [
+  { key: "ma5", period: 5 },
+  { key: "ma10", period: 10 },
+  { key: "ma20", period: 20 },
+  { key: "ma60", period: 60 },
+];
+let maRegistered = false;
+function ensureMaIndicators() {
+  if (maRegistered) return;
+  try {
+    for (const def of MA_DEFS) {
+      const key = def.key;
+      registerIndicator({
+        name: "MA" + def.period,
+        shortName: "MA" + def.period,
+        series: "price" as never, // 与主图共享价格坐标轴
+        calcParams: [def.period],
+        figures: [{ key, title: "MA" + def.period + ": ", type: "line" }],
+        calc: (dataList: any[]) => {
+          const res: any[] = [];
+          let sum = 0;
+          for (let i = 0; i < dataList.length; i++) {
+            const c = Number(dataList[i].close) || 0;
+            sum += c;
+            if (i >= def.period) sum -= Number(dataList[i - def.period].close) || 0;
+            res.push(i >= def.period - 1 ? { [key]: sum / def.period } : { [key]: null });
+          }
+          return res;
+        },
+      } as never);
+    }
+    maRegistered = true;
+  } catch {
+    /* noop */
+  }
+}
+
 const props = withDefaults(
   defineProps<{
     /** kline = 日K（蜡烛+均线+量+MACD）；intraday = 分时（走势+均价+量+MACD） */
@@ -215,6 +257,8 @@ const props = withDefaults(
     height?: number;
     /** 是否显示均线 MA（日K 主图叠加），默认开 */
     showMA?: boolean;
+    /** 各周期均线独立开关（MA5/MA10/MA20/MA60），默认全开；仅日K 模式生效 */
+    maConfig?: ChartMaConfig;
     /** 是否显示 MACD 面板（隐藏后成交量面板自动顶上补足），默认开 */
     showMacd?: boolean;
     /** 实时最新价（仅分时模式生效）：把「最后一根分时柱」动态同步为实时价 */
@@ -394,7 +438,15 @@ function buildLayout(): any[] {
   const volH = Math.round(usable * (props.showMacd ? 0.22 : 0.3));
   const macdH = props.showMacd ? Math.max(60, usable - priceH - volH) : 0;
   const candleContent: string[] = [];
-  if (props.mode === "kline" && props.showMA) candleContent.push("MA");
+  if (props.mode === "kline") {
+    const mc = props.maConfig;
+    // 按 maConfig 逐周期独立开关决定主图叠加哪些 MA（MA5/MA10/MA20/MA60）；
+    // showMA 为总开关，false 时不叠加任何均线。分时模式无 MA（用 AVP 均价线）。
+    const visibleMas = MA_DEFS.filter((d) => (mc ? mc[d.key as keyof ChartMaConfig] : true));
+    if (props.showMA !== false && visibleMas.length) {
+      visibleMas.forEach((d) => candleContent.push("MA" + d.period));
+    }
+  }
   if (props.mode === "intraday") candleContent.push("AVP");
   const layout: any[] = [
     { type: "candle", content: candleContent, options: { id: "candle_pane", height: priceH, minHeight: Math.round(priceH * 0.6) } },
@@ -891,6 +943,7 @@ function buildChart() {
   ensureAvp();
   ensureIntradayVol();
   ensureIntradayMacd();
+  ensureMaIndicators();
   ensureTrendOverlay();
   dataList = toKLineData();
   if (dataList.length) lastTs = dataList[dataList.length - 1].timestamp;

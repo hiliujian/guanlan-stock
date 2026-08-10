@@ -4,11 +4,12 @@
 //
 // 周期切换轴与行情图「合为同一张卡片」：分段控件直接渲染在本卡片顶部、图表上方，
 // 切换周期时分段控件保持常驻（仅图表区转圈），不抢走用户对周期的控制权。
-// 年K 末尾附带「辅助线设置」齿轮，点击弹出底部抽屉，逐线开关压力/支撑/趋势/关键区间。
+// 行情图「图表设置」齿轮（年K 末尾）：点击展开内联面板，含「辅助线(均线 MA)」与「智能画线(压力/支撑/趋势/关键区间)」两组开关。
 import StockChart from "./StockChart.vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import { PERIODS, PERIOD_ORDER, type PeriodKey } from "@/utils/period";
 import { auxConfig } from "@/store/chartAux";
+import { maConfig, MA_PERIODS } from "@/store/chartMa";
 import { computed, ref } from "vue";
 
 const props = defineProps<{
@@ -49,7 +50,9 @@ function pick(p: PeriodKey) {
   emit("pick", p);
 }
 
-// ---- 辅助线设置抽屉 ----
+// ---- 图表设置抽屉（齿轮点开）----
+// 含两组：① 辅助线 = 均线 MA（MA5/MA10/MA20/MA60，逐周期独立开关）
+//        ② 智能画线 = 系统自动标注的压力/支撑/趋势/关键区间
 const auxOpen = ref(false);
 type AuxKey = "pressure" | "support" | "trend" | "zone";
 const auxItems: { key: AuxKey; label: string; desc: string }[] = [
@@ -64,6 +67,15 @@ function toggleAux(key: AuxKey) {
 function closeAux() {
   auxOpen.value = false;
 }
+// 辅助线（均线）开关：MA5/MA10/MA20/MA60 各自独立控制
+const maItems = MA_PERIODS;
+function toggleMa(key: keyof typeof maConfig) {
+  maConfig[key] = !maConfig[key];
+}
+// 齿轮高亮：任一 MA 或智能画线开启即高亮（反映「图表设置」里有内容开着）
+const gearOn = computed(
+  () => auxConfig.enabled || maConfig.ma5 || maConfig.ma10 || maConfig.ma20 || maConfig.ma60
+);
 </script>
 
 <template>
@@ -80,14 +92,14 @@ function closeAux() {
         >{{ periodMeta[p].label }}</text
       >
     </view>
-    <!-- 年K 末尾的设置齿轮：控制行情图辅助线（压力/支撑/趋势/关键区间）显隐 -->
+    <!-- 年K 末尾的设置齿轮：点击展开「图表设置」面板（辅助线 MA + 智能画线） -->
     <view
       class="period-gear"
-      :class="{ on: auxConfig.enabled }"
+      :class="{ on: gearOn }"
       role="button"
       @click="auxOpen = true"
     >
-      <OutlineIcon type="gear" :size="30" :color="auxConfig.enabled ? 'var(--primary)' : 'var(--text-2)'" />
+      <OutlineIcon type="gear" :size="30" :color="gearOn ? 'var(--primary)' : 'var(--text-2)'" />
     </view>
   </view>
 
@@ -109,6 +121,7 @@ function closeAux() {
     :show-tools="showTools"
     :auto-draw="showTools"
     :aux-config="auxConfig"
+    :ma-config="maConfig"
   />
   <view v-else-if="period === 'm'" class="hint">暂无数据</view>
   <StockChart
@@ -122,20 +135,43 @@ function closeAux() {
     :show-tools="showTools"
     :auto-draw="showTools"
     :aux-config="auxConfig"
+    :ma-config="maConfig"
   />
 
-  <!-- 辅助线设置：内联展开面板（无遮罩、文档流内，保证永不超出可视区域） -->
+  <!-- 图表设置：内联展开面板（无遮罩、文档流内，保证永不超出可视区域，点击齿轮展开、可收起） -->
   <view v-if="auxOpen" class="aux-panel anim-rise-soft">
     <view class="aux-head">
-      <text class="aux-title">辅助线设置</text>
+      <text class="aux-title">图表设置</text>
       <view class="aux-close" role="button" @click="closeAux">
         <OutlineIcon type="close" :size="32" color="var(--text-2)" />
       </view>
     </view>
-    <!-- 总开关 -->
+
+    <!-- 分组一：辅助线 = 均线 MA（逐周期独立开关） -->
+    <text class="aux-group">辅助线</text>
+    <view v-for="it in maItems" :key="it.key" class="aux-row">
+      <view class="aux-left">
+        <text class="aux-label">{{ it.label }}</text>
+        <text class="aux-desc">{{ it.period }} 日移动平均线</text>
+      </view>
+      <view
+        class="cc-switch"
+        :class="{ on: maConfig[it.key] }"
+        hover-class="cc-switch-hover"
+        role="button"
+        @click="toggleMa(it.key)"
+      >
+        <view class="cc-knob" />
+      </view>
+    </view>
+
+    <view class="aux-sep" />
+
+    <!-- 分组二：智能画线 = 系统自动标注的压力 / 支撑 / 趋势 / 关键区间 -->
+    <text class="aux-group">智能画线</text>
     <view class="aux-row">
       <view class="aux-left">
-        <text class="aux-label">显示辅助线</text>
+        <text class="aux-label">智能画线</text>
         <text class="aux-desc">系统自动标注的压力 / 支撑 / 趋势与关键区间</text>
       </view>
       <view
@@ -148,8 +184,6 @@ function closeAux() {
         <view class="cc-knob" />
       </view>
     </view>
-    <view class="aux-sep" />
-    <!-- 逐线开关 -->
     <view v-for="it in auxItems" :key="it.key" class="aux-row">
       <view class="aux-left">
         <text class="aux-label">{{ it.label }}</text>
@@ -328,5 +362,14 @@ function closeAux() {
   height: 1rpx;
   background: var(--border);
   margin: 6rpx 0;
+}
+/* 设置面板内的分组标题（辅助线 / 智能画线），与全局分组标题风格一致 */
+.aux-group {
+  display: block;
+  margin: 12rpx 0 4rpx;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: 0.5rpx;
 }
 </style>
