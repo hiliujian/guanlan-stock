@@ -117,6 +117,9 @@ function onUp() {
   border-top: 1rpx solid var(--border);
   border-radius: 22rpx 22rpx 0 0;
   box-shadow: var(--shadow-sheet);
+  /* touch-action:none：整张面板都是拖拽区（无纵向滚动内容），阻止浏览器把下拉当成页面滚动/橡皮筋，
+     与 PeekSheet .peek-grip 同款处理；子级横向 scroll-view 自带 touch-action 仍可调起横向滚动 */
+  touch-action: none;
   /* 拖拽松手回弹 / 入场动画复用同一缓动 */
   transition: transform var(--dur) var(--ease-out);
 }
@@ -135,7 +138,6 @@ function onUp() {
   align-items: center;
   justify-content: center;
   height: 72rpx;
-  border-bottom: 1rpx solid var(--border);
 }
 /* 标题字号 / 字重 / 颜色与分组面板 .grp-title 完全一致（var(--font-md) / 500 / --text-2） */
 .bs-title {
