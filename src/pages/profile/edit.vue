@@ -440,9 +440,12 @@ async function save() {
   background: var(--card);
   border-top: 16rpx solid var(--bg);
 }
+/* 本分组所有文本统一常规字重（font-weight:400），覆盖浏览器/小程序对
+   input/textarea/button 等表单控件的默认字重，确保「基本资料」内无一加粗。 */
 .sec-group-title {
   display: block;
   font-size: var(--font-sm);
+  font-weight: 400;
   color: var(--text-3);
   margin: 14rpx 20rpx 6rpx;
 }
@@ -473,6 +476,7 @@ async function save() {
 }
 .sec-row-label {
   font-size: var(--font-md);
+  font-weight: 400;
   color: var(--text);
 }
 /* 行内表单控件：右侧与左侧标签对齐，右对齐文本，与 sec-row 节奏一致 */
@@ -481,6 +485,7 @@ async function save() {
   min-width: 0;
   margin-left: 20rpx;
   font-size: var(--font-md);
+  font-weight: 400;
   text-align: right;
   color: var(--text);
 }
@@ -489,6 +494,7 @@ async function save() {
   min-width: 0;
   margin-left: 20rpx;
   font-size: var(--font-md);
+  font-weight: 400;
   text-align: right;
   color: var(--text-2);
 }
@@ -497,6 +503,7 @@ async function save() {
   box-sizing: border-box;
   min-height: 140rpx;
   font-size: var(--font-md);
+  font-weight: 400;
   line-height: 1.6;
   background: var(--card-2);
   border-radius: var(--radius-sm);
@@ -506,6 +513,7 @@ async function save() {
 .ep-count {
   align-self: flex-end;
   font-size: var(--font-xs);
+  font-weight: 400;
   color: var(--text-2);
   margin-top: -6rpx;
 }
@@ -523,5 +531,6 @@ async function save() {
 .sec-save-row .btn-primary {
   display: block;
   width: 100%;
+  font-weight: 400;
 }
 </style>
