@@ -1,6 +1,6 @@
 <template>
   <!-- 二级页面框架：与「设置」一致（app-shell 居中 + 吸顶导航 + 滚动主体 + 分组卡片） -->
-  <view class="app-shell page-col legal-page">
+  <view class="app-shell page-col">
     <!-- 自定义导航头：返回 + 标题居中 + 右侧占位（与设置页共用 sticky-head / nav-* 全局类） -->
     <view class="sticky-head">
       <view class="nav-back" hover-class="nav-back-hover" role="button" aria-label="返回" @click="onBack">
@@ -65,10 +65,7 @@ function onBack() {
 </script>
 
 <style scoped>
-/* 根沿用全局 .page-col（二级页纵向外壳），仅加类锚点 */
-.legal-page {
-  display: block;
-}
+/* 根直接复用全局 .page-col（二级页纵向外壳），与设置页完全一致，不另行覆盖 display */
 
 /* 分组卡片内边距微调：长文比设置页短行更需要留白 */
 .legal-group {
@@ -137,11 +134,5 @@ function onBack() {
   line-height: 1.85;
   text-align: justify;
 }
-.foot-note {
-  display: block;
-  text-align: center;
-  font-size: var(--font-xs);
-  color: var(--text-3);
-  margin-top: 16rpx;
-}
+/* 页脚标语：完全复用全局 .foot-note（与设置页同款字号 --font-sm / --text-3），此处不再覆盖 */
 </style>
