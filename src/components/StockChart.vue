@@ -96,10 +96,6 @@ const props = withDefaults(
     persist?: boolean;
     /** 当前股票代码，用于持久化 key；不传则不持久化（仅当前会话有效） */
     code?: string;
-    /** 自动画线扫描窗口（近 N 根 K 线）；不传则按 mode 取默认（kline=120, intraday=240） */
-    autoPeriod?: number;
-    /** 自动画线灵敏度 1-10（越大越敏感→更多/更密价位与更紧聚类）；默认 5 */
-    autoSensitivity?: number;
     /** 辅助线显示配置（总开关 + 压力/支撑/趋势/关键区间逐线开关）；不传则按组件默认全开 */
     auxConfig?: ChartAuxConfig;
   }>(),
@@ -495,17 +491,16 @@ function detectTrend(highs: Swing[], lows: Swing[]): { dir: "up" | "down"; point
 }
 
 // 灵敏度→算法参数映射：灵敏度越高→聚类容差越小（更密更多线）、窗口越小、最多线数越多
+// （autoSensitivity 由调用方控制，当前 KlineCard 未传入，默认取中档 5）
 function sensitivityParams() {
-  const s = clamp(props.autoSensitivity ?? 5, 1, 10);
+  const s = 5;
   const win = props.mode === "intraday" ? 3 : 5;
   const tolPct = 0.003 + (10 - s) * 0.0009; // s=10→0.3%  s=1→≈1.1%
   const maxLevels = clamp(Math.round(s / 2.5), 1, 4); // s=5→2  s=10→4  s=1→1
   return { s, win, tolPct, maxLevels };
 }
-// 扫描窗口（近 N 根）：默认日K=120、分时=240；允许用户用 autoPeriod 覆盖
+// 扫描窗口（近 N 根）：日K=120、分时=240（autoPeriod 由调用方控制，当前未传入，统一取默认）
 function scanPeriod(): number {
-  const p = props.autoPeriod;
-  if (typeof p === "number" && p > 0) return Math.min(p, dataList.length);
   return Math.min(props.mode === "intraday" ? 240 : 120, dataList.length);
 }
 

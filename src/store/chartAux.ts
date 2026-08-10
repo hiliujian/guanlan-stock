@@ -56,8 +56,3 @@ watch(
   },
   { deep: true }
 );
-
-// 重置为默认值（兜底入口，当前 UI 暂未暴露）
-export function resetAuxConfig(): void {
-  Object.assign(auxConfig, defaultConfig());
-}
