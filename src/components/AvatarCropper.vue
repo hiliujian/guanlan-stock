@@ -116,7 +116,6 @@ const stageStyle = computed(() => ({
 // ===== 图片状态 =====
 const imgW = ref(0);
 const imgH = ref(0);
-const imgError = ref(false);
 
 // 图片显示尺寸（scale=1 时的基准尺寸，容器内坐标系）
 const imgDispW = ref(0);
@@ -139,7 +138,6 @@ let pinchStart = 0;
 let scaleStart = 0;
 
 function onImgLoad(e: any) {
-  imgError.value = false;
   const w = e.detail?.width || 0;
   const h = e.detail?.height || 0;
   if (!w || !h) return;
@@ -148,7 +146,6 @@ function onImgLoad(e: any) {
   resetView();
 }
 function onImgError() {
-  imgError.value = true;
   uni.showToast({ title: "图片加载失败", icon: "none" });
 }
 

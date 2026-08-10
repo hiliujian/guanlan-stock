@@ -2,7 +2,7 @@
   <view class="app-shell st-page page-col">
     <!-- 自定义导航头（navigationStyle:custom，需自带返回） -->
     <view class="st-head sticky-head">
-      <view class="st-back nav-back" hover-class="st-back-hover" @click="back">
+      <view class="st-back nav-back" hover-class="nav-back-hover" @click="back">
         <OutlineIcon type="arrow-left" :size="30" color="var(--text)" />
       </view>
       <text class="st-title nav-title">设置</text>
@@ -241,9 +241,6 @@ function rowStyle(idx: number) {
 /* 自定义导航头：返回 + 标题居中 + 右侧占位保持对称 */
 /* .st-head 布局属性已提升至全局 .sticky-head */
 /* .st-back 布局属性已提升至全局 .nav-back */
-.st-back-hover {
-  background: var(--card-2);
-}
 /* .st-title 布局属性已提升至全局 .nav-title */
 /* .st-head-ph 布局属性已提升至全局 .nav-ph */
 .st-page {

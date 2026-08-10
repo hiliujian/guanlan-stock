@@ -4,7 +4,7 @@
 
     <!-- 自定义导航头（navigationStyle:custom，需自带返回） -->
     <view class="lv-head sticky-head">
-      <view class="lv-back nav-back" hover-class="lv-back-hover" @click="back" role="button" aria-label="返回">
+      <view class="lv-back nav-back" hover-class="nav-back-hover" @click="back" role="button" aria-label="返回">
         <OutlineIcon type="arrow-left" :size="30" color="var(--text)" />
       </view>
       <text class="lv-title nav-title">我的等级</text>
@@ -166,10 +166,6 @@ function back() {
   min-height: 100dvh;
   box-sizing: border-box;
   overflow-x: hidden;
-}
-/* 返回按钮按压态：与「个人资料」等页共用同一视觉 */
-.lv-back-hover {
-  background: var(--card-2);
 }
 .lv-scroll {
   flex: 1;

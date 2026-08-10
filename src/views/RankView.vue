@@ -358,11 +358,4 @@ function openRow(r: { code: string; market: string }) {
   margin: 40rpx 24rpx 0;
   padding: 56rpx 40rpx;
 }
-/* 空态标题已统一为全局 .empty-title（见 global.css） */
-.rk-empty-s {
-  font-size: var(--font-sm);
-  color: var(--text-2);
-  text-align: center;
-  line-height: 1.6;
-}
 </style>

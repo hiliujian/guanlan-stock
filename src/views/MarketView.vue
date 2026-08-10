@@ -1007,14 +1007,8 @@ defineExpose({ refresh: () => refreshFull() });
   margin-bottom: 26rpx;
   /* flex-center 已提升至全局 .flex-center */
 }
-/* 空态标题已统一为全局 .empty-title（见 global.css） */
-.empty-s {
-  margin-top: 14rpx;
-  font-size: var(--font-sm);
-  color: var(--text-2);
-  line-height: 1.6;
-  text-align: center;
-}
+/* 全局 .empty-s 已含字号/颜色/居中，此处仅补页面特有间距 */
+.empty-s { margin-top: 14rpx; }
 .empty-divider {
   width: 56rpx;
   height: 6rpx;

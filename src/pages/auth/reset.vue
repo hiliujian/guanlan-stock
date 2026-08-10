@@ -103,7 +103,6 @@ const password = ref("");
 const confirm = ref("");
 const loading = ref(false); // 仅重设提交（验证+设密）使用
 const sending = ref(false); // 仅"发送验证码"使用，避免与重设按钮样式耦合
-const sent = ref(false);
 const done = ref(false);
 const serverErr = ref("");
 const countdown = ref(0);
@@ -132,18 +131,15 @@ function validateEmail() {
   errors.email = e && !EMAIL_RE.test(e) ? "请输入有效的邮箱地址" : "";
 }
 
-// 发送验证码后用户仍可修改邮箱：一旦改动则旧验证码作废，重置发送/倒计时状态，允许重新发送
+// 用户修改邮箱：旧验证码作废，重置发送/倒计时状态，允许重新发送
 function onEmailInput() {
   errors.email = "";
-  if (sent.value) {
-    sent.value = false;
-    code.value = "";
-    if (timer) {
-      clearInterval(timer);
-      timer = null;
-    }
-    countdown.value = 0;
+  code.value = "";
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
   }
+  countdown.value = 0;
 }
 
 // 新密码失焦校验
@@ -176,7 +172,6 @@ async function sendCode() {
       serverErr.value = r.error || "发送失败，请稍后重试";
       return;
     }
-    sent.value = true;
     startCountdown();
   } catch (err: any) {
     serverErr.value = err?.message || "操作失败，请重试";

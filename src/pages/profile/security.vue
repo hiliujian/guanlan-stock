@@ -2,7 +2,7 @@
   <view class="app-shell sec-page page-col">
     <!-- 自定义导航头（navigationStyle:custom，需自带返回） -->
     <view class="sec-head sticky-head">
-      <view class="sec-back nav-back" hover-class="sec-back-hover" @click="back" role="button" aria-label="返回">
+      <view class="sec-back nav-back" hover-class="nav-back-hover" @click="back" role="button" aria-label="返回">
         <OutlineIcon type="arrow-left" :size="30" color="var(--text)" />
       </view>
       <text class="sec-title nav-title">账号安全</text>
@@ -266,8 +266,9 @@ const mailOpen = ref(false);
 const pwdOpen = ref(false);
 function toggleMail() {
   mailOpen.value = !mailOpen.value;
-  if (mailOpen.value && pwdOpen.value) pwdOpen.value = false;
-  if (pwdOpen.value) {
+  if (mailOpen.value && pwdOpen.value) {
+    pwdOpen.value = false;
+    // 关闭密码面板时同步清理其错误（与 togglePwd 对称）
     errors.current = "";
     errors.npwd = "";
     errors.confirm = "";
@@ -518,9 +519,6 @@ onUnmounted(() => {
 /* .sec-page 布局属性已提升至全局 .page-col */
 /* .sec-head 布局属性已提升至全局 .sticky-head */
 /* .sec-back 布局属性已提升至全局 .nav-back */
-.sec-back-hover {
-  background: var(--card-2);
-}
 /* .sec-title 布局属性已提升至全局 .nav-title */
 /* .sec-head-ph 布局属性已提升至全局 .nav-ph */
 .sec-page {

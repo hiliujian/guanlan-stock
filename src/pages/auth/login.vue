@@ -1,7 +1,7 @@
 <template>
   <AuthShell v-if="ready" title="登录">
     <!-- 表单（双输入：用户名 → 邮箱 → 密码） -->
-    <AuthForm mode="login" @authed="onAuthed" />
+    <AuthForm @authed="onAuthed" />
 
     <!-- 切换链接：注册 / 忘记密码，独立成行（主流应用的「文字引导 + 链接」风格） -->
     <view class="auth-foot">

@@ -53,7 +53,6 @@ import AuthField from "./AuthField.vue";
 import { signInByIdentifier, USERNAME_RE, EMAIL_RE } from "@/api/auth";
 import { isSupabaseConfigured } from "@/config/app";
 
-defineProps<{ mode?: "login" }>();
 const emit = defineEmits<{ (e: "authed"): void }>();
 
 const identifier = ref("");

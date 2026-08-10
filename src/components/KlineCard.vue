@@ -153,14 +153,7 @@ function pick(p: PeriodKey) {
   min-height: 200rpx;
   padding: 20rpx 0;
 }
-.cl-spin {
-  width: 44rpx;
-  height: 44rpx;
-  border: 4rpx solid var(--border);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
+/* .cl-spin 已提升至全局（见 global.css） */
 .hint {
   padding: 40rpx 0;
   text-align: center;

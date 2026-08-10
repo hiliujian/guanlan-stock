@@ -1318,14 +1318,8 @@ function removeLp() {
   margin-bottom: 6rpx;
   /* flex-center 已提升至全局 .flex-center */
 }
-/* 空态标题已统一为全局 .empty-title（见 global.css） */
-.empty-s {
-  font-size: var(--font-sm);
-  color: var(--text-2);
-  text-align: center;
-  line-height: 1.7;
-  padding: 0 20rpx;
-}
+/* 全局 .empty-s 已含字号/颜色/居中，此处仅补页面特有内距 */
+.empty-s { padding: 0 20rpx; }
 .empty-btn {
   margin-top: 18rpx;
   padding: 0 56rpx;
