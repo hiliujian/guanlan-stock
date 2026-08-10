@@ -32,14 +32,3 @@ export function frameClass(id?: string | null): string {
   if (!id) return "";
   return AVATAR_FRAMES.find((f) => f.id === id)?.cls ?? "";
 }
-
-/** 该 id 是否对应一个有效（非空）边框 */
-export function hasFrame(id?: string | null): boolean {
-  return frameClass(id) !== "";
-}
-
-/** 取某 id 的展示名（未知 → '无'），用于展示 / 调试 */
-export function frameName(id?: string | null): string {
-  if (!id) return "无";
-  return AVATAR_FRAMES.find((f) => f.id === id)?.name ?? "无";
-}
