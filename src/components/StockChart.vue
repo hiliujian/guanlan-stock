@@ -14,23 +14,29 @@
       <view class="kct-btn" :class="{ active: activeAction === 'fib' }" role="button" @click="drawLine('fib', 'fibonacciLine')">分割</view>
       <view class="kct-btn kct-clear" role="button" @click="clearUserOverlays">清空</view>
     </view>
-    <!-- 自动线颜色图例（小白友好）：绿=支撑 红=压力 绿=趋势 橙=黄金分割 -->
+    <!-- 自动线颜色图例（小白友好）：绿=支撑 红=压力 绿=趋势 -->
     <view v-if="showTools && autoDraw" class="kc-legend">
       <text class="kcl-it"><text class="kcl-dot s"></text>支撑</text>
       <text class="kcl-it"><text class="kcl-dot p"></text>压力</text>
       <text class="kcl-it"><text class="kcl-dot t"></text>趋势</text>
-      <text class="kcl-it"><text class="kcl-dot f"></text>黄金分割</text>
+    </view>
+    <!-- 自动线悬浮提示：跟随十字光标显示每条线的类型/价位/区间/触及次数/方向 -->
+    <view v-if="tip.show" class="kc-tip" :style="tipStyle">
+      <view v-for="(it, i) in tip.items" :key="i" class="kc-tip-row">
+        <text class="kc-tip-dot" :style="{ background: it.color }"></text>
+        <text class="kc-tip-label">{{ it.label }}</text>
+        <text class="kc-tip-text">{{ it.text }}</text>
+      </view>
     </view>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
-import { init, dispose, registerIndicator } from "klinecharts";
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
+import { init, dispose, registerIndicator, registerOverlay, ActionType } from "klinecharts";
 import { isDark } from "@/utils/theme";
 import { UP, DOWN } from "@/utils/colors";
 const PRIMARY = "#07c160"; // 主色绿（自动趋势线）
-const FIB = "#f5a623"; // 黄金分割线（橙）
 import { computeChip, type ChipResult } from "@/utils/analyzer";
 import type { Kline, Trend } from "@/utils/period";
 
@@ -86,6 +92,10 @@ const props = withDefaults(
     persist?: boolean;
     /** 当前股票代码，用于持久化 key；不传则不持久化（仅当前会话有效） */
     code?: string;
+    /** 自动画线扫描窗口（近 N 根 K 线）；不传则按 mode 取默认（kline=120, intraday=240） */
+    autoPeriod?: number;
+    /** 自动画线灵敏度 1-10（越大越敏感→更多/更密价位与更紧聚类）；默认 5 */
+    autoSensitivity?: number;
   }>(),
   { height: 440, showMA: true, showMacd: true, showTools: false, autoDraw: false, persist: true }
 );
@@ -319,6 +329,14 @@ function applyLivePrice() {
 
 // ---- 生命周期 ----
 function destroyChart() {
+  if (crosshairCb && chart) {
+    try {
+      chart.unsubscribeAction(ActionType.OnCrosshairChange, crosshairCb);
+    } catch {
+      /* noop */
+    }
+    crosshairCb = null;
+  }
   if (chart) {
     try {
       dispose(chart);
@@ -392,9 +410,11 @@ function clearUserOverlays() {
     }
   }
 }
-// ---- 自动画线（小白友好）：系统按行情自动标注支撑/压力/趋势/黄金分割 ----
+// ---- 自动画线（小白友好）：系统按行情自动标注支撑/压力/趋势 ----
 // 半透明虚线 + 锁定（不可拖拽编辑），与用户手绘的浓实线明显区分；不持久化，随数据刷新。
+// 关键：KLineCharts overlay 的 point 字段是 { timestamp, value }（不是 price）；用错字段会导致价格→y 坐标失败被钳到顶部。
 const autoIds: string[] = [];
+const autoLevels: AutoLevel[] = [];
 const autoEnabled = ref(true);
 function hexA(hex: string, a: number): string {
   const h = hex.replace("#", "");
@@ -403,112 +423,131 @@ function hexA(hex: string, a: number): string {
   const b = parseInt(h.slice(4, 6), 16);
   return `rgba(${r},${g},${b},${a})`;
 }
-type Pt = { t: number; value: number; idx: number };
-function localMins(arr: Pt[], gap = 3): Pt[] {
-  const out: Pt[] = [];
-  for (let i = 1; i < arr.length - 1; i++) {
-    if (arr[i - 1].value >= arr[i].value && arr[i + 1].value >= arr[i].value) {
-      if (out.length && i - out[out.length - 1].idx < gap) continue; // 间隔过滤，避免碎波
-      out.push(arr[i]);
-    }
-  }
-  return out;
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
 }
-function localMaxs(arr: Pt[], gap = 3): Pt[] {
-  const out: Pt[] = [];
-  for (let i = 1; i < arr.length - 1; i++) {
-    if (arr[i - 1].value <= arr[i].value && arr[i + 1].value <= arr[i].value) {
-      if (out.length && i - out[out.length - 1].idx < gap) continue;
-      out.push(arr[i]);
+
+// 摆动点（pivot）：以 win 根为窗口取严格局部极值；窗口天然把相邻极值隔开 ≥win 根，无需额外 gap 过滤
+type Swing = { idx: number; t: number; value: number };
+function findSwings(series: any[], win: number): { highs: Swing[]; lows: Swing[] } {
+  const highs: Swing[] = [];
+  const lows: Swing[] = [];
+  const n = series.length;
+  for (let i = win; i < n - win; i++) {
+    let isHigh = true;
+    let isLow = true;
+    for (let j = i - win; j <= i + win; j++) {
+      if (j === i) continue;
+      if (series[j].high >= series[i].high) isHigh = false;
+      if (series[j].low <= series[i].low) isLow = false;
     }
+    if (isHigh) highs.push({ idx: i, t: series[i].timestamp, value: series[i].high });
+    if (isLow) lows.push({ idx: i, t: series[i].timestamp, value: series[i].low });
   }
-  return out;
+  return { highs, lows };
 }
-interface AutoLine {
-  type: "horizontalStraightLine" | "straightLine" | "fibonacciLine";
-  points: { timestamp: number; value: number }[];
+
+// 把摆动点按价位容差聚成关键价位区间，按 触及次数 + 近期权重 打分排序
+interface Cluster { price: number; min: number; max: number; touches: number; score: number; }
+function clusterLevels(pts: Swing[], tolPct: number, recentN: number): Cluster[] {
+  if (!pts.length) return [];
+  const sorted = [...pts].sort((a, b) => a.value - b.value);
+  const groups: { values: number[]; idxs: number[] }[] = [];
+  for (const p of sorted) {
+    const last = groups[groups.length - 1];
+    const center = last ? last.values[0] : p.value;
+    if (last && Math.abs(p.value - center) <= tolPct * center) last.values.push(p.value);
+    else groups.push({ values: [p.value], idxs: [p.idx] });
+  }
+  return groups
+    .map((g) => {
+      const avg = g.values.reduce((s, v) => s + v, 0) / g.values.length;
+      const min = Math.min(...g.values);
+      const max = Math.max(...g.values);
+      const lastTouch = Math.max(...g.idxs);
+      const recency = 1 - (recentN - lastTouch) / Math.max(1, recentN); // 0~1，越近权重越大
+      return { price: avg, min, max, touches: g.values.length, score: g.values.length * (0.5 + 0.5 * recency) };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+// 判定主趋势：上升=近期摆动低点依次抬高；下降=近期摆动高点依次降低（二者冲突则不下结论，避免矛盾叠加）
+function detectTrend(highs: Swing[], lows: Swing[]): { dir: "up" | "down"; points: { timestamp: number; value: number }[] } | null {
+  const ls = lows.slice(-3);
+  const hs = highs.slice(-3);
+  const up = ls.length >= 2 && ls[ls.length - 1].value > ls[0].value;
+  const down = hs.length >= 2 && hs[hs.length - 1].value < hs[0].value;
+  if (up && !down) return { dir: "up", points: [{ timestamp: ls[0].t, value: ls[0].value }, { timestamp: ls[ls.length - 1].t, value: ls[ls.length - 1].value }] };
+  if (down && !up) return { dir: "down", points: [{ timestamp: hs[0].t, value: hs[0].value }, { timestamp: hs[hs.length - 1].t, value: hs[hs.length - 1].value }] };
+  return null;
+}
+
+// 灵敏度→算法参数映射：灵敏度越高→聚类容差越小（更密更多线）、窗口越小、最多线数越多
+function sensitivityParams() {
+  const s = clamp(props.autoSensitivity ?? 5, 1, 10);
+  const win = props.mode === "intraday" ? 3 : 5;
+  const tolPct = 0.003 + (10 - s) * 0.0009; // s=10→0.3%  s=1→≈1.1%
+  const maxLevels = clamp(Math.round(s / 2.5), 1, 4); // s=5→2  s=10→4  s=1→1
+  return { s, win, tolPct, maxLevels };
+}
+// 扫描窗口（近 N 根）：默认日K=120、分时=240；允许用户用 autoPeriod 覆盖
+function scanPeriod(): number {
+  const p = props.autoPeriod;
+  if (typeof p === "number" && p > 0) return Math.min(p, dataList.length);
+  return Math.min(props.mode === "intraday" ? 240 : 120, dataList.length);
+}
+
+interface AutoLevel {
+  kind: "pressure" | "support" | "trend";
+  price?: number;
+  min?: number;
+  max?: number;
+  points?: { timestamp: number; value: number }[];
   color: string;
   label: string;
+  touches: number;
+  dir?: "up" | "down";
 }
-// 根据当前已 setData 的行情计算系统画线：日K 画支撑/压力/趋势/黄金分割；分时只画当日支撑/压力
-// 关键：KLineCharts overlay 的 point 字段是 { timestamp, value }（不是 price）；用错字段会导致价格→y 坐标失败被钳到顶部
-function computeAutoLines(): AutoLine[] {
-  const lines: AutoLine[] = [];
+// 计算系统画线（支撑/压力/趋势），结果同时驱动 overlay 与悬浮提示
+function computeAutoLevels(): AutoLevel[] {
+  const out: AutoLevel[] = [];
   const dl = dataList;
-  if (!dl || dl.length < 5) return lines;
-  if (props.mode === "intraday") {
-    let pHigh = -Infinity;
-    let pLow = Infinity;
-    for (const x of dl) {
-      if (x.high > pHigh) pHigh = x.high;
-      if (x.low < pLow) pLow = x.low;
-    }
-    const t0 = dl[0].timestamp;
-    lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, value: pLow }], color: hexA(DOWN, 0.6), label: "支撑" });
-    lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, value: pHigh }], color: hexA(UP, 0.6), label: "压力" });
-    return lines;
-  }
-  // 日K：支撑/压力取近 30 日高低（贴近近期走势，比 60 日更准）
-  const N = Math.min(dl.length, 30);
+  if (!dl || dl.length < 10) return out;
+  const N = scanPeriod();
   const recent = dl.slice(-N);
-  let pHigh = -Infinity;
-  let pLow = Infinity;
-  for (const x of recent) {
-    if (x.high > pHigh) pHigh = x.high;
-    if (x.low < pLow) pLow = x.low;
-  }
-  const t0 = recent[0].timestamp;
-  lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, value: pLow }], color: hexA(DOWN, 0.6), label: "支撑" });
-  lines.push({ type: "horizontalStraightLine", points: [{ timestamp: t0, value: pHigh }], color: hexA(UP, 0.6), label: "压力" });
-  // 趋势线：只画当前主趋势方向一条（上升连最后两个抬高低点，下降连最后两个降低高点），间隔过滤避免碎波
-  const upTrend = recent[recent.length - 1].close >= recent[0].close;
-  if (upTrend) {
-    const ls = localMins(recent.map((x, i) => ({ t: x.timestamp, value: x.low, idx: i })), 3);
-    if (ls.length >= 2) {
-      const a = ls[ls.length - 2];
-      const b = ls[ls.length - 1];
-      if (b.value > a.value) {
-        lines.push({ type: "straightLine", points: [{ timestamp: a.t, value: a.value }, { timestamp: b.t, value: b.value }], color: hexA(PRIMARY, 0.6), label: "上升趋势" });
-      }
-    }
-  } else {
-    const hs = localMaxs(recent.map((x, i) => ({ t: x.timestamp, value: x.high, idx: i })), 3);
-    if (hs.length >= 2) {
-      const a = hs[hs.length - 2];
-      const b = hs[hs.length - 1];
-      if (b.value < a.value) {
-        lines.push({ type: "straightLine", points: [{ timestamp: a.t, value: a.value }, { timestamp: b.t, value: b.value }], color: hexA(PRIMARY, 0.6), label: "下降趋势" });
-      }
-    }
-  }
-  // 黄金分割：近 60 日显著高低（高点→低点），fibonacciLine 自动画 0/0.382/0.5/0.618/0.786/1 回撤
-  const N60 = Math.min(dl.length, 60);
-  const big = dl.slice(-N60);
-  let hi = big[0];
-  let lo = big[0];
-  for (const x of big) {
-    if (x.high > hi.high) hi = x;
-    if (x.low < lo.low) lo = x;
-  }
-  lines.push({ type: "fibonacciLine", points: [{ timestamp: hi.timestamp, value: hi.high }, { timestamp: lo.timestamp, value: lo.low }], color: hexA(FIB, 0.6), label: "黄金分割" });
-  return lines;
+  const { win, tolPct, maxLevels } = sensitivityParams();
+  const { highs, lows } = findSwings(recent, win);
+  for (const r of clusterLevels(highs, tolPct, recent.length).slice(0, maxLevels))
+    out.push({ kind: "pressure", price: r.price, min: r.min, max: r.max, touches: r.touches, color: hexA(UP, 0.62), label: "压力" });
+  for (const sp of clusterLevels(lows, tolPct, recent.length).slice(0, maxLevels))
+    out.push({ kind: "support", price: sp.price, min: sp.min, max: sp.max, touches: sp.touches, color: hexA(DOWN, 0.62), label: "支撑" });
+  const tr = detectTrend(highs, lows);
+  if (tr) out.push({ kind: "trend", points: tr.points, dir: tr.dir, touches: tr.points.length, color: hexA(PRIMARY, 0.66), label: tr.dir === "up" ? "上升趋势" : "下降趋势" });
+  return out;
 }
 // 清旧自动线并按当前开关重画
-function drawAutoLines() {
+function drawAutoLevels() {
   autoIds.forEach((id) => { try { chart?.removeOverlay(id); } catch { /* noop */ } });
   autoIds.length = 0;
+  autoLevels.length = 0;
   if (!props.autoDraw || !chart || !autoEnabled.value) return;
-  for (const ln of computeAutoLines()) {
+  for (const lv of computeAutoLevels()) {
     try {
-      const id = `auto_${ln.label}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
-      chart.createOverlay({
-        id,
-        name: ln.type,
-        points: ln.points,
-        lock: true,
-        styles: { line: { color: ln.color, style: "dashed", size: 1.2, dashedValue: [4, 3] } },
-      } as never);
+      const id = `auto_${lv.kind}_${Math.random().toString(36).slice(2, 7)}`;
+      if (lv.kind === "trend" && lv.points) {
+        chart.createOverlay({
+          id, name: "autoTrendLine", points: lv.points, lock: true,
+          styles: { line: { color: lv.color, style: "dashed", size: 1.4, dashedValue: [4, 3] } },
+        } as never);
+      } else if (typeof lv.price === "number") {
+        const t0 = dataList[0].timestamp;
+        chart.createOverlay({
+          id, name: "horizontalStraightLine", points: [{ timestamp: t0, value: lv.price }], lock: true,
+          styles: { line: { color: lv.color, style: "dashed", size: 1.2, dashedValue: [4, 3] } },
+        } as never);
+      }
       autoIds.push(id);
+      autoLevels.push(lv);
     } catch {
       /* noop */
     }
@@ -517,7 +556,94 @@ function drawAutoLines() {
 // 切换自动画线开关
 function toggleAuto() {
   autoEnabled.value = !autoEnabled.value;
-  drawAutoLines();
+  drawAutoLevels();
+}
+
+// ---- 自动趋势线自定义 overlay（线段 + 末端三角箭头标示方向）----
+let trendOverlayRegistered = false;
+function ensureTrendOverlay() {
+  if (trendOverlayRegistered) return;
+  try {
+    registerOverlay({
+      name: "autoTrendLine",
+      needDefaultPointFigure: false,
+      needDefaultXAxisFigure: false,
+      needDefaultYAxisFigure: false,
+      createPointFigures: (params: any) => {
+        const coordinates = params.coordinates as { x: number; y: number }[];
+        const overlay = params.overlay as any;
+        if (!coordinates || coordinates.length < 2) return [];
+        const a = coordinates[0];
+        const b = coordinates[coordinates.length - 1];
+        const col = overlay?.styles?.line?.color || PRIMARY;
+        const up = b.y < a.y; // 像素坐标 y 越小价格越高
+        const size = 7;
+        const arrow = up
+          ? [{ x: b.x, y: b.y }, { x: b.x - size, y: b.y + size * 1.6 }, { x: b.x + size, y: b.y + size * 1.6 }]
+          : [{ x: b.x, y: b.y }, { x: b.x - size, y: b.y - size * 1.6 }, { x: b.x + size, y: b.y - size * 1.6 }];
+        return [
+          { type: "line", attrs: { coordinates: [a, b] }, styles: { style: "dashed", size: 1.4, color: col, dashedValue: [4, 3] }, ignoreEvent: true },
+          { type: "polygon", attrs: { coordinates: arrow }, styles: { style: "fill", color: col, borderColor: col, borderSize: 1 }, ignoreEvent: true },
+        ];
+      },
+    } as never);
+    trendOverlayRegistered = true;
+  } catch {
+    /* noop */
+  }
+}
+
+// ---- 自动线悬浮提示框（跟随十字光标，显示类型/价位/区间/触及次数/方向）----
+// 自动线 lock:true 不响应 overlay 事件，故改用 onCrosshairChange + convertFromPixel 反算价格匹配最近线
+interface TipItem { label: string; color: string; text: string; }
+const tip = reactive<{ show: boolean; x: number; y: number; items: TipItem[] }>({ show: false, x: 0, y: 0, items: [] });
+const tipStyle = computed(() => {
+  const w = chartEl.value ? chartEl.value.clientWidth : 0;
+  const left = tip.x > w - 170 ? tip.x - 178 : tip.x + 14;
+  const top = Math.max(8, tip.y - 10);
+  return { left: left + "px", top: top + "px" };
+});
+let crosshairCb: ((d: any) => void) | null = null;
+function onCrosshair(c: any) {
+  if (!chart || !c || !c.paneId || c.paneId !== "candle_pane" || c.x == null || c.y == null) {
+    tip.show = false;
+    return;
+  }
+  const pts = chart.convertFromPixel([{ x: c.x, y: c.y }], { paneId: "candle_pane" }) as any;
+  const pt = Array.isArray(pts) ? pts[0] : pts;
+  if (!pt || typeof pt.price !== "number") {
+    tip.show = false;
+    return;
+  }
+  const price = pt.price;
+  const tol = price * 0.006; // 悬浮吸附容差（约 0.6%）
+  const items: TipItem[] = [];
+  for (const lv of autoLevels) {
+    if (lv.kind === "trend" && lv.points && c.kLineData) {
+      const [p1, p2] = lv.points;
+      const tMin = Math.min(p1.timestamp, p2.timestamp);
+      const tMax = Math.max(p1.timestamp, p2.timestamp);
+      const ts = c.kLineData.timestamp as number;
+      if (ts >= tMin && ts <= tMax) {
+        const frac = (ts - p1.timestamp) / (p2.timestamp - p1.timestamp || 1);
+        const interp = p1.value + (p2.value - p1.value) * frac;
+        if (Math.abs(price - interp) <= tol) items.push({ label: lv.label, color: lv.color, text: `方向 ${lv.dir === "up" ? "↑ 上行" : "↓ 下行"} · 经 ${lv.touches} 点` });
+      }
+    } else if (typeof lv.price === "number") {
+      if (Math.abs(price - lv.price) <= tol) {
+        const zone = lv.min !== lv.max ? `区间 ${lv.min!.toFixed(2)}~${lv.max!.toFixed(2)}` : "";
+        items.push({ label: lv.label, color: lv.color, text: `${lv.price.toFixed(2)} ${zone} · 触及 ${lv.touches} 次`.trim() });
+      }
+    }
+  }
+  if (!items.length) {
+    tip.show = false;
+    return;
+  }
+  tip.items = items;
+  tip.x = c.x;
+  tip.y = c.y;
+  tip.show = true;
 }
 // 从本地存储恢复已画线（在 applyNewData 之后调用，依赖数据坐标系）
 function restoreOverlays() {
@@ -542,10 +668,12 @@ function restoreOverlays() {
   }
 }
 
-function setup() {
+// 完整构建图表（销毁旧实例并从头初始化）：仅在结构变化（mode/layout）或首次挂载时调用
+function buildChart() {
   if (!chartEl.value) return;
   destroyChart();
   ensureAvp();
+  ensureTrendOverlay();
   dataList = toKLineData();
   if (dataList.length) lastTs = dataList[dataList.length - 1].timestamp;
   chipData = props.klines && props.klines.length ? computeChip(props.klines) : null;
@@ -565,6 +693,10 @@ function setup() {
   } as never);
   if (!chart) return;
 
+  // 十字光标订阅（驱动自动线悬浮提示）；单实例，销毁时已解除订阅
+  crosshairCb = onCrosshair;
+  chart.subscribeAction(ActionType.OnCrosshairChange, crosshairCb as never);
+
   chart.applyNewData(dataList);
   nextTick(() => {
     if (!chart || !chartEl.value) return;
@@ -574,11 +706,31 @@ function setup() {
       if (!chart || !chartEl.value) return;
       drawCyq();
       restoreOverlays();
-      drawAutoLines();
+      drawAutoLevels();
     };
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => requestAnimationFrame(drawOverlays));
     else setTimeout(drawOverlays, 60);
   });
+}
+
+// 数据变化（klines/trends/preClose）增量刷新：避免整图重建导致的闪烁与实时卡顿
+function refreshData() {
+  if (!chart) {
+    buildChart();
+    return;
+  }
+  dataList = toKLineData();
+  if (dataList.length) lastTs = dataList[dataList.length - 1].timestamp;
+  chipData = props.klines && props.klines.length ? computeChip(props.klines) : null;
+  try {
+    chart.applyNewData(dataList);
+  } catch {
+    // 极少数情况下 applyNewData 失败，回退整图重建
+    buildChart();
+    return;
+  }
+  drawCyq();
+  drawAutoLevels();
 }
 
 function resizeAll() {
@@ -600,16 +752,21 @@ function applyTheme() {
 
 onMounted(async () => {
   await nextTick();
-  setup();
+  buildChart();
   if (typeof window !== "undefined" && window.ResizeObserver) {
     ro = new ResizeObserver(() => resizeAll());
     if (chartEl.value) ro.observe(chartEl.value);
   }
 });
 
+// 结构变化（周期/均线/MACD 开关）→ 整图重建；数据变化（行情/昨收）→ 增量刷新
 watch(
-  () => [props.klines, props.trends, props.preClose, props.mode, props.showMA, props.showMacd],
-  () => setup()
+  () => [props.klines, props.trends, props.preClose],
+  () => refreshData()
+);
+watch(
+  () => [props.mode, props.showMA, props.showMacd],
+  () => buildChart()
 );
 watch(
   () => [props.livePrice, props.livePreClose],
@@ -732,7 +889,41 @@ onBeforeUnmount(() => {
 .kcl-dot.t {
   background: #07c160;
 }
-.kcl-dot.f {
-  background: #f5a623;
+/* 自动线悬浮提示框：跟随十字光标，玻璃卡片，不拦截指针 */
+.kc-tip {
+  position: absolute;
+  z-index: 7;
+  min-width: 150rpx;
+  max-width: 320rpx;
+  padding: 10rpx 12rpx;
+  background: var(--card);
+  border: 1rpx solid var(--border);
+  border-radius: 14rpx;
+  box-shadow: var(--shadow-2);
+  font-size: var(--font-xs);
+  color: var(--text);
+  pointer-events: none;
+}
+.kc-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 3rpx 0;
+  white-space: nowrap;
+}
+.kc-tip-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.kc-tip-label {
+  color: var(--text-2);
+  flex: 0 0 auto;
+}
+.kc-tip-text {
+  color: var(--text);
+  margin-left: auto;
+  padding-left: 10rpx;
 }
 </style>
