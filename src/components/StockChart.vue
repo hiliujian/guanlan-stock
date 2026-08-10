@@ -10,7 +10,7 @@
       <view v-if="autoDraw" class="kct-btn kct-auto" :class="{ active: autoEnabled }" role="button" @click="toggleAuto">自动</view>
       <view class="kct-btn" :class="{ active: activeAction === 'support' }" role="button" @click="drawLine('support', 'horizontalStraightLine', DOWN)">支撑</view>
       <view class="kct-btn" :class="{ active: activeAction === 'pressure' }" role="button" @click="drawLine('pressure', 'horizontalStraightLine', UP)">压力</view>
-      <view class="kct-btn" :class="{ active: activeAction === 'trend' }" role="button" @click="drawLine('trend', 'straightLine')">趋势</view>
+      <view class="kct-btn" :class="{ active: activeAction === 'trend' }" role="button" @click="drawLine('trend', 'straightLine', TREND)">趋势</view>
       <view class="kct-btn" :class="{ active: activeAction === 'fib' }" role="button" @click="drawLine('fib', 'fibonacciLine')">分割</view>
       <view class="kct-btn kct-clear" role="button" @click="clearUserOverlays">清空</view>
     </view>
@@ -36,7 +36,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } 
 import { init, dispose, registerIndicator, registerOverlay, ActionType } from "klinecharts";
 import { isDark } from "@/utils/theme";
 import { UP, DOWN } from "@/utils/colors";
-const PRIMARY = "#07c160"; // 主色绿（自动趋势线）
+const TREND = "#2f74ff"; // 趋势线专用蓝（与压力红/支撑绿三色区分，互不混淆，且对红绿色盲更友好）
 import { computeChip, type ChipResult } from "@/utils/analyzer";
 import type { Kline, Trend } from "@/utils/period";
 
@@ -522,7 +522,7 @@ function computeAutoLevels(): AutoLevel[] {
   for (const sp of clusterLevels(lows, tolPct, recent.length).slice(0, maxLevels))
     out.push({ kind: "support", price: sp.price, min: sp.min, max: sp.max, touches: sp.touches, color: hexA(DOWN, 0.62), label: "支撑" });
   const tr = detectTrend(highs, lows);
-  if (tr) out.push({ kind: "trend", points: tr.points, dir: tr.dir, touches: tr.points.length, color: hexA(PRIMARY, 0.66), label: tr.dir === "up" ? "上升趋势" : "下降趋势" });
+  if (tr) out.push({ kind: "trend", points: tr.points, dir: tr.dir, touches: tr.points.length, color: hexA(TREND, 0.72), label: tr.dir === "up" ? "上升趋势" : "下降趋势" });
   return out;
 }
 // 清旧自动线并按当前开关重画
@@ -575,7 +575,7 @@ function ensureTrendOverlay() {
         if (!coordinates || coordinates.length < 2) return [];
         const a = coordinates[0];
         const b = coordinates[coordinates.length - 1];
-        const col = overlay?.styles?.line?.color || PRIMARY;
+        const col = overlay?.styles?.line?.color || TREND;
         const up = b.y < a.y; // 像素坐标 y 越小价格越高
         const size = 7;
         const arrow = up
@@ -887,7 +887,7 @@ onBeforeUnmount(() => {
   background: #ef232a;
 }
 .kcl-dot.t {
-  background: #07c160;
+  background: #2f74ff;
 }
 /* 自动线悬浮提示框：跟随十字光标，玻璃卡片，不拦截指针 */
 .kc-tip {
