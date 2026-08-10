@@ -137,17 +137,17 @@ function ensureIntradayVol() {
   }
 }
 
-// ---- SMA-MACD 自定义指标（全模式通用） ----
+// ---- SMA-MACD 自定义指标（仅分时模式，解决 EMA 前截空白） ----
 // klinecharts 内置 MACD 用 EMA(12,26,9)，需要 ~35 个数据点才能输出第一个有效值。
-// 分时图每分钟一根 → 开盘后前半小时空白；日K等也需要约 35 个交易日才有输出。
-// 同花顺/东财等软件用 **SMA**（简单移动平均）替代 EMA，且采用「渐进窗口」策略：
-// 数据不足周期时按实际可用长度算均值，使第 2 根 K 线起即有 MACD 输出。
+// 分时图每分钟一根 → 开盘后前半小时空白。
+// 日K/周K等 K 线模式数据量大（通常 >100 根），前截仅 ~35 根可接受 → 继续用内置 EMA 版。
 //
-// 公式（与标准 MACD 完全一致的 12/26/9 参数 + 2倍柱）：
-//   DIF  = SMA(close,12) − SMA(close,26)
-//   DEA  = SMA(DIF,9)
+// 本指标仅用于分时模式，采用 **SMA + 渐进窗口** 策略使第 2 根起即有输出。
+// 公式与标准 MACD 完全一致（12/26/9 + 2倍柱）：
+//   DIF = SMA(close,12) − SMA(close,26)
+//   DEA = SMA(DIF,9)
 //   MACD = 2 × (DIF − DEA)
-//   柱 > 0 红(UP)  柱 < 0 绿(DOWN)  柱 = 0 中性
+// 量柱不设自定义 styles → klinecharts 引擎自动按值正负选用 indicator.bars 的 upColor/downColor
 let smaMacdRegistered = false;
 function ensureSmaMacd() {
   if (smaMacdRegistered) return;
@@ -159,25 +159,8 @@ function ensureSmaMacd() {
       figures: [
         { key: "dif", title: "DIF: ", type: "line" },
         { key: "dea", title: "DEA: ", type: "line" },
-        {
-          key: "macd",
-          title: "MACD: ",
-          type: "bar",
-          // 逐根着色：MACD 柱 > 0 红（多头）、< 0 绿（空头）、= 0 中性灰
-          // 与同花顺/东财完全一致的配色逻辑
-          styles: (data: any, _indicator: any, defaultStyles: any) => {
-            const base = (defaultStyles?.bars && defaultStyles.bars[0]) || {};
-            const up = base.upColor || UP;
-            const down = base.downColor || DOWN;
-            const noChange = base.noChangeColor || "#888888";
-            const macdVal = data?.current?.indicator?.data?.macd;
-            if (typeof macdVal === "number") {
-              if (macdVal > 0) return { color: up };
-              if (macdVal < 0) return { color: down };
-            }
-            return { color: noChange };
-          },
-        },
+        // bar 不传 styles → 引擎自动按 macd 值 >0 用 upColor(红) / <0 用 downColor(绿)
+        { key: "macd", title: "MACD: ", type: "bar" },
       ],
       calc: (dataList: any[], indicator: any) => {
         const params = indicator.calcParams || [12, 26, 9];
@@ -191,7 +174,7 @@ function ensureSmaMacd() {
         };
         const closes: number[] = [];
         const difs: number[] = [];
-        return dataList.map((kLineData, i) => {
+        return dataList.map((kLineData) => {
           const c = Number(kLineData.close) || 0;
           closes.push(c);
           const ma1 = sma(closes, p1); // SMA(close, 12)
@@ -458,7 +441,7 @@ function buildLayout(): any[] {
     // 分时模式用 INTRADAY_VOL（图例显示「分时量」），K 线模式用内置 VOL（显示「成交量」）
     { type: "indicator", content: [props.mode === "intraday" ? "INTRADAY_VOL" : "VOL"], options: { id: "vol_pane", height: volH, minHeight: 40 } },
   ];
-  if (props.showMacd) layout.push({ type: "indicator", content: ["SMA_MACD"], options: { id: "macd_pane", height: macdH, minHeight: 60 } });
+  if (props.showMacd) layout.push({ type: "indicator", content: [props.mode === "intraday" ? "SMA_MACD" : "MACD"], options: { id: "macd_pane", height: macdH, minHeight: 60 } });
   return layout;
 }
 
