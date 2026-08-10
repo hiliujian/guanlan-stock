@@ -38,7 +38,8 @@ import { init, dispose, registerIndicator, registerOverlay, ActionType } from "k
 import { isDark } from "@/utils/theme";
 import { UP, DOWN } from "@/utils/colors";
 const TREND = "#2f74ff"; // 趋势线专用蓝（与压力红/支撑绿三色区分，互不混淆，且对红绿色盲更友好）
-const ZONE_FILL = "rgba(108,122,145,0.13)"; // 关键区间阴影填充（中性石板灰，深浅主题均可见）
+const ZONE_FILL = "rgba(108,122,145,0.18)"; // 关键区间阴影填充（中性石板灰，深浅主题均可见，提升可见度）
+const ZONE_EDGE = "rgba(108,122,145,0.55)"; // 关键区间边界描边（与填充同色系，清晰可辨）
 const ZONE_TEXT = "rgba(125,140,165,0.95)"; // 关键区间标签文字
 import { computeChip, type ChipResult } from "@/utils/analyzer";
 import type { Kline, Trend } from "@/utils/period";
@@ -623,15 +624,18 @@ function ensureTrendOverlay() {
         const bounding = params.bounding as { left: number; right: number; top: number; bottom: number };
         if (!coordinates || coordinates.length < 2 || !bounding) return [];
         const ys = [coordinates[0].y, coordinates[1].y].sort((a, b) => a - b);
-        const topY = ys[0];
-        const botY = ys[1];
+        // 边界各向内缩 1px，避免正好压在红/绿线上，形成清晰独立的阴影带
+        const topY = ys[0] + 1;
+        const botY = ys[1] - 1;
+        if (botY - topY < 2) return [];
         const x0 = bounding.left;
         const x1 = bounding.right;
         return [
           {
             type: "polygon",
             attrs: { coordinates: [{ x: x0, y: topY }, { x: x1, y: topY }, { x: x1, y: botY }, { x: x0, y: botY }] },
-            styles: { style: "fill", color: ZONE_FILL },
+            // stroke_fill：既填充又描边，虚线边界让区间范围清晰可辨
+            styles: { style: "stroke_fill", color: ZONE_FILL, borderColor: ZONE_EDGE, borderSize: 1, borderStyle: "dashed", borderDashedValue: [4, 3] },
             ignoreEvent: true,
           },
           {
