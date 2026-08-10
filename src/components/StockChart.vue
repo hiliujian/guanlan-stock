@@ -71,6 +71,64 @@ function ensureAvp() {
   }
 }
 
+// ---- 分时量（INTRADAY_VOL）自定义指标：与内置 VOL 算法完全一致（MA5/10/20 + 涨跌着色量柱），
+// 仅把图例 shortName 与量柱标题改为「分时量」，避免分时面板误显示「成交量」。
+// K 线模式仍用内置 VOL（显示「成交量」），两者语义各取所需。----
+const VOL_MA_PARAMS = [5, 10, 20];
+let intradayVolRegistered = false;
+function ensureIntradayVol() {
+  if (intradayVolRegistered) return;
+  try {
+    registerIndicator({
+      name: "INTRADAY_VOL",
+      shortName: "分时量",
+      series: "volume" as never, // 量价系列，klinecharts 据其渲染量柱并按涨跌着色
+      calcParams: VOL_MA_PARAMS,
+      shouldFormatBigNumber: true,
+      precision: 0,
+      minValue: 0,
+      figures: [
+        { key: "ma1", title: "MA5: ", type: "line" },
+        { key: "ma2", title: "MA10: ", type: "line" },
+        { key: "ma3", title: "MA20: ", type: "line" },
+        {
+          key: "volume",
+          title: "分时量: ",
+          type: "bar",
+          // 量柱颜色跟随当根蜡烛涨跌（与内置 VOL 一致）：涨红跌绿、平盘中性色
+          styles: (data: any, _indicator: any, defaultStyles: any) => {
+            const k = data?.current?.kLineData;
+            const base = (defaultStyles?.bars && defaultStyles.bars[0]) || {};
+            if (!k) return { color: base.noChangeColor };
+            if (k.close > k.open) return { color: base.upColor };
+            if (k.close < k.open) return { color: base.downColor };
+            return { color: base.noChangeColor };
+          },
+        },
+      ],
+      calc: (dataList: any[], indicator: any) => {
+        const params = indicator.calcParams || VOL_MA_PARAMS;
+        const volSums: number[] = [];
+        return dataList.map((kLineData, i) => {
+          const volume = kLineData.volume || 0;
+          const vol: any = { volume };
+          params.forEach((p: number, index: number) => {
+            volSums[index] = (volSums[index] || 0) + volume;
+            if (i >= p - 1) {
+              vol[`ma${index + 1}`] = volSums[index] / p;
+              volSums[index] -= dataList[i - (p - 1)]?.volume || 0;
+            }
+          });
+          return vol;
+        });
+      },
+    } as never);
+    intradayVolRegistered = true;
+  } catch {
+    /* noop */
+  }
+}
+
 const props = withDefaults(
   defineProps<{
     /** kline = 日K（蜡烛+均线+量+MACD）；intraday = 分时（走势+均价+量+MACD） */
@@ -260,7 +318,8 @@ function buildLayout(): any[] {
   if (props.mode === "intraday") candleContent.push("AVP");
   const layout: any[] = [
     { type: "candle", content: candleContent, options: { id: "candle_pane", height: priceH, minHeight: Math.round(priceH * 0.6) } },
-    { type: "indicator", content: ["VOL"], options: { id: "vol_pane", height: volH, minHeight: 40 } },
+    // 分时模式用 INTRADAY_VOL（图例显示「分时量」），K 线模式用内置 VOL（显示「成交量」）
+    { type: "indicator", content: [props.mode === "intraday" ? "INTRADAY_VOL" : "VOL"], options: { id: "vol_pane", height: volH, minHeight: 40 } },
   ];
   if (props.showMacd) layout.push({ type: "indicator", content: ["MACD"], options: { id: "macd_pane", height: macdH, minHeight: 60 } });
   return layout;
@@ -749,6 +808,7 @@ function buildChart() {
   if (!chartEl.value) return;
   destroyChart();
   ensureAvp();
+  ensureIntradayVol();
   ensureTrendOverlay();
   dataList = toKLineData();
   if (dataList.length) lastTs = dataList[dataList.length - 1].timestamp;
