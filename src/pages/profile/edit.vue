@@ -19,12 +19,12 @@
             <view v-else class="ep-spin" />
           </view>
           <!-- 头像框编辑入口：右上角，点击弹出框选择（stop 避免误触更换头像）。
-               图标采用「漏半圆」风格：白色半环（呼应头像框轮廓）+ 极简铅笔，精致协调。 -->
+               图标采用「半圆」风格：上半圆弧（下半隐藏）+ 极简铅笔，呼应头像框轮廓，精致协调。 -->
           <view class="ep-frame-edit" role="button" aria-label="编辑头像框" hover-class="ep-frame-edit-hover" @click.stop="openFrameSheet">
             <svg class="fe-ico" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 4 A8 8 0 0 0 12 20" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-              <path d="M13 13 L16.4 9.6" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-              <circle cx="12.7" cy="13.3" r="1.3" fill="currentColor" />
+              <path d="M4 12 A8 8 0 0 1 20 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              <path d="M12 12 L16.5 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              <circle cx="16.5" cy="7.5" r="1.3" fill="currentColor" />
             </svg>
           </view>
         </view>
@@ -147,13 +147,27 @@ const seedName = computed(() => avatarSeed(username.value) || "我");
 
 // 头像框选择弹窗状态
 const frameSheetVisible = ref(false);
+const frameSaving = ref(false);
 function openFrameSheet() {
   frameSheetVisible.value = true;
 }
-// 选中某头像框：写入 frame 并自动关闭弹窗
-function selectFrame(f: AvatarFrameDef) {
+// 选中某头像框：立即写入并自动关闭弹窗，且直接提交到后端（无需等待「保存资料」）
+async function selectFrame(f: AvatarFrameDef) {
+  if (frameSaving.value) return;
+  frameSaving.value = true;
   frame.value = f.id;
   frameSheetVisible.value = false;
+  try {
+    const r = await updateProfile({ avatar_frame: f.id });
+    if (!r.ok) {
+      uni.showToast({ title: r.error || "设置失败", icon: "none" });
+      return;
+    }
+    await refreshProfile();
+    uni.showToast({ title: "头像框已设置", icon: "success" });
+  } finally {
+    frameSaving.value = false;
+  }
 }
 
 watch(
@@ -307,7 +321,8 @@ async function save() {
   color: var(--text-2);
 }
 
-/* 头像框编辑入口：头像右上角的圆形按钮（与左下角相机对称，主色绿 + 白边，统一视觉） */
+/* 头像框编辑入口：头像右上角的圆形按钮（与左下角相机对称，主色绿 + 白边，统一视觉）。
+   图标内联 svg：上半圆弧（下半隐藏，呼应「半圆」） + 极简铅笔，白色 currentColor。 */
 .ep-frame-edit {
   position: absolute;
   right: 6rpx;
