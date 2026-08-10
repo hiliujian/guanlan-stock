@@ -137,24 +137,23 @@ function ensureIntradayVol() {
   }
 }
 
-// ---- 分时 MACD（INTRADAY_MACD）自定义指标 ----
+// ---- SMA-MACD 自定义指标（全模式通用） ----
 // klinecharts 内置 MACD 用 EMA(12,26,9)，需要 ~35 个数据点才能输出第一个有效值。
-// 分时图每分钟一根，9:30 开盘 → 第 35 根约在 10:04 → 导致开盘后前半小时 MACD 面板空白。
-// 同花顺/东财等软件分时 MACD 用 **SMA**（简单移动平均）替代 EMA，且采用「渐进窗口」
-// 策略：数据不足周期时按实际可用长度算均值，使第 2 根 K 线起即有 MACD 输出（前期精度
-// 逐步收敛），视觉上与价格线/分时量同步从开盘显示。
+// 分时图每分钟一根 → 开盘后前半小时空白；日K等也需要约 35 个交易日才有输出。
+// 同花顺/东财等软件用 **SMA**（简单移动平均）替代 EMA，且采用「渐进窗口」策略：
+// 数据不足周期时按实际可用长度算均值，使第 2 根 K 线起即有 MACD 输出。
 //
-// 公式（与内置 MACD 完全一致的 12/26/9 参数 + 2倍柱）：
+// 公式（与标准 MACD 完全一致的 12/26/9 参数 + 2倍柱）：
 //   DIF  = SMA(close,12) − SMA(close,26)
 //   DEA  = SMA(DIF,9)
 //   MACD = 2 × (DIF − DEA)
-//   >0 红(UP)  <0 绿(DOWN)
-let intradayMacdRegistered = false;
-function ensureIntradayMacd() {
-  if (intradayMacdRegistered) return;
+//   柱 > 0 红(UP)  柱 < 0 绿(DOWN)  柱 = 0 中性
+let smaMacdRegistered = false;
+function ensureSmaMacd() {
+  if (smaMacdRegistered) return;
   try {
     registerIndicator({
-      name: "INTRADAY_MACD",
+      name: "SMA_MACD",
       shortName: "MACD",
       calcParams: [12, 26, 9],
       figures: [
@@ -164,13 +163,19 @@ function ensureIntradayMacd() {
           key: "macd",
           title: "MACD: ",
           type: "bar",
-          styles: (_data: any, _indicator: any, defaultStyles: any) => {
+          // 逐根着色：MACD 柱 > 0 红（多头）、< 0 绿（空头）、= 0 中性灰
+          // 与同花顺/东财完全一致的配色逻辑
+          styles: (data: any, _indicator: any, defaultStyles: any) => {
             const base = (defaultStyles?.bars && defaultStyles.bars[0]) || {};
-            return {
-              upColor: base.upColor || UP,
-              downColor: base.downColor || DOWN,
-              noChangeColor: base.noChangeColor || "#888888",
-            };
+            const up = base.upColor || UP;
+            const down = base.downColor || DOWN;
+            const noChange = base.noChangeColor || "#888888";
+            const macdVal = data?.current?.indicator?.data?.macd;
+            if (typeof macdVal === "number") {
+              if (macdVal > 0) return { color: up };
+              if (macdVal < 0) return { color: down };
+            }
+            return { color: noChange };
           },
         },
       ],
@@ -199,7 +204,7 @@ function ensureIntradayMacd() {
         });
       },
     } as never);
-    intradayMacdRegistered = true;
+    smaMacdRegistered = true;
   } catch {
     /* noop */
   }
@@ -453,7 +458,7 @@ function buildLayout(): any[] {
     // 分时模式用 INTRADAY_VOL（图例显示「分时量」），K 线模式用内置 VOL（显示「成交量」）
     { type: "indicator", content: [props.mode === "intraday" ? "INTRADAY_VOL" : "VOL"], options: { id: "vol_pane", height: volH, minHeight: 40 } },
   ];
-  if (props.showMacd) layout.push({ type: "indicator", content: [props.mode === "intraday" ? "INTRADAY_MACD" : "MACD"], options: { id: "macd_pane", height: macdH, minHeight: 60 } });
+  if (props.showMacd) layout.push({ type: "indicator", content: ["SMA_MACD"], options: { id: "macd_pane", height: macdH, minHeight: 60 } });
   return layout;
 }
 
@@ -942,7 +947,7 @@ function buildChart() {
   destroyChart();
   ensureAvp();
   ensureIntradayVol();
-  ensureIntradayMacd();
+  ensureSmaMacd();
   ensureMaIndicators();
   ensureTrendOverlay();
   dataList = toKLineData();
