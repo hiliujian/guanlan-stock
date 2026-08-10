@@ -475,14 +475,21 @@ function clusterLevels(pts: Swing[], tolPct: number, recentN: number): Cluster[]
     .sort((a, b) => b.score - a.score);
 }
 
-// 判定主趋势：上升=近期摆动低点依次抬高；下降=近期摆动高点依次降低（二者冲突则不下结论，避免矛盾叠加）
+// 判定主趋势：用「窗口内低点位移 + 高点位移」的净方向决定，避免末段噪声导致 up&&down 冲突而整条不画。
+// 净位移显著为正→上升趋势（沿低点连支撑线）；显著为负→下降趋势（沿高点连阻力线）；接近 0（真横盘）→不下结论。
 function detectTrend(highs: Swing[], lows: Swing[]): { dir: "up" | "down"; points: { timestamp: number; value: number }[] } | null {
-  const ls = lows.slice(-3);
-  const hs = highs.slice(-3);
-  const up = ls.length >= 2 && ls[ls.length - 1].value > ls[0].value;
-  const down = hs.length >= 2 && hs[hs.length - 1].value < hs[0].value;
-  if (up && !down) return { dir: "up", points: [{ timestamp: ls[0].t, value: ls[0].value }, { timestamp: ls[ls.length - 1].t, value: ls[ls.length - 1].value }] };
-  if (down && !up) return { dir: "down", points: [{ timestamp: hs[0].t, value: hs[0].value }, { timestamp: hs[hs.length - 1].t, value: hs[hs.length - 1].value }] };
+  const lo = lows.length >= 2 ? [lows[0], lows[lows.length - 1]] : null;
+  const hi = highs.length >= 2 ? [highs[0], highs[highs.length - 1]] : null;
+  if (!lo && !hi) return null;
+  const loDelta = lo ? lo[1].value - lo[0].value : 0;
+  const hiDelta = hi ? hi[1].value - hi[0].value : 0;
+  const net = loDelta + hiDelta;
+  const ref = (lo ? lo[0].value : 0) || (hi ? hi[0].value : 1) || 1;
+  const thr = ref * 0.01; // 窗口内净位移 >1% 才算有趋势，过滤无方向横盘
+  const upPts = (lo || hi) as { t: number; value: number }[];
+  const downPts = (hi || lo) as { t: number; value: number }[];
+  if (net > thr) return { dir: "up", points: [{ timestamp: upPts[0].t, value: upPts[0].value }, { timestamp: upPts[1].t, value: upPts[1].value }] };
+  if (net < -thr) return { dir: "down", points: [{ timestamp: downPts[0].t, value: downPts[0].value }, { timestamp: downPts[1].t, value: downPts[1].value }] };
   return null;
 }
 
