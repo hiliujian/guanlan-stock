@@ -543,20 +543,21 @@ function applyLivePrice() {
   });
 }
 
-// ---- 分时图整日全貌：默认铺满可视宽度显示当日完整分时 ----
-// 根因：klinecharts 默认 barSpace=8px，分时 240 根柱需约 1920px，远超手机容器（约 350px），
-// 导致默认只渲染末尾约 40 分钟、需手动左拖才能看全天（即用户反馈的现象）。
-// 解决：右留白归零 + 二分搜索最大 barSpace，使 from=0 且 to=数据总量（整日完整可见）。
-// 日K/周K 等模式不调用本函数，保留可滚动浏览历史的交互。
-function fitIntradayAll() {
-  if (!chart || !chartEl.value || props.mode !== "intraday") return;
+// ---- 默认铺满可视宽度：所有模式（分时 / 日K / 周K / 月K / 年K）一次性展示完整数据 ----
+// 根因：klinecharts 默认 barSpace=8px，单屏仅能容纳约 44 根柱，默认只渲染末尾片段，
+// 需手动左拖才能看全貌（即用户在分时图反馈的现象；日K/周K 同理默认只显示近期一小段）。
+// 解决：右留白归零 + 二分搜索最大 barSpace，使 from=0 且 to=数据总量（完整可见，无需拖拽）。
+// 柱数过多（如日K 全历史上千根）时 barSpace 被 API 下限 1px 自然钳制，退化为「尽量铺满、
+// 显示尽可能多的近期柱」——仍优于默认 8px 强制造点拖拽；用户仍可手动左拖查看更早数据。
+function fitViewAll() {
+  if (!chart || !chartEl.value) return;
   const count = dataList.length;
   if (count <= 1) return;
   const w = chartEl.value.clientWidth;
   if (!w) return;
   // 末根留 6px 给「最新价」标签呼吸空间（像素单位；缩放到 fit 后约 1px，可忽略）
   chart.setOffsetRightDistance(6);
-  // 二分搜索最大 barSpace（API 内部 clamp [1,50]），使整日数据全部落入可视区
+  // 二分搜索最大 barSpace（API 内部 clamp [1,50]），使全部数据落入可视区
   let lo = 1;
   let hi = 50;
   let best = 1;
@@ -575,9 +576,9 @@ function fitIntradayAll() {
   chart.setBarSpace(Math.max(1, best));
 }
 
-// 数据就绪回调：分时模式每次数据变化（首载 / 刷新 / 实时末根）后保持整日全貌
+// 数据就绪回调：每次数据变化（首载 / 刷新 / 实时末根）后保持「铺满全貌」（所有模式通用）
 function onDataReady() {
-  fitIntradayAll();
+  fitViewAll();
 }
 
 // ---- 生命周期 ----
@@ -1046,9 +1047,9 @@ function buildChart() {
     // 等主图比例尺测量完成再叠加 overlay，避免价格→像素映射过早被钳到顶部（表现为所有线堆在顶部一条虚线）
     const drawOverlays = () => {
       if (!chart || !chartEl.value) return;
-      // 分时图首载兜底：确保整日铺满（OnDataReady 在 applyNewData 异步解析后才触发，
-      // 此处保证容器尺寸确定后也对齐一次）
-      if (props.mode === "intraday") fitIntradayAll();
+      // 首载兜底：确保铺满全貌（OnDataReady 在 applyNewData 异步解析后才触发，
+      // 此处保证容器尺寸确定后也对齐一次，所有模式通用）
+      fitViewAll();
       drawCyq();
       restoreOverlays();
       drawAutoLevels();
@@ -1086,8 +1087,8 @@ function resizeAll() {
       /* noop */
     }
   }
-  // 容器尺寸变化（旋转/布局）后：分时图重新铺满整日，避免回到默认 barSpace 只显示末尾片段
-  if (props.mode === "intraday" && chart) fitIntradayAll();
+  // 容器尺寸变化（旋转/布局）后：重新铺满全貌，避免回到默认 barSpace 只显示末尾片段
+  if (chart) fitViewAll();
   drawCyq();
 }
 
