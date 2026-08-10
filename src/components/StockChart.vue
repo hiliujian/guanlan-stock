@@ -621,15 +621,16 @@ function ensureTrendOverlay() {
       needDefaultYAxisFigure: false,
       createPointFigures: (params: any) => {
         const coordinates = params.coordinates as { x: number; y: number }[];
-        const bounding = params.bounding as { left: number; right: number; top: number; bottom: number };
-        if (!coordinates || coordinates.length < 2 || !bounding) return [];
+        const bounding = params.bounding as { width: number; height: number } | undefined;
+        if (!coordinates || coordinates.length < 2) return [];
         const ys = [coordinates[0].y, coordinates[1].y].sort((a, b) => a - b);
         // 边界各向内缩 1px，避免正好压在红/绿线上，形成清晰独立的阴影带
         const topY = ys[0] + 1;
         const botY = ys[1] - 1;
         if (botY - topY < 2) return [];
-        const x0 = bounding.left;
-        const x1 = bounding.right;
+        // x 用面板全宽：bounding 仅含 {width,height}，(0,0) 为面板左上角（参考内置 fibonacciLine 写法）
+        const x0 = 0;
+        const x1 = (bounding && bounding.width) || Math.max(coordinates[0].x, coordinates[1].x);
         return [
           {
             type: "polygon",
