@@ -95,7 +95,9 @@ function ensureIntradayVol() {
           key: "volume",
           title: "分时量: ",
           type: "bar",
-          // 量柱颜色跟随当根蜡烛涨跌（涨红跌绿、平盘中性色）。
+          // 量柱颜色跟随「逐分钟 tick 方向」（涨红跌绿、平盘中性色）：
+          // 分时数据每根柱的 open 已设为上一分钟收盘价（首根=昨收），
+          // 故 k.close > k.open 即「当前分钟价 > 上一分钟价」= 该分钟上涨→红，下跌→绿。
           // ⚠️ 自定义指标拿不到 klinecharts 内置 VOL 的量柱默认样式（defaultStyles.bars 为空），
           // 故用项目统一涨跌色 UP/DOWN 兜底，确保量柱可见——否则量面板会退化成无柱的平直线。
           styles: (data: any, _indicator: any, defaultStyles: any) => {
@@ -202,6 +204,9 @@ function toKLineData(): any[] {
     const baseMs = base.getTime();
     const pre = props.preClose || 0;
     const ts = props.trends ?? [];
+    // 分时量柱按「每分钟即时涨跌方向」着色（与同花顺一致）：open 取上一分钟收盘价，
+    // 首根取昨收。这样量柱红绿随逐分钟 tick 方向交替，而非「价格 vs 昨收」的整块同色。
+    let prevClose = pre;
     for (const t of ts) {
       const tStr = t.t || "";
       const timePart = tStr.includes(" ") ? tStr.split(" ").pop()! : tStr;
@@ -212,7 +217,7 @@ function toKLineData(): any[] {
       if (!isFinite(sec)) continue;
       out.push({
         timestamp: sec,
-        open: pre,
+        open: prevClose,
         high: t.high,
         low: t.low,
         close: t.price,
@@ -220,6 +225,7 @@ function toKLineData(): any[] {
         turnover: t.amount,
         avg: t.avg,
       });
+      prevClose = t.price;
     }
   }
   out.sort((a, b) => a.timestamp - b.timestamp);
@@ -385,7 +391,8 @@ function applyLivePrice() {
   const last = dataList[dataList.length - 1];
   chart.updateData({
     timestamp: lastTs,
-    open: props.preClose || last.open,
+    // open 保留上一分钟收盘价（分钟级着色），使实时最后一根的量柱颜色仍按 tick 方向判定
+    open: last.open ?? props.preClose ?? 0,
     high: Math.max(last.high, lp),
     low: Math.min(last.low, lp),
     close: lp,
