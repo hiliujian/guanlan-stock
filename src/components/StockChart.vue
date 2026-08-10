@@ -2,25 +2,18 @@
   <!-- 专用 K 线行情图（KLineCharts 引擎）：单实例多面板（主图蜡烛/分时 + 成交量 + MACD），
        通过 layout 自动分面并控制高度；筹码分布叠加层默认绘制。 -->
   <div class="kc">
-    <!-- 自定义图例：提取到图表上方独立区域（替代 klinecharts 内置覆盖在图内的图例），随十字光标/数据更新 -->
+    <!-- 自定义图例：提取到图表上方独立区域（替代 klinecharts 内置覆盖在图内的图例），随十字光标/数据更新。
+         所有 token 作为 flex 容器的直接子元素，整条单行流动，仅在屏宽不足时才换行，与同花顺一致。 -->
     <view v-if="legend.show" class="kc-legendbar">
       <text class="lg-time">{{ legend.time }}</text>
-      <view class="lg-ohlc">
-        <text class="lg-k">开</text><text class="lg-v">{{ fmtPrice(legend.o) }}</text>
-        <text class="lg-k">高</text><text class="lg-v">{{ fmtPrice(legend.h) }}</text>
-        <text class="lg-k">低</text><text class="lg-v">{{ fmtPrice(legend.l) }}</text>
-        <text class="lg-k">收</text><text class="lg-v" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ fmtPrice(legend.c) }}</text>
-        <text class="lg-chg" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ legend.chgPct != null ? (legend.chgPct >= 0 ? '+' : '') + legend.chgPct.toFixed(2) + '%' : '' }}</text>
-      </view>
-      <view class="lg-group" v-if="legend.main.length">
-        <text v-for="(it, i) in legend.main" :key="'m' + i" class="lg-it"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
-      </view>
-      <view class="lg-group" v-if="legend.vol.length">
-        <text v-for="(it, i) in legend.vol" :key="'v' + i" class="lg-it"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
-      </view>
-      <view class="lg-group" v-if="legend.macd.length">
-        <text v-for="(it, i) in legend.macd" :key="'d' + i" class="lg-it"><text class="lg-l">{{ it.label }}</text><text class="lg-v" :style="it.color ? { color: it.color } : null">{{ it.value }}</text></text>
-      </view>
+      <text class="lg-k">开</text><text class="lg-v">{{ fmtPrice(legend.o) }}</text>
+      <text class="lg-k">高</text><text class="lg-v">{{ fmtPrice(legend.h) }}</text>
+      <text class="lg-k">低</text><text class="lg-v">{{ fmtPrice(legend.l) }}</text>
+      <text class="lg-k">收</text><text class="lg-v" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ fmtPrice(legend.c) }}</text>
+      <text class="lg-chg" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ legend.chgPct != null ? (legend.chgPct >= 0 ? '+' : '') + legend.chgPct.toFixed(2) + '%' : '' }}</text>
+      <text v-for="(it, i) in legend.main" :key="'m' + i" class="lg-it" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
+      <text v-for="(it, i) in legend.vol" :key="'v' + i" class="lg-it" :class="{ 'lg-sep': i === 0 }" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
+      <text v-for="(it, i) in legend.macd" :key="'d' + i" class="lg-it" :class="{ 'lg-sep': i === 0 }" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
     </view>
     <div ref="chartEl" class="kc-chart" :style="{ height: props.height + 'px' }"></div>
     <!-- 筹码分布叠加层（右侧横向直方图，与蜡烛同坐标系），默认不拦截指针 -->
@@ -57,6 +50,9 @@ import { init, dispose, registerIndicator, registerOverlay, ActionType } from "k
 import { isDark } from "@/utils/theme";
 import { UP, DOWN } from "@/utils/colors";
 const TREND = "#2f74ff"; // 趋势线专用蓝（与压力红/支撑绿三色区分，互不混淆，且对红绿色盲更友好）
+// 指标折线调色板：主图/量/MACD 各 pane 的折线按「内容顺序」循环取色（橙/蓝/紫/绿/品红）。
+// 与图表画线颜色保持一致，图例复用同一份颜色，避免图例与图线颜色脱节（用户要求各图例颜色不同）。
+const INDICATOR_LINE_COLORS = ["#f5a623", "#1c9cf0", "#9b59b6", "#2ecc71", "#e11d74"];
 const ZONE_FILL = "rgba(108,122,145,0.18)"; // 关键区间阴影填充（中性石板灰，深浅主题均可见，提升可见度）
 const ZONE_EDGE = "rgba(108,122,145,0.55)"; // 关键区间边界描边（与填充同色系，清晰可辨）
 const ZONE_TEXT = "rgba(125,140,165,0.95)"; // 关键区间标签文字
@@ -448,13 +444,7 @@ function buildStyles(): Record<string, unknown> {
       bars: [
         { style: "fill", upColor: UP, downColor: DOWN, noChangeColor: "#888888", borderStyle: "solid", borderSize: 1, borderDashedValue: [2, 2] },
       ],
-      lines: [
-        { color: "#f5a623", size: 1 },
-        { color: "#1c9cf0", size: 1 },
-        { color: "#9b59b6", size: 1 },
-        { color: "#2ecc71", size: 1 },
-        { color: "#e11d74", size: 1 },
-      ],
+      lines: INDICATOR_LINE_COLORS.map((c) => ({ color: c, size: 1 })),
     },
     xAxis: {
       axisLine: { color: axisLine },
@@ -1016,36 +1006,38 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
     ? (props.preClose || kl.open || 0)
     : (idx && idx > 0 ? dataList[idx - 1]?.close || kl.open || 0 : kl.open || 0);
   legend.chgPct = base ? ((legend.c! - base) / base) * 100 : null;
-  // 主图指标：分时=A VP均价；K线=各周期 MA（仅 maConfig 开启的）
+  // 主图指标：分时=A VP均价；K线=各周期 MA（仅 maConfig 开启的）。
+  // 颜色与图表画线一致：按「可见 MA 顺序」取调色板（MA5橙/MA10蓝/MA20紫/MA60绿）；AVP 取首色。
   const candle = paneMap("candle_pane", cross);
   legend.main = [];
   if (props.mode === "intraday") {
     const avp = candle["AVP"];
-    if (avp && Number.isFinite(avp.avp)) legend.main.push({ label: "均价", value: fmtPrice(avp.avp) });
+    if (avp && Number.isFinite(avp.avp)) legend.main.push({ label: "均价", value: fmtPrice(avp.avp), color: INDICATOR_LINE_COLORS[0] });
   } else {
     const cfg = props.maConfig;
     const vis = (k: string) => props.showMA !== false && (cfg ? cfg[k as keyof ChartMaConfig] : true);
+    let mi = 0;
     for (const def of MA_DEFS) {
       if (!vis(def.key)) continue;
       const v = candle["MA" + def.period];
-      if (v != null) legend.main.push({ label: "MA" + def.period, value: fmtPrice(v) });
+      if (v != null) { legend.main.push({ label: "MA" + def.period, value: fmtPrice(v), color: INDICATOR_LINE_COLORS[mi] }); mi++; }
     }
   }
-  // 量图：分时量/成交量 + 量 MA5/10/20
+  // 量图：分时量/成交量 + 量 MA5/10/20（量 MA 取调色板前三位）
   const volMap = paneMap("vol_pane", cross);
   const vol = volMap[props.mode === "intraday" ? "INTRADAY_VOL" : "VOL"];
   legend.vol = [];
   if (vol) {
     if (vol.volume != null) legend.vol.push({ label: props.mode === "intraday" ? "分时量" : "成交量", value: fmtVol(vol.volume) });
-    ["ma1", "ma2", "ma3"].forEach((k, i) => { if (vol[k] != null) legend.vol.push({ label: "MA" + (i + 1) * 5, value: fmtVol(vol[k]) }); });
+    ["ma1", "ma2", "ma3"].forEach((k, i) => { if (vol[k] != null) legend.vol.push({ label: "MA" + (i + 1) * 5, value: fmtVol(vol[k]), color: INDICATOR_LINE_COLORS[i] }); });
   }
-  // MACD 图：DIF / DEA / MACD（柱按正负红绿）
+  // MACD 图：DIF(橙)/DEA(蓝)/MACD(柱按正负红绿)
   const macdMap = paneMap("macd_pane", cross);
   const md = macdMap[props.mode === "intraday" ? "MACDFS" : "MACD"];
   legend.macd = [];
   if (md) {
-    if (md.dif != null) legend.macd.push({ label: "DIF", value: fmtPrice(md.dif) });
-    if (md.dea != null) legend.macd.push({ label: "DEA", value: fmtPrice(md.dea) });
+    if (md.dif != null) legend.macd.push({ label: "DIF", value: fmtPrice(md.dif), color: INDICATOR_LINE_COLORS[0] });
+    if (md.dea != null) legend.macd.push({ label: "DEA", value: fmtPrice(md.dea), color: INDICATOR_LINE_COLORS[1] });
     if (md.macd != null) legend.macd.push({ label: "MACD", value: fmtPrice(md.macd), color: md.macd > 0 ? UP : md.macd < 0 ? DOWN : undefined });
   }
   legend.show = true;
@@ -1296,12 +1288,6 @@ onBeforeUnmount(() => {
   color: var(--text);
   margin-right: 4rpx;
 }
-.lg-ohlc {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4rpx;
-}
 .lg-k {
   color: var(--text-3);
   margin-left: 8rpx;
@@ -1313,19 +1299,23 @@ onBeforeUnmount(() => {
   margin-left: 8rpx;
   font-weight: 500;
 }
-.lg-group {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4rpx 10rpx;
-  padding-left: 14rpx;
-  margin-left: 4rpx;
-  border-left: 1rpx solid var(--border);
-}
+/* 图例 token：与主图 token 同为 flex 容器直接子元素，整条单行流动、屏宽不足才换行（同花顺式）。
+   默认标签取弱化色；若带 color（MA/量MA/DIF/DEA 等）则标签与数值同取该线色。 */
 .lg-it {
   display: inline-flex;
   align-items: center;
   gap: 3rpx;
+  color: var(--text-3);
+}
+.lg-it .lg-l,
+.lg-it .lg-v {
+  color: inherit;
+}
+/* 量 / MACD 组首个 token 加细分隔，视觉上分组（价格·均线 / 量 / 指标），但仍属同一流动行 */
+.lg-sep {
+  border-left: 1rpx solid var(--border);
+  padding-left: 14rpx;
+  margin-left: 4rpx;
 }
 .lg-l {
   color: var(--text-3);
