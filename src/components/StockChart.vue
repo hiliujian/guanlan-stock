@@ -52,7 +52,10 @@ function ensureAvp() {
   try {
     registerIndicator({
       name: "AVP",
-      shortName: "均价",
+      // 主图叠加指标：shortName 设空字符串→主图标题栏不显示「均价」，
+      // 避免与左侧图例「均价:223.63」重复（klinecharts 空串不会 fallback 到 name，见源码 1038 行）。
+      // 图例的「均价:」前缀由下方 figure.title 提供。
+      shortName: "",
       series: "price" as never, // 运行时即字符串 'price'，minified 枚举无值，直接传字面量
       calc: (dataList: any[]) => {
         // 直接用数据源已正确算好的每股均价（东财 f58 / 腾讯 cumAmt÷(手×100) / 新浪兜底 close）。
@@ -73,8 +76,8 @@ function ensureAvp() {
 }
 
 // ---- 分时量（INTRADAY_VOL）自定义指标：与内置 VOL 算法完全一致（MA5/10/20 + 涨跌着色量柱），
-// 仅把图例 shortName 与量柱标题改为「分时量」，避免分时面板误显示「成交量」。
-// K 线模式仍用内置 VOL（显示「成交量」），两者语义各取所需。----
+// 量柱标题与图例前缀改为「分时量」，避免分时面板误显示「成交量」。面板标题栏 shortName 设空，
+// 避免与图例「分时量:xxx」重复（同 AVP）。K 线模式仍用内置 VOL（显示「成交量」）。----
 const VOL_MA_PARAMS = [5, 10, 20];
 let intradayVolRegistered = false;
 function ensureIntradayVol() {
@@ -82,7 +85,9 @@ function ensureIntradayVol() {
   try {
     registerIndicator({
       name: "INTRADAY_VOL",
-      shortName: "分时量",
+      // 量面板标题栏不显示「分时量」前缀，避免与左侧图例「分时量:xxx」重复（同 AVP 处理）。
+      // 图例的「分时量:」前缀由下方 volume figure.title 提供；MA5/10/20 子线标题不变。
+      shortName: "",
       series: "volume" as never, // 量价系列，klinecharts 据其渲染量柱并按涨跌着色
       calcParams: VOL_MA_PARAMS,
       shouldFormatBigNumber: true,
@@ -137,15 +142,16 @@ function ensureIntradayVol() {
   }
 }
 
-// ---- EMA-MACD 自定义指标（仅分时模式，与内置 MACD 算法完全一致） ----
+// ---- MACDFS 自定义指标（分时级别 MACD，仅分时模式，与内置 MACD 算法完全一致） ----
 // klinecharts 内置 MACD 用 EMA(12,26,9)，需要 ~35 个数据点才能输出第一个有效值
 //（因为内置实现前 35 个点返回 null/undefined，导致分时开盘后前半小时空白）。
 // 本指标采用**完全相同的 EMA 公式**，但从第 1 根 K 线起就输出值（无需预热期），
 // 使分时图 MACD 与日K/周K等 K 线模式的内置 MACD 数值和形状一致。
+// 命名 MACDFS：S = Session（分时级别），与日K/周K 的 MACD 在面板标题上明确区分。
 //
 // 标准 EMA 公式：
 //   α = 2 / (N + 1)
-//   EMA₁ = seed（首根价格或 SMA 种子）
+//   EMA₁ = seed（首根价格）
 //   EMAₙ = close × α + EMAₙ₋₁ × (1 − α)
 //
 // MACD（12,26,9 + 2倍柱）：
@@ -153,13 +159,13 @@ function ensureIntradayVol() {
 //   DEA  = EMA(DIF,9)
 //   MACD = 2 × (DIF − DEA)
 //   柱 > 0 红(UP)  柱 < 0 绿(DOWN)  柱 = 0 灰
-let emaMacdRegistered = false;
-function ensureEmaMacd() {
-  if (emaMacdRegistered) return;
+let macdfsRegistered = false;
+function ensureMacdfs() {
+  if (macdfsRegistered) return;
   try {
     registerIndicator({
-      name: "EMA_MACD",
-      shortName: "MACD",
+      name: "MACDFS",
+      shortName: "MACDFS",
       calcParams: [12, 26, 9],
       figures: [
         { key: "dif", title: "DIF: ", type: "line" },
@@ -215,7 +221,7 @@ function ensureEmaMacd() {
         });
       },
     } as never);
-    emaMacdRegistered = true;
+    macdfsRegistered = true;
   } catch {
     /* noop */
   }
@@ -469,7 +475,7 @@ function buildLayout(): any[] {
     // 分时模式用 INTRADAY_VOL（图例显示「分时量」），K 线模式用内置 VOL（显示「成交量」）
     { type: "indicator", content: [props.mode === "intraday" ? "INTRADAY_VOL" : "VOL"], options: { id: "vol_pane", height: volH, minHeight: 40 } },
   ];
-  if (props.showMacd) layout.push({ type: "indicator", content: [props.mode === "intraday" ? "EMA_MACD" : "MACD"], options: { id: "macd_pane", height: macdH, minHeight: 60 } });
+  if (props.showMacd) layout.push({ type: "indicator", content: [props.mode === "intraday" ? "MACDFS" : "MACD"], options: { id: "macd_pane", height: macdH, minHeight: 60 } });
   return layout;
 }
 
@@ -958,7 +964,7 @@ function buildChart() {
   destroyChart();
   ensureAvp();
   ensureIntradayVol();
-  ensureEmaMacd();
+  ensureMacdfs();
   ensureMaIndicators();
   ensureTrendOverlay();
   dataList = toKLineData();
