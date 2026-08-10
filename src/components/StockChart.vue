@@ -2,6 +2,26 @@
   <!-- 专用 K 线行情图（KLineCharts 引擎）：单实例多面板（主图蜡烛/分时 + 成交量 + MACD），
        通过 layout 自动分面并控制高度；筹码分布叠加层默认绘制。 -->
   <div class="kc">
+    <!-- 自定义图例：提取到图表上方独立区域（替代 klinecharts 内置覆盖在图内的图例），随十字光标/数据更新 -->
+    <view v-if="legend.show" class="kc-legendbar">
+      <text class="lg-time">{{ legend.time }}</text>
+      <view class="lg-ohlc">
+        <text class="lg-k">开</text><text class="lg-v">{{ fmtPrice(legend.o) }}</text>
+        <text class="lg-k">高</text><text class="lg-v">{{ fmtPrice(legend.h) }}</text>
+        <text class="lg-k">低</text><text class="lg-v">{{ fmtPrice(legend.l) }}</text>
+        <text class="lg-k">收</text><text class="lg-v" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ fmtPrice(legend.c) }}</text>
+        <text class="lg-chg" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ legend.chgPct != null ? (legend.chgPct >= 0 ? '+' : '') + legend.chgPct.toFixed(2) + '%' : '' }}</text>
+      </view>
+      <view class="lg-group" v-if="legend.main.length">
+        <text v-for="(it, i) in legend.main" :key="'m' + i" class="lg-it"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
+      </view>
+      <view class="lg-group" v-if="legend.vol.length">
+        <text v-for="(it, i) in legend.vol" :key="'v' + i" class="lg-it"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
+      </view>
+      <view class="lg-group" v-if="legend.macd.length">
+        <text v-for="(it, i) in legend.macd" :key="'d' + i" class="lg-it"><text class="lg-l">{{ it.label }}</text><text class="lg-v" :style="it.color ? { color: it.color } : null">{{ it.value }}</text></text>
+      </view>
+    </view>
     <div ref="chartEl" class="kc-chart" :style="{ height: props.height + 'px' }"></div>
     <!-- 筹码分布叠加层（右侧横向直方图，与蜡烛同坐标系），默认不拦截指针 -->
     <canvas ref="cyqEl" class="kc-ov kc-ov--cyq"></canvas>
@@ -142,23 +162,12 @@ function ensureIntradayVol() {
   }
 }
 
-// ---- MACDFS 自定义指标（分时级别 MACD，仅分时模式，与内置 MACD 算法完全一致） ----
-// klinecharts 内置 MACD 用 EMA(12,26,9)，需要 ~35 个数据点才能输出第一个有效值
-//（因为内置实现前 35 个点返回 null/undefined，导致分时开盘后前半小时空白）。
-// 本指标采用**完全相同的 EMA 公式**，但从第 1 根 K 线起就输出值（无需预热期），
-// 使分时图 MACD 与日K/周K等 K 线模式的内置 MACD 数值和形状一致。
-// 命名 MACDFS：S = Session（分时级别），与日K/周K 的 MACD 在面板标题上明确区分。
-//
-// 标准 EMA 公式：
-//   α = 2 / (N + 1)
-//   EMA₁ = seed（首根价格）
-//   EMAₙ = close × α + EMAₙ₋₁ × (1 − α)
-//
-// MACD（12,26,9 + 2倍柱）：
-//   DIF  = EMA(close,12) − EMA(close,26)
-//   DEA  = EMA(DIF,9)
-//   MACD = 2 × (DIF − DEA)
-//   柱 > 0 红(UP)  柱 < 0 绿(DOWN)  柱 = 0 灰
+// ---- MACDFS 自定义指标（分时级别 MACD，仅分时模式使用）----
+// 与日K/周K 等 K 线模式使用的「内置 MACD」保持**完全一致**的算法与数值/形状：
+// 直接复刻 klinecharts 源码 built-in MACD 的 calc（EMA 用「前 N 根 SMA 做种子」再转递归，
+// 而非首根价做种子——两种种子方式形状差异显著，正是之前自定义 EMA 与日K 不一致的根因）。
+// 命名 MACDFS = 分时级别 MACD，面板标题与日K 的 MACD 区分；柱着色/描边也与内置一致
+// （柱>0 红、<0 绿、=0 中性；当前值>前值用描边、否则填充）。
 let macdfsRegistered = false;
 function ensureMacdfs() {
   if (macdfsRegistered) return;
@@ -176,48 +185,56 @@ function ensureMacdfs() {
           type: "bar",
           // 量柱逐根着色：klinecharts 自定义指标不会自动按值正负选色（内置 MACD 才会）
           // 正确数据路径：data.current.indicatorData.macd（已验证 v3 修复）
+          // 复刻内置 MACD 的柱着色/描边逻辑（data.current/prev.indicatorData.macd 为正确路径）
           styles: (data: any, _indicator: any, defaultStyles: any) => {
             const base = (defaultStyles?.bars && defaultStyles.bars[0]) || {};
             const up = base.upColor || UP;
             const down = base.downColor || DOWN;
             const noChange = base.noChangeColor || "#888888";
-            const macdVal = data?.current?.indicatorData?.macd;
-            if (typeof macdVal === "number") {
-              if (macdVal > 0) return { color: up };
-              if (macdVal < 0) return { color: down };
-            }
-            return { color: noChange };
+            const prevMacd = data?.prev?.indicatorData?.macd ?? Number.MIN_SAFE_INTEGER;
+            const curMacd = data?.current?.indicatorData?.macd ?? Number.MIN_SAFE_INTEGER;
+            let color = noChange;
+            if (curMacd > 0) color = up;
+            else if (curMacd < 0) color = down;
+            const style = prevMacd < curMacd ? "stroke" : "fill";
+            return { style, color, borderColor: color };
           },
         },
       ],
+      // 复刻 klinecharts built-in MACD 的 calc（源码 3188 行附近）：
+      // EMA 用「前 N 根 SMA 做种子」，而非首根价做种子——这是与日K 内置 MACD
+      // 数值/形状完全一致的关键；前 ~32 根无 MACD 值（与日K 前截行为一致）。
       calc: (dataList: any[], indicator: any) => {
         const params = indicator.calcParams || [12, 26, 9];
         const [p1, p2, p3] = params as number[];
-        // EMA 指数移动平均：α = 2/(N+1), 从第1根即有输出
-        const ema = (arr: number[], period: number): number => {
-          const n = arr.length;
-          if (!n) return 0;
-          const alpha = 2 / (period + 1);
-          if (n === 1) return arr[0];
-          // 种子：用第一根价格（与 klinecharts 内置行为一致）
-          let prev = arr[0];
-          for (let i = 1; i < n; i++) {
-            prev = arr[i] * alpha + prev * (1 - alpha);
+        const maxPeriod = Math.max(p1, p2);
+        let closeSum = 0;
+        let emaShort: number | undefined;
+        let emaLong: number | undefined;
+        let dif = 0;
+        let difSum = 0;
+        let dea = 0;
+        return dataList.map((kLineData, i) => {
+          const macd: any = {};
+          const close = Number(kLineData.close) || 0;
+          closeSum += close;
+          if (i >= p1 - 1) {
+            emaShort = i > p1 - 1 ? (2 * close + (p1 - 1) * (emaShort as number)) / (p1 + 1) : closeSum / p1;
           }
-          return prev;
-        };
-        const closes: number[] = [];
-        const difs: number[] = [];
-        return dataList.map((kLineData) => {
-          const c = Number(kLineData.close) || 0;
-          closes.push(c);
-          const ema1 = ema(closes, p1); // EMA(close, 12)
-          const ema2 = ema(closes, p2); // EMA(close, 26)
-          const dif = ema1 - ema2;       // DIF
-          difs.push(dif);
-          const dea = ema(difs, p3);    // DEA = EMA(DIF, 9)
-          const macd = 2 * (dif - dea);  // MACD 柱（2 倍差，标准定义）
-          return { dif, dea, macd };
+          if (i >= p2 - 1) {
+            emaLong = i > p2 - 1 ? (2 * close + (p2 - 1) * (emaLong as number)) / (p2 + 1) : closeSum / p2;
+          }
+          if (i >= maxPeriod - 1) {
+            dif = (emaShort as number) - (emaLong as number);
+            macd.dif = dif;
+            difSum += dif;
+            if (i >= maxPeriod + p3 - 2) {
+              dea = i > maxPeriod + p3 - 2 ? (dif * 2 + dea * (p3 - 1)) / (p3 + 1) : difSum / p3;
+              macd.macd = (dif - dea) * 2;
+              macd.dea = dea;
+            }
+          }
+          return macd;
         });
       },
     } as never);
@@ -347,7 +364,12 @@ function toKLineData(): any[] {
       const parts = timePart.split(":");
       const hh = Number(parts[0]) || 0;
       const mm = Number(parts[1]) || 0;
-      const sec = baseMs + (hh * 60 + mm) * 60 * 1000;
+      const m = hh * 60 + mm;
+      // 过滤非连续竞价交易时段的多余点：A 股仅 09:30–11:30 与 13:00–15:00 有分时；
+      // 腾讯兜底源会附带 15:06–15:30 收盘后多余点（共 25 个），会导致图轴画到 15:30。
+      const inSession = (m >= 570 && m <= 690) || (m >= 780 && m <= 900);
+      if (!inSession) continue;
+      const sec = baseMs + m * 60 * 1000;
       if (!isFinite(sec)) continue;
       out.push({
         timestamp: sec,
@@ -406,7 +428,8 @@ function buildStyles(): Record<string, unknown> {
           text: { show: true, color: "#ffffff", backgroundColor: UP, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2 },
         },
       },
-      tooltip: { showRule: "always" },
+      // 关闭内置 tooltip/图例（指标名+数值默认常显并覆盖在图内，改为图表上方自定义图例）
+      tooltip: { showRule: "none" },
       area: {
         lineSize: 2,
         lineColor: "#1677ff",
@@ -419,6 +442,9 @@ function buildStyles(): Record<string, unknown> {
       },
     },
     indicator: {
+      // 关闭内置 indicator 图例/末值标签（默认常显于各 pane、覆盖在图内，已改为图表上方自定义图例）
+      tooltip: { showRule: "none" },
+      lastValueMark: { show: false },
       bars: [
         { style: "fill", upColor: UP, downColor: DOWN, noChangeColor: "#888888", borderStyle: "solid", borderSize: 1, borderDashedValue: [2, 2] },
       ],
@@ -541,6 +567,7 @@ function applyLivePrice() {
     volume: last.volume,
     turnover: last.turnover,
   });
+  updateLegendLatest();
 }
 
 // ---- 默认铺满可视宽度：所有模式（分时 / 日K / 周K / 月K / 年K）一次性展示完整数据 ----
@@ -576,9 +603,10 @@ function fitViewAll() {
   chart.setBarSpace(Math.max(1, best));
 }
 
-// 数据就绪回调：每次数据变化（首载 / 刷新 / 实时末根）后保持「铺满全貌」（所有模式通用）
+// 数据就绪回调：每次数据变化（首载 / 刷新 / 实时末根）后保持「铺满全貌」+ 刷新图例（所有模式通用）
 function onDataReady() {
   fitViewAll();
+  updateLegendLatest();
 }
 
 // ---- 生命周期 ----
@@ -939,13 +967,105 @@ const tipStyle = computed(() => {
   const top = Math.max(8, tip.y - 10);
   return { left: left + "px", top: top + "px" };
 });
+// ---- 自定义图例（提取到图表上方，替代 klinecharts 内置覆盖在图内的图例）----
+interface LegendItem { label: string; value: string; color?: string; }
+const legend = reactive<{
+  show: boolean;
+  time: string;
+  o: number | null; h: number | null; l: number | null; c: number | null;
+  chgPct: number | null;
+  main: LegendItem[]; vol: LegendItem[]; macd: LegendItem[];
+}>({
+  show: false, time: "", o: null, h: null, l: null, c: null, chgPct: null,
+  main: [], vol: [], macd: [],
+});
+function fmtPrice(v: number | null | undefined): string { return v != null && Number.isFinite(v) ? v.toFixed(2) : "--"; }
+function fmtVol(v: number): string {
+  if (!Number.isFinite(v) || v <= 0) return "--";
+  if (v >= 1e8) return (v / 1e8).toFixed(2) + "亿";
+  if (v >= 1e4) return (v / 1e4).toFixed(2) + "万";
+  return String(Math.round(v));
+}
+// 从图表实例读取某 pane 各指标在「最后一根」的已算结果（用于无十字光标时显示最新值）
+function readIndicatorResults(paneId: string): Record<string, any> {
+  const out: Record<string, any> = {};
+  try {
+    const store: any = (chart as any)?.getChartStore?.();
+    const insts: any[] = store?.getIndicatorStore?.()?.getInstances(paneId) || [];
+    for (const inst of insts) {
+      const res = inst?.result;
+      if (Array.isArray(res) && res.length) out[inst.name] = res[res.length - 1];
+    }
+  } catch {
+    /* noop */
+  }
+  return out;
+}
+// 取某 pane 的指标结果：十字光标时来自事件（cross），否则读图表实例最新值
+function paneMap(paneId: string, cross?: Record<string, Record<string, any>>): Record<string, any> {
+  return (cross && cross[paneId]) || readIndicatorResults(paneId);
+}
+function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?: number) {
+  if (!kl) return;
+  const d = new Date(kl.timestamp);
+  const p = (n: number) => String(n).padStart(2, "0");
+  legend.time = props.mode === "intraday" ? `${p(d.getHours())}:${p(d.getMinutes())}` : `${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  legend.o = kl.open ?? null; legend.h = kl.high ?? null; legend.l = kl.low ?? null; legend.c = kl.close ?? null;
+  // 涨跌幅基准：分时用昨收；K线用前一根收盘价（首根用开盘）
+  const base = props.mode === "intraday"
+    ? (props.preClose || kl.open || 0)
+    : (idx && idx > 0 ? dataList[idx - 1]?.close || kl.open || 0 : kl.open || 0);
+  legend.chgPct = base ? ((legend.c! - base) / base) * 100 : null;
+  // 主图指标：分时=A VP均价；K线=各周期 MA（仅 maConfig 开启的）
+  const candle = paneMap("candle_pane", cross);
+  legend.main = [];
+  if (props.mode === "intraday") {
+    const avp = candle["AVP"];
+    if (avp && Number.isFinite(avp.avp)) legend.main.push({ label: "均价", value: fmtPrice(avp.avp) });
+  } else {
+    const cfg = props.maConfig;
+    const vis = (k: string) => props.showMA !== false && (cfg ? cfg[k as keyof ChartMaConfig] : true);
+    for (const def of MA_DEFS) {
+      if (!vis(def.key)) continue;
+      const v = candle["MA" + def.period];
+      if (v != null) legend.main.push({ label: "MA" + def.period, value: fmtPrice(v) });
+    }
+  }
+  // 量图：分时量/成交量 + 量 MA5/10/20
+  const volMap = paneMap("vol_pane", cross);
+  const vol = volMap[props.mode === "intraday" ? "INTRADAY_VOL" : "VOL"];
+  legend.vol = [];
+  if (vol) {
+    if (vol.volume != null) legend.vol.push({ label: props.mode === "intraday" ? "分时量" : "成交量", value: fmtVol(vol.volume) });
+    ["ma1", "ma2", "ma3"].forEach((k, i) => { if (vol[k] != null) legend.vol.push({ label: "MA" + (i + 1) * 5, value: fmtVol(vol[k]) }); });
+  }
+  // MACD 图：DIF / DEA / MACD（柱按正负红绿）
+  const macdMap = paneMap("macd_pane", cross);
+  const md = macdMap[props.mode === "intraday" ? "MACDFS" : "MACD"];
+  legend.macd = [];
+  if (md) {
+    if (md.dif != null) legend.macd.push({ label: "DIF", value: fmtPrice(md.dif) });
+    if (md.dea != null) legend.macd.push({ label: "DEA", value: fmtPrice(md.dea) });
+    if (md.macd != null) legend.macd.push({ label: "MACD", value: fmtPrice(md.macd), color: md.macd > 0 ? UP : md.macd < 0 ? DOWN : undefined });
+  }
+  legend.show = true;
+}
+function updateLegendLatest() {
+  const last = dataList[dataList.length - 1];
+  if (!last) { legend.show = false; return; }
+  buildLegend(last, undefined, dataList.length - 1);
+}
+
 let crosshairCb: ((d: any) => void) | null = null;
 let dataReadyCb: (() => void) | null = null;
 function onCrosshair(c: any) {
   if (!chart || !c || !c.paneId || c.paneId !== "candle_pane" || c.x == null || c.y == null) {
     tip.show = false;
+    updateLegendLatest();
     return;
   }
+  // 图例跟随十字光标（显示当前悬浮点的 OHLC + 各指标值）
+  if (c.kLineData) buildLegend(c.kLineData, c.indicatorData, c.dataIndex);
   const pts = chart.convertFromPixel([{ x: c.x, y: c.y }], { paneId: "candle_pane" }) as any;
   const pt = Array.isArray(pts) ? pts[0] : pts;
   if (!pt || typeof pt.price !== "number") {
@@ -1151,9 +1271,70 @@ onBeforeUnmount(() => {
   width: 100%;
   background: var(--card);
   border: 1rpx solid var(--border);
-  border-radius: 16rpx;
+  border-top: none;
+  border-radius: 0 0 16rpx 16rpx;
   overflow: hidden;
   touch-action: none;
+}
+/* 自定义图例：图表上方独立区域，与图表合为同一张卡片（上圆角），替代内置覆盖式图例 */
+.kc-legendbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4rpx 14rpx;
+  padding: 10rpx 14rpx;
+  background: var(--card);
+  border: 1rpx solid var(--border);
+  border-bottom: none;
+  border-radius: 16rpx 16rpx 0 0;
+  font-size: var(--font-xs);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.lg-time {
+  font-weight: 500;
+  color: var(--text);
+  margin-right: 4rpx;
+}
+.lg-ohlc {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4rpx;
+}
+.lg-k {
+  color: var(--text-3);
+  margin-left: 8rpx;
+}
+.lg-v {
+  color: var(--text);
+}
+.lg-chg {
+  margin-left: 8rpx;
+  font-weight: 500;
+}
+.lg-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4rpx 10rpx;
+  padding-left: 14rpx;
+  margin-left: 4rpx;
+  border-left: 1rpx solid var(--border);
+}
+.lg-it {
+  display: inline-flex;
+  align-items: center;
+  gap: 3rpx;
+}
+.lg-l {
+  color: var(--text-3);
+}
+.up {
+  color: #ef232a;
+}
+.down {
+  color: #09b07a;
 }
 .kc-ov {
   position: absolute;

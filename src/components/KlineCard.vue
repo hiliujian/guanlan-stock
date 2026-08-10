@@ -257,7 +257,6 @@ const gearOn = computed(
 }
 .ps.active {
   color: #fff;
-  font-weight: 600;
   letter-spacing: 0.5rpx;
 }
 /* 设置齿轮：与分段控件同款药丸，置于年K 末尾；总开关开启时图标显主色，关闭时显次级灰 */
