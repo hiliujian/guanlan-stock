@@ -95,14 +95,19 @@ function ensureIntradayVol() {
           key: "volume",
           title: "分时量: ",
           type: "bar",
-          // 量柱颜色跟随当根蜡烛涨跌（与内置 VOL 一致）：涨红跌绿、平盘中性色
+          // 量柱颜色跟随当根蜡烛涨跌（涨红跌绿、平盘中性色）。
+          // ⚠️ 自定义指标拿不到 klinecharts 内置 VOL 的量柱默认样式（defaultStyles.bars 为空），
+          // 故用项目统一涨跌色 UP/DOWN 兜底，确保量柱可见——否则量面板会退化成无柱的平直线。
           styles: (data: any, _indicator: any, defaultStyles: any) => {
             const k = data?.current?.kLineData;
             const base = (defaultStyles?.bars && defaultStyles.bars[0]) || {};
-            if (!k) return { color: base.noChangeColor };
-            if (k.close > k.open) return { color: base.upColor };
-            if (k.close < k.open) return { color: base.downColor };
-            return { color: base.noChangeColor };
+            const up = base.upColor || UP;
+            const down = base.downColor || DOWN;
+            const noChange = base.noChangeColor || "#888888";
+            if (!k) return { color: noChange };
+            if (k.close > k.open) return { color: up };
+            if (k.close < k.open) return { color: down };
+            return { color: noChange };
           },
         },
       ],
