@@ -9,9 +9,9 @@
       <view class="st-head-ph nav-ph" />
     </view>
 
-    <scroll-view class="st-scroll" :scroll-y="!drag.active">
+    <scroll-view class="page-scroll" :scroll-y="!drag.active">
       <!-- 外观 -->
-      <view class="st-group">
+      <view class="page-group">
         <text class="st-group-title">外观</text>
         <view class="st-row">
           <view class="st-row-left">
@@ -39,7 +39,7 @@
       </view>
 
       <!-- 行情卡片：拖拽排序 + 显隐 -->
-      <view class="st-group">
+      <view class="page-group">
         <text class="st-group-title">行情卡片</text>
         <text class="st-row-desc">拖动左侧手柄调整卡片位置，开关控制是否显示。</text>
         <view
@@ -75,7 +75,7 @@
       </view>
 
       <!-- 关于 -->
-      <view class="st-group">
+      <view class="page-group">
         <text class="st-group-title">关于</text>
         <view class="st-row">
           <text class="st-row-label">应用</text>
@@ -245,19 +245,6 @@ function rowStyle(idx: number) {
 /* .st-head-ph 布局属性已提升至全局 .nav-ph */
 .st-page {
   background: var(--bg);
-}
-.st-scroll {
-  flex: 1;
-  height: 100%;
-  box-sizing: border-box;
-}
-.st-group {
-  padding: 12rpx 20rpx 18rpx;
-  background: var(--card);
-  border-top: 16rpx solid var(--bg);
-}
-.st-group:first-of-type {
-  border-top: none;
 }
 /* 重置应用：系统设置风格的可点击条目（整行可点） */
 .st-reset-row {

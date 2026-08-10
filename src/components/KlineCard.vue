@@ -124,48 +124,45 @@ function closeAux() {
     :aux-config="auxConfig"
   />
 
-  <!-- 辅助线设置底部抽屉 -->
-  <view v-if="auxOpen" class="sheet-mask anim-mask" @click="closeAux" />
-  <view v-if="auxOpen" class="sheet-panel anim-sheet">
-    <view class="sheet-head">
-      <text class="sheet-title">辅助线设置</text>
-      <view class="sheet-close" role="button" @click="closeAux">
+  <!-- 辅助线设置：内联展开面板（无遮罩、文档流内，保证永不超出可视区域） -->
+  <view v-if="auxOpen" class="aux-panel anim-rise-soft">
+    <view class="aux-head">
+      <text class="aux-title">辅助线设置</text>
+      <view class="aux-close" role="button" @click="closeAux">
         <OutlineIcon type="close" :size="32" color="var(--text-2)" />
       </view>
     </view>
-    <view class="sheet-body">
-      <!-- 总开关 -->
-      <view class="aux-row">
-        <view class="aux-left">
-          <text class="aux-label">显示辅助线</text>
-          <text class="aux-desc">系统自动标注的压力 / 支撑 / 趋势与关键区间</text>
-        </view>
-        <view
-          class="cc-switch"
-          :class="{ on: auxConfig.enabled }"
-          hover-class="cc-switch-hover"
-          role="button"
-          @click="auxConfig.enabled = !auxConfig.enabled"
-        >
-          <view class="cc-knob" />
-        </view>
+    <!-- 总开关 -->
+    <view class="aux-row">
+      <view class="aux-left">
+        <text class="aux-label">显示辅助线</text>
+        <text class="aux-desc">系统自动标注的压力 / 支撑 / 趋势与关键区间</text>
       </view>
-      <view class="aux-sep" />
-      <!-- 逐线开关 -->
-      <view v-for="it in auxItems" :key="it.key" class="aux-row">
-        <view class="aux-left">
-          <text class="aux-label">{{ it.label }}</text>
-          <text class="aux-desc">{{ it.desc }}</text>
-        </view>
-        <view
-          class="cc-switch"
-          :class="{ on: auxConfig[it.key] }"
-          hover-class="cc-switch-hover"
-          role="button"
-          @click="toggleAux(it.key)"
-        >
-          <view class="cc-knob" />
-        </view>
+      <view
+        class="cc-switch"
+        :class="{ on: auxConfig.enabled }"
+        hover-class="cc-switch-hover"
+        role="button"
+        @click="auxConfig.enabled = !auxConfig.enabled"
+      >
+        <view class="cc-knob" />
+      </view>
+    </view>
+    <view class="aux-sep" />
+    <!-- 逐线开关 -->
+    <view v-for="it in auxItems" :key="it.key" class="aux-row">
+      <view class="aux-left">
+        <text class="aux-label">{{ it.label }}</text>
+        <text class="aux-desc">{{ it.desc }}</text>
+      </view>
+      <view
+        class="cc-switch"
+        :class="{ on: auxConfig[it.key] }"
+        hover-class="cc-switch-hover"
+        role="button"
+        @click="toggleAux(it.key)"
+      >
+        <view class="cc-knob" />
       </view>
     </view>
   </view>
@@ -262,7 +259,49 @@ function closeAux() {
   color: var(--text-2);
 }
 
-/* 辅助线设置抽屉内的行布局 */
+/* 辅助线设置：内联展开面板（无遮罩、文档流内，保证永不超出可视区域） */
+.aux-panel {
+  margin-bottom: 12rpx;
+  padding: 8rpx 20rpx 14rpx;
+  background: var(--card);
+  border: 1rpx solid var(--border);
+  border-radius: 20rpx;
+  box-shadow: var(--shadow-2);
+}
+.aux-head {
+  flex: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 76rpx;
+  margin: 0 -20rpx 6rpx;
+  padding: 0 20rpx;
+  border-bottom: 1rpx solid var(--border);
+}
+.aux-title {
+  font-size: var(--font-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+.aux-close {
+  position: absolute;
+  right: 8rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.aux-close:active {
+  background: var(--card-2);
+}
+/* 辅助线设置面板内的行布局 */
 .aux-row {
   display: flex;
   align-items: center;
