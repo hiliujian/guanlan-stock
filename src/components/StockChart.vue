@@ -2,18 +2,27 @@
   <!-- 专用 K 线行情图（KLineCharts 引擎）：单实例多面板（主图蜡烛/分时 + 成交量 + MACD），
        通过 layout 自动分面并控制高度；筹码分布叠加层默认绘制。 -->
   <div class="kc">
-    <!-- 自定义图例：提取到图表上方独立区域（替代 klinecharts 内置覆盖在图内的图例），随十字光标/数据更新。
-         所有 token 作为 flex 容器的直接子元素，整条单行流动，仅在屏宽不足时才换行，与同花顺一致。 -->
+    <!-- 自定义图例：提取到图表上方独立区域（替代 klinecharts 内置覆盖在图内的图例），按「主图/成交量/MACD」
+         分三组各自成行（组内单行流动、屏宽不足才换行），组间及与图表之间用分割线隔开。随十字光标/数据更新。 -->
     <view v-if="legend.show" class="kc-legendbar">
-      <text class="lg-time">{{ legend.time }}</text>
-      <text class="lg-k">开</text><text class="lg-v">{{ fmtPrice(legend.o) }}</text>
-      <text class="lg-k">高</text><text class="lg-v">{{ fmtPrice(legend.h) }}</text>
-      <text class="lg-k">低</text><text class="lg-v">{{ fmtPrice(legend.l) }}</text>
-      <text class="lg-k">收</text><text class="lg-v" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ fmtPrice(legend.c) }}</text>
-      <text class="lg-chg" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ legend.chgPct != null ? (legend.chgPct >= 0 ? '+' : '') + legend.chgPct.toFixed(2) + '%' : '' }}</text>
-      <text v-for="(it, i) in legend.main" :key="'m' + i" class="lg-it" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
-      <text v-for="(it, i) in legend.vol" :key="'v' + i" class="lg-it" :class="{ 'lg-sep': i === 0 }" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
-      <text v-for="(it, i) in legend.macd" :key="'d' + i" class="lg-it" :class="{ 'lg-sep': i === 0 }" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
+      <view class="lg-row">
+        <text class="lg-sec">主图</text>
+        <text class="lg-time">{{ legend.time }}</text>
+        <text class="lg-k">开</text><text class="lg-v">{{ fmtPrice(legend.o) }}</text>
+        <text class="lg-k">高</text><text class="lg-v">{{ fmtPrice(legend.h) }}</text>
+        <text class="lg-k">低</text><text class="lg-v">{{ fmtPrice(legend.l) }}</text>
+        <text class="lg-k">收</text><text class="lg-v" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ fmtPrice(legend.c) }}</text>
+        <text class="lg-chg" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ legend.chgPct != null ? (legend.chgPct >= 0 ? '+' : '') + legend.chgPct.toFixed(2) + '%' : '' }}</text>
+        <text v-for="(it, i) in legend.main" :key="'m' + i" class="lg-it" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
+      </view>
+      <view class="lg-row">
+        <text class="lg-sec">成交量</text>
+        <text v-for="(it, i) in legend.vol" :key="'v' + i" class="lg-it" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
+      </view>
+      <view class="lg-row">
+        <text class="lg-sec">MACD</text>
+        <text v-for="(it, i) in legend.macd" :key="'d' + i" class="lg-it" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
+      </view>
     </view>
     <div ref="chartEl" class="kc-chart" :style="{ height: props.height + 'px' }"></div>
     <!-- 筹码分布叠加层（右侧横向直方图，与蜡烛同坐标系），默认不拦截指针 -->
@@ -1277,11 +1286,28 @@ onBeforeUnmount(() => {
   padding: 10rpx 14rpx;
   background: var(--card);
   border: 1rpx solid var(--border);
-  border-bottom: none;
+  border-bottom: 1rpx solid var(--border);
   border-radius: 16rpx 16rpx 0 0;
+  padding: 6rpx 14rpx;
   font-size: var(--font-xs);
   color: var(--text-2);
-  line-height: 1.5;
+}
+/* 每组一行：组内 token 单行流动，屏宽不足才换行（同花顺式）；组间用分割线隔开 */
+.lg-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4rpx 14rpx;
+  padding: 5rpx 0;
+}
+.lg-row + .lg-row {
+  border-top: 1rpx solid var(--border);
+}
+/* 分组标题：标明该组数据属于哪个图（主图/成交量/MACD），使「每个图的数据」一目了然 */
+.lg-sec {
+  color: var(--text-3);
+  font-weight: 500;
+  margin-right: 2rpx;
 }
 .lg-time {
   font-weight: 500;
@@ -1299,8 +1325,7 @@ onBeforeUnmount(() => {
   margin-left: 8rpx;
   font-weight: 500;
 }
-/* 图例 token：与主图 token 同为 flex 容器直接子元素，整条单行流动、屏宽不足才换行（同花顺式）。
-   默认标签取弱化色；若带 color（MA/量MA/DIF/DEA 等）则标签与数值同取该线色。 */
+/* 图例 token：组内单行流动；默认标签取弱化色；若带 color（MA/量MA/DIF/DEA 等）则标签与数值同取该线色。 */
 .lg-it {
   display: inline-flex;
   align-items: center;
@@ -1310,12 +1335,6 @@ onBeforeUnmount(() => {
 .lg-it .lg-l,
 .lg-it .lg-v {
   color: inherit;
-}
-/* 量 / MACD 组首个 token 加细分隔，视觉上分组（价格·均线 / 量 / 指标），但仍属同一流动行 */
-.lg-sep {
-  border-left: 1rpx solid var(--border);
-  padding-left: 14rpx;
-  margin-left: 4rpx;
 }
 .lg-l {
   color: var(--text-3);
