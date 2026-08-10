@@ -10,7 +10,7 @@
     </view>
 
     <scroll-view class="ep-scroll" scroll-y>
-      <!-- 头像（点击更换）：居中展示 -->
+      <!-- 头像（点击更换照片）：居中展示 -->
       <view class="ep-hero">
         <view class="ep-avatar" hover-class="ep-av-hover" @click="chooseAvatar" role="button" aria-label="更换头像">
           <UserAvatar :url="avatarUrl" :seed="seedName" :size="148" :frame="frame" />
@@ -18,8 +18,12 @@
             <OutlineIcon v-if="!uploading" type="camera" :size="20" color="#fff" />
             <view v-else class="ep-spin" />
           </view>
+          <!-- 头像框编辑入口：右上角，点击弹出框选择（stop 避免误触更换头像） -->
+          <view class="ep-frame-edit" role="button" aria-label="编辑头像框" hover-class="ep-frame-edit-hover" @click.stop="openFrameSheet">
+            <OutlineIcon type="edit" :size="20" color="#fff" />
+          </view>
         </view>
-        <text class="ep-hero-tip">点击头像可更换</text>
+        <text class="ep-hero-tip">点击头像可更换照片，右上角图标可换头像框</text>
       </view>
 
       <!-- 头像裁剪弹窗：选图后弹出，确认后上传 -->
@@ -78,25 +82,29 @@
         </view>
       </view>
 
-      <!-- 头像框：点击选择，下方用「当前头像 + 该框」实时预览；保存时随资料一起写入 profiles.avatar_frame -->
-      <view class="sec-group">
-        <text class="sec-group-title">头像框</text>
-        <view class="ep-frames">
-          <view
-            v-for="f in AVATAR_FRAMES"
-            :key="f.id || 'none'"
-            class="ep-frame"
-            :class="{ on: frame === f.id }"
-            role="button"
-            :aria-label="f.name"
-            @click="frame = f.id"
-          >
-            <UserAvatar :url="framePreviewUrl" :seed="framePreviewSeed" :size="84" :frame="f.id" />
-            <text class="ep-frame-name">{{ f.name }}</text>
+      <!-- 头像框选择弹窗：点头像右上角编辑图标弹出，横向展示全部可选框（头像预览 + 名称），
+           选中即写入 frame 并自动关闭；选中态用主色高亮 + 对勾标记。 -->
+      <BottomSheet v-model="frameSheetVisible" title="选择头像框">
+        <scroll-view class="af-scroll" scroll-x :show-scrollbar="false">
+          <view class="af-row">
+            <view
+              v-for="f in AVATAR_FRAMES"
+              :key="f.id || 'none'"
+              class="af-opt"
+              :class="{ on: frame === f.id }"
+              role="button"
+              :aria-label="f.name"
+              @click="selectFrame(f)"
+            >
+              <UserAvatar :url="avatarUrl" :seed="seedName" :size="100" :frame="f.id" />
+              <text class="af-name">{{ f.name }}</text>
+              <view v-if="frame === f.id" class="af-check">
+                <OutlineIcon type="check" :size="22" color="#fff" />
+              </view>
+            </view>
           </view>
-        </view>
-        <text class="ep-frame-tip">{{ currentFrameDesc }}</text>
-      </view>
+        </scroll-view>
+      </BottomSheet>
     </scroll-view>
   </view>
 </template>
@@ -106,10 +114,11 @@ import { ref, computed, watch } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import AvatarCropper from "@/components/AvatarCropper.vue";
 import UserAvatar from "@/components/UserAvatar.vue";
+import BottomSheet from "@/components/BottomSheet.vue";
 import { useUser, refreshProfile } from "@/store/user";
 import { updateProfile, uploadAvatar } from "@/api/auth";
 import { avatarSeed } from "@/utils/avatar";
-import { AVATAR_FRAMES } from "@/utils/avatarFrame";
+import { AVATAR_FRAMES, type AvatarFrameDef } from "@/utils/avatarFrame";
 import { usePageGuard } from "@/store/guard";
 
 const user = useUser();
@@ -131,12 +140,16 @@ const cropperSrc = ref("");
 // 字头像种子：用户名（不可变身份），与社区页等其他场景共用
 const seedName = computed(() => avatarSeed(username.value) || "我");
 
-// 头像框选择器的实时预览：复用当前头像（或字头像），切换框时下方小样同步变化
-const framePreviewUrl = computed(() => avatarUrl.value);
-const framePreviewSeed = computed(() => seedName.value);
-const currentFrameDesc = computed(
-  () => AVATAR_FRAMES.find((f) => f.id === frame.value)?.desc || ""
-);
+// 头像框选择弹窗状态
+const frameSheetVisible = ref(false);
+function openFrameSheet() {
+  frameSheetVisible.value = true;
+}
+// 选中某头像框：写入 frame 并自动关闭弹窗
+function selectFrame(f: AvatarFrameDef) {
+  frame.value = f.id;
+  frameSheetVisible.value = false;
+}
 
 watch(
   () => [user.loggedIn, user.profile],
@@ -289,42 +302,73 @@ async function save() {
   color: var(--text-2);
 }
 
-/* 头像框选择器：横向滚动的一排小样，选中态加主色高亮边框 */
-.ep-frames {
+/* 头像框编辑入口：头像右上角的圆形按钮（与左下角相机对称） */
+.ep-frame-edit {
+  position: absolute;
+  right: 6rpx;
+  top: 6rpx;
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 50%;
+  background: var(--primary-dark);
   display: flex;
-  flex-wrap: wrap;
-  gap: 22rpx;
-  padding: 18rpx 20rpx 6rpx;
+  align-items: center;
+  justify-content: center;
+  border: 3rpx solid #fff;
+  box-shadow: var(--shadow-primary-1);
 }
-.ep-frame {
-  display: flex;
+.ep-frame-edit-hover {
+  opacity: 0.85;
+}
+
+/* 头像框弹窗：横向滚动的一排选项，选中态加主色高亮边框 + 对勾标记 */
+.af-scroll {
+  width: 100%;
+  white-space: nowrap;
+}
+.af-row {
+  display: inline-flex;
+  gap: 22rpx;
+  padding: 18rpx 4rpx 8rpx;
+}
+.af-opt {
+  position: relative;
+  display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 8rpx;
+  gap: 10rpx;
   padding: 12rpx;
   border-radius: var(--radius);
   background: var(--card-2);
   box-shadow: inset 0 0 0 1rpx var(--border);
   transition: box-shadow 0.18s ease, transform 0.18s ease;
 }
-.ep-frame.on {
-  box-shadow: inset 0 0 0 2rpx var(--primary), var(--shadow-primary-1);
-}
-.ep-frame:active {
+.af-opt:active {
   transform: scale(0.96);
 }
-.ep-frame-name {
+.af-opt.on {
+  box-shadow: inset 0 0 0 2rpx var(--primary), var(--shadow-primary-1);
+}
+.af-name {
   font-size: var(--font-xs);
   color: var(--text-2);
 }
-.ep-frame.on .ep-frame-name {
+.af-opt.on .af-name {
   color: var(--primary);
 }
-.ep-frame-tip {
-  display: block;
-  padding: 4rpx 20rpx 14rpx;
-  font-size: var(--font-xs);
-  color: var(--text-2);
+/* 选中态对勾角标 */
+.af-check {
+  position: absolute;
+  right: 8rpx;
+  top: 8rpx;
+  width: 34rpx;
+  height: 34rpx;
+  border-radius: 50%;
+  background: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-primary-1);
 }
 
 /* 基本资料分组：与安全页 .sec-group 视觉一致（整块白卡 + 顶部 16rpx 背景色分隔带 + 行内间距分隔） */
