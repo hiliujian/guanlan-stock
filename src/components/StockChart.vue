@@ -576,7 +576,9 @@ function applyLivePrice() {
 // 偏大则 from>0（左侧数据被裁），偏小则 realFrom<0（左侧留出空白，即用户反馈的「左边 2/5 空白」）。
 // 解决（闭环精确铺满）：① 先 setOffsetRightDistance(0) 消除右偏移——否则 realFrom 仍可能为负致左空白；
 // ② 用全宽反推一个偏大的 barSpace（保证 from≥0、数据从左边缘起铺满），读取 getVisibleRange().from，
-//   按比例收窄到 from 恰好为 0（此时 to=数据总量、realFrom=0，数据完整且刚好铺满绘制区）。
+//   按比例收窄到 from 恰好为 0（此时 to=数据总量、realFrom=0，数据完整且刚好铺满绘制区）；
+// ③ 收敛后再回退极小比例（相对 (count-1)/(count+1)），使首根(9:30)完整可见而非压在左边缘被裁，
+//   仅留约 1 根柱的极窄右间隙（时分约 1.4px，肉眼不可见），且回退不会把首根裁掉。
 // 柱数过多（如日K 全历史上千根）时 barSpace 被下限 1px 钳制，退化为「尽量铺满、显示尽可能多的近期柱」。
 // 注意：容器在首帧可能尚未完成布局（clientWidth=0），若此时直接 return 会让 barSpace
 // 停在默认 8px 而只显示末尾片段，故宽度为 0 时延后到下一帧重试。
@@ -598,16 +600,21 @@ function fitViewAll() {
   fitRetry = 0;
   // ① 消除右偏移：最后一棵柱贴右边缘，且避免 realFrom 因右偏移变为负而产生左空白
   chart.setOffsetRightDistance(0);
-  // ② 偏大反推 → 收窄闭环：最多 4 次迭代收敛到 from===0
+  // ② 偏大反推 → 收窄闭环：收敛到 from===0（数据完整且填满绘制区）
   let space = w / count; // 偏大（含 y 轴宽），保证 from≥0
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     chart.setBarSpace(space);
     const r = chart.getVisibleRange();
-    if (!r || r.from <= 0) break; // 已铺满（from===0）：数据完整且填满绘制区
+    if (!r || r.from <= 0) break; // 已铺满（from===0）
     // from>0：偏大导致左侧裁切；按 (count-from)/count 比例收窄，使其恰好为 0
     space = space * (count - r.from) / count;
     if (space < 1) { space = 1; break; } // 触底 1px（柱过多）：退化为尽量铺满
   }
+  // ③ 收敛到 from===0 后，回退极小比例（相对 (count-1)/(count+1)），使首根(9:30)完整可见而非
+  // 压在左边缘被裁。仅留约 1 根柱的极窄右间隙（分时约 1.4px，肉眼不可见），不会造成明显右侧空白。
+  // 回退只会让 from 更小或不变，绝不会把首根裁掉。
+  space = space * (count - 1) / (count + 1);
+  if (space >= 1) chart.setBarSpace(space);
 }
 
 // 数据就绪回调：每次数据变化（首载 / 刷新 / 实时末根）后保持「铺满全貌」+ 刷新图例（所有模式通用）
