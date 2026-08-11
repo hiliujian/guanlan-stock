@@ -155,7 +155,7 @@
         </view>
         <view class="metric">
           <text class="m-k">RSI(12)</text>
-          <text class="m-v" :style="{ color: rsiColor }">{{ rsiText }}</text>
+          <text class="m-v" :style="{ color: rsiColor }">{{ na(rsiText) }}</text>
         </view>
         <view class="metric">
           <text class="m-k">量能比(VMA5/20)</text>
@@ -163,7 +163,7 @@
         </view>
         <view class="metric">
           <text class="m-k">主力净流入(近5日)</text>
-          <text class="m-v" :style="{ color: flowColor }">{{ flowText }}</text>
+          <text class="m-v" :style="{ color: flowColor }">{{ na(flowText) }}</text>
         </view>
         <view class="metric">
           <text class="m-k">布林%B</text>
@@ -228,7 +228,7 @@
         </view>
         <view class="metric">
           <text class="m-k">平均换手率(20日)</text>
-          <text class="m-v" :style="{ color: turnColor }">{{ turnText }}</text>
+          <text class="m-v" :style="{ color: turnColor }">{{ na(turnText) }}</text>
         </view>
         <view class="metric">
           <text class="m-k">OBV 能量潮</text>
@@ -249,29 +249,27 @@
       <view class="metric-grid">
         <view class="metric">
           <text class="m-k">{{ a.marketEnv.indexName }}</text>
-          <text class="m-v" :style="{ color: indexDisplayColor }">
-            {{ a.marketEnv.indexTrendDisplay }}
-          </text>
+          <text class="m-v" :style="{ color: indexDisplayColor }">{{ na(a.marketEnv.indexTrendDisplay) }}</text>
         </view>
         <view class="metric">
           <text class="m-k">大盘趋势强度(ADX)</text>
-          <text class="m-v" :style="{ color: indexDisplayColor }">{{ marketIdxStrength }}</text>
+          <text class="m-v" :style="{ color: indexDisplayColor }">{{ na(marketIdxStrength) }}</text>
         </view>
         <view class="metric">
           <text class="m-k">个股与大盘协同</text>
-          <text class="m-v" :style="{ color: alignColor }">{{ a.marketEnv.alignText }}</text>
+          <text class="m-v" :style="{ color: alignColor }">{{ na(a.marketEnv.alignText) }}</text>
         </view>
         <view class="metric">
           <text class="m-k">市场情绪</text>
-          <text class="m-v" :style="{ color: breadthColor }">{{ a.marketEnv.breadthText }}</text>
+          <text class="m-v" :style="{ color: breadthColor }">{{ na(a.marketEnv.breadthText) }}</text>
         </view>
         <view class="metric">
           <text class="m-k">大盘量能</text>
-          <text class="m-v" :style="{ color: mktVolColor }">{{ a.marketEnv.mktVolText }}<template v-if="a.marketEnv.idxVolRatio && a.marketEnv.mktVolText !== '暂无数据'">（{{ a.marketEnv.idxVolRatio.toFixed(2) }}）</template></text>
+          <text class="m-v" :style="{ color: mktVolColor }">{{ na(a.marketEnv.mktVolText) }}<template v-if="a.marketEnv.idxVolRatio && a.marketEnv.mktVolText !== '暂无数据'">（{{ a.marketEnv.idxVolRatio.toFixed(2) }}）</template></text>
         </view>
         <view class="metric">
           <text class="m-k">仓位建议</text>
-          <text class="m-v" :style="{ color: positionColor }">{{ a.marketEnv.positionAdvice }}</text>
+          <text class="m-v" :style="{ color: positionColor }">{{ na(a.marketEnv.positionAdvice) }}</text>
         </view>
         <template v-if="a.marketEnv.sectorName">
           <view class="metric">
@@ -534,6 +532,9 @@ const rsiState = computed(() => {
   if (r < 30) return "超卖";
   return "中性";
 });
+/* 空态兜底：指标缺数据时返回空串，由 .m-v:empty::before 统一渲染「暂无数据」并沿用次级文字色（--text-2），
+   保证所有「暂无数据」占位全局统一（颜色 + 字重），同时不影响下方结论正文的原始文案。 */
+const na = (v: unknown): string => (v == null || v === "暂无数据" ? "" : String(v));
 const rsiText = computed(() => {
   // RSI 数据无效（K 线不足 / 指标未成熟）→ 明确告知用户，不显示误导性的"50.00 · 中性"
   if (!a.value.rsiValid) return "暂无数据";

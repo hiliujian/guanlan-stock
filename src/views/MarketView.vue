@@ -321,7 +321,7 @@ function qOf(secid: string): GlobalIndexQuote | undefined {
 }
 function qPrice(secid: string): string {
   const q = qOf(secid);
-  return q && q.price != null && Number.isFinite(q.price) ? q.price.toFixed(2) : "暂无数据";
+  return q && q.price != null && Number.isFinite(q.price) ? q.price.toFixed(2) : "";
 }
 function qPct(secid: string): string {
   const q = qOf(secid);
@@ -1351,6 +1351,11 @@ defineExpose({ refresh: () => refreshFull() });
 .idx-item-price.down,
 .idx-item-pct.down {
   color: var(--down);
+}
+/* 缺失报价的指数：空值统一降级为「暂无数据」并采用次级文字色（复用项目空态规范） */
+.idx-item-price:empty::before {
+  content: "暂无数据";
+  color: var(--text-2);
 }
 .idx-scroll-pad {
   height: 24rpx;

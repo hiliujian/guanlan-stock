@@ -358,4 +358,8 @@ function openRow(r: { code: string; market: string }) {
   margin: 40rpx 24rpx 0;
   padding: 56rpx 40rpx;
 }
+/* 空态占位「暂无数据」统一采用次级文字色（--text-2），不喧宾夺主 */
+.empty-title {
+  color: var(--text-2);
+}
 </style>
