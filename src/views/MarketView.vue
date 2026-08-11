@@ -144,13 +144,19 @@
         <template #peek>
           <view class="idx-row" role="button" aria-label="展开指数面板">
             <text class="idx-label">大盘</text>
-            <view class="idx-main">
-              <text class="idx-name truncate">{{ idxName }}</text>
-            </view>
-            <view class="idx-right">
-              <text class="idx-price" :class="idxCls">{{ idxPriceText }}</text>
-              <text class="idx-pct" :class="idxCls">{{ idxPctText }}</text>
-            </view>
+            <!-- 切换个股→匹配指数变化时，整块信息向上滚动切换（新指数自下方滑入、旧指数向上滑出）；
+                 以 idxSecid 为 key，价格实时跳动不会误触发滚动 -->
+            <RollSwap class="idx-roll" :roll-key="idxSecid">
+              <view class="idx-info">
+                <view class="idx-main">
+                  <text class="idx-name truncate">{{ idxName }}</text>
+                </view>
+                <view class="idx-right">
+                  <text class="idx-price" :class="idxCls">{{ idxPriceText }}</text>
+                  <text class="idx-pct" :class="idxCls">{{ idxPctText }}</text>
+                </view>
+              </view>
+            </RollSwap>
             <OutlineIcon class="idx-caret" type="chevron-up" :size="20" color="var(--text-2)" />
           </view>
         </template>
@@ -174,6 +180,7 @@ import PriceText from "@/components/PriceText.vue";
 import AnalysisCard from "@/components/AnalysisCard.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import PeekSheet from "@/components/PeekSheet.vue";
+import RollSwap from "@/components/RollSwap.vue";
 import ReportView from "@/components/ReportView.vue";
 import KlineCard from "@/components/KlineCard.vue";
 import StockTag from "@/components/StockTag.vue";
@@ -1193,6 +1200,18 @@ defineExpose({ refresh: () => refreshFull() });
 }
 .idx-caret {
   flex: none;
+}
+/* 滚动切换容器：占满 idx-row 剩余宽度，overflow:hidden 裁切滚动过程，避免溢出跳动 */
+.idx-roll {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+/* 信息块：名称(左) + 价格/涨跌幅(右)，与滚动容器同高单行显示 */
+.idx-info {
+  display: flex;
+  align-items: center;
+  width: 100%;
 }
 .idx-label {
   flex: none;

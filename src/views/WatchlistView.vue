@@ -181,17 +181,22 @@
           <template #peek>
             <view class="rp-row" role="button" aria-label="展开底部面板">
               <text class="rp-top">今日最热</text>
-              <template v-if="peek">
-                <view class="rp-main">
-                  <text class="rp-name truncate">{{ peek.name }}</text>
-                  <text class="rp-code">{{ peek.code }}</text>
-                </view>
-                <view class="rp-right">
-                  <text class="rp-price" :class="peek.price != null ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
-                  <text class="rp-pct" :class="peek.pct != null ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
-                </view>
-              </template>
-              <text v-else class="rp-empty truncate">今日暂无人气新增</text>
+              <!-- 热股切换时整块信息向上滚动切换（与行情页大盘卡统一特效），以 code 为 key -->
+              <RollSwap class="rp-roll" :roll-key="peek?.code ?? ''">
+                <template v-if="peek">
+                  <view class="rp-info">
+                    <view class="rp-main">
+                      <text class="rp-name truncate">{{ peek.name }}</text>
+                      <text class="rp-code">{{ peek.code }}</text>
+                    </view>
+                    <view class="rp-right">
+                      <text class="rp-price" :class="peek.price != null ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
+                      <text class="rp-pct" :class="peek.pct != null ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
+                    </view>
+                  </view>
+                </template>
+                <text v-else class="rp-empty truncate">今日暂无人气新增</text>
+              </RollSwap>
               <OutlineIcon class="rp-caret" type="chevron-up" :size="20" color="var(--text-2)" />
             </view>
           </template>
@@ -425,6 +430,7 @@ import { computed, reactive, ref, watch, onMounted, onActivated, onDeactivated, 
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import PeekSheet from "@/components/PeekSheet.vue";
+import RollSwap from "@/components/RollSwap.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import RankView from "@/views/RankView.vue";
 import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, applyGroupOrder, type WatchItem, type PriceAlert } from "@/store/watchlist";
@@ -1734,6 +1740,18 @@ function removeLp() {
 }
 .rp-caret {
   flex: none;
+}
+/* 滚动切换容器：占满 rp-row 剩余宽度，overflow:hidden 裁切滚动过程，避免溢出跳动 */
+.rp-roll {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+/* 信息块：名称/代码(左) + 价格/涨跌幅(右)，与滚动容器同高单行显示 */
+.rp-info {
+  display: flex;
+  align-items: center;
+  width: 100%;
 }
 .rp-top {
   flex: none;
