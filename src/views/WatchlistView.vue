@@ -217,7 +217,7 @@
             <template v-else-if="activePanel === 'group'">
               <view class="grp-head panel-head">
                 <view v-if="groupView !== 'main'" class="grp-back" role="button" aria-label="返回" @click="groupBack"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
-                <text class="grp-title sheet-title">{{ groupTitle }}</text>
+                <text class="sheet-title">{{ groupTitle }}</text>
               </view>
               <scroll-view class="grp-body" scroll-y>
                 <!-- 主视图：我的分组 + 三个入口 -->
@@ -335,10 +335,10 @@
               </view>
             </template>
 
-            <!-- 显示列：标题栏与「我的分组」共用 .grp-head/.grp-title，避免重复样式 -->
+            <!-- 显示列：标题栏与「我的分组」共用 .grp-head/.sheet-title，复用全局 .panel-head 一套样式 -->
             <template v-else-if="activePanel === 'cols'">
               <view class="grp-head panel-head">
-                <text class="grp-title sheet-title">显示列</text>
+                <text class="sheet-title">显示列</text>
               </view>
               <view class="col-list">
                 <view
@@ -359,7 +359,7 @@
             <!-- 长按操作菜单：与「我的分组」「显示列」共用同一 PeekSheet 窗体（替代原独立 ActionSheet） -->
             <template v-else-if="activePanel === 'actions'">
               <view class="grp-head panel-head">
-                <text class="grp-title sheet-title">{{ lpItem ? (lpItem.name || lpItem.code) : '' }}</text>
+                <text class="sheet-title">{{ lpItem ? (lpItem.name || lpItem.code) : '' }}</text>
               </view>
               <view class="grp-list">
                 <view class="grp-item" role="button" @click="openAlertPanel">
@@ -381,7 +381,7 @@
             <template v-else-if="activePanel === 'alert'">
               <view class="grp-head panel-head">
                 <view class="grp-back" role="button" aria-label="返回" @click="activePanel = 'actions'"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
-                <text class="grp-title sheet-title">价格预警</text>
+                <text class="sheet-title">价格预警</text>
               </view>
               <!-- 实时价参考：进入面板即拉取最新成交价，供用户设定阈值时对照 -->
               <view class="alert-rt">
@@ -1540,26 +1540,18 @@ function removeLp() {
   max-width: 92rpx;
   /* 截断属性已提升至全局 .truncate */
 }
-/* ===== 分组切换面板：与热榜/显示列同款统一窗体(PeekSheet)——固定底部、无遮罩、玻璃质感 ===== */
-/* 复用全局 .panel-head 的 padding 与下框线；position:relative + 显式 height 保留：
-   grp-title 绝对定位填满头部、脱离文档流，grp-head 需显式高度才能撑开、避免塌陷 */
+/* ===== 分组切换面板：与「头像设置」BottomSheet 头部共用同一套 .panel-head 样式 ===== */
+/* grp-head 直接复用全局 .panel-head（padding 6rpx 28rpx 16rpx + 下框线），
+   与 .bs-head 完全一致：居中标题 + 相同头部高度(72rpx)，消除重复多写一套样式；
+   position:relative 仅为承载绝对定位的返回按钮(grp-back)，不影响标题居中 */
 .grp-head {
   position: relative;
-  height: 48rpx;
-}
-/* 标题绝对居中：无论左侧是否有「返回」图标，标题都精确居中于整个窗体头部。
-   标题填满头部（inset:0），下框线由复用自 .panel-head 的 .grp-head 统一提供；
-   排版字号/字重/颜色由全局 .sheet-title 统一提供，避免与 BottomSheet 标题重复硬编码 */
-.grp-title {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
   justify-content: center;
+  height: 72rpx;
 }
+/* 标题排版复用全局 .sheet-title（font-md / 500 / text-2），与 .bs-head 标题完全一致；
+   不再绝对定位——改为容器内普通流式文本，由 .panel-head 的 align-items/justify-content 居中。
+   返回按钮经 .grp-back 绝对定位浮于左侧，标题仍可精确居中于整窗头部（保留原诉求） */
 .grp-body {
   flex: 1;
   min-height: 0;
@@ -1603,9 +1595,13 @@ function removeLp() {
 .grp-item.active .grp-label {
   color: var(--primary);
 }
+/* 返回按钮绝对浮于头部左侧（与 .panel-head 28rpx 内边距对齐），不占 flex 空间，
+   保证标题仍精确居中于整窗头部（无论有无返回按钮，标题位置一致），与 BottomSheet 头部机制统一 */
 .grp-back {
-  flex: none;
-  position: relative;
+  position: absolute;
+  left: 28rpx;
+  top: 50%;
+  transform: translateY(-50%);
   z-index: 1;
   width: 48rpx;
   height: 48rpx;
@@ -1844,7 +1840,7 @@ function removeLp() {
   background: var(--primary-soft);
 }
 
-/* ===== 列设置面板（与热榜/分组同款统一窗体 PeekSheet，无遮罩；标题栏复用 .grp-head/.grp-title） ===== */
+/* ===== 列设置面板（与热榜/分组同款统一窗体 PeekSheet，无遮罩；标题栏复用 .grp-head/.sheet-title） ===== */
 .col-list {
   margin-top: 12rpx;
   display: flex;

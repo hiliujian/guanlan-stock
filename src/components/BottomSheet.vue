@@ -141,7 +141,7 @@ function onUp() {
   justify-content: center;
   height: 72rpx;
 }
-/* 标题排版复用全局 .sheet-title（font-md / 500 / text-2），与分组面板 .grp-title 统一，不再重复硬编码 */
+/* 标题排版复用全局 .sheet-title（font-md / 500 / text-2），与分组面板标题统一，不再重复硬编码 */
 .bs-body {
   flex: 1;
   min-height: 0;

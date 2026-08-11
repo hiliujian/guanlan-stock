@@ -911,7 +911,7 @@ textarea {
   border: 1rpx solid var(--border);
 }
 
-/* 底部面板（分组面板 / 通用底部弹窗）标题排版：.grp-title 与 BottomSheet 标题共用，杜绝重复硬编码。
+/* 底部面板（分组面板 / 通用底部弹窗）标题排版：.sheet-title 统一提供，分组面板与 BottomSheet 标题共用，杜绝重复硬编码。
    注意：与 ReportView 内 scoped 的 .panel-title（报告小节标题，语义不同）命名区分，避免同名冲突 */
 .sheet-title {
   font-size: var(--font-md);
