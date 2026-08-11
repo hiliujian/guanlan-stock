@@ -138,12 +138,12 @@
       </view><!-- /mk-body -->
       </scroll-view>
 
-      <!-- 底部默认指数卡片：复用自选页同款 PeekSheet 统一底部窗体（固定常驻于菜单栏上方），
-           折叠露出「大盘」预览（按当前股票匹配对应指数），展开态内容暂未确定 -->
-      <PeekSheet>
+      <!-- 底部指数卡片：复用自选页同款 PeekSheet 统一底部窗体（固定常驻于菜单栏上方），
+           折叠露出「当前匹配指数」预览（按当前股票匹配对应指数），展开为全球重要市场指数面板 -->
+      <PeekSheet @expand="onSheetExpand" @collapse="onSheetCollapse">
         <template #peek>
           <view class="idx-row" role="button" aria-label="展开指数面板">
-            <text class="idx-label">大盘</text>
+            <text class="idx-label">指数</text>
             <!-- 切换个股→匹配指数变化时，整块信息向上滚动切换（新指数自下方滑入、旧指数向上滑出）；
                  以 idxSecid 为 key，价格实时跳动不会误触发滚动 -->
             <RollSwap class="idx-roll" :roll-key="idxSecid">
@@ -161,9 +161,27 @@
           </view>
         </template>
         <template #default>
-          <!-- 展开态内容暂未确定（当前阶段仅实现收起态显示） -->
-          <view class="idx-expand">
-            <text class="idx-expand-tip">敬请期待</text>
+          <!-- 展开态：全球重要市场指数实时面板（按地区/品种分组，scroll-view 内独立滚动） -->
+          <view class="idx-panel">
+            <view class="idx-panel-head">
+              <text class="idx-panel-title">全球重要指数</text>
+              <text class="idx-panel-sub">实时行情 · 红涨绿跌</text>
+            </view>
+            <scroll-view class="idx-scroll" scroll-y>
+              <view v-for="g in globalGroups" :key="g.title" class="idx-grp">
+                <text class="idx-grp-t">{{ g.title }}</text>
+                <view class="idx-grp-list">
+                  <view v-for="it in g.items" :key="it.secid" class="idx-item">
+                    <text class="idx-item-name">{{ it.name }}</text>
+                    <view class="idx-item-right">
+                      <text class="idx-item-price" :class="qCls(it.secid)">{{ qPrice(it.secid) }}</text>
+                      <text class="idx-item-pct" :class="qCls(it.secid)">{{ qPct(it.secid) }}{{ qChg(it.secid) }}</text>
+                    </view>
+                  </view>
+                </view>
+              </view>
+              <view class="idx-scroll-pad" />
+            </scroll-view>
           </view>
         </template>
       </PeekSheet>
@@ -186,6 +204,7 @@ import KlineCard from "@/components/KlineCard.vue";
 import StockTag from "@/components/StockTag.vue";
 import { fetchHotSearches, recordSearch, type HotStock } from "@/api/hot";
 import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, resolveIndexForStock, type SearchHit, type QuoteBundle, type NewsItem } from "@/api/quote";
+import { fetchGlobalIndices, GLOBAL_INDEX_GROUPS, type GlobalIndexQuote } from "@/api/globalIndices";
 import { getMarketStatus } from "@/utils/marketStatus";
 import {
   resolveSecid,
@@ -223,9 +242,9 @@ const newsSig = ref<NewsSignal | null>(null);
 const watched = computed(() => isWatched(curCode.value, curMarket.value));
 const realtime = ref<{ price: number; preClose: number; open?: number; high?: number; low?: number; time?: string } | null>(null);
 
-// 底部默认指数卡片（复用自选页同款 PeekSheet 统一底部窗体）：收起态展示「默认指数」——
-// 按当前查看的股票所属板块自动匹配对应大盘指数（创业板/科创板→创业板指、沪A→上证指数、
-// 深A→深证成指、北A→北证50），无股票时默认上证指数；展开态内容暂未确定，先给最小占位。
+// 底部指数卡片（复用自选页同款 PeekSheet 统一底部窗体）：收起态展示「当前匹配指数」——
+// 按当前查看的股票所属板块自动匹配对应指数（创业板/科创板→创业板指、沪A→上证指数、
+// 深A→深证成指、北A→北证50），无股票时默认上证指数；展开态为全球重要市场指数实时面板。
 const DEFAULT_INDEX = { secid: "1.000001", name: "上证指数" };
 const idxSecid = ref(DEFAULT_INDEX.secid);
 const idxName = ref(DEFAULT_INDEX.name);
@@ -264,6 +283,58 @@ const idxCls = computed(() => {
 });
 const idxPriceText = computed(() => fmtPrice(idxSnap.value?.price));
 const idxPctText = computed(() => fmtPct(idxSnap.value?.pct));
+
+// 展开态：全球重要市场指数实时面板数据（按目录分组渲染，缺失项降级「暂无数据」）
+const globalGroups = GLOBAL_INDEX_GROUPS;
+const globalQuotes = ref<Map<string, GlobalIndexQuote>>(new Map());
+let globalTimer: any = null;
+async function refreshGlobal() {
+  try {
+    globalQuotes.value = await fetchGlobalIndices();
+  } catch {
+    /* 保留上次数据，下一拍重试 */
+  }
+}
+function startGlobalTimer() {
+  refreshGlobal(); // 展开即立即拉取一次（不 await，避免阻塞手势回调）
+  if (globalTimer) return;
+  globalTimer = setInterval(refreshGlobal, 15000); // 展开态 15s 刷新
+}
+function stopGlobalTimer() {
+  if (globalTimer) {
+    clearInterval(globalTimer);
+    globalTimer = null;
+  }
+}
+function onSheetExpand() {
+  startGlobalTimer();
+}
+function onSheetCollapse() {
+  stopGlobalTimer();
+}
+// 展开面板渲染辅助：按 secid 取报价并格式化；缺失/异常 → 价格「暂无数据」、涨跌中性色
+function qOf(secid: string): GlobalIndexQuote | undefined {
+  return globalQuotes.value.get(secid);
+}
+function qPrice(secid: string): string {
+  const q = qOf(secid);
+  return q && q.price != null && Number.isFinite(q.price) ? q.price.toFixed(2) : "暂无数据";
+}
+function qPct(secid: string): string {
+  const q = qOf(secid);
+  if (!q || q.pct == null || !Number.isFinite(q.pct)) return "";
+  return (q.pct >= 0 ? "+" : "") + q.pct.toFixed(2) + "%";
+}
+function qChg(secid: string): string {
+  const q = qOf(secid);
+  if (!q || q.chg == null || !Number.isFinite(q.chg)) return "";
+  return " " + (q.chg >= 0 ? "+" : "") + q.chg.toFixed(2);
+}
+function qCls(secid: string): string {
+  const q = qOf(secid);
+  if (!q || q.pct == null || !Number.isFinite(q.pct)) return "";
+  return q.pct > 0 ? "up" : q.pct < 0 ? "down" : "flat";
+}
 
 // 卡片渲染注册表：新增分析卡只需在此加一项（comp + props 工厂），
 // MarketView 模板无需再写 v-if 分支，彻底解耦「卡片种类」与「渲染逻辑」。
@@ -538,6 +609,7 @@ function stopTimers() {
     clearTimeout(blurTimer);
     blurTimer = null;
   }
+  stopGlobalTimer(); // 离开行情页（切 Tab / 卸载）时同步停掉指数面板刷新
 }
 
 // 行情图卡片标题固定为「行情图」；具体周期（分时/日K/周K…）由卡片内分段控件展示，
@@ -1252,15 +1324,94 @@ defineExpose({ refresh: () => refreshFull() });
 .idx-pct.down {
   color: var(--down);
 }
-/* 展开态占位（内容暂未确定） */
-.idx-expand {
+/* 展开态：全球重要指数实时面板 */
+.idx-panel {
   flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
 }
-.idx-expand-tip {
-  font-size: var(--font-sm);
+.idx-panel-head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 6rpx 28rpx 16rpx;
+  border-bottom: 1rpx solid var(--border);
+}
+.idx-panel-title {
+  font-size: var(--font-md);
+  font-weight: 700;
+  color: var(--text);
+}
+.idx-panel-sub {
+  font-size: var(--font-xs);
   color: var(--text-3);
+}
+/* 面板内独立滚动容器（承接 PeekSheet peek-body 的 flex:1 高度） */
+.idx-scroll {
+  flex: 1;
+  min-height: 0;
+}
+.idx-grp {
+  padding: 18rpx 28rpx 4rpx;
+}
+.idx-grp-t {
+  display: block;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: 1rpx;
+  margin-bottom: 12rpx;
+}
+/* 两列网格：紧凑呈现各市场主要指数 */
+.idx-grp-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12rpx;
+}
+.idx-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  padding: 14rpx 16rpx;
+  background: var(--card-2);
+  border-radius: var(--radius-sm);
+}
+.idx-item-name {
+  font-size: var(--font-xs);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.idx-item-right {
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
+}
+.idx-item-price {
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.idx-item-pct {
+  font-size: var(--font-xs);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* 涨跌着色：红涨绿跌（默认中性 --text，仅 up/down 覆盖） */
+.idx-item-price.up,
+.idx-item-pct.up {
+  color: var(--up);
+}
+.idx-item-price.down,
+.idx-item-pct.down {
+  color: var(--down);
+}
+.idx-scroll-pad {
+  height: 24rpx;
 }
 </style>

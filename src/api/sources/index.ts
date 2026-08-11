@@ -218,6 +218,51 @@ export function getIndexBreadth(secid: string): Promise<IndexBreadth | null> {
   });
 }
 
+// 批量指数/标的实时报价：单次 ulist 网关请求取多标的「最新点位 / 涨跌幅 / 涨跌额」。
+// fltt=2 返回真实价格（无需按市场缩放），data.diff 为数组或对象两种形态都要兼容。
+// 单项缺失不影响其余；整体失败返回 []。
+export interface UlistQuote {
+  secid: string;
+  name: string;
+  price: number | null;
+  pct: number | null; // 涨跌幅(%)，带符号
+  chg: number | null; // 涨跌额，带符号
+}
+export async function getUlistQuotes(secids: string[]): Promise<UlistQuote[]> {
+  if (!secids.length) return [];
+  try {
+    const { source, text } = await requestGateway("ulist", {
+      secids: secids.join(","),
+      fields: "f2,f3,f4,f12,f13,f14",
+    });
+    if (source !== "eastmoney") return [];
+    const json = JSON.parse(text);
+    const diff = json?.data?.diff;
+    if (!diff) return [];
+    const rows: any[] = Array.isArray(diff) ? diff : Object.values(diff);
+    const out: UlistQuote[] = [];
+    for (const r of rows) {
+      if (!r) continue;
+      const num = (k: string): number | null => {
+        const v = r[k];
+        return v != null && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null;
+      };
+      const secid =
+        r.f13 != null && r.f12 != null ? `${r.f13}.${r.f12}` : r.secid ? String(r.secid) : "";
+      out.push({
+        secid,
+        name: r.f14 ? String(r.f14) : "",
+        price: num("f2"),
+        pct: num("f3"),
+        chg: num("f4"),
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 // 个股所属行业（f100）：仅东财提供，失败返回 null，sector 维度自动缺省。
 export async function getStockIndustry(secid: string): Promise<string | null> {
   try {
