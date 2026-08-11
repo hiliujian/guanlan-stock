@@ -919,6 +919,18 @@ textarea {
   color: var(--text-2);
 }
 
+/* 通用头部栏：分组面板(.grp-head) / 指数面板(.idx-panel-head) / 底部弹窗(.bs-head) 共用一套
+   padding 与下框线，消除三处重复硬编码。文本排版由 .sheet-title 统一提供。
+   各组件仅在 scoped 中保留自身特有项（如 grp-head 的 position/height、idx 的 baseline 对齐、
+   bs 的居中 justify-center），其余一律复用本类，避免重复多写一套样式 */
+.panel-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 6rpx 28rpx 16rpx;
+  border-bottom: 1rpx solid var(--border);
+}
+
 /* ============ PeekSheet 折叠卡预览行（市场页 / 自选页共用，统一一套） ============ */
 /* 折叠态一行：左侧固定标签 + 中部滚动切换容器 + 右侧展开箭头，整体不换行、溢出裁切、垂直居中 */
 .peek-row {

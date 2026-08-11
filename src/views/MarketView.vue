@@ -163,7 +163,7 @@
         <template #default>
           <!-- 展开态：全球重要市场指数实时面板（按地区/品种分组，scroll-view 内独立滚动） -->
           <view class="idx-panel">
-            <view class="idx-panel-head">
+            <view class="idx-panel-head panel-head">
               <text class="idx-panel-title">全球市场指数</text>
               <text class="idx-panel-sub">实时行情 · 红涨绿跌</text>
             </view>
@@ -1272,13 +1272,10 @@ defineExpose({ refresh: () => refreshFull() });
   display: flex;
   flex-direction: column;
 }
+/* 复用全局 .panel-head 的 padding 与下框线；此处仅保留指数面板特有的 baseline 双行对齐 */
 .idx-panel-head {
-  flex: none;
-  display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding: 6rpx 28rpx 16rpx;
-  border-bottom: 1rpx solid var(--border);
 }
 .idx-panel-title {
   font-size: var(--font-md);

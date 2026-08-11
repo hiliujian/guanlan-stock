@@ -17,7 +17,7 @@
         @mouseleave.stop="onUp"
       >
         <view class="bs-grip" />
-        <view class="bs-head">
+        <view class="bs-head panel-head">
           <text class="sheet-title">{{ title }}</text>
         </view>
         <view class="bs-body">
@@ -132,10 +132,8 @@ function onUp() {
   background: var(--card-2);
   margin: 14rpx auto 4rpx;
 }
+/* 复用全局 .panel-head 的 padding 与下框线；仅保留底部弹窗特有的居中标题与更高头部高度 */
 .bs-head {
-  flex: none;
-  display: flex;
-  align-items: center;
   justify-content: center;
   height: 72rpx;
 }

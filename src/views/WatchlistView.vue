@@ -215,7 +215,7 @@
 
             <!-- 我的分组：主视图 / 新建 / 移入 / 管理 共用同一内容容器，按 groupView 切换 -->
             <template v-else-if="activePanel === 'group'">
-              <view class="grp-head">
+              <view class="grp-head panel-head">
                 <view v-if="groupView !== 'main'" class="grp-back" role="button" aria-label="返回" @click="groupBack"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
                 <text class="grp-title sheet-title">{{ groupTitle }}</text>
               </view>
@@ -337,7 +337,7 @@
 
             <!-- 显示列：标题栏与「我的分组」共用 .grp-head/.grp-title，避免重复样式 -->
             <template v-else-if="activePanel === 'cols'">
-              <view class="grp-head">
+              <view class="grp-head panel-head">
                 <text class="grp-title sheet-title">显示列</text>
               </view>
               <view class="col-list">
@@ -358,7 +358,7 @@
 
             <!-- 长按操作菜单：与「我的分组」「显示列」共用同一 PeekSheet 窗体（替代原独立 ActionSheet） -->
             <template v-else-if="activePanel === 'actions'">
-              <view class="grp-head">
+              <view class="grp-head panel-head">
                 <text class="grp-title sheet-title">{{ lpItem ? (lpItem.name || lpItem.code) : '' }}</text>
               </view>
               <view class="grp-list">
@@ -379,7 +379,7 @@
 
             <!-- 编辑价格预警子面板：展示实时价供参考；高于/低于改为选项下方内联输入（替代原 uni-modal 弹窗） -->
             <template v-else-if="activePanel === 'alert'">
-              <view class="grp-head">
+              <view class="grp-head panel-head">
                 <view class="grp-back" role="button" aria-label="返回" @click="activePanel = 'actions'"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
                 <text class="grp-title sheet-title">价格预警</text>
               </view>
@@ -1541,16 +1541,14 @@ function removeLp() {
   /* 截断属性已提升至全局 .truncate */
 }
 /* ===== 分组切换面板：与热榜/显示列同款统一窗体(PeekSheet)——固定底部、无遮罩、玻璃质感 ===== */
+/* 复用全局 .panel-head 的 padding 与下框线；position:relative + 显式 height 保留：
+   grp-title 绝对定位填满头部、脱离文档流，grp-head 需显式高度才能撑开、避免塌陷 */
 .grp-head {
-  flex: none;
   position: relative;
-  display: flex;
-  align-items: center;
   height: 48rpx;
-  padding: 0 20rpx;
 }
 /* 标题绝对居中：无论左侧是否有「返回」图标，标题都精确居中于整个窗体头部。
-   下框线与行情页 .idx-panel-head 一致（1rpx var(--border)），标题填满头部故边框落在头部底边；
+   标题填满头部（inset:0），下框线由复用自 .panel-head 的 .grp-head 统一提供；
    排版字号/字重/颜色由全局 .sheet-title 统一提供，避免与 BottomSheet 标题重复硬编码 */
 .grp-title {
   position: absolute;
@@ -1561,7 +1559,6 @@ function removeLp() {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-bottom: 1rpx solid var(--border);
 }
 .grp-body {
   flex: 1;
@@ -1739,7 +1736,6 @@ function removeLp() {
   flex: 1;
   text-align: center;
   font-size: var(--font-md);
-  font-weight: 500;
   color: var(--text-2);
   padding: 2rpx 0;
   cursor: pointer;
