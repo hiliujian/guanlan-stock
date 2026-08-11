@@ -1263,9 +1263,11 @@ defineExpose({ refresh: () => refreshFull() });
   height: 76rpx;
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 12rpx;
   padding: 0 28rpx;
   cursor: pointer;
+  overflow: hidden;
 }
 .idx-row:active {
   background: var(--card-2);
@@ -1278,15 +1280,20 @@ defineExpose({ refresh: () => refreshFull() });
   flex: 1;
   min-width: 0;
   height: 100%;
+  overflow: hidden;
 }
 /* 信息块：名称(左) + 价格/涨跌幅(右)，与滚动容器同高单行显示 */
 .idx-info {
   display: flex;
   align-items: center;
   width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 .idx-label {
   flex: none;
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: var(--font-sm);
   color: var(--text-3);
 }
@@ -1303,6 +1310,9 @@ defineExpose({ refresh: () => refreshFull() });
   min-width: 0;
   font-size: var(--font-sm);
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .idx-right {
   flex: none;
