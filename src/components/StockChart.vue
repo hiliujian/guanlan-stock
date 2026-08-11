@@ -625,7 +625,9 @@ function fitViewAll() {
         const span = r.to - r.from; // 实际可见跨度（柱数）
         const desired = ref + 0.5;  // ref 根 + 左右半根余量
         if (Math.abs(span - desired) < 0.25) break;
-        space = space * desired / span; // 按跨度比例修正柱宽
+        // span 与 space 成反比：可见根数偏少→减小柱宽（span/desired<1），偏多→增大柱宽。
+        // 注意方向与分时分支 (count-r.from)/count 一致（均缩小 space 以显示更多根）。
+        space = space * span / desired;
         if (space < 1) { space = 1; break; } // 触底 1px（柱过多）：退化为尽量铺满
       }
       return;
