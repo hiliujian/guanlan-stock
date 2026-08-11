@@ -1333,7 +1333,7 @@ onBeforeUnmount(() => {
 .lg-it {
   display: inline-flex;
   align-items: center;
-  gap: 3rpx;
+  gap: 8rpx;
   color: var(--text-3);
 }
 .lg-it .lg-l,
