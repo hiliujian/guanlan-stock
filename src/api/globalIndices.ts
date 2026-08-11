@@ -42,7 +42,6 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
       { secid: "1.000905", name: "中证500", flag: "cn" },
       { secid: "1.000852", name: "中证1000", flag: "cn" },
       { secid: "1.000016", name: "上证50", flag: "cn" },
-      { secid: "100.XIN9", name: "富时中国A50", flag: "cn" },
     ],
   },
   {
