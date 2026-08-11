@@ -1065,7 +1065,9 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
   if (!kl) return;
   const d = new Date(kl.timestamp);
   const p = (n: number) => String(n).padStart(2, "0");
-  legend.time = props.mode === "intraday" ? `${p(d.getHours())}:${p(d.getMinutes())}` : `${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  legend.time = props.mode === "intraday"
+    ? `${p(d.getHours())}:${p(d.getMinutes())}`
+    : `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   legend.o = kl.open ?? null; legend.h = kl.high ?? null; legend.l = kl.low ?? null; legend.c = kl.close ?? null;
   // 涨跌幅基准：分时用昨收；K线用前一根收盘价（首根用开盘）
   const base = props.mode === "intraday"
@@ -1203,8 +1205,16 @@ function buildChart() {
       formatDate: (dt: Intl.DateTimeFormat, timestamp: number, format: string) => {
         const d = new Date(timestamp);
         const p = (n: number) => String(n).padStart(2, "0");
+        const y = String(d.getFullYear()).slice(-2); // 两位年份
+        // 分时：仅显示时分
         if (props.mode === "intraday") return `${p(d.getHours())}:${p(d.getMinutes())}`;
-        return `${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+        // 按 klinecharts 传入的 format 精确格式化，确保年份/时间正确带出：
+        if (format === "YYYY") return String(d.getFullYear());
+        if (format === "YYYY-MM") return `${d.getFullYear()}-${p(d.getMonth() + 1)}`;
+        if (format === "YYYY-MM-DD HH:mm")
+          return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+        // 其余（如轴标签 MM-DD）：补两位年份，避免跨年仅显示月日
+        return `${y}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
       },
       formatBigNumber: (v: string | number) => String(v),
     },
