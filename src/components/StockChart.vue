@@ -8,7 +8,7 @@
       <view class="lg-row" :style="{ top: legendOffsets.price + 'px' }">
         <text class="lg-sec">主图</text>
         <text class="lg-time">{{ legend.time }}</text>
-        <text class="lg-k">价格</text><text class="lg-v" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ fmtPrice(legend.c) }}</text><text class="lg-chg" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ legend.chgPct != null ? (legend.chgPct >= 0 ? '+' : '') + legend.chgPct.toFixed(2) + '%' : '' }}</text>
+        <view class="lg-price"><text class="lg-k">价格</text><text class="lg-v" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ fmtPrice(legend.c) }}</text><text class="lg-chg" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ legend.chgPct != null ? (legend.chgPct >= 0 ? '+' : '') + legend.chgPct.toFixed(2) + '%' : '' }}</text></view>
         <text class="lg-k">开</text><text class="lg-v">{{ fmtPrice(legend.o) }}</text>
         <text class="lg-k">高</text><text class="lg-v">{{ fmtPrice(legend.h) }}</text>
         <text class="lg-k">低</text><text class="lg-v">{{ fmtPrice(legend.l) }}</text>
@@ -1448,6 +1448,16 @@ onBeforeUnmount(() => {
   margin-left: 8rpx;
   font-weight: 500;
 }
+/* 价格 + 涨跌幅 作为一组紧排（替代原先与开/高/低 等同的间距），使「现价 + 涨跌」读感成一体；
+   组与组之间仍由 .lg-row 的 flex gap 拉开，区分于后续开/高/低 */
+.lg-price {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  margin-right: 6rpx;
+}
+.lg-price .lg-k { margin-left: 0; }
+.lg-price .lg-chg { margin-left: 0; }
 /* 图例 token：组内单行流动；标签取弱化色；数值默认取主文本色（与主图「开 22.30」的 22.30 同色），
    仅当带线色（MA/DIF/DEA/MACD）时数值随线色。间距用 margin 而非 flex gap——<text> 非 flex 容器，
    gap 在 uni-app 内不生效，会导致标签↔数值贴死（即「分时量2180」无空格现象）。 */
