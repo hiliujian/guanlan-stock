@@ -585,10 +585,11 @@ const KLINE_DEFAULT_BARS: Record<Exclude<PeriodKey, "m">, number> = {
 // 根因：klinecharts 默认 barSpace=8px，单屏仅容约 44 根柱，默认只渲染末尾片段，需手动左拖才看全貌；
 // 且图表实际绘制区 _totalBarSpace = 容器总宽 - 右侧 y 轴宽（yAxis 默认 outside），与 clientWidth 不等；
 // 偏大则 from>0（左侧数据被裁），偏小则 realFrom<0（左侧留白，即此前「左边 2/5 空白」）。
-// 解决（闭环精确铺满）：① setOffsetRightDistance(0) 消除右偏移（否则 realFrom 可能因右偏移变负致左空白）；
-// ② 全宽反推偏大 barSpace，读 getVisibleRange().from 按比例收窄到 from===0（数据完整且刚好铺满绘制区）；
-// ③ 收敛后回退极小比例（相对 (count-1)/(count+1)），使首根(9:30)完整可见而非压左边缘被裁，
-//   仅留约 1 根柱极窄右间隙（分时约 1.4px，肉眼不可见），回退不会把首根裁掉。
+// 解决（闭环精确铺满 + 边缘留余量）：① setOffsetRightDistance(0) 消除右偏移；
+// ② K线分支：用全宽反推偏大 barSpace，读 getVisibleRange() 的可见跨度，闭环把「可见跨度」收敛到
+//   ref+0.5（显示 ref 根 + 左右各半根柱余量）——首根/末根完整可见而非压在边缘被裁一半；
+//   分时/柱数少的分支：把 from 收敛到 0（铺满全量），③ 再回退极小比例（相对 (count-1)/(count+1)），
+//   使首根(9:30)完整可见而非压左边缘被裁，仅留约 1 根柱极窄右间隙（分时约 1.4px，肉眼不可见）。
 // 注意：容器首帧可能未完成布局（clientWidth=0），若直接 return 会让 barSpace 停在默认 8px，
 // 故宽度为 0 时延后到下一帧重试。
 // 容器未布局时 fitViewAll 的重试计数（宽度就绪后归零）
@@ -607,18 +608,29 @@ function fitViewAll() {
     return;
   }
   fitRetry = 0;
-  // ① 消除右偏移：最后一棵柱贴右边缘，且避免 realFrom 因右偏移变为负而产生左空白
+  // ① 消除右偏移：避免 realFrom 因右偏移变为负而产生左空白
   chart.setOffsetRightDistance(0);
-  // ② K线（日K/周K/月K/5日）：按周期设定默认可见根数（KLINE_DEFAULT_BARS），柱更宽、更易读；
-  // 取「图表宽 / 该周期基准根数」作为柱宽，使默认可见约该周期一个月左右的量。柱数不足基准（次新股）
-  // 时柱宽会更宽，故走下面的铺满逻辑让它填满整宽。数据全量保留，可左右滑看更早。
+  // ② K线（日K/周K/月K/5日）：默认显示最近 ref 根，且首根/末根完整可见（左右各留半根柱余量）
   if (props.mode !== "intraday") {
     const pk = (props.period === "m" ? "d" : (props.period ?? "d")) as Exclude<PeriodKey, "m">;
     const ref = KLINE_DEFAULT_BARS[pk] ?? KLINE_DEFAULT_BARS.d;
     if (count > ref) {
-      chart.setBarSpace(Math.max(1, w / ref));
+      // 用全宽反推偏大 barSpace（含 y 轴宽，故偏大→可见跨度>ref 会裁切边缘），
+      // 闭环把「可见跨度」收敛到 ref+0.5：显示 ref 根 + 左右各半根柱余量 → 首末根不被裁一半。
+      let space = w / ref; // 初值偏大（保证可见跨度≥ref）
+      for (let i = 0; i < 6; i++) {
+        chart.setBarSpace(space);
+        const r = chart.getVisibleRange();
+        if (!r) break;
+        const span = r.to - r.from; // 实际可见跨度（柱数）
+        const desired = ref + 0.5;  // ref 根 + 左右半根余量
+        if (Math.abs(span - desired) < 0.25) break;
+        space = space * desired / span; // 按跨度比例修正柱宽
+        if (space < 1) { space = 1; break; } // 触底 1px（柱过多）：退化为尽量铺满
+      }
       return;
     }
+    // 柱数 ≤ ref（次新股/数据少）：柱宽更宽，走下面铺满逻辑填充满整宽
   }
   // 分时 / 柱数较少的 K线：偏大反推 → 收窄闭环，收敛到 from===0（数据完整且填满绘制区）
   let space = w / count; // 偏大（含 y 轴宽），保证 from≥0
