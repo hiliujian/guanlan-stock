@@ -74,9 +74,9 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     title: "商品期货",
     items: [
       { secid: "100.XIN9", name: "富时中国A50", flag: "cn" },
+      { secid: "114.AU0", name: "黄金主连", icon: "gold" },
       { secid: "114.CU0", name: "沪铜主连", icon: "copper" },
       { secid: "114.SC0", name: "原油主连", icon: "oil" },
-      { secid: "114.AU0", name: "黄金主连", icon: "gold" },
       { secid: "112.GC00Y", name: "纽约金", icon: "gold" },
       { secid: "112.SI00Y", name: "纽约银", icon: "silver" },
       { secid: "112.HG00Y", name: "美铜", icon: "copper" },
