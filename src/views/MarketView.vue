@@ -1282,11 +1282,21 @@ defineExpose({ refresh: () => refreshFull() });
   height: 100%;
   overflow: hidden;
 }
-/* 信息块：名称(左) + 价格/涨跌幅(右)，与滚动容器同高单行显示 */
+/* 让 RollSwap 内部 block 流式元素撑满 76rpx 高度，使名称/价格/涨跌幅与左右标签垂直居中对齐 */
+.idx-roll :deep(.roll-swap),
+.idx-roll :deep(.roll-item) {
+  height: 100%;
+}
+.idx-roll :deep(.roll-swap) {
+  display: flex;
+  align-items: center;
+}
+/* 信息块：名称(左) + 价格/涨跌幅(右)，撑满滚动容器高度并垂直居中单行显示 */
 .idx-info {
   display: flex;
   align-items: center;
   width: 100%;
+  height: 100%;
   min-width: 0;
   overflow: hidden;
 }
