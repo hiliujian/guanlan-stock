@@ -1064,23 +1064,31 @@ function fmtVol(v: number): string {
   return String(Math.round(v));
 }
 // 从图表实例读取某 pane 各指标在「最后一根」的已算结果（用于无十字光标时显示最新值）
-function readIndicatorResults(paneId: string): Record<string, any> {
+function readIndicatorResults(paneId: string, idx?: number): Record<string, any> {
   const out: Record<string, any> = {};
   try {
     const store: any = (chart as any)?.getChartStore?.();
     const insts: any[] = store?.getIndicatorStore?.()?.getInstances(paneId) || [];
     for (const inst of insts) {
-      const res = inst?.result;
-      if (Array.isArray(res) && res.length) out[inst.name] = res[res.length - 1];
+      const res: any[] = inst?.result;
+      if (!Array.isArray(res) || !res.length) continue;
+      // idx 给定时取「选中柱子」的值（与 dataList 对齐）；否则取最新值
+      const v = idx != null ? res[idx] : res[res.length - 1];
+      if (v != null) out[inst.name] = v;
     }
   } catch {
     /* noop */
   }
   return out;
 }
-// 取某 pane 的指标结果：十字光标时来自事件（cross），否则读图表实例最新值
-function paneMap(paneId: string, cross?: Record<string, Record<string, any>>): Record<string, any> {
-  return (cross && cross[paneId]) || readIndicatorResults(paneId);
+// 取某 pane 的指标结果：十字光标优先用事件（cross[paneId]），否则按 dataIndex 从实例读选中柱子的值，
+// 最后兜底取最新值。关键：成交量/MACD 面板选中柱子时事件 cross 未必含主图数据，必须按 idx 从实例读，
+// 否则落回「最新值」致量/MACD 图例不随选中柱子变化（即本 BUG 根因）。
+function paneMap(paneId: string, cross?: Record<string, Record<string, any>>, idx?: number): Record<string, any> {
+  if (cross && cross[paneId]) return cross[paneId];
+  const byIdx = readIndicatorResults(paneId, idx);
+  if (Object.keys(byIdx).length) return byIdx;
+  return readIndicatorResults(paneId);
 }
 function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?: number) {
   if (!kl) return;
@@ -1097,7 +1105,7 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
   legend.chgPct = base ? ((legend.c! - base) / base) * 100 : null;
   // 主图指标：分时=A VP均价；K线=各周期 MA（仅 maConfig 开启的）。
   // 颜色与图表画线一致：按「可见 MA 顺序」取调色板（MA5橙/MA10蓝/MA20紫/MA60绿）；AVP 取首色。
-  const candle = paneMap("candle_pane", cross);
+  const candle = paneMap("candle_pane", cross, idx);
   legend.main = [];
   if (props.mode === "intraday") {
     const avp = candle["AVP"];
@@ -1115,7 +1123,7 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
     }
   }
   // 量图：分时量/成交量 + 量 MA5/10/20（量 MA 取调色板前三位）
-  const volMap = paneMap("vol_pane", cross);
+  const volMap = paneMap("vol_pane", cross, idx);
   const vol = volMap[props.mode === "intraday" ? "INTRADAY_VOL" : "VOL"];
   legend.vol = [];
   if (vol) {
@@ -1123,7 +1131,7 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
     ["ma1", "ma2", "ma3"].forEach((k, i) => { if (vol[k] != null) legend.vol.push({ label: "MA" + (i + 1) * 5, value: fmtVol(vol[k]), color: INDICATOR_LINE_COLORS[i] }); });
   }
   // MACD 图：DIF(橙)/DEA(蓝)/MACD(柱按正负红绿)
-  const macdMap = paneMap("macd_pane", cross);
+  const macdMap = paneMap("macd_pane", cross, idx);
   const md = macdMap[props.mode === "intraday" ? "MACDFS" : "MACD"];
   legend.macd = [];
   if (md) {
@@ -1142,13 +1150,19 @@ function updateLegendLatest() {
 let crosshairCb: ((d: any) => void) | null = null;
 let dataReadyCb: (() => void) | null = null;
 function onCrosshair(c: any) {
-  if (!chart || !c || !c.paneId || c.paneId !== "candle_pane" || c.x == null || c.y == null) {
+  // 图例跟随十字光标：主图/成交量/MACD 任一面板悬浮都显示当前选中 K 线的 OHLC + 各面板指标值。
+  // 此前仅在 candle_pane 才更新，导致在成交量/MACD 面板选柱时图例不跟随（始终显示最新值）。
+  if (!c || c.kLineData == null || c.x == null || c.y == null) {
     tip.show = false;
     updateLegendLatest();
     return;
   }
-  // 图例跟随十字光标（显示当前悬浮点的 OHLC + 各指标值）
-  if (c.kLineData) buildLegend(c.kLineData, c.indicatorData, c.dataIndex);
+  buildLegend(c.kLineData, c.indicatorData, c.dataIndex);
+  // 智能画线悬浮吸附：仅主图面板处理
+  if (!chart || !c.paneId || c.paneId !== "candle_pane") {
+    tip.show = false;
+    return;
+  }
   const pts = chart.convertFromPixel([{ x: c.x, y: c.y }], { paneId: "candle_pane" }) as any;
   const pt = Array.isArray(pts) ? pts[0] : pts;
   if (!pt || typeof pt.price !== "number") {
