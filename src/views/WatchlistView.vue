@@ -1753,8 +1753,9 @@ function removeLp() {
   transform: translateX(100%);
 }
 .rs-ink-bar {
-  width: 46rpx;
+  flex: 1;
   height: 4rpx;
+  margin: 0 28rpx;
   border-radius: 999rpx;
   background: var(--primary);
 }
