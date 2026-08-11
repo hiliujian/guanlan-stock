@@ -569,19 +569,21 @@ function applyLivePrice() {
   updateLegendLatest();
 }
 
-// ---- 默认铺满可视宽度：所有模式（分时 / 日K / 周K / 月K / 年K）一次性展示完整数据 ----
-// 根因：klinecharts 默认 barSpace=8px，单屏仅能容纳约 44 根柱，默认只渲染末尾片段，
-// 需手动左拖才能看全貌。直接按「容器宽 / 柱数」反推 barSpace 并不可靠——图表实际绘制区
-// _totalBarSpace = 容器总宽 - 右侧 y 轴宽（yAxis 默认 outside），与 clientWidth 不等；
-// 偏大则 from>0（左侧数据被裁），偏小则 realFrom<0（左侧留出空白，即用户反馈的「左边 2/5 空白」）。
-// 解决（闭环精确铺满）：① 先 setOffsetRightDistance(0) 消除右偏移——否则 realFrom 仍可能为负致左空白；
-// ② 用全宽反推一个偏大的 barSpace（保证 from≥0、数据从左边缘起铺满），读取 getVisibleRange().from，
-//   按比例收窄到 from 恰好为 0（此时 to=数据总量、realFrom=0，数据完整且刚好铺满绘制区）；
-// ③ 收敛后再回退极小比例（相对 (count-1)/(count+1)），使首根(9:30)完整可见而非压在左边缘被裁，
-//   仅留约 1 根柱的极窄右间隙（时分约 1.4px，肉眼不可见），且回退不会把首根裁掉。
-// 柱数过多（如日K 全历史上千根）时 barSpace 被下限 1px 钳制，退化为「尽量铺满、显示尽可能多的近期柱」。
-// 注意：容器在首帧可能尚未完成布局（clientWidth=0），若此时直接 return 会让 barSpace
-// 停在默认 8px 而只显示末尾片段，故宽度为 0 时延后到下一帧重试。
+// ---- 默认缩放（柱宽 / 可见根数）各模式保持一致 ----
+// 分时：铺满完整一天（9:30-15:00，约 240 根）。日K/周K 等：默认采用与「分时全天铺满」相同的柱宽
+// （图表宽 / 240），显示最近约 240 根，缩放与分时图一致（用户要求：无需显示完整历史，缩放一致即可）；
+// 数据仍保留全量，可左右滑动查看更早。柱数不足 240 的（次新股）则退化为铺满。
+// 根因：klinecharts 默认 barSpace=8px，单屏仅容约 44 根柱，默认只渲染末尾片段，需手动左拖才看全貌；
+// 且图表实际绘制区 _totalBarSpace = 容器总宽 - 右侧 y 轴宽（yAxis 默认 outside），与 clientWidth 不等；
+// 偏大则 from>0（左侧数据被裁），偏小则 realFrom<0（左侧留白，即此前「左边 2/5 空白」）。
+// 解决（闭环精确铺满）：① setOffsetRightDistance(0) 消除右偏移（否则 realFrom 可能因右偏移变负致左空白）；
+// ② 全宽反推偏大 barSpace，读 getVisibleRange().from 按比例收窄到 from===0（数据完整且刚好铺满绘制区）；
+// ③ 收敛后回退极小比例（相对 (count-1)/(count+1)），使首根(9:30)完整可见而非压左边缘被裁，
+//   仅留约 1 根柱极窄右间隙（分时约 1.4px，肉眼不可见），回退不会把首根裁掉。
+// 注意：容器首帧可能未完成布局（clientWidth=0），若直接 return 会让 barSpace 停在默认 8px，
+// 故宽度为 0 时延后到下一帧重试。
+// 分时全天基准柱数（分钟级，9:30-11:30 + 13:00-15:00 = 240 点），作为各模式默认柱宽基准
+const INTRADAY_REF = 240;
 // 容器未布局时 fitViewAll 的重试计数（宽度就绪后归零）
 let fitRetry = 0;
 function fitViewAll() {
@@ -600,7 +602,14 @@ function fitViewAll() {
   fitRetry = 0;
   // ① 消除右偏移：最后一棵柱贴右边缘，且避免 realFrom 因右偏移变为负而产生左空白
   chart.setOffsetRightDistance(0);
-  // ② 偏大反推 → 收窄闭环：收敛到 from===0（数据完整且填满绘制区）
+  // ② K线（日K/周K/月K/年K）：默认缩放与分时图一致——采用与「分时全天铺满」相同的柱宽（w/INTRADAY_REF），
+  // 显示最近约 240 根（而非全部历史），保证分时/日K/周K 默认柱宽与可见根数一致。柱数不足 240（次新股）
+  // 时柱宽会更宽，反而好看，故走下面的铺满逻辑让它填满整宽。数据全量保留，可左右滑看更早。
+  if (props.mode !== "intraday" && count > INTRADAY_REF) {
+    chart.setBarSpace(Math.max(1, w / INTRADAY_REF));
+    return;
+  }
+  // 分时 / 柱数较少的 K线：偏大反推 → 收窄闭环，收敛到 from===0（数据完整且填满绘制区）
   let space = w / count; // 偏大（含 y 轴宽），保证 from≥0
   for (let i = 0; i < 6; i++) {
     chart.setBarSpace(space);
