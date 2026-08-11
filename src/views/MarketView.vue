@@ -179,7 +179,7 @@
                     </view>
                     <view class="idx-item-right">
                       <text class="idx-item-price" :class="[qCls(it.secid), qNa(it.secid) ? 'na' : '']">{{ qPrice(it.secid) }}</text>
-                      <text class="idx-item-pct" :class="qCls(it.secid)">{{ qPct(it.secid) }}{{ qChg(it.secid) }}</text>
+                      <text class="idx-item-pct" :class="qCls(it.secid)">{{ qPct(it.secid) }}</text>
                     </view>
                   </view>
                 </view>
@@ -337,11 +337,6 @@ function qPct(secid: string): string {
   const q = qOf(secid);
   if (!q || q.pct == null || !Number.isFinite(q.pct)) return "暂无数据";
   return (q.pct >= 0 ? "+" : "") + q.pct.toFixed(2) + "%";
-}
-function qChg(secid: string): string {
-  const q = qOf(secid);
-  if (!q || q.chg == null || !Number.isFinite(q.chg)) return "";
-  return " " + (q.chg >= 0 ? "+" : "") + q.chg.toFixed(2);
 }
 function qCls(secid: string): string {
   const q = qOf(secid);
