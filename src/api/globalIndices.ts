@@ -42,6 +42,7 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
       { secid: "1.000905", name: "中证500", flag: "cn" },
       { secid: "1.000852", name: "中证1000", flag: "cn" },
       { secid: "1.000016", name: "上证50", flag: "cn" },
+      { secid: "100.XIN9", name: "富时中国A50", flag: "cn" },
     ],
   },
   {
@@ -73,7 +74,6 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
   {
     title: "商品期货",
     items: [
-      { secid: "100.XIN9", name: "富时中国A50", flag: "cn" },
       { secid: "114.AU0", name: "黄金主连", icon: "gold" },
       { secid: "114.CU0", name: "沪铜主连", icon: "copper" },
       { secid: "114.SC0", name: "原油主连", icon: "oil" },
