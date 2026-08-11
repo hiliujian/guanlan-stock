@@ -177,7 +177,7 @@
                       <text class="idx-item-name">{{ it.name }}</text>
                     </view>
                     <view class="idx-item-right">
-                      <text class="idx-item-price" :class="qCls(it.secid)">{{ qPrice(it.secid) }}</text>
+                      <text class="idx-item-price" :class="[qCls(it.secid), qNa(it.secid) ? 'na' : '']">{{ qPrice(it.secid) }}</text>
                       <text class="idx-item-pct" :class="qCls(it.secid)">{{ qPct(it.secid) }}{{ qChg(it.secid) }}</text>
                     </view>
                   </view>
@@ -321,11 +321,11 @@ function qOf(secid: string): GlobalIndexQuote | undefined {
 }
 function qPrice(secid: string): string {
   const q = qOf(secid);
-  return q && q.price != null && Number.isFinite(q.price) ? q.price.toFixed(2) : "";
+  return q && q.price != null && Number.isFinite(q.price) ? q.price.toFixed(2) : "暂无数据";
 }
 function qPct(secid: string): string {
   const q = qOf(secid);
-  if (!q || q.pct == null || !Number.isFinite(q.pct)) return "";
+  if (!q || q.pct == null || !Number.isFinite(q.pct)) return "暂无数据";
   return (q.pct >= 0 ? "+" : "") + q.pct.toFixed(2) + "%";
 }
 function qChg(secid: string): string {
@@ -337,6 +337,11 @@ function qCls(secid: string): string {
   const q = qOf(secid);
   if (!q || q.pct == null || !Number.isFinite(q.pct)) return "";
   return q.pct > 0 ? "up" : q.pct < 0 ? "down" : "flat";
+}
+// 报价缺失判定：用于给价格列追加 .na 次级文字色（价格默认色为 --text，缺失时须降级为 --text-2 统一空态）
+function qNa(secid: string): boolean {
+  const q = qOf(secid);
+  return !q || q.price == null || !Number.isFinite(q.price);
 }
 
 // 卡片渲染注册表：新增分析卡只需在此加一项（comp + props 工厂），
@@ -1352,9 +1357,8 @@ defineExpose({ refresh: () => refreshFull() });
 .idx-item-pct.down {
   color: var(--down);
 }
-/* 缺失报价的指数：空值统一降级为「暂无数据」并采用次级文字色（复用项目空态规范） */
-.idx-item-price:empty::before {
-  content: "暂无数据";
+/* 缺失报价的指数：价格列降级为「暂无数据」并采用次级文字色（复用项目空态规范 --text-2） */
+.idx-item-price.na {
   color: var(--text-2);
 }
 .idx-scroll-pad {
