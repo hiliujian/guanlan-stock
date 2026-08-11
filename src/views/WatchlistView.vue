@@ -1724,8 +1724,7 @@ function removeLp() {
   position: relative;
   flex: none;
   display: flex;
-  margin: 0 24rpx;
-  padding: 6rpx 0 8rpx;
+  padding: 6rpx 24rpx 8rpx;
   border-bottom: 1rpx solid var(--border);
 }
 .rs-tab {
@@ -1753,9 +1752,8 @@ function removeLp() {
   transform: translateX(100%);
 }
 .rs-ink-bar {
-  flex: 1;
+  width: 46rpx;
   height: 4rpx;
-  margin: 0 28rpx;
   border-radius: 999rpx;
   background: var(--primary);
 }
