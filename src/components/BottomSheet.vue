@@ -30,6 +30,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
+import { usePreventPageScroll } from "@/composables/usePreventPageScroll";
 
 const props = withDefaults(
   defineProps<{
@@ -42,6 +43,9 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
+
+// 展开时锁定背景页面滚动（window 级），关闭时自动恢复；引用计数保证多弹层安全
+usePreventPageScroll(() => props.modelValue);
 
 function close() {
   emit("update:modelValue", false);

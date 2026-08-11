@@ -931,6 +931,17 @@ textarea {
   border-bottom: 1rpx solid var(--border);
 }
 
+/* ============ 底部卡片 / BottomSheet / Drawer 展开时锁定背景滚动 ============ */
+/* 由 usePreventPageScroll 控制：卡片展开时在 <html> 加 .ps-lock，禁用 window 级滚动与
+   overscroll 链式传递（iOS 橡皮筋 / 整页被拉动），关闭时移除。
+   注意：仅锁 window 级滚动，不触碰 touch-action，以免误伤卡片内部 scroll-view 的纵向滚动。 */
+html.ps-lock,
+html.ps-lock body {
+  overflow: hidden !important;
+  height: 100% !important;
+  overscroll-behavior: none !important;
+}
+
 /* ============ PeekSheet 折叠卡预览行（市场页 / 自选页共用，统一一套） ============ */
 /* 折叠态一行：左侧固定标签 + 中部滚动切换容器 + 右侧展开箭头，整体不换行、溢出裁切、垂直居中 */
 .peek-row {
