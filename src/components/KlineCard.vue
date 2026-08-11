@@ -127,6 +127,7 @@ const gearOn = computed(
   <StockChart
     v-else
     mode="kline"
+    :period="period"
     :klines="klines"
     :height="height ?? 460"
     :show-ma="true"

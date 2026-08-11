@@ -66,7 +66,7 @@ const ZONE_FILL = "rgba(108,122,145,0.18)"; // 关键区间阴影填充（中性
 const ZONE_EDGE = "rgba(108,122,145,0.55)"; // 关键区间边界描边（与填充同色系，清晰可辨）
 const ZONE_TEXT = "rgba(125,140,165,0.95)"; // 关键区间标签文字
 import { computeChip, type ChipResult } from "@/utils/analyzer";
-import type { Kline, Trend } from "@/utils/period";
+import type { Kline, Trend, PeriodKey } from "@/utils/period";
 import type { ChartAuxConfig } from "@/store/chartAux";
 import type { ChartMaConfig } from "@/store/chartMa";
 
@@ -319,6 +319,8 @@ const props = withDefaults(
     code?: string;
     /** 辅助线显示配置（总开关 + 压力/支撑/趋势/关键区间逐线开关）；不传则按组件默认全开 */
     auxConfig?: ChartAuxConfig;
+    /** 当前 K线周期（d/w/M/y），用于各周期默认缩放（显示约一个月等）；不传默认日K */
+    period?: PeriodKey;
   }>(),
   { height: 440, showMA: true, showMacd: true, showTools: false, autoDraw: false, persist: true }
 );
@@ -569,10 +571,17 @@ function applyLivePrice() {
   updateLegendLatest();
 }
 
-// ---- 默认缩放（柱宽 / 可见根数）各模式保持一致 ----
-// 分时：铺满完整一天（9:30-15:00，约 240 根）。日K/周K 等：默认采用与「分时全天铺满」相同的柱宽
-// （图表宽 / 240），显示最近约 240 根，缩放与分时图一致（用户要求：无需显示完整历史，缩放一致即可）；
-// 数据仍保留全量，可左右滑动查看更早。柱数不足 240 的（次新股）则退化为铺满。
+// ---- 默认缩放（柱宽 / 可见根数） ----
+// 分时：铺满完整一天（9:30-15:00，约 240 根）。K线：按周期设定「默认可见根数」——柱更宽、更易读，
+// 且各周期缩放观感协调（用户要求：日K 默认显示约一个月、周K 等也稍微放大）。数据仍保留全量，
+// 可左右滑动查看更早。柱数不足该周期基准的（次新股/数据少）则走下面的铺满逻辑填满整宽。
+// K线各周期默认可见根数（"稍微放大"：日K≈一个月交易日、周K≈两个半月，柱更宽）：
+const KLINE_DEFAULT_BARS: Record<Exclude<PeriodKey, "m">, number> = {
+  d: 23, // 日K：约一个月交易日（如 7-10~8-11）
+  w: 10, // 周K：约两个半月
+  M: 12, // 月K：约一年
+  y: 6,  // 年K：约六年
+};
 // 根因：klinecharts 默认 barSpace=8px，单屏仅容约 44 根柱，默认只渲染末尾片段，需手动左拖才看全貌；
 // 且图表实际绘制区 _totalBarSpace = 容器总宽 - 右侧 y 轴宽（yAxis 默认 outside），与 clientWidth 不等；
 // 偏大则 from>0（左侧数据被裁），偏小则 realFrom<0（左侧留白，即此前「左边 2/5 空白」）。
@@ -582,8 +591,6 @@ function applyLivePrice() {
 //   仅留约 1 根柱极窄右间隙（分时约 1.4px，肉眼不可见），回退不会把首根裁掉。
 // 注意：容器首帧可能未完成布局（clientWidth=0），若直接 return 会让 barSpace 停在默认 8px，
 // 故宽度为 0 时延后到下一帧重试。
-// 分时全天基准柱数（分钟级，9:30-11:30 + 13:00-15:00 = 240 点），作为各模式默认柱宽基准
-const INTRADAY_REF = 240;
 // 容器未布局时 fitViewAll 的重试计数（宽度就绪后归零）
 let fitRetry = 0;
 function fitViewAll() {
@@ -602,12 +609,16 @@ function fitViewAll() {
   fitRetry = 0;
   // ① 消除右偏移：最后一棵柱贴右边缘，且避免 realFrom 因右偏移变为负而产生左空白
   chart.setOffsetRightDistance(0);
-  // ② K线（日K/周K/月K/年K）：默认缩放与分时图一致——采用与「分时全天铺满」相同的柱宽（w/INTRADAY_REF），
-  // 显示最近约 240 根（而非全部历史），保证分时/日K/周K 默认柱宽与可见根数一致。柱数不足 240（次新股）
-  // 时柱宽会更宽，反而好看，故走下面的铺满逻辑让它填满整宽。数据全量保留，可左右滑看更早。
-  if (props.mode !== "intraday" && count > INTRADAY_REF) {
-    chart.setBarSpace(Math.max(1, w / INTRADAY_REF));
-    return;
+  // ② K线（日K/周K/月K/年K）：按周期设定默认可见根数（KLINE_DEFAULT_BARS），柱更宽、更易读；
+  // 取「图表宽 / 该周期基准根数」作为柱宽，使默认可见约该周期一个月左右的量。柱数不足基准（次新股）
+  // 时柱宽会更宽，故走下面的铺满逻辑让它填满整宽。数据全量保留，可左右滑看更早。
+  if (props.mode !== "intraday") {
+    const pk = (props.period === "m" ? "d" : (props.period ?? "d")) as Exclude<PeriodKey, "m">;
+    const ref = KLINE_DEFAULT_BARS[pk] ?? KLINE_DEFAULT_BARS.d;
+    if (count > ref) {
+      chart.setBarSpace(Math.max(1, w / ref));
+      return;
+    }
   }
   // 分时 / 柱数较少的 K线：偏大反推 → 收窄闭环，收敛到 from===0（数据完整且填满绘制区）
   let space = w / count; // 偏大（含 y 轴宽），保证 from≥0
