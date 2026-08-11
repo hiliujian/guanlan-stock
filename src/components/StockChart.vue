@@ -593,10 +593,10 @@ function fitViewAll() {
     return;
   }
   fitRetry = 0;
-  // 末根留 6px 给「最新价」标签呼吸空间
-  chart.setOffsetRightDistance(6);
-  // 直接反推最大 barSpace：floor((宽-留白)/柱数) 保证 totalBarSpace/barSpace >= 柱数 → from=0
-  const space = Math.max(1, Math.min(50, Math.floor((w - 12) / count)));
+  // 右侧不留额外偏移：让最后一根柱紧贴右边缘（仅留 1px 防止标签溢出）
+  chart.setOffsetRightDistance(1);
+  // 用全宽反推 barSpace：使所有柱刚好铺满可视区，无多余空白
+  const space = Math.max(1, Math.min(50, Math.floor(w / count)));
   chart.setBarSpace(space);
 }
 
