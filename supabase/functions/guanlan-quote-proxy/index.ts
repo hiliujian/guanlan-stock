@@ -25,7 +25,7 @@
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
-type Kind = "realtime" | "kline" | "trend" | "flow" | "search" | "news" | "ulist" | "clist";
+type Kind = "realtime" | "kline" | "trend" | "flow" | "search" | "news" | "ulist" | "clist" | "futures";
 type SourceId = "eastmoney" | "tencent" | "sina";
 
 // ---- 数据源顺序（配置文件）：默认东财 → 腾讯 → 新浪，三级冗余，用不了自动切下级 ----
@@ -38,6 +38,7 @@ const DEFAULT_SOURCES: Record<Kind, SourceId[]> = {
   news: ["eastmoney"],
   ulist: ["eastmoney"],
   clist: ["eastmoney"],
+  futures: ["sina"], // 商品期货 Eastmoney 不提供，统一走新浪期货接口
 };
 
 let SOURCES: Record<Kind, SourceId[]> = JSON.parse(JSON.stringify(DEFAULT_SOURCES));
@@ -238,9 +239,21 @@ function buildUrl(
     if (source === "eastmoney") {
       const secids = String(p.secids || "");
       const fields = String(p.fields || "f12,f13,f14");
+      // 用实时主机 push2：延迟主机 push2delay 漏算恒生科技等新指数；push2 实时且指数覆盖更全。
       return {
-        url: `https://push2delay.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=${secids}&fields=${fields}`,
+        url: `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&secids=${secids}&fields=${fields}`,
         enc: "utf-8",
+      };
+    }
+  }
+
+  if (kind === "futures") {
+    if (source === "sina") {
+      // p.secids 已由前端映射为新浪期货符号（如 nf_CU0 / hf_GC），单次批量请求取多合约。
+      const secids = String(p.secids || "");
+      return {
+        url: `https://hq.sinajs.cn/list=${secids}`,
+        enc: "gbk",
       };
     }
   }
@@ -349,7 +362,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const kind: Kind = payload?.kind;
-  const KINDS: Kind[] = ["realtime", "kline", "trend", "flow", "search", "news", "ulist", "clist"];
+  const KINDS: Kind[] = ["realtime", "kline", "trend", "flow", "search", "news", "ulist", "clist", "futures"];
   if (!KINDS.includes(kind)) {
     return json(400, { ok: false, error: "缺少或非法的 kind 参数" });
   }

@@ -35,6 +35,7 @@ import {
   parseSinaTrend,
   parseSinaSearch,
   parseSinaFlow,
+  parseSinaFutures,
 } from "./sina";
 import { searchByKeyword } from "./news";
 import { codeFromSecid } from "@/utils/period";
@@ -261,6 +262,76 @@ export async function getUlistQuotes(secids: string[]): Promise<UlistQuote[]> {
   } catch {
     return [];
   }
+}
+
+// 商品期货：Eastmoney 网关不提供期货行情，统一映射至新浪期货符号（nf_ 国内 / hf_ 国际连续合约）。
+const FUTURES_SINA: Record<string, string> = {
+  "114.CU0": "nf_CU0",
+  "114.AU0": "nf_AU0",
+  "114.SC0": "nf_SC0",
+  "112.GC00Y": "hf_GC", // 纽约金(COMEX)
+  "112.SI00Y": "hf_SI", // 纽约银(COMEX)
+  "112.HG00Y": "hf_HG", // 美铜(COMEX)
+  "112.CL00Y": "hf_CL", // 美原油(WTI)
+  "112.BR00Y": "hf_OIL", // 布伦特原油
+};
+export const FUTURES_SECIDS = Object.keys(FUTURES_SINA);
+
+// 批量期货实时报价：单次网关 futures 请求（新浪）取多合约，返回与 UlistQuote 同构。
+// 免费源不提供昨收/涨跌，故用「最新价 vs 今开」算日内涨跌幅（红涨绿跌语义一致）。
+export async function getFuturesQuotes(secids: string[]): Promise<UlistQuote[]> {
+  const wanted = secids.filter((s) => FUTURES_SINA[s]);
+  if (!wanted.length) return [];
+  const syms = wanted.map((s) => FUTURES_SINA[s]).join(",");
+  try {
+    const { text } = await requestGateway("futures", { secids: syms });
+    const parsed = parseSinaFutures(text);
+    return wanted.map((secid) => {
+      const p = parsed[FUTURES_SINA[secid]];
+      const price = p?.price ?? null;
+      const open = p?.open ?? null;
+      let pct: number | null = null;
+      let chg: number | null = null;
+      if (price != null && open != null && open !== 0) {
+        chg = price - open;
+        pct = (chg / open) * 100;
+      }
+      return { secid, name: "", price, pct, chg };
+    });
+  } catch {
+    return [];
+  }
+}
+
+// 东财 ulist 漏算的标的（如恒生科技指数推送延迟/缺失），改用腾讯实时兜底，确保出真实数据。
+const TENCENT_FALLBACK_SECIDS = new Set(["100.HSTECH"]);
+
+export async function getTencentFallbackQuotes(secids: string[]): Promise<UlistQuote[]> {
+  const wanted = secids.filter((s) => TENCENT_FALLBACK_SECIDS.has(s));
+  if (!wanted.length) return [];
+  const out: UlistQuote[] = [];
+  await Promise.all(
+    wanted.map(async (secid) => {
+      try {
+        const { text } = await requestGateway("realtime", { secid, forceSource: "tencent" });
+        const rt = parseTXRealtime(text);
+        if (rt && Number.isFinite(rt.price) && rt.price > 0) {
+          const pre = rt.preClose || rt.open || 0;
+          const chg = pre ? rt.price - pre : 0;
+          out.push({
+            secid,
+            name: rt.name || "",
+            price: rt.price,
+            pct: pre ? (chg / pre) * 100 : null,
+            chg: pre ? chg : null,
+          });
+        }
+      } catch {
+        /* 单个失败不影响其余 */
+      }
+    })
+  );
+  return out;
 }
 
 // 个股所属行业（f100）：仅东财提供，失败返回 null，sector 维度自动缺省。

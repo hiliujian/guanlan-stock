@@ -31,6 +31,35 @@ export function parseSinaRealtime(text: string, sym: string): RawRealtime | null
   };
 }
 
+// 新浪期货（商品）：var hq_str_<sym>="..." 全局变量，GBK（网关已解码为 UTF-8）。
+// 国内 nf_ 与国际 hf_ 字段布局不同：
+//   nf_（如 nf_CU0）：[名称, 类别, 今开, 最高, 最低, 最新, 买价, 卖价, ...]
+//   hf_（如 hf_GC）：[买价, 卖价, 今开, 最新, 最高, 最低, 时间, ...]
+// 统一取 最新价 / 今开，由上层据此算日内涨跌幅（免费源不提供昨收/涨跌）。
+export function parseSinaFutures(
+  text: string
+): Record<string, { price: number; open: number } | null> {
+  const out: Record<string, { price: number; open: number } | null> = {};
+  const re = /var hq_str_([A-Za-z0-9_]+)="([^"]*)";/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const sym = m[1];
+    const csv = m[2];
+    if (!csv) {
+      out[sym] = null;
+      continue;
+    }
+    const a = csv.split(",");
+    const priceIdx = sym.startsWith("hf") ? 3 : 5;
+    const openIdx = 2;
+    const price = parseFloat(a[priceIdx]);
+    const open = parseFloat(a[openIdx]);
+    out[sym] =
+      Number.isFinite(price) && Number.isFinite(open) ? { price, open } : null;
+  }
+  return out;
+}
+
 // 新浪 K 线（日）原始文本 → Kline[]
 export function parseSinaKline(text: string): Kline[] | null {
   const arr = JSON.parse(text);

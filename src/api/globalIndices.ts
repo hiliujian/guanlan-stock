@@ -3,17 +3,17 @@
 // 取数统一走 Eastmoney ulist 网关（fltt=2 返回真实价格，单次请求覆盖全部标的，
 // 零后端改动、前端并发降为 0）。详见 src/api/sources/index.ts 的 getUlistQuotes。
 //
-// 数据可用性（实测）：A股主要指数、恒生/韩国/日经、美股三大、欧洲四大、富时中国A50
-// 均返回真实点位；沪铜/原油/黄金等期货主力合约 Eastmoney 透传网关不提供，取不到时
-// 地图中对应项为 null，由上层统一降级为「暂无数据」。
-import { getUlistQuotes, type UlistQuote } from "@/api/sources";
+// 数据可用性（实测）：A股主要指数、恒生/恒生科技/韩国/日经、美股三大、欧洲四大、
+// 富时中国A50 经 Eastmoney ulist（实时主机）返回真实点位；商品期货（沪铜/原油/黄金、
+// COMEX 金/银/铜、WTI/布伦特原油）Eastmoney 不提供，改走新浪期货接口返回真实价格。
+import { getUlistQuotes, getFuturesQuotes, getTencentFallbackQuotes, FUTURES_SECIDS, type UlistQuote } from "@/api/sources";
 
 export interface GlobalIndexItem {
   secid: string;
   name: string;
   /** 国旗 ISO 3166-1 alpha-2 码（用于列表前的小国旗图标）；商品期货等非国家标的留空改用 icon */
   flag?: string;
-  /** 非国家标的（商品期货等）改用 OutlineIcon 图标（如 metal / oil），与 flag 二选一 */
+  /** 非国家标的（商品期货等）改用 OutlineIcon 图标（metal / oil），与 flag 二选一 */
   icon?: string;
 }
 export interface GlobalIndexGroup {
@@ -29,7 +29,7 @@ export interface GlobalIndexQuote {
 }
 
 // 全球重要市场指数目录（按地区/品种分组）。国家/地区标的用 flag（列表前小国旗）；
-// 商品期货等非国家标的改用 icon（OutlineIcon，如 metal / oil），与 flag 二选一。
+// 商品期货等非国家标的改用 icon（OutlineIcon 图标，如 metal / oil），与 flag 二选一。
 export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
   {
     title: "A股指数",
@@ -48,6 +48,7 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     title: "亚太市场",
     items: [
       { secid: "100.HSI", name: "恒生指数", flag: "hk" },
+      { secid: "100.HSTECH", name: "恒生科技指数", flag: "hk" },
       { secid: "100.KS11", name: "韩国KOSPI", flag: "kr" },
       { secid: "100.N225", name: "日经225", flag: "jp" },
     ],
@@ -98,9 +99,10 @@ const ALL_SECIDS: string[] = Array.from(
   new Set(GLOBAL_INDEX_GROUPS.flatMap((g) => g.items.map((i) => i.secid)))
 );
 
-// 批量拉取全球重要指数实时报价（单次 ulist 网关请求）。
-// 返回以 secid 为键的报价表：目录中所有标的都先填入「暂无」骨架，再覆盖真实数据；
-// 取不到的标的（如部分期货主力合约）保持 null，由上层降级为「暂无数据」。
+// 批量拉取全球重要指数 + 商品期货实时报价。
+// 指数走 Eastmoney ulist（实时主机）；商品期货 Eastmoney 不提供，改走新浪期货接口。
+// 两者并行拉取后合并：目录中所有标的先填入「暂无」骨架，再覆盖真实数据；
+// 任一源失败仅该部分缺数据，由上层降级为「暂无数据」。
 export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote>> {
   const map = new Map<string, GlobalIndexQuote>();
   for (const g of GLOBAL_INDEX_GROUPS) {
@@ -108,13 +110,14 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
       map.set(it.secid, { secid: it.secid, name: it.name, price: null, pct: null, chg: null });
     }
   }
-  let quotes: UlistQuote[] = [];
-  try {
-    quotes = await getUlistQuotes(ALL_SECIDS);
-  } catch {
-    quotes = [];
-  }
-  for (const q of quotes) {
+  const indexSecids = ALL_SECIDS.filter((s) => !FUTURES_SECIDS.includes(s));
+  const futuresSecids = ALL_SECIDS.filter((s) => FUTURES_SECIDS.includes(s));
+  const [idxQuotes, futQuotes, hkQuotes] = await Promise.all([
+    getUlistQuotes(indexSecids).catch(() => [] as UlistQuote[]),
+    getFuturesQuotes(futuresSecids).catch(() => [] as UlistQuote[]),
+    getTencentFallbackQuotes(ALL_SECIDS).catch(() => [] as UlistQuote[]),
+  ]);
+  for (const q of [...idxQuotes, ...futQuotes, ...hkQuotes]) {
     if (!q.secid) continue;
     map.set(q.secid, {
       secid: q.secid,
