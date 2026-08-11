@@ -217,7 +217,7 @@
             <template v-else-if="activePanel === 'group'">
               <view class="grp-head">
                 <view v-if="groupView !== 'main'" class="grp-back" role="button" aria-label="返回" @click="groupBack"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
-                <text class="grp-title">{{ groupTitle }}</text>
+                <text class="grp-title sheet-title">{{ groupTitle }}</text>
               </view>
               <scroll-view class="grp-body" scroll-y>
                 <!-- 主视图：我的分组 + 三个入口 -->
@@ -338,7 +338,7 @@
             <!-- 显示列：标题栏与「我的分组」共用 .grp-head/.grp-title，避免重复样式 -->
             <template v-else-if="activePanel === 'cols'">
               <view class="grp-head">
-                <text class="grp-title">显示列</text>
+                <text class="grp-title sheet-title">显示列</text>
               </view>
               <view class="col-list">
                 <view
@@ -359,7 +359,7 @@
             <!-- 长按操作菜单：与「我的分组」「显示列」共用同一 PeekSheet 窗体（替代原独立 ActionSheet） -->
             <template v-else-if="activePanel === 'actions'">
               <view class="grp-head">
-                <text class="grp-title">{{ lpItem ? (lpItem.name || lpItem.code) : '' }}</text>
+                <text class="grp-title sheet-title">{{ lpItem ? (lpItem.name || lpItem.code) : '' }}</text>
               </view>
               <view class="grp-list">
                 <view class="grp-item" role="button" @click="openAlertPanel">
@@ -381,7 +381,7 @@
             <template v-else-if="activePanel === 'alert'">
               <view class="grp-head">
                 <view class="grp-back" role="button" aria-label="返回" @click="activePanel = 'actions'"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
-                <text class="grp-title">价格预警</text>
+                <text class="grp-title sheet-title">价格预警</text>
               </view>
               <!-- 实时价参考：进入面板即拉取最新成交价，供用户设定阈值时对照 -->
               <view class="alert-rt">
@@ -1549,7 +1549,9 @@ function removeLp() {
   height: 48rpx;
   padding: 0 20rpx;
 }
-/* 标题绝对居中：无论左侧是否有「返回」图标，标题都精确居中于整个窗体头部 */
+/* 标题绝对居中：无论左侧是否有「返回」图标，标题都精确居中于整个窗体头部。
+   下框线与行情页 .idx-panel-head 一致（1rpx var(--border)），标题填满头部故边框落在头部底边；
+   排版字号/字重/颜色由全局 .sheet-title 统一提供，避免与 BottomSheet 标题重复硬编码 */
 .grp-title {
   position: absolute;
   left: 0;
@@ -1559,9 +1561,7 @@ function removeLp() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--font-md); /* 与 .grp-label（分组项）字号一致（28rpx） */
-  font-weight: 500;
-  color: var(--text-2);
+  border-bottom: 1rpx solid var(--border);
 }
 .grp-body {
   flex: 1;

@@ -911,6 +911,14 @@ textarea {
   border: 1rpx solid var(--border);
 }
 
+/* 底部面板（分组面板 / 通用底部弹窗）标题排版：.grp-title 与 BottomSheet 标题共用，杜绝重复硬编码。
+   注意：与 ReportView 内 scoped 的 .panel-title（报告小节标题，语义不同）命名区分，避免同名冲突 */
+.sheet-title {
+  font-size: var(--font-md);
+  font-weight: 500;
+  color: var(--text-2);
+}
+
 /* ============ PeekSheet 折叠卡预览行（市场页 / 自选页共用，统一一套） ============ */
 /* 折叠态一行：左侧固定标签 + 中部滚动切换容器 + 右侧展开箭头，整体不换行、溢出裁切、垂直居中 */
 .peek-row {

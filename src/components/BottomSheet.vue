@@ -18,7 +18,7 @@
       >
         <view class="bs-grip" />
         <view class="bs-head">
-          <text class="bs-title">{{ title }}</text>
+          <text class="sheet-title">{{ title }}</text>
         </view>
         <view class="bs-body">
           <slot />
@@ -139,12 +139,7 @@ function onUp() {
   justify-content: center;
   height: 72rpx;
 }
-/* 标题字号 / 字重 / 颜色与分组面板 .grp-title 完全一致（var(--font-md) / 500 / --text-2） */
-.bs-title {
-  font-size: var(--font-md);
-  font-weight: 500;
-  color: var(--text-2);
-}
+/* 标题排版复用全局 .sheet-title（font-md / 500 / text-2），与分组面板 .grp-title 统一，不再重复硬编码 */
 .bs-body {
   flex: 1;
   min-height: 0;
