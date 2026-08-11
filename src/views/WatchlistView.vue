@@ -1741,9 +1741,9 @@ function removeLp() {
 }
 .rs-ink {
   position: absolute;
-  left: 0;
+  left: 24rpx;
   bottom: -1rpx;
-  width: 50%;
+  width: calc(50% - 24rpx);
   display: flex;
   justify-content: center;
   transition: transform 0.28s var(--ease-out);
