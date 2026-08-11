@@ -4,7 +4,7 @@
 //
 // 周期切换轴与行情图「合为同一张卡片」：分段控件直接渲染在本卡片顶部、图表上方，
 // 切换周期时分段控件保持常驻（仅图表区转圈），不抢走用户对周期的控制权。
-// 行情图「图表设置」齿轮（年K 末尾）：点击展开内联面板，含「辅助线(均线 MA)」与「智能画线(压力/支撑/趋势/关键区间)」两组开关。
+// 行情图「图表设置」齿轮（末位周期 5日 之后）：点击展开内联面板，含「辅助线(均线 MA)」与「智能画线(压力/支撑/趋势/关键区间)」两组开关。
 import StockChart from "./StockChart.vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import { PERIODS, PERIOD_ORDER, type PeriodKey } from "@/utils/period";
@@ -92,7 +92,7 @@ const gearOn = computed(
         >{{ periodMeta[p].label }}</text
       >
     </view>
-    <!-- 年K 末尾的设置齿轮：点击展开「图表设置」面板（辅助线 MA + 智能画线） -->
+    <!-- 末位周期(5日) 之后的设置齿轮：点击展开「图表设置」面板（辅助线 MA + 智能画线） -->
     <view
       class="period-gear"
       :class="{ on: gearOn }"
@@ -260,7 +260,7 @@ const gearOn = computed(
   color: #fff;
   letter-spacing: 0.5rpx;
 }
-/* 设置齿轮：与分段控件同款药丸，置于年K 末尾；总开关开启时图标显主色，关闭时显次级灰 */
+/* 设置齿轮：与分段控件同款药丸，置于末位周期(5日) 末尾；总开关开启时图标显主色，关闭时显次级灰 */
 .period-gear {
   flex: none;
   display: flex;

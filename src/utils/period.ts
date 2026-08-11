@@ -1,6 +1,6 @@
 // 周期配置 + 代码解析 + 行情行解析（纯函数，跨端通用）
 
-export type PeriodKey = "m" | "d" | "w" | "M" | "y";
+export type PeriodKey = "m" | "d" | "w" | "M" | "5";
 
 export interface PeriodMeta {
   key: PeriodKey;
@@ -15,10 +15,11 @@ export const PERIODS: Record<PeriodKey, PeriodMeta> = {
   d: { key: "d", label: "日K", type: "kline", klt: 101, beg: -730 },
   w: { key: "w", label: "周K", type: "kline", klt: 102, beg: -2200 },
   M: { key: "M", label: "月K", type: "kline", klt: 103, beg: -3650 },
-  y: { key: "y", label: "年K", type: "kline", klt: 106, beg: -7300 },
+  // 5日：东财无对应 klt，由日K 客户端聚合（每根 = 5 个交易日），见 sources/index.ts synthesize5Day
+  "5": { key: "5", label: "5日", type: "kline", klt: null, beg: -730 },
 };
 
-export const PERIOD_ORDER: PeriodKey[] = ["m", "d", "w", "M", "y"];
+export const PERIOD_ORDER: PeriodKey[] = ["m", "d", "w", "M", "5"];
 
 export type Market = "sh" | "sz" | "bj" | "hk" | "auto";
 
