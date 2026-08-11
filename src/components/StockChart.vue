@@ -5,7 +5,7 @@
     <!-- 自定义图例：提取到图表上方独立区域（替代 klinecharts 内置覆盖在图内的图例），按「主图/成交量/MACD」
          分三组各自成行（组内单行流动、屏宽不足才换行），组间及与图表之间用分割线隔开。随十字光标/数据更新。 -->
     <view v-if="legend.show" class="kc-legendbar">
-      <view class="lg-row">
+      <view class="lg-row" :style="{ top: legendOffsets.price + 'px' }">
         <text class="lg-sec">主图</text>
         <text class="lg-time">{{ legend.time }}</text>
         <text class="lg-k">开</text><text class="lg-v">{{ fmtPrice(legend.o) }}</text>
@@ -15,11 +15,11 @@
         <text class="lg-chg" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ legend.chgPct != null ? (legend.chgPct >= 0 ? '+' : '') + legend.chgPct.toFixed(2) + '%' : '' }}</text>
         <text v-for="(it, i) in legend.main" :key="'m' + i" class="lg-it" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
       </view>
-      <view class="lg-row">
+      <view class="lg-row" :style="{ top: legendOffsets.vol + 'px' }">
         <text class="lg-sec">成交量</text>
         <text v-for="(it, i) in legend.vol" :key="'v' + i" class="lg-it" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
       </view>
-      <view class="lg-row">
+      <view class="lg-row" :style="{ top: legendOffsets.macd + 'px' }" v-if="legend.macd.length">
         <text class="lg-sec">MACD</text>
         <text v-for="(it, i) in legend.macd" :key="'d' + i" class="lg-it" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
       </view>
@@ -978,6 +978,14 @@ const legend = reactive<{
   show: false, time: "", o: null, h: null, l: null, c: null, chgPct: null,
   main: [], vol: [], macd: [],
 });
+// 图例分组对齐到各自面板顶部：复用 buildLayout 的高度算法，算出每个面板相对图表容器的 top（px），
+// 使「主图」组贴主图顶部、「成交量」组贴量图顶部、「MACD」组贴 MACD 顶部，而非三者全堆在价格图上方。
+const legendOffsets = computed(() => {
+  const usable = Math.max(140, props.height - 24); // 预留底部 x 轴条
+  const priceH = Math.round(usable * (props.showMacd ? 0.56 : 0.7));
+  const volH = Math.round(usable * (props.showMacd ? 0.22 : 0.3));
+  return { price: 0, vol: priceH, macd: priceH + volH };
+});
 function fmtPrice(v: number | null | undefined): string { return v != null && Number.isFinite(v) ? v.toFixed(2) : "--"; }
 function fmtVol(v: number): string {
   if (!Number.isFinite(v) || v <= 0) return "--";
@@ -1272,36 +1280,32 @@ onBeforeUnmount(() => {
   width: 100%;
   background: var(--card);
   border: 1rpx solid var(--border);
-  border-top: none;
-  border-radius: 0 0 16rpx 16rpx;
+  border-radius: 16rpx;
   overflow: hidden;
   touch-action: none;
 }
-/* 自定义图例：图表上方独立区域，与图表合为同一张卡片（上圆角），替代内置覆盖式图例 */
+/* 自定义图例：覆盖在图表之上的绝对定位层（不再单独占高度），三组分别对齐到各自面板顶部，
+   替代原先堆在价格图上方的整块图例；pointer-events:none 避免遮挡图表交互。 */
 .kc-legendbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4rpx 14rpx;
-  padding: 10rpx 14rpx;
-  background: var(--card);
-  border: 1rpx solid var(--border);
-  border-bottom: 1rpx solid var(--border);
-  border-radius: 16rpx 16rpx 0 0;
-  padding: 6rpx 14rpx;
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
   font-size: var(--font-xs);
   color: var(--text-2);
 }
-/* 每组一行：组内 token 单行流动，屏宽不足才换行（同花顺式）；组间用分割线隔开 */
+/* 每组一行：组内 token 单行流动，屏宽不足才换行；绝对定位贴到对应面板顶部，
+   浅毛玻璃背景(var(--card) 本身半透明)保证压在图线上仍清晰可读 */
 .lg-row {
+  position: absolute;
+  left: 0;
+  right: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4rpx 14rpx;
-  padding: 5rpx 0;
-}
-.lg-row + .lg-row {
-  border-top: 1rpx solid var(--border);
+  padding: 5rpx 14rpx;
+  background: var(--card);
 }
 /* 分组标题：标明该组数据属于哪个图（主图/成交量/MACD），使「每个图的数据」一目了然 */
 .lg-sec {
