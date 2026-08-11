@@ -572,34 +572,32 @@ function applyLivePrice() {
 // ---- 默认铺满可视宽度：所有模式（分时 / 日K / 周K / 月K / 年K）一次性展示完整数据 ----
 // 根因：klinecharts 默认 barSpace=8px，单屏仅能容纳约 44 根柱，默认只渲染末尾片段，
 // 需手动左拖才能看全貌（即用户在分时图反馈的现象；日K/周K 同理默认只显示近期一小段）。
-// 解决：右留白归零 + 二分搜索最大 barSpace，使 from=0 且 to=数据总量（完整可见，无需拖拽）。
-// 柱数过多（如日K 全历史上千根）时 barSpace 被 API 下限 1px 自然钳制，退化为「尽量铺满、
-// 显示尽可能多的近期柱」——仍优于默认 8px 强制造点拖拽；用户仍可手动左拖查看更早数据。
+// 解决：用可视宽度反推「能容纳全部柱」的最大 barSpace（API 内部 clamp [1,50]），
+// 使 from=0 且 to=数据总量（完整可见，无需拖拽）。柱数过多（如日K 全历史上千根）时
+// barSpace 被下限 1px 钳制，退化为「尽量铺满、显示尽可能多的近期柱」——仍优于默认 8px。
+// 注意：容器在首帧可能尚未完成布局（clientWidth=0），若此时直接 return 会让 barSpace
+// 停在默认 8px 而只显示末尾片段（这是此前现象的根因），故宽度为 0 时延后到下一帧重试。
+// 容器未布局时 fitViewAll 的重试计数（宽度就绪后归零）
+let fitRetry = 0;
 function fitViewAll() {
   if (!chart || !chartEl.value) return;
   const count = dataList.length;
   if (count <= 1) return;
   const w = chartEl.value.clientWidth;
-  if (!w) return;
-  // 末根留 6px 给「最新价」标签呼吸空间（像素单位；缩放到 fit 后约 1px，可忽略）
-  chart.setOffsetRightDistance(6);
-  // 二分搜索最大 barSpace（API 内部 clamp [1,50]），使全部数据落入可视区
-  let lo = 1;
-  let hi = 50;
-  let best = 1;
-  for (let i = 0; i < 22; i++) {
-    const mid = (lo + hi) / 2;
-    chart.setBarSpace(mid);
-    const vr = chart.getVisibleRange() as any;
-    const allVisible = vr && vr.from <= 0 && vr.to >= count;
-    if (allVisible) {
-      best = mid;
-      lo = mid;
-    } else {
-      hi = mid;
+  if (!w) {
+    // 容器尚未完成布局：延后重试（最多 12 帧），避免长期 0 宽导致无限递归
+    if (fitRetry++ < 12) {
+      if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => fitViewAll());
+      else setTimeout(() => fitViewAll(), 30);
     }
+    return;
   }
-  chart.setBarSpace(Math.max(1, best));
+  fitRetry = 0;
+  // 末根留 6px 给「最新价」标签呼吸空间
+  chart.setOffsetRightDistance(6);
+  // 直接反推最大 barSpace：floor((宽-留白)/柱数) 保证 totalBarSpace/barSpace >= 柱数 → from=0
+  const space = Math.max(1, Math.min(50, Math.floor((w - 12) / count)));
+  chart.setBarSpace(space);
 }
 
 // 数据就绪回调：每次数据变化（首载 / 刷新 / 实时末根）后保持「铺满全貌」+ 刷新图例（所有模式通用）
