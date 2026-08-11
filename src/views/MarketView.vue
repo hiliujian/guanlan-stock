@@ -1305,10 +1305,10 @@ defineExpose({ refresh: () => refreshFull() });
   letter-spacing: 1rpx;
   margin-bottom: 12rpx;
 }
-/* 三列网格：紧凑呈现各市场主要指数，避免卡片内空白浪费 */
+/* 两列网格：宽松呈现各市场主要指数，避免一行三列过于拥挤 */
 .idx-grp-list {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr 1fr;
   gap: 12rpx;
 }
 .idx-item {

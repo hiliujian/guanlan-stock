@@ -3,8 +3,8 @@
 // 取数统一走 Eastmoney ulist 网关（fltt=2 返回真实价格，单次请求覆盖全部标的，
 // 零后端改动、前端并发降为 0）。详见 src/api/sources/index.ts 的 getUlistQuotes。
 //
-// 数据可用性（实测）：A股主要指数、恒生/恒生科技/韩国/日经、美股三大、欧洲四大、
-// 富时中国A50 经 Eastmoney ulist（实时主机）返回真实点位；商品期货（沪铜/原油/黄金、
+// 数据可用性（实测）：A股主要指数、恒生/恒生科技/韩国/日经、美股三大、欧洲四大，
+// 均经 Eastmoney ulist（实时主机）返回真实点位；商品期货（沪金/沪银/沪铜/原油主连、
 // COMEX 金/银/铜、WTI/布伦特原油）Eastmoney 不提供，改走新浪期货接口返回真实价格。
 import { getUlistQuotes, getFuturesQuotes, getTencentFallbackQuotes, FUTURES_SECIDS, type UlistQuote } from "@/api/sources";
 
