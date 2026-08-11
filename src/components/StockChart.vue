@@ -506,6 +506,26 @@ function buildLayout(): any[] {
   return layout;
 }
 
+// ---- 主图 MA 逐线独立着色：4 条 MA 各自注册为单线指标，klinecharts 对「单线指标」默认都取
+// 调色板第 0 项（#f5a623 琥珀，观感像黄），导致 MA5/10/20/60 同色、无法区分。这里按可见顺序
+// 用 INDICATOR_LINE_COLORS（橙/蓝/紫/绿）逐一覆盖每条 MA 的线色，与顶部图例配色完全一致。
+// 须在指标实例就绪后调用（init 后 / OnDataReady 后），重复调用幂等。
+function applyMaColors() {
+  if (!chart || props.mode !== "kline" || props.showMA === false) return;
+  const store: any = (chart as any)?.getChartStore?.();
+  if (!store || typeof store.overrideIndicator !== "function") return;
+  const mc = props.maConfig;
+  const visibleMas = MA_DEFS.filter((d) => (mc ? mc[d.key as keyof ChartMaConfig] : true));
+  visibleMas.forEach((d, i) => {
+    const color = INDICATOR_LINE_COLORS[i % INDICATOR_LINE_COLORS.length];
+    try {
+      store.overrideIndicator({ name: "MA" + d.period, styles: { lines: [{ color, size: 1 }] } }, "candle_pane");
+    } catch {
+      /* noop */
+    }
+  });
+}
+
 // ---- 叠加层：筹码分布 ----
 function sizeCanvas(c: HTMLCanvasElement, w: number, h: number): CanvasRenderingContext2D {
   const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
@@ -654,6 +674,7 @@ function fitViewAll() {
 // 数据就绪回调：每次数据变化（首载 / 刷新 / 实时末根）后保持「铺满全貌」+ 刷新图例（所有模式通用）
 function onDataReady() {
   fitViewAll();
+  applyMaColors();
   updateLegendLatest();
 }
 
@@ -1087,7 +1108,9 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
     let mi = 0;
     for (const def of MA_DEFS) {
       if (!vis(def.key)) continue;
-      const v = candle["MA" + def.period];
+      // 指标结果是一个对象（如 {ma5: 值}），取子键才得到数值；直接取会拿到对象导致 fmtPrice 显示 "--"
+      const obj = candle["MA" + def.period] as Record<string, any> | undefined;
+      const v = obj ? obj[def.key] : null;
       if (v != null) { legend.main.push({ label: "MA" + def.period, value: fmtPrice(v), color: INDICATOR_LINE_COLORS[mi] }); mi++; }
     }
   }
@@ -1238,6 +1261,7 @@ function buildChart() {
       // 首载兜底：确保铺满全貌（OnDataReady 在 applyNewData 异步解析后才触发，
       // 此处保证容器尺寸确定后也对齐一次，所有模式通用）
       fitViewAll();
+      applyMaColors();
       drawCyq();
       restoreOverlays();
       drawAutoLevels();
@@ -1301,7 +1325,7 @@ watch(
   () => refreshData()
 );
 watch(
-  () => [props.mode, props.showMA, props.showMacd],
+  () => [props.mode, props.showMA, props.showMacd, props.maConfig?.ma5, props.maConfig?.ma10, props.maConfig?.ma20, props.maConfig?.ma60],
   () => buildChart()
 );
 watch(
