@@ -338,16 +338,16 @@ const gearOn = computed(
   top: calc(100% + 8rpx);
   right: 0;
   z-index: 31;
-  width: 480rpx;
-  max-width: 86vw;
-  max-height: 72vh;
+  width: 340rpx;
+  max-width: 64vw;
+  max-height: 60vh;
   overflow-y: auto;
-  padding: 6rpx 20rpx 14rpx;
+  padding: 4rpx 18rpx 12rpx;
   background: var(--tabbar-bg);
   backdrop-filter: blur(20rpx);
   -webkit-backdrop-filter: blur(20rpx);
   border: 1rpx solid var(--border);
-  border-radius: 22rpx;
+  border-radius: 18rpx;
   box-shadow: var(--shadow-sheet);
 }
 .aux-pop-head {
@@ -355,9 +355,9 @@ const gearOn = computed(
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 72rpx;
-  margin: 0 -20rpx 6rpx;
-  padding: 0 20rpx;
+  height: 62rpx;
+  margin: 0 -18rpx 4rpx;
+  padding: 0 18rpx;
   border-bottom: 1rpx solid var(--border);
 }
 .aux-pop-title {
@@ -367,11 +367,11 @@ const gearOn = computed(
 }
 .aux-pop-close {
   position: absolute;
-  right: 6rpx;
+  right: 4rpx;
   top: 50%;
   transform: translateY(-50%);
-  width: 56rpx;
-  height: 56rpx;
+  width: 48rpx;
+  height: 48rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -387,13 +387,13 @@ const gearOn = computed(
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16rpx;
-  min-height: 98rpx;
+  gap: 14rpx;
+  min-height: 76rpx;
 }
 .aux-left {
   display: flex;
   flex-direction: column;
-  gap: 6rpx;
+  gap: 4rpx;
   min-width: 0;
 }
 .aux-label {
