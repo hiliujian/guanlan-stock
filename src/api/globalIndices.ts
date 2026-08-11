@@ -11,6 +11,8 @@ import { getUlistQuotes, type UlistQuote } from "@/api/sources";
 export interface GlobalIndexItem {
   secid: string;
   name: string;
+  /** 国旗 ISO 3166-1 alpha-2 码（用于列表前的小国旗图标）；商品期货等非国家标的留空 */
+  flag: string;
 }
 export interface GlobalIndexGroup {
   title: string; // 分组标题：A股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货
@@ -24,56 +26,61 @@ export interface GlobalIndexQuote {
   chg: number | null; // 涨跌额，带符号
 }
 
-// 全球重要市场指数目录（按地区/品种分组）。
+// 全球重要市场指数目录（按地区/品种分组）。flag 为国家/地区 ISO 码（列表前小国旗），商品期货留空。
 export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
   {
     title: "A股指数",
     items: [
-      { secid: "1.000001", name: "上证指数" },
-      { secid: "0.399001", name: "深证成指" },
-      { secid: "0.399006", name: "创业板指" },
-      { secid: "1.000688", name: "科创50" },
-      { secid: "1.000300", name: "沪深300" },
-      { secid: "1.000905", name: "中证500" },
-      { secid: "1.000852", name: "中证1000" },
-      { secid: "1.000016", name: "上证50" },
+      { secid: "1.000001", name: "上证指数", flag: "cn" },
+      { secid: "0.399001", name: "深证成指", flag: "cn" },
+      { secid: "0.399006", name: "创业板指", flag: "cn" },
+      { secid: "1.000688", name: "科创50", flag: "cn" },
+      { secid: "1.000300", name: "沪深300", flag: "cn" },
+      { secid: "1.000905", name: "中证500", flag: "cn" },
+      { secid: "1.000852", name: "中证1000", flag: "cn" },
+      { secid: "1.000016", name: "上证50", flag: "cn" },
     ],
   },
   {
     title: "亚太市场",
     items: [
-      { secid: "100.HSI", name: "恒生指数" },
-      { secid: "100.KS11", name: "韩国KOSPI" },
-      { secid: "100.N225", name: "日经225" },
+      { secid: "100.HSI", name: "恒生指数", flag: "hk" },
+      { secid: "100.KS11", name: "韩国KOSPI", flag: "kr" },
+      { secid: "100.N225", name: "日经225", flag: "jp" },
     ],
   },
   {
     title: "美股市场",
     items: [
-      { secid: "100.DJIA", name: "道琼斯" },
-      { secid: "100.NDX", name: "纳斯达克" },
-      { secid: "100.SPX", name: "标普500" },
+      { secid: "100.DJIA", name: "道琼斯", flag: "us" },
+      { secid: "100.NDX", name: "纳斯达克", flag: "us" },
+      { secid: "100.SPX", name: "标普500", flag: "us" },
     ],
   },
   {
     title: "欧洲市场",
     items: [
-      { secid: "100.FTSE", name: "英国富时100" },
-      { secid: "100.GDAXI", name: "德国DAX" },
-      { secid: "100.FCHI", name: "法国CAC40" },
-      { secid: "100.SX5E", name: "欧洲斯托克50" },
+      { secid: "100.FTSE", name: "英国富时100", flag: "gb" },
+      { secid: "100.GDAXI", name: "德国DAX", flag: "de" },
+      { secid: "100.FCHI", name: "法国CAC40", flag: "fr" },
+      { secid: "100.SX5E", name: "欧洲斯托克50", flag: "eu" },
     ],
   },
   {
     title: "商品期货",
     items: [
-      { secid: "100.XIN9", name: "富时中国A50" },
-      { secid: "114.CU0", name: "沪铜主力" },
-      { secid: "114.SC0", name: "原油主力" },
-      { secid: "114.AU0", name: "黄金主力" },
+      { secid: "100.XIN9", name: "富时中国A50", flag: "cn" },
+      { secid: "114.CU0", name: "沪铜主力", flag: "" },
+      { secid: "114.SC0", name: "原油主力", flag: "" },
+      { secid: "114.AU0", name: "黄金主力", flag: "" },
     ],
   },
 ];
+
+// secid → 国旗 ISO 码（折叠卡匹配指数时快速查国旗，避免逐项遍历）。
+export const SECID_FLAG: Record<string, string> = Object.fromEntries(
+  GLOBAL_INDEX_GROUPS.flatMap((g) => g.items.map((i) => [i.secid, i.flag]))
+);
 
 // 全部待取 secid（去重），供批量请求一次拿全。
 const ALL_SECIDS: string[] = Array.from(

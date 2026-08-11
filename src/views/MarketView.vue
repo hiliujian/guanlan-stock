@@ -143,12 +143,13 @@
       <PeekSheet @expand="onSheetExpand" @collapse="onSheetCollapse">
         <template #peek>
           <view class="idx-row" role="button" aria-label="展开指数面板">
-            <text class="idx-label">指数</text>
+            <text class="idx-label">股市行情</text>
             <!-- 切换个股→匹配指数变化时，整块信息向上滚动切换（新指数自下方滑入、旧指数向上滑出）；
                  以 idxSecid 为 key，价格实时跳动不会误触发滚动 -->
             <RollSwap class="idx-roll" :roll-key="idxSecid">
               <view class="idx-info">
                 <view class="idx-main">
+                  <image v-if="idxFlag" class="idx-flag" :src="'https://flagcdn.com/w40/'+idxFlag+'.png'" mode="aspectFit" />
                   <text class="idx-name truncate">{{ idxName }}</text>
                 </view>
                 <view class="idx-right">
@@ -164,7 +165,7 @@
           <!-- 展开态：全球重要市场指数实时面板（按地区/品种分组，scroll-view 内独立滚动） -->
           <view class="idx-panel">
             <view class="idx-panel-head">
-              <text class="idx-panel-title">全球重要指数</text>
+              <text class="idx-panel-title">全球市场指数</text>
               <text class="idx-panel-sub">实时行情 · 红涨绿跌</text>
             </view>
             <scroll-view class="idx-scroll" scroll-y>
@@ -172,7 +173,10 @@
                 <text class="idx-grp-t">{{ g.title }}</text>
                 <view class="idx-grp-list">
                   <view v-for="it in g.items" :key="it.secid" class="idx-item">
-                    <text class="idx-item-name">{{ it.name }}</text>
+                    <view class="idx-item-head">
+                      <image v-if="it.flag" class="idx-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
+                      <text class="idx-item-name">{{ it.name }}</text>
+                    </view>
                     <view class="idx-item-right">
                       <text class="idx-item-price" :class="qCls(it.secid)">{{ qPrice(it.secid) }}</text>
                       <text class="idx-item-pct" :class="qCls(it.secid)">{{ qPct(it.secid) }}{{ qChg(it.secid) }}</text>
@@ -204,7 +208,7 @@ import KlineCard from "@/components/KlineCard.vue";
 import StockTag from "@/components/StockTag.vue";
 import { fetchHotSearches, recordSearch, type HotStock } from "@/api/hot";
 import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, resolveIndexForStock, type SearchHit, type QuoteBundle, type NewsItem } from "@/api/quote";
-import { fetchGlobalIndices, GLOBAL_INDEX_GROUPS, type GlobalIndexQuote } from "@/api/globalIndices";
+import { fetchGlobalIndices, GLOBAL_INDEX_GROUPS, SECID_FLAG, type GlobalIndexQuote } from "@/api/globalIndices";
 import { getMarketStatus } from "@/utils/marketStatus";
 import {
   resolveSecid,
@@ -283,6 +287,8 @@ const idxCls = computed(() => {
 });
 const idxPriceText = computed(() => fmtPrice(idxSnap.value?.price));
 const idxPctText = computed(() => fmtPct(idxSnap.value?.pct));
+// 折叠卡匹配指数的国旗（查表，缺失则不显示）
+const idxFlag = computed(() => SECID_FLAG[idxSecid.value] || "");
 
 // 展开态：全球重要市场指数实时面板数据（按目录分组渲染，缺失项降级「暂无数据」）
 const globalGroups = GLOBAL_INDEX_GROUPS;
@@ -1361,7 +1367,6 @@ defineExpose({ refresh: () => refreshFull() });
 }
 .idx-panel-title {
   font-size: var(--font-md);
-  font-weight: 700;
   color: var(--text);
 }
 .idx-panel-sub {
@@ -1379,7 +1384,6 @@ defineExpose({ refresh: () => refreshFull() });
 .idx-grp-t {
   display: block;
   font-size: var(--font-sm);
-  font-weight: 600;
   color: var(--text-2);
   letter-spacing: 1rpx;
   margin-bottom: 12rpx;
@@ -1398,12 +1402,29 @@ defineExpose({ refresh: () => refreshFull() });
   background: var(--card-2);
   border-radius: var(--radius-sm);
 }
+.idx-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  min-width: 0;
+}
 .idx-item-name {
+  flex: 1;
+  min-width: 0;
   font-size: var(--font-xs);
   color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* 小国旗图标（flagcdn 真实国旗，跨平台稳定渲染） */
+.idx-flag {
+  flex: none;
+  width: 30rpx;
+  height: 22rpx;
+  border-radius: 3rpx;
+  background: var(--card-2);
+  object-fit: cover;
 }
 .idx-item-right {
   display: flex;
@@ -1412,7 +1433,6 @@ defineExpose({ refresh: () => refreshFull() });
 }
 .idx-item-price {
   font-size: var(--font-md);
-  font-weight: 600;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
