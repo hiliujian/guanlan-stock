@@ -11,8 +11,10 @@ import { getUlistQuotes, type UlistQuote } from "@/api/sources";
 export interface GlobalIndexItem {
   secid: string;
   name: string;
-  /** 国旗 ISO 3166-1 alpha-2 码（用于列表前的小国旗图标）；商品期货等非国家标的留空 */
-  flag: string;
+  /** 国旗 ISO 3166-1 alpha-2 码（用于列表前的小国旗图标）；商品期货等非国家标的留空改用 icon */
+  flag?: string;
+  /** 非国家标的（商品期货等）改用 OutlineIcon 图标（如 metal / oil），与 flag 二选一 */
+  icon?: string;
 }
 export interface GlobalIndexGroup {
   title: string; // 分组标题：A股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货
@@ -26,7 +28,8 @@ export interface GlobalIndexQuote {
   chg: number | null; // 涨跌额，带符号
 }
 
-// 全球重要市场指数目录（按地区/品种分组）。flag 为国家/地区 ISO 码（列表前小国旗），商品期货留空。
+// 全球重要市场指数目录（按地区/品种分组）。国家/地区标的用 flag（列表前小国旗）；
+// 商品期货等非国家标的改用 icon（OutlineIcon，如 metal / oil），与 flag 二选一。
 export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
   {
     title: "A股指数",
@@ -70,16 +73,24 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     title: "商品期货",
     items: [
       { secid: "100.XIN9", name: "富时中国A50", flag: "cn" },
-      { secid: "114.CU0", name: "沪铜主力", flag: "" },
-      { secid: "114.SC0", name: "原油主力", flag: "" },
-      { secid: "114.AU0", name: "黄金主力", flag: "" },
+      { secid: "114.CU0", name: "沪铜主力", icon: "metal" },
+      { secid: "114.SC0", name: "原油主力", icon: "oil" },
+      { secid: "114.AU0", name: "黄金主力", icon: "metal" },
+      { secid: "112.GC00Y", name: "纽约金", icon: "metal" },
+      { secid: "112.SI00Y", name: "纽约银", icon: "metal" },
+      { secid: "112.HG00Y", name: "美铜", icon: "metal" },
+      { secid: "112.CL00Y", name: "美原油", icon: "oil" },
+      { secid: "112.BR00Y", name: "布伦特原油", icon: "oil" },
     ],
   },
 ];
 
 // secid → 国旗 ISO 码（折叠卡匹配指数时快速查国旗，避免逐项遍历）。
+// 仅收录带 flag 的国家/地区标的；商品期货等用 icon 的标的跳过（flag 为 undefined）。
 export const SECID_FLAG: Record<string, string> = Object.fromEntries(
-  GLOBAL_INDEX_GROUPS.flatMap((g) => g.items.map((i) => [i.secid, i.flag]))
+  GLOBAL_INDEX_GROUPS.flatMap((g) =>
+    g.items.filter((i) => i.flag).map((i) => [i.secid, i.flag as string])
+  )
 );
 
 // 全部待取 secid（去重），供批量请求一次拿全。

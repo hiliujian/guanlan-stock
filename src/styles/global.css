@@ -1051,3 +1051,9 @@ html.ps-lock body {
   background: var(--card-2);
   object-fit: cover;
 }
+/* 商品/非国家标的图标（金属锭 / 油滴等 OutlineIcon），与 .peek-flag 同槽位对齐 */
+.peek-flag-ic {
+  flex: none;
+  width: 22rpx;
+  height: 22rpx;
+}

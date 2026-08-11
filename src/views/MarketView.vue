@@ -174,6 +174,7 @@
                   <view v-for="it in g.items" :key="it.secid" class="idx-item">
                     <view class="idx-item-head">
                       <image v-if="it.flag" class="peek-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
+                      <OutlineIcon v-else-if="it.icon" class="peek-flag-ic" :type="it.icon" :size="22" color="var(--text-2)" />
                       <text class="idx-item-name">{{ it.name }}</text>
                     </view>
                     <view class="idx-item-right">
