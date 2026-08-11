@@ -149,7 +149,6 @@
             <RollSwap class="peek-roll" :roll-key="idxSecid">
               <view class="peek-info">
                 <view class="peek-main">
-                  <image v-if="idxFlag" class="peek-flag" :src="'https://flagcdn.com/w40/'+idxFlag+'.png'" mode="aspectFit" />
                   <text class="peek-name">{{ idxName }}</text>
                 </view>
                 <view class="peek-right">
@@ -208,7 +207,7 @@ import KlineCard from "@/components/KlineCard.vue";
 import StockTag from "@/components/StockTag.vue";
 import { fetchHotSearches, recordSearch, type HotStock } from "@/api/hot";
 import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, resolveIndexForStock, type SearchHit, type QuoteBundle, type NewsItem } from "@/api/quote";
-import { fetchGlobalIndices, GLOBAL_INDEX_GROUPS, SECID_FLAG, type GlobalIndexQuote } from "@/api/globalIndices";
+import { fetchGlobalIndices, GLOBAL_INDEX_GROUPS, type GlobalIndexQuote } from "@/api/globalIndices";
 import { getMarketStatus } from "@/utils/marketStatus";
 import {
   resolveSecid,
@@ -287,8 +286,6 @@ const idxCls = computed(() => {
 });
 const idxPriceText = computed(() => fmtPrice(idxSnap.value?.price));
 const idxPctText = computed(() => fmtPct(idxSnap.value?.pct));
-// 折叠卡匹配指数的国旗（查表，缺失则不显示）
-const idxFlag = computed(() => SECID_FLAG[idxSecid.value] || "");
 
 // 展开态：全球重要市场指数实时面板数据（按目录分组渲染，缺失项降级「暂无数据」）
 const globalGroups = GLOBAL_INDEX_GROUPS;
