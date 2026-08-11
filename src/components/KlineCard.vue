@@ -58,6 +58,17 @@ function pick(p: PeriodKey) {
 const auxOpen = ref(false);
 // 看盘画线工具栏开关：画板图标控制，淡入/淡出 StockChart 的 kc-tools
 const toolsOpen = ref(false);
+// 画板 / 设置 互斥：同一时刻仅一个弹层可见，点开其一先收起另一个
+function toggleTools() {
+  const next = !toolsOpen.value;
+  toolsOpen.value = next;
+  if (next) auxOpen.value = false;
+}
+function toggleAuxOpen() {
+  const next = !auxOpen.value;
+  auxOpen.value = next;
+  if (next) toolsOpen.value = false;
+}
 type AuxKey = "pressure" | "support" | "trend" | "zone";
 const auxItems: { key: AuxKey; label: string; desc: string }[] = [
   { key: "pressure", label: "压力线", desc: "红色虚线：上方阻力位" },
@@ -99,7 +110,7 @@ const gearOn = computed(
         class="kline-tool-btn"
         :class="{ on: toolsOpen }"
         role="button"
-        @click="toolsOpen = !toolsOpen"
+        @click="toggleTools"
       >
         <OutlineIcon type="pen" :size="30" :color="toolsOpen ? 'var(--primary)' : 'var(--text-2)'" />
       </view>
@@ -107,7 +118,7 @@ const gearOn = computed(
         class="kline-tool-btn"
         :class="{ on: gearOn }"
         role="button"
-        @click="auxOpen = !auxOpen"
+        @click="toggleAuxOpen"
       >
         <OutlineIcon type="gear" :size="30" :color="gearOn ? 'var(--primary)' : 'var(--text-2)'" />
       </view>
