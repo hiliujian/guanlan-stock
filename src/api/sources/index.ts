@@ -268,6 +268,7 @@ export async function getUlistQuotes(secids: string[]): Promise<UlistQuote[]> {
 const FUTURES_SINA: Record<string, string> = {
   "114.CU0": "nf_CU0",
   "114.AU0": "nf_AU0",
+  "114.AG0": "nf_AG0", // 沪银主连(SHFE)
   "114.SC0": "nf_SC0",
   "112.GC00Y": "hf_GC", // 纽约金(COMEX)
   "112.SI00Y": "hf_SI", // 纽约银(COMEX)
