@@ -143,6 +143,10 @@ const ICONS: Record<string, { body: string; filled?: boolean }> = {
   edit: {
     body: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
   },
+  // 画板 / 自定义画线（钢笔，与 edit 区分：edit 用于资料编辑，pen 专指看盘手绘）
+  pen: {
+    body: '<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/><line x1="14.5" y1="6.5" x2="17.5" y2="9.5"/>',
+  },
   // 眼睛（显示密码）
   eye: {
     body: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',

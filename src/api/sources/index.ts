@@ -175,43 +175,9 @@ export async function fetchTurnoverAnchor(secid: string): Promise<RawRealtime | 
 const klineCache = new Map<string, { t: number; data: Kline[] }>();
 const KLINE_TTL = 5 * 60 * 1000;
 
-// 5日K线：东财无 5日 klt，由日K 数据客户端聚合（每根 = 5 个交易日）。
-// 按时间升序（旧→新）每 5 根日K 聚成一根：开=首根开、收=末根收、高/低=区间极值、量/额=求和；
-// 涨跌幅/振幅 相对上一根 5日 收盘（首根相对首根日K 开）计算；换手率取区间均值。
-function synthesize5Day(daily: Kline[]): Kline[] {
-  if (!daily || daily.length < 1) return [];
-  const sorted = [...daily].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  const out: Kline[] = [];
-  for (let i = 0; i < sorted.length; i += 5) {
-    const grp = sorted.slice(i, i + 5);
-    if (!grp.length) break;
-    const open = grp[0].open;
-    const close = grp[grp.length - 1].close;
-    const high = Math.max(...grp.map((k) => k.high));
-    const low = Math.min(...grp.map((k) => k.low));
-    const vol = grp.reduce((s, k) => s + (k.vol || 0), 0);
-    const amount = grp.reduce((s, k) => s + (k.amount || 0), 0);
-    const turnover = grp.reduce((s, k) => s + (k.turnover || 0), 0) / grp.length;
-    const prevClose = out.length ? out[out.length - 1].close : open;
-    const chg = close - prevClose;
-    const pct = prevClose ? (chg / prevClose) * 100 : 0;
-    const amp = prevClose ? ((high - low) / prevClose) * 100 : 0;
-    out.push({ date: grp[grp.length - 1].date, open, close, high, low, vol, amount, amp, pct, chg, turnover });
-  }
-  return out;
-}
+// 5日K线已整体移除（东财无对应 klt，原由日K 客户端聚合），故无需专用分支。
 
 export async function getKline(secid: string, period: PeriodKey): Promise<Kline[]> {
-  // 5日：东财无对应 klt，复用日K 聚合；先查自身缓存避免重复合成
-  if (period === "5") {
-    const ck = secid + "|5";
-    const cached = klineCache.get(ck);
-    if (cached && cached.data.length) return cached.data;
-    const daily = await getKline(secid, "d").catch(() => [] as Kline[]);
-    const synth = synthesize5Day(daily);
-    if (synth.length) klineCache.set(ck, { t: Date.now(), data: synth });
-    return synth;
-  }
   const key = secid + "|" + period;
   const now = Date.now();
   const cached = klineCache.get(key);

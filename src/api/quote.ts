@@ -261,12 +261,11 @@ export async function fetchBundle(secid: string): Promise<QuoteBundle> {
   // 行业板块列表（长期缓存，首拉后复用）：用于把行业名映射到板块指数 secid
   const boardsPromise = withTimeout(getIndustryBoards().catch(() => [] as IndustryBoard[]), 4000, [] as IndustryBoard[]);
 
-  const [rt, d, w, M, f5, trend, flow, idxKlines, idxRealtime, breadth, industry, boards] = await Promise.all([
+  const [rt, d, w, M, trend, flow, idxKlines, idxRealtime, breadth, industry, boards] = await Promise.all([
     getRealtime(secid).catch(() => null),
     getKline(secid, "d").catch(() => [] as Kline[]),
     getKline(secid, "w").catch(() => [] as Kline[]),
     getKline(secid, "M").catch(() => [] as Kline[]),
-    getKline(secid, "5").catch(() => [] as Kline[]),
     getTrend(secid).catch(() => ({ trends: [] as Trend[] })),
     withTimeout(getFlow(secid).catch(() => ({}) as FlowMap), 3500, {} as FlowMap),
     indexPromise,
@@ -282,7 +281,6 @@ export async function fetchBundle(secid: string): Promise<QuoteBundle> {
     d: daily,
     w: w || [],
     M: M || [],
-    "5": f5 || [],
     m: [], // 分时视图复用日 K 做分析，见 MarketView.applyPeriod
   };
   // marketCtx：仅当成功拉到 >=30 根指数K线时才传入（analyzer 内部已有长度兜底，这里提前过滤掉明显空值）

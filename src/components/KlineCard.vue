@@ -4,7 +4,9 @@
 //
 // 周期切换轴与行情图「合为同一张卡片」：分段控件直接渲染在本卡片顶部、图表上方，
 // 切换周期时分段控件保持常驻（仅图表区转圈），不抢走用户对周期的控制权。
-// 行情图「图表设置」齿轮（末位周期 5日 之后）：点击展开内联面板，含「辅助线(均线 MA)」与「智能画线(压力/支撑/趋势/关键区间)」两组开关。
+// 周期条右侧工具簇：画板(pen，淡入/淡出看盘画线工具栏) + 设置(gear，点击在图标下弹出开关列表)。
+// 设置弹层含两组：① 辅助线 = 均线 MA（MA5/MA10/MA20/MA60，逐周期独立开关）
+//        ② 智能标注 = 系统自动标注的压力/支撑/趋势/关键区间
 import StockChart from "./StockChart.vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import { PERIODS, PERIOD_ORDER, type PeriodKey } from "@/utils/period";
@@ -52,8 +54,10 @@ function pick(p: PeriodKey) {
 
 // ---- 图表设置抽屉（齿轮点开）----
 // 含两组：① 辅助线 = 均线 MA（MA5/MA10/MA20/MA60，逐周期独立开关）
-//        ② 智能画线 = 系统自动标注的压力/支撑/趋势/关键区间
+//        ② 智能标注 = 系统自动标注的压力/支撑/趋势/关键区间
 const auxOpen = ref(false);
+// 看盘画线工具栏开关：画板图标控制，淡入/淡出 StockChart 的 kc-tools
+const toolsOpen = ref(false);
 type AuxKey = "pressure" | "support" | "trend" | "zone";
 const auxItems: { key: AuxKey; label: string; desc: string }[] = [
   { key: "pressure", label: "压力线", desc: "红色虚线：上方阻力位" },
@@ -64,22 +68,19 @@ const auxItems: { key: AuxKey; label: string; desc: string }[] = [
 function toggleAux(key: AuxKey) {
   auxConfig[key] = !auxConfig[key];
 }
-function closeAux() {
-  auxOpen.value = false;
-}
 // 辅助线（均线）开关：MA5/MA10/MA20/MA60 各自独立控制
 const maItems = MA_PERIODS;
 function toggleMa(key: keyof typeof maConfig) {
   maConfig[key] = !maConfig[key];
 }
-// 齿轮高亮：任一 MA 或智能画线开启即高亮（反映「图表设置」里有内容开着）
+// 齿轮高亮：任一 MA 或智能标注开启、或设置弹层打开即高亮（反映「图表设置」里有内容开着）
 const gearOn = computed(
-  () => auxConfig.enabled || maConfig.ma5 || maConfig.ma10 || maConfig.ma20 || maConfig.ma60
+  () => auxOpen || auxConfig.enabled || maConfig.ma5 || maConfig.ma10 || maConfig.ma20 || maConfig.ma60
 );
 </script>
 
 <template>
-  <!-- 周期切换 + 辅助线设置：与行情图同一张卡片，置于图表上方 -->
+  <!-- 周期切换 + 工具簇（画板/设置）：与行情图同一张卡片，置于图表上方 -->
   <view class="period-bar">
     <view class="period-seg">
       <view class="ps-ind" :style="indStyle" />
@@ -92,14 +93,86 @@ const gearOn = computed(
         >{{ periodMeta[p].label }}</text
       >
     </view>
-    <!-- 末位周期(5日) 之后的设置齿轮：点击展开「图表设置」面板（辅助线 MA + 智能画线） -->
-    <view
-      class="period-gear"
-      :class="{ on: gearOn }"
-      role="button"
-      @click="auxOpen = true"
-    >
-      <OutlineIcon type="gear" :size="30" :color="gearOn ? 'var(--primary)' : 'var(--text-2)'" />
+    <!-- 工具簇：画板(自定义画线，淡入淡出工具栏) + 设置(齿轮，图标下弹出开关列表) -->
+    <view class="tool-cluster">
+      <view
+        class="kline-tool-btn"
+        :class="{ on: toolsOpen }"
+        role="button"
+        @click="toolsOpen = !toolsOpen"
+      >
+        <OutlineIcon type="pen" :size="30" :color="toolsOpen ? 'var(--primary)' : 'var(--text-2)'" />
+      </view>
+      <view
+        class="kline-tool-btn"
+        :class="{ on: gearOn }"
+        role="button"
+        @click="auxOpen = !auxOpen"
+      >
+        <OutlineIcon type="gear" :size="30" :color="gearOn ? 'var(--primary)' : 'var(--text-2)'" />
+      </view>
+      <!-- 设置弹层：锚定工具簇下方、图标右侧对齐；无遮罩、文档流内，永不超出可视区域 -->
+      <view v-if="auxOpen" class="aux-pop anim-rise-soft">
+        <view class="aux-pop-head">
+          <text class="aux-pop-title">图表设置</text>
+          <view class="aux-pop-close" role="button" @click="auxOpen = false">
+            <OutlineIcon type="close" :size="30" color="var(--text-2)" />
+          </view>
+        </view>
+
+        <!-- 分组一：辅助线 = 均线 MA（逐周期独立开关） -->
+        <text class="aux-group">辅助线</text>
+        <view v-for="it in maItems" :key="it.key" class="aux-row">
+          <view class="aux-left">
+            <text class="aux-label">{{ it.label }}</text>
+            <text class="aux-desc">{{ it.period }} 日移动平均线</text>
+          </view>
+          <view
+            class="cc-switch"
+            :class="{ on: maConfig[it.key] }"
+            hover-class="cc-switch-hover"
+            role="button"
+            @click="toggleMa(it.key)"
+          >
+            <view class="cc-knob" />
+          </view>
+        </view>
+
+        <view class="aux-sep" />
+
+        <!-- 分组二：智能标注 = 系统自动标注的压力 / 支撑 / 趋势 / 关键区间 -->
+        <text class="aux-group">智能标注</text>
+        <view class="aux-row">
+          <view class="aux-left">
+            <text class="aux-label">智能标注</text>
+            <text class="aux-desc">系统自动标注的压力 / 支撑 / 趋势与关键区间</text>
+          </view>
+          <view
+            class="cc-switch"
+            :class="{ on: auxConfig.enabled }"
+            hover-class="cc-switch-hover"
+            role="button"
+            @click="auxConfig.enabled = !auxConfig.enabled"
+          >
+            <view class="cc-knob" />
+          </view>
+        </view>
+        <view v-for="it in auxItems" :key="it.key" class="aux-row">
+          <view class="aux-left">
+            <text class="aux-label">{{ it.label }}</text>
+            <text class="aux-desc">{{ it.desc }}</text>
+          </view>
+          <view
+            class="cc-switch"
+            :class="{ on: auxConfig[it.key] }"
+            hover-class="cc-switch-hover"
+            role="button"
+            @click="toggleAux(it.key)"
+          >
+            <view class="cc-knob" />
+          </view>
+        </view>
+      </view>
     </view>
   </view>
 
@@ -120,6 +193,7 @@ const gearOn = computed(
     :code="code"
     :show-tools="showTools"
     :auto-draw="showTools"
+    :tools-open="toolsOpen"
     :aux-config="auxConfig"
     :ma-config="maConfig"
   />
@@ -135,72 +209,10 @@ const gearOn = computed(
     :code="code"
     :show-tools="showTools"
     :auto-draw="showTools"
+    :tools-open="toolsOpen"
     :aux-config="auxConfig"
     :ma-config="maConfig"
   />
-
-  <!-- 图表设置：内联展开面板（无遮罩、文档流内，保证永不超出可视区域，点击齿轮展开、可收起） -->
-  <view v-if="auxOpen" class="aux-panel anim-rise-soft">
-    <view class="aux-head">
-      <text class="aux-title">图表设置</text>
-      <view class="aux-close" role="button" @click="closeAux">
-        <OutlineIcon type="close" :size="32" color="var(--text-2)" />
-      </view>
-    </view>
-
-    <!-- 分组一：辅助线 = 均线 MA（逐周期独立开关） -->
-    <text class="aux-group">辅助线</text>
-    <view v-for="it in maItems" :key="it.key" class="aux-row">
-      <view class="aux-left">
-        <text class="aux-label">{{ it.label }}</text>
-        <text class="aux-desc">{{ it.period }} 日移动平均线</text>
-      </view>
-      <view
-        class="cc-switch"
-        :class="{ on: maConfig[it.key] }"
-        hover-class="cc-switch-hover"
-        role="button"
-        @click="toggleMa(it.key)"
-      >
-        <view class="cc-knob" />
-      </view>
-    </view>
-
-    <view class="aux-sep" />
-
-    <!-- 分组二：智能画线 = 系统自动标注的压力 / 支撑 / 趋势 / 关键区间 -->
-    <text class="aux-group">智能画线</text>
-    <view class="aux-row">
-      <view class="aux-left">
-        <text class="aux-label">智能画线</text>
-        <text class="aux-desc">系统自动标注的压力 / 支撑 / 趋势与关键区间</text>
-      </view>
-      <view
-        class="cc-switch"
-        :class="{ on: auxConfig.enabled }"
-        hover-class="cc-switch-hover"
-        role="button"
-        @click="auxConfig.enabled = !auxConfig.enabled"
-      >
-        <view class="cc-knob" />
-      </view>
-    </view>
-    <view v-for="it in auxItems" :key="it.key" class="aux-row">
-      <view class="aux-left">
-        <text class="aux-label">{{ it.label }}</text>
-        <text class="aux-desc">{{ it.desc }}</text>
-      </view>
-      <view
-        class="cc-switch"
-        :class="{ on: auxConfig[it.key] }"
-        hover-class="cc-switch-hover"
-        role="button"
-        @click="toggleAux(it.key)"
-      >
-        <view class="cc-knob" />
-      </view>
-    </view>
-  </view>
 </template>
 
 <style scoped>
@@ -260,22 +272,38 @@ const gearOn = computed(
   color: #fff;
   letter-spacing: 0.5rpx;
 }
-/* 设置齿轮：与分段控件同款药丸，置于末位周期(5日) 末尾；总开关开启时图标显主色，关闭时显次级灰 */
-.period-gear {
+/* 工具簇：画板 + 设置，与分段控件同款药丸底，置于周期条右侧；position:relative 供设置弹层锚定 */
+.tool-cluster {
+  position: relative;
+  z-index: 30;
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 72rpx;
+  gap: 6rpx;
+  padding: 6rpx;
   background: var(--card-2);
   border-radius: 999rpx;
+}
+/* 工具簇内的单个图标按钮（画板 / 设置），与分段控件高度一致（60rpx） */
+.kline-tool-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60rpx;
+  height: 60rpx;
   color: var(--text-2);
+  border-radius: 999rpx;
   cursor: pointer;
   transition: background 0.15s ease, transform 0.1s ease, color 0.2s ease;
 }
-.period-gear:active {
+.kline-tool-btn:active {
   background: var(--primary-soft);
   transform: scale(0.94);
+}
+/* 工具开启态：浅绿底 + 主色图标（与分段控件 active 风格统一） */
+.kline-tool-btn.on {
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 /* 切换到图表区的加载态：居中转圈，不替换整张卡片（控件常驻） */
 .chart-loading {
@@ -293,34 +321,42 @@ const gearOn = computed(
   color: var(--text-2);
 }
 
-/* 辅助线设置：内联展开面板（无遮罩、文档流内，保证永不超出可视区域） */
-.aux-panel {
-  margin-bottom: 12rpx;
-  padding: 8rpx 20rpx 14rpx;
-  background: var(--card);
+/* 设置弹层：锚定工具簇下方、图标右侧对齐；玻璃卡 + 浮层阴影，无遮罩（避免被 Tab transform 钉死） */
+.aux-pop {
+  position: absolute;
+  top: calc(100% + 8rpx);
+  right: 0;
+  z-index: 31;
+  width: 480rpx;
+  max-width: 86vw;
+  max-height: 72vh;
+  overflow-y: auto;
+  padding: 6rpx 20rpx 14rpx;
+  background: var(--tabbar-bg);
+  backdrop-filter: blur(20rpx);
+  -webkit-backdrop-filter: blur(20rpx);
   border: 1rpx solid var(--border);
-  border-radius: 20rpx;
-  box-shadow: var(--shadow-2);
+  border-radius: 22rpx;
+  box-shadow: var(--shadow-sheet);
 }
-.aux-head {
-  flex: none;
+.aux-pop-head {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 76rpx;
+  height: 72rpx;
   margin: 0 -20rpx 6rpx;
   padding: 0 20rpx;
   border-bottom: 1rpx solid var(--border);
 }
-.aux-title {
+.aux-pop-title {
   font-size: var(--font-lg);
   font-weight: 600;
   color: var(--text);
 }
-.aux-close {
+.aux-pop-close {
   position: absolute;
-  right: 8rpx;
+  right: 6rpx;
   top: 50%;
   transform: translateY(-50%);
   width: 56rpx;
@@ -332,7 +368,7 @@ const gearOn = computed(
   border-radius: 50%;
   cursor: pointer;
 }
-.aux-close:active {
+.aux-pop-close:active {
   background: var(--card-2);
 }
 /* 辅助线设置面板内的行布局 */
@@ -363,7 +399,7 @@ const gearOn = computed(
   background: var(--border);
   margin: 6rpx 0;
 }
-/* 设置面板内的分组标题（辅助线 / 智能画线），与全局分组标题风格一致 */
+/* 设置面板内的分组标题（辅助线 / 智能标注），与全局分组标题风格一致 */
 .aux-group {
   display: block;
   margin: 12rpx 0 4rpx;

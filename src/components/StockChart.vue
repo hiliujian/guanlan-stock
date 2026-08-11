@@ -8,11 +8,10 @@
       <view class="lg-row" :style="{ top: legendOffsets.price + 'px' }">
         <text class="lg-sec">主图</text>
         <text class="lg-time">{{ legend.time }}</text>
+        <text class="lg-k">价格</text><text class="lg-v" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ fmtPrice(legend.c) }}</text><text class="lg-chg" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ legend.chgPct != null ? (legend.chgPct >= 0 ? '+' : '') + legend.chgPct.toFixed(2) + '%' : '' }}</text>
         <text class="lg-k">开</text><text class="lg-v">{{ fmtPrice(legend.o) }}</text>
         <text class="lg-k">高</text><text class="lg-v">{{ fmtPrice(legend.h) }}</text>
         <text class="lg-k">低</text><text class="lg-v">{{ fmtPrice(legend.l) }}</text>
-        <text class="lg-k">收</text><text class="lg-v" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ fmtPrice(legend.c) }}</text>
-        <text class="lg-chg" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ legend.chgPct != null ? (legend.chgPct >= 0 ? '+' : '') + legend.chgPct.toFixed(2) + '%' : '' }}</text>
         <text v-for="(it, i) in legend.main" :key="'m' + i" class="lg-it" :class="{ 'has-color': !!it.color }" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
       </view>
       <view class="lg-row" :style="{ top: legendOffsets.vol + 'px' }">
@@ -27,22 +26,25 @@
     <div ref="chartEl" class="kc-chart" :style="{ height: props.height + 'px' }"></div>
     <!-- 筹码分布叠加层（右侧横向直方图，与蜡烛同坐标系），默认不拦截指针 -->
     <canvas ref="cyqEl" class="kc-ov kc-ov--cyq"></canvas>
-    <!-- 看盘画线工具栏：点击后在图上点击/拖拽绘制；支撑=绿、压力=红、趋势/分割=主色绿 -->
-    <view v-if="showTools" class="kc-tools">
-      <view class="kct-btn" :class="{ active: activeAction === 'support' }" role="button" @click="drawLine('support', 'horizontalStraightLine', DOWN)">支撑</view>
-      <view class="kct-btn" :class="{ active: activeAction === 'pressure' }" role="button" @click="drawLine('pressure', 'horizontalStraightLine', UP)">压力</view>
-      <view class="kct-btn" :class="{ active: activeAction === 'trend' }" role="button" @click="drawLine('trend', 'straightLine', TREND)">趋势</view>
-      <view class="kct-btn" :class="{ active: activeAction === 'fib' }" role="button" @click="drawLine('fib', 'fibonacciLine')">分割</view>
-      <view class="kct-btn kct-clear" role="button" @click="clearUserOverlays">清空</view>
-    </view>
-    <!-- 自动线颜色图例（小白友好）：仅显示当前已开启的辅助线种类，开关关闭即隐藏对应项 -->
+    <!-- 看盘画线工具栏：点击后在图上点击/拖拽绘制；支撑=绿、压力=红、趋势/分割=主色绿。
+         由外部画板图标控制 toolsOpen 淡入/淡出（<Transition> 处理进出场动画）。 -->
+    <Transition name="kct">
+      <view v-if="showTools && toolsOpen" class="kc-tools">
+        <view class="kct-btn" :class="{ active: activeAction === 'support' }" role="button" @click="drawLine('support', 'horizontalStraightLine', DOWN)">支撑</view>
+        <view class="kct-btn" :class="{ active: activeAction === 'pressure' }" role="button" @click="drawLine('pressure', 'horizontalStraightLine', UP)">压力</view>
+        <view class="kct-btn" :class="{ active: activeAction === 'trend' }" role="button" @click="drawLine('trend', 'straightLine', TREND)">趋势</view>
+        <view class="kct-btn" :class="{ active: activeAction === 'fib' }" role="button" @click="drawLine('fib', 'fibonacciLine')">分割</view>
+        <view class="kct-btn kct-clear" role="button" @click="clearUserOverlays">清空</view>
+      </view>
+    </Transition>
+    <!-- 智能标注颜色图例（小白友好）：仅显示当前已开启的辅助线种类，开关关闭即隐藏对应项 -->
     <view v-if="showTools && autoDraw && auxConfig?.enabled" class="kc-legend">
       <text v-if="auxConfig.pressure" class="kcl-it"><text class="kcl-dot p"></text>压力</text>
       <text v-if="auxConfig.support" class="kcl-it"><text class="kcl-dot s"></text>支撑</text>
       <text v-if="auxConfig.trend" class="kcl-it"><text class="kcl-dot t"></text>趋势</text>
       <text v-if="auxConfig.zone" class="kcl-it"><text class="kcl-dot z"></text>关键区间</text>
     </view>
-    <!-- 自动线悬浮提示：跟随十字光标显示每条线的类型/价位/区间/触及次数/方向 -->
+    <!-- 智能标注悬浮提示：跟随十字光标显示每条线的类型/价位/区间/触及次数/方向 -->
     <view v-if="tip.show" class="kc-tip" :style="tipStyle">
       <view v-for="(it, i) in tip.items" :key="i" class="kc-tip-row">
         <text class="kc-tip-dot" :style="{ background: it.color }"></text>
@@ -263,22 +265,28 @@ let maRegistered = false;
 function ensureMaIndicators() {
   if (maRegistered) return;
   try {
-    for (const def of MA_DEFS) {
+    for (let i = 0; i < MA_DEFS.length; i++) {
+      const def = MA_DEFS[i];
       const key = def.key;
+      // 每条 MA 在注册时就把线色烤进 figure 的 styles 回调（按 MA_DEFS 顺序取调色板：
+      // MA5橙/MA10蓝/MA20紫/MA60绿）。这样不依赖全局 indicator.lines（单线指标都会抢 lines[0]）
+      // 也不依赖运行时 overrideIndicator（实测会扰乱渲染与图表交互）。图例配色在 buildLegend 中
+      // 用同一份 INDICATOR_LINE_COLORS 按相同顺序取，保证图例与图线颜色一致。
+      const color = INDICATOR_LINE_COLORS[i % INDICATOR_LINE_COLORS.length];
       registerIndicator({
         name: "MA" + def.period,
         shortName: "MA" + def.period,
         series: "price" as never, // 与主图共享价格坐标轴
         calcParams: [def.period],
-        figures: [{ key, title: "MA" + def.period + ": ", type: "line" }],
+        figures: [{ key, title: "MA" + def.period + ": ", type: "line", styles: () => ({ color }) }],
         calc: (dataList: any[]) => {
           const res: any[] = [];
           let sum = 0;
-          for (let i = 0; i < dataList.length; i++) {
-            const c = Number(dataList[i].close) || 0;
+          for (let j = 0; j < dataList.length; j++) {
+            const c = Number(dataList[j].close) || 0;
             sum += c;
-            if (i >= def.period) sum -= Number(dataList[i - def.period].close) || 0;
-            res.push(i >= def.period - 1 ? { [key]: sum / def.period } : { [key]: null });
+            if (j >= def.period) sum -= Number(dataList[j - def.period].close) || 0;
+            res.push(j >= def.period - 1 ? { [key]: sum / def.period } : { [key]: null });
           }
           return res;
         },
@@ -296,7 +304,7 @@ const props = withDefaults(
     mode: "kline" | "intraday";
     klines?: Kline[];
     trends?: Trend[];
-    /** 分时昨收，用于把每根分时柱的 open 设为昨收，从而得到正确的涨跌着色 */
+    /** 分时昨收：作为涨跌幅基准（首根分时柱的 open 也取此值）；量柱涨跌着色实际以「上一分钟收盘价」为每根 open（见 toKLineData），并非每根都设为昨收。 */
     preClose?: number;
     height?: number;
     /** 是否显示均线 MA（日K 主图叠加），默认开 */
@@ -311,7 +319,9 @@ const props = withDefaults(
     livePreClose?: number;
     /** 是否显示看盘画线工具栏（支撑/压力/趋势/黄金分割/自动/清空），默认关 */
     showTools?: boolean;
-    /** 是否启用「自动画线」：系统按行情自动标注支撑/压力/趋势/黄金分割（半透明虚线、锁定不可拖拽）；默认关，仅看盘主图开启。手动绘制仍可用。 */
+    /** 看盘画线工具栏开关：由外部画板图标控制淡入/淡出，默认关 */
+    toolsOpen?: boolean;
+    /** 是否启用「智能标注」：系统按行情自动标注支撑/压力/趋势/黄金分割（半透明虚线、锁定不可拖拽）；默认关，仅看盘主图开启。手动绘制仍可用。 */
     autoDraw?: boolean;
     /** 是否把用户画的线持久化到本地（按 code 区分），默认开 */
     persist?: boolean;
@@ -506,26 +516,6 @@ function buildLayout(): any[] {
   return layout;
 }
 
-// ---- 主图 MA 逐线独立着色：4 条 MA 各自注册为单线指标，klinecharts 对「单线指标」默认都取
-// 调色板第 0 项（#f5a623 琥珀，观感像黄），导致 MA5/10/20/60 同色、无法区分。这里按可见顺序
-// 用 INDICATOR_LINE_COLORS（橙/蓝/紫/绿）逐一覆盖每条 MA 的线色，与顶部图例配色完全一致。
-// 须在指标实例就绪后调用（init 后 / OnDataReady 后），重复调用幂等。
-function applyMaColors() {
-  if (!chart || props.mode !== "kline" || props.showMA === false) return;
-  const store: any = (chart as any)?.getChartStore?.();
-  if (!store || typeof store.overrideIndicator !== "function") return;
-  const mc = props.maConfig;
-  const visibleMas = MA_DEFS.filter((d) => (mc ? mc[d.key as keyof ChartMaConfig] : true));
-  visibleMas.forEach((d, i) => {
-    const color = INDICATOR_LINE_COLORS[i % INDICATOR_LINE_COLORS.length];
-    try {
-      store.overrideIndicator({ name: "MA" + d.period, styles: { lines: [{ color, size: 1 }] } }, "candle_pane");
-    } catch {
-      /* noop */
-    }
-  });
-}
-
 // ---- 叠加层：筹码分布 ----
 function sizeCanvas(c: HTMLCanvasElement, w: number, h: number): CanvasRenderingContext2D {
   const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
@@ -578,6 +568,12 @@ function applyLivePrice() {
   const lp = props.livePrice;
   if (typeof lp !== "number" || !isFinite(lp) || lp <= 0) return;
   const last = dataList[dataList.length - 1];
+  if (last) {
+    // 同步本地 dataList 末根（chart.updateData 只改图表），使累计「当日最高/最低」图例随实时价更新
+    last.high = Math.max(last.high, lp);
+    last.low = Math.min(last.low, lp);
+    last.close = lp;
+  }
   chart.updateData({
     timestamp: lastTs,
     // open 保留上一分钟收盘价（分钟级着色），使实时最后一根的量柱颜色仍按 tick 方向判定
@@ -600,7 +596,6 @@ const KLINE_DEFAULT_BARS: Record<Exclude<PeriodKey, "m">, number> = {
   d: 25, // 日K：约一个月交易日（如 7-10~8-11）
   w: 25, // 周K：约五个月（26-03-13~08-11）
   M: 25, // 月K：约两年（24-10~26-08）
-  "5": 200, // 5日：东财无 klt、由日K 合成（约 2 年≈97 根），ref 远超实际根数 → 默认铺满全部
 };
 // 根因：klinecharts 默认 barSpace=8px，单屏仅容约 44 根柱，默认只渲染末尾片段，需手动左拖才看全貌；
 // 且图表实际绘制区 _totalBarSpace = 容器总宽 - 右侧 y 轴宽（yAxis 默认 outside），与 clientWidth 不等；
@@ -630,7 +625,7 @@ function fitViewAll() {
   fitRetry = 0;
   // ① 消除右偏移：避免 realFrom 因右偏移变为负而产生左空白
   chart.setOffsetRightDistance(0);
-  // ② K线（日K/周K/月K/5日）：默认显示最近 ref 根，且首根/末根完整可见（左右各留半根柱余量）
+  // ② K线（日K/周K/月K）：默认显示最近 ref 根，且首根/末根完整可见（左右各留半根柱余量）
   if (props.mode !== "intraday") {
     const pk = (props.period === "m" ? "d" : (props.period ?? "d")) as Exclude<PeriodKey, "m">;
     const ref = KLINE_DEFAULT_BARS[pk] ?? KLINE_DEFAULT_BARS.d;
@@ -674,7 +669,6 @@ function fitViewAll() {
 // 数据就绪回调：每次数据变化（首载 / 刷新 / 实时末根）后保持「铺满全貌」+ 刷新图例（所有模式通用）
 function onDataReady() {
   fitViewAll();
-  applyMaColors();
   updateLegendLatest();
 }
 
@@ -755,7 +749,7 @@ function drawLine(action: DrawAction, type: string, color?: string) {
     activeAction.value = "";
   }
 }
-// 清空用户手动画的线（不影响系统自动线），并清本地存储
+// 清空用户手动画的线（不影响系统智能标注），并清本地存储
 function clearUserOverlays() {
   if (chart) overlayIds.forEach((id) => { try { chart!.removeOverlay(id); } catch { /* noop */ } });
   overlayIds.length = 0;
@@ -769,7 +763,7 @@ function clearUserOverlays() {
     }
   }
 }
-// ---- 自动画线（小白友好）：系统按行情自动标注支撑/压力/趋势 ----
+// ---- 智能标注（小白友好）：系统按行情自动标注支撑/压力/趋势 ----
 // 半透明虚线 + 锁定（不可拖拽编辑），与用户手绘的浓实线明显区分；不持久化，随数据刷新。
 // 关键：KLineCharts overlay 的 point 字段是 { timestamp, value }（不是 price）；用错字段会导致价格→y 坐标失败被钳到顶部。
 const autoIds: string[] = [];
@@ -889,13 +883,13 @@ function computeAutoLevels(): AutoLevel[] {
   if (tr) out.push({ kind: "trend", points: tr.points, dir: tr.dir, touches: tr.points.length, color: hexA(TREND, 0.72), label: tr.dir === "up" ? "上升趋势" : "下降趋势" });
   return out;
 }
-// 清旧自动线并按当前辅助线开关重画
+// 清旧智能标注并按当前辅助线开关重画
 function drawAutoLevels() {
   autoIds.forEach((id) => { try { chart?.removeOverlay(id); } catch { /* noop */ } });
   autoIds.length = 0;
   autoLevels.length = 0;
   const cfg = props.auxConfig;
-  // 总开关关闭（或根本未启用自动画线）→ 不绘制任何辅助线
+  // 总开关关闭（或根本未启用智能标注）→ 不绘制任何辅助线
   if (!props.autoDraw || !chart || !cfg || !cfg.enabled) return;
   const levels = computeAutoLevels();
   // 过滤：只保留「压力线整体在支撑线之上」的干净层级，避免红绿线倒置、区间失效
@@ -1026,8 +1020,8 @@ function ensureTrendOverlay() {
   }
 }
 
-// ---- 自动线悬浮提示框（跟随十字光标，显示类型/价位/区间/触及次数/方向）----
-// 自动线 lock:true 不响应 overlay 事件，故改用 onCrosshairChange + convertFromPixel 反算价格匹配最近线
+// ---- 智能标注悬浮提示框（跟随十字光标，显示类型/价位/区间/触及次数/方向）----
+// 智能标注 lock:true 不响应 overlay 事件，故改用 onCrosshairChange + convertFromPixel 反算价格匹配最近线
 interface TipItem { label: string; color: string; text: string; }
 const tip = reactive<{ show: boolean; x: number; y: number; items: TipItem[] }>({ show: false, x: 0, y: 0, items: [] });
 const tipStyle = computed(() => {
@@ -1097,7 +1091,27 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
   legend.time = props.mode === "intraday"
     ? `${p(d.getHours())}:${p(d.getMinutes())}`
     : `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-  legend.o = kl.open ?? null; legend.h = kl.high ?? null; legend.l = kl.low ?? null; legend.c = kl.close ?? null;
+  legend.c = kl.close ?? null;
+  if (props.mode === "intraday") {
+    // 「开」= 当日开盘价（首根分时柱收盘价即 09:30 开盘价），固定不变，不可随光标变化。
+    // 注意：每根分时柱的 open 字段被复用为「上一分钟收盘价」以给分时量柱着色（见 toKLineData），不能用于图例「开」。
+    legend.o = dataList.length ? (dataList[0].close ?? props.preClose ?? null) : (props.preClose ?? null);
+    // 分时图「高/低」= 当日（全天）最高/最低价，固定不变，不随光标变化（与同花顺一致）。
+    // 直接取全部分时柱 high/low 的极值（high/low 缺失/异常时用收盘价兜底），即真正的全天最高/最低。
+    let hh = -Infinity, ll = Infinity;
+    for (const b of dataList) {
+      if (!b) continue;
+      const hi = Math.max(b.high, b.close); // high 缺失/异常时用收盘价兜底，保证极值有效
+      const lo = Math.min(b.low, b.close);
+      if (hi > hh) hh = hi;
+      if (lo < ll) ll = lo;
+    }
+    legend.h = Number.isFinite(hh) ? hh : null;
+    legend.l = Number.isFinite(ll) ? ll : null;
+  } else {
+    legend.o = kl.open ?? null;
+    legend.h = kl.high ?? null; legend.l = kl.low ?? null;
+  }
   // 涨跌幅基准：分时用昨收；K线用前一根收盘价（首根用开盘）
   const base = props.mode === "intraday"
     ? (props.preClose || kl.open || 0)
@@ -1158,7 +1172,7 @@ function onCrosshair(c: any) {
     return;
   }
   buildLegend(c.kLineData, c.indicatorData, c.dataIndex);
-  // 智能画线悬浮吸附：仅主图面板处理
+  // 智能标注悬浮吸附：仅主图面板处理
   if (!chart || !c.paneId || c.paneId !== "candle_pane") {
     tip.show = false;
     return;
@@ -1258,7 +1272,16 @@ function buildChart() {
   } as never);
   if (!chart) return;
 
-  // 十字光标订阅（驱动自动线悬浮提示）；单实例，销毁时已解除订阅
+  // 显式开启主图拖拽（横向滚动）与捏合/滚轮缩放——klinecharts 默认开启，但保险起见强制开启，
+  // 避免任何状态下被意外禁用导致「主图不能拖拽/缩放」。
+  try {
+    chart.setScrollEnabled(true);
+    chart.setZoomEnabled(true);
+  } catch {
+    /* noop */
+  }
+
+  // 十字光标订阅（驱动智能标注悬浮提示）；单实例，销毁时已解除订阅
   crosshairCb = onCrosshair;
   chart.subscribeAction(ActionType.OnCrosshairChange, crosshairCb as never);
   // 数据就绪订阅：分时模式首载/刷新/实时末根后保持「整日全貌」铺满视图
@@ -1275,7 +1298,6 @@ function buildChart() {
       // 首载兜底：确保铺满全貌（OnDataReady 在 applyNewData 异步解析后才触发，
       // 此处保证容器尺寸确定后也对齐一次，所有模式通用）
       fitViewAll();
-      applyMaColors();
       drawCyq();
       restoreOverlays();
       drawAutoLevels();
@@ -1347,7 +1369,7 @@ watch(
   () => applyLivePrice()
 );
 watch(isDark, () => applyTheme());
-// 辅助线开关变化（总开关 / 压力 / 支撑 / 趋势 / 关键区间任一）→ 重画自动线
+// 辅助线开关变化（总开关 / 压力 / 支撑 / 趋势 / 关键区间任一）→ 重画智能标注
 watch(
   () => props.auxConfig,
   () => drawAutoLevels(),
@@ -1476,6 +1498,16 @@ onBeforeUnmount(() => {
   border-radius: 999rpx;
   box-shadow: var(--shadow-1);
 }
+/* 工具栏淡入/淡出（由画板图标控制 toolsOpen） */
+.kct-enter-active,
+.kct-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.kct-enter-from,
+.kct-leave-to {
+  opacity: 0;
+  transform: translateY(-8rpx) scale(0.96);
+}
 .kct-btn {
   flex: 0 0 auto;
   height: 52rpx;
@@ -1504,7 +1536,7 @@ onBeforeUnmount(() => {
 .kct-clear:active {
   background: rgba(229, 72, 77, 0.12);
 }
-/* 自动线颜色图例：浮于图表左下角，小白一眼看懂颜色含义 */
+/* 智能标注颜色图例：浮于图表左下角，小白一眼看懂颜色含义 */
 .kc-legend {
   position: absolute;
   left: 12rpx;
@@ -1544,7 +1576,7 @@ onBeforeUnmount(() => {
 .kcl-dot.z {
   background: rgba(108, 122, 145, 0.55);
 }
-/* 自动线悬浮提示框：跟随十字光标，玻璃卡片，不拦截指针 */
+/* 智能标注悬浮提示框：跟随十字光标，玻璃卡片，不拦截指针 */
 .kc-tip {
   position: absolute;
   z-index: 7;
