@@ -28,14 +28,20 @@ const rootStyle = computed(() => ({ "--roll-dur": `${props.duration}ms` }));
 </script>
 
 <style scoped>
+/* 默认撑满外层容器高度；仅在 PeekSheet 折叠卡预览行中使用，外层均已限定高度 */
 .roll-swap {
   position: relative;
   overflow: hidden;
   display: block;
   min-width: 0;
+  height: 100%;
 }
+/* 内部整块垂直居中，使名称/价格/涨跌幅与折叠卡左右标签对齐 */
 .roll-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
   white-space: nowrap;
 }
 /* 向上滚动：旧内容上滑出、新内容自下方滑入，二者同步向上运动 */

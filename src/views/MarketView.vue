@@ -142,23 +142,23 @@
            折叠露出「当前匹配指数」预览（按当前股票匹配对应指数），展开为全球重要市场指数面板 -->
       <PeekSheet @expand="onSheetExpand" @collapse="onSheetCollapse">
         <template #peek>
-          <view class="idx-row" role="button" aria-label="展开指数面板">
-            <text class="idx-label">股市行情</text>
+          <view class="peek-row" role="button" aria-label="展开指数面板">
+            <text class="peek-label">股市行情</text>
             <!-- 切换个股→匹配指数变化时，整块信息向上滚动切换（新指数自下方滑入、旧指数向上滑出）；
                  以 idxSecid 为 key，价格实时跳动不会误触发滚动 -->
-            <RollSwap class="idx-roll" :roll-key="idxSecid">
-              <view class="idx-info">
-                <view class="idx-main">
-                  <image v-if="idxFlag" class="idx-flag" :src="'https://flagcdn.com/w40/'+idxFlag+'.png'" mode="aspectFit" />
-                  <text class="idx-name truncate">{{ idxName }}</text>
+            <RollSwap class="peek-roll" :roll-key="idxSecid">
+              <view class="peek-info">
+                <view class="peek-main">
+                  <image v-if="idxFlag" class="peek-flag" :src="'https://flagcdn.com/w40/'+idxFlag+'.png'" mode="aspectFit" />
+                  <text class="peek-name">{{ idxName }}</text>
                 </view>
-                <view class="idx-right">
-                  <text class="idx-price" :class="idxCls">{{ idxPriceText }}</text>
-                  <text class="idx-pct" :class="idxCls">{{ idxPctText }}</text>
+                <view class="peek-right">
+                  <text class="peek-price" :class="idxCls">{{ idxPriceText }}</text>
+                  <text class="peek-pct" :class="idxCls">{{ idxPctText }}</text>
                 </view>
               </view>
             </RollSwap>
-            <OutlineIcon class="idx-caret" type="chevron-up" :size="20" color="var(--text-2)" />
+            <OutlineIcon class="peek-caret" type="chevron-up" :size="20" color="var(--text-2)" />
           </view>
         </template>
         <template #default>
@@ -174,7 +174,7 @@
                 <view class="idx-grp-list">
                   <view v-for="it in g.items" :key="it.secid" class="idx-item">
                     <view class="idx-item-head">
-                      <image v-if="it.flag" class="idx-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
+                      <image v-if="it.flag" class="peek-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
                       <text class="idx-item-name">{{ it.name }}</text>
                     </view>
                     <view class="idx-item-right">
@@ -1263,93 +1263,6 @@ defineExpose({ refresh: () => refreshFull() });
   /* 留出底部导航栏 + 默认指数卡片(收起态)高度，避免末尾内容被遮挡 */
   height: 200rpx;
 }
-/* 底部默认指数卡片：收起态一行（布局/视觉与自选「今日最热」PeekSheet 一致，共用同一套窗体） */
-.idx-row {
-  flex: 1;
-  height: 76rpx;
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  gap: 12rpx;
-  padding: 0 28rpx;
-  cursor: pointer;
-  overflow: hidden;
-}
-.idx-row:active {
-  background: var(--card-2);
-}
-.idx-caret {
-  flex: none;
-}
-/* 滚动切换容器：占满 idx-row 剩余宽度，overflow:hidden 裁切滚动过程，避免溢出跳动 */
-.idx-roll {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  overflow: hidden;
-}
-/* 让 RollSwap 内部 block 流式元素撑满 76rpx 高度，使名称/价格/涨跌幅与左右标签垂直居中对齐 */
-.idx-roll :deep(.roll-swap),
-.idx-roll :deep(.roll-item) {
-  height: 100%;
-}
-.idx-roll :deep(.roll-swap) {
-  display: flex;
-  align-items: center;
-}
-/* 信息块：名称(左) + 价格/涨跌幅(右)，撑满滚动容器高度并垂直居中单行显示 */
-.idx-info {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  overflow: hidden;
-}
-.idx-label {
-  flex: none;
-  flex-shrink: 0;
-  white-space: nowrap;
-  font-size: var(--font-sm);
-  color: var(--text-3);
-}
-.idx-main {
-  flex: none;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-}
-.idx-name {
-  flex: none;
-  max-width: 240rpx;
-  min-width: 0;
-  font-size: var(--font-sm);
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.idx-right {
-  flex: none;
-  margin-left: auto;
-  display: flex;
-  align-items: baseline;
-  gap: 10rpx;
-}
-.idx-price,
-.idx-pct {
-  font-size: var(--font-sm);
-  font-variant-numeric: tabular-nums;
-}
-.idx-price.up,
-.idx-pct.up {
-  color: var(--up);
-}
-.idx-price.down,
-.idx-pct.down {
-  color: var(--down);
-}
 /* 展开态：全球重要指数实时面板 */
 .idx-panel {
   flex: 1;
@@ -1416,15 +1329,6 @@ defineExpose({ refresh: () => refreshFull() });
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-/* 小国旗图标（flagcdn 真实国旗，跨平台稳定渲染） */
-.idx-flag {
-  flex: none;
-  width: 30rpx;
-  height: 22rpx;
-  border-radius: 3rpx;
-  background: var(--card-2);
-  object-fit: cover;
 }
 .idx-item-right {
   display: flex;

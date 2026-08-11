@@ -910,3 +910,113 @@ textarea {
   background: var(--card-2);
   border: 1rpx solid var(--border);
 }
+
+/* ============ PeekSheet 折叠卡预览行（市场页 / 自选页共用，统一一套） ============ */
+/* 折叠态一行：左侧固定标签 + 中部滚动切换容器 + 右侧展开箭头，整体不换行、溢出裁切、垂直居中 */
+.peek-row {
+  flex: 1;
+  height: 76rpx;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 12rpx;
+  padding: 0 28rpx;
+  cursor: pointer;
+  overflow: hidden;
+}
+.peek-row:active {
+  background: var(--card-2);
+}
+/* 左侧固定标签（如「股市行情」「今日最热」） */
+.peek-label {
+  flex: none;
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: var(--font-sm);
+  color: var(--text-3);
+}
+/* 右侧展开箭头 */
+.peek-caret {
+  flex: none;
+}
+/* 滚动切换容器：占满剩余宽度，overflow:hidden 裁切滚动过程，避免溢出跳动；
+   RollSwap 内部已默认撑满高度并垂直居中，此处只需约束宽度与裁切 */
+.peek-roll {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+/* 信息块：名称(左) + 价格/涨跌幅(右)，撑满滚动容器高度并垂直居中单行显示 */
+.peek-info {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+/* 名称 + 代码主区 */
+.peek-main {
+  flex: none;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+/* 名称：超长省略号截断 */
+.peek-name {
+  flex: none;
+  max-width: 220rpx;
+  min-width: 0;
+  font-size: var(--font-sm);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 股票代码（自选页独有，紧跟名称） */
+.peek-code {
+  flex: none;
+  font-size: var(--font-sm);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+/* 当日无数据时的诚实占位（绝不兜底完整榜单数据） */
+.peek-empty {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-sm);
+  color: var(--text-3);
+  /* 截断已由全局 .truncate 提供 */
+}
+/* 右侧价格 / 涨跌幅区：贴右对齐 */
+.peek-right {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
+}
+.peek-price,
+.peek-pct {
+  font-size: var(--font-sm);
+  font-variant-numeric: tabular-nums;
+}
+.peek-price.up,
+.peek-pct.up {
+  color: var(--up);
+}
+.peek-price.down,
+.peek-pct.down {
+  color: var(--down);
+}
+/* 小国旗图标（flagcdn 真实国旗，跨平台稳定渲染；折叠卡与展开面板共用） */
+.peek-flag {
+  flex: none;
+  width: 30rpx;
+  height: 22rpx;
+  border-radius: 3rpx;
+  background: var(--card-2);
+  object-fit: cover;
+}

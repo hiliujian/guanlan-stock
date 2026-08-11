@@ -179,25 +179,25 @@
              三套内容共用同一窗体、同一套折叠/展开/铺满手势与动效，避免重复样式与代码 -->
         <PeekSheet ref="sheet" @expand="sheetExpanded = true" @collapse="onSheetCollapse">
           <template #peek>
-            <view class="rp-row" role="button" aria-label="展开底部面板">
-              <text class="rp-top">今日最热</text>
+            <view class="peek-row" role="button" aria-label="展开底部面板">
+              <text class="peek-label">今日最热</text>
               <!-- 热股切换时整块信息向上滚动切换（与行情页大盘卡统一特效），以 code 为 key -->
-              <RollSwap class="rp-roll" :roll-key="peek?.code ?? ''">
+              <RollSwap class="peek-roll" :roll-key="peek?.code ?? ''">
                 <template v-if="peek">
-                  <view class="rp-info">
-                    <view class="rp-main">
-                      <text class="rp-name truncate">{{ peek.name }}</text>
-                      <text class="rp-code">{{ peek.code }}</text>
+                  <view class="peek-info">
+                    <view class="peek-main">
+                      <text class="peek-name">{{ peek.name }}</text>
+                      <text class="peek-code">{{ peek.code }}</text>
                     </view>
-                    <view class="rp-right">
-                      <text class="rp-price" :class="peek.price != null ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
-                      <text class="rp-pct" :class="peek.pct != null ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
+                    <view class="peek-right">
+                      <text class="peek-price" :class="peek.price != null ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
+                      <text class="peek-pct" :class="peek.pct != null ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
                     </view>
                   </view>
                 </template>
-                <text v-else class="rp-empty truncate">今日暂无人气新增</text>
+                <text v-else class="peek-empty truncate">今日暂无人气新增</text>
               </RollSwap>
-              <OutlineIcon class="rp-caret" type="chevron-up" :size="20" color="var(--text-2)" />
+              <OutlineIcon class="peek-caret" type="chevron-up" :size="20" color="var(--text-2)" />
             </view>
           </template>
           <template #default>
@@ -1724,94 +1724,6 @@ function removeLp() {
 }
 .grp-btn.danger:active {
   background: color-mix(in srgb, var(--danger) 10%, transparent);
-}
-/* 收起态一行 */
-.rp-row {
-  flex: 1;
-  height: 76rpx;
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  padding: 0 28rpx;
-  cursor: pointer;
-}
-.rp-row:active {
-  background: var(--card-2);
-}
-.rp-caret {
-  flex: none;
-}
-/* 滚动切换容器：占满 rp-row 剩余宽度，overflow:hidden 裁切滚动过程，避免溢出跳动 */
-.rp-roll {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-}
-/* 信息块：名称/代码(左) + 价格/涨跌幅(右)，与滚动容器同高单行显示 */
-.rp-info {
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-.rp-top {
-  flex: none;
-  font-size: var(--font-sm);
-  color: var(--text-3);
-}
-/* 当日无新增自选时的诚实占位（绝不兜底完整榜单数据） */
-.rp-empty {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--font-sm);
-  color: var(--text-3);
-  /* 截断属性已提升至全局 .truncate */
-}
-.rp-main {
-  flex: none;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  overflow: hidden;
-}
-/* 代码紧挨名称显示（不再被 flex:1 推到最右）；名称超长时省略号截断 */
-.rp-name {
-  flex: none;
-  max-width: 220rpx;
-  min-width: 0;
-  font-size: var(--font-sm);
-  color: var(--text);
-  /* 截断属性已提升至全局 .truncate */
-}
-.rp-code {
-  flex: none;
-  font-size: var(--font-sm);
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-.rp-right {
-  flex: none;
-  margin-left: auto;
-  display: flex;
-  align-items: baseline;
-  gap: 10rpx;
-}
-.rp-price {
-  font-size: var(--font-sm);
-  font-variant-numeric: tabular-nums;
-}
-.rp-price.up,
-.rp-pct.up {
-  color: var(--up);
-}
-.rp-price.down,
-.rp-pct.down {
-  color: var(--down);
-}
-.rp-pct {
-  flex: none;
-  font-size: var(--font-sm);
-  font-variant-numeric: tabular-nums;
 }
 
 /* ===== 展开态：榜单面板（外壳与拖拽手柄由 PeekSheet 统一提供） ===== */
