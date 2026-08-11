@@ -13,15 +13,15 @@
         <text class="lg-k">低</text><text class="lg-v">{{ fmtPrice(legend.l) }}</text>
         <text class="lg-k">收</text><text class="lg-v" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ fmtPrice(legend.c) }}</text>
         <text class="lg-chg" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ legend.chgPct != null ? (legend.chgPct >= 0 ? '+' : '') + legend.chgPct.toFixed(2) + '%' : '' }}</text>
-        <text v-for="(it, i) in legend.main" :key="'m' + i" class="lg-it" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
+        <text v-for="(it, i) in legend.main" :key="'m' + i" class="lg-it" :class="{ 'has-color': !!it.color }" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
       </view>
       <view class="lg-row" :style="{ top: legendOffsets.vol + 'px' }">
         <text class="lg-sec">成交量</text>
-        <text v-for="(it, i) in legend.vol" :key="'v' + i" class="lg-it" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
+        <text v-for="(it, i) in legend.vol" :key="'v' + i" class="lg-it" :class="{ 'has-color': !!it.color }" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
       </view>
       <view class="lg-row" :style="{ top: legendOffsets.macd + 'px' }" v-if="legend.macd.length">
         <text class="lg-sec">MACD</text>
-        <text v-for="(it, i) in legend.macd" :key="'d' + i" class="lg-it" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
+        <text v-for="(it, i) in legend.macd" :key="'d' + i" class="lg-it" :class="{ 'has-color': !!it.color }" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
       </view>
     </view>
     <div ref="chartEl" class="kc-chart" :style="{ height: props.height + 'px' }"></div>
@@ -1327,15 +1327,22 @@ onBeforeUnmount(() => {
   margin-left: 8rpx;
   font-weight: 500;
 }
-/* 图例 token：组内单行流动；默认标签取弱化色；若带 color（MA/量MA/DIF/DEA 等）则标签与数值同取该线色。 */
+/* 图例 token：组内单行流动；标签取弱化色；数值默认取主文本色（与主图「开 22.30」的 22.30 同色），
+   仅当带线色（MA/DIF/DEA/MACD）时数值随线色。间距用 margin 而非 flex gap——<text> 非 flex 容器，
+   gap 在 uni-app 内不生效，会导致标签↔数值贴死（即「分时量2180」无空格现象）。 */
 .lg-it {
   display: inline-flex;
   align-items: center;
-  gap: 8rpx;
   color: var(--text-3);
 }
-.lg-it .lg-l,
+.lg-it .lg-l {
+  color: inherit;
+}
 .lg-it .lg-v {
+  color: var(--text);
+  margin-left: 8rpx;
+}
+.lg-it.has-color .lg-v {
   color: inherit;
 }
 .lg-l {
