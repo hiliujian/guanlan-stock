@@ -1051,7 +1051,7 @@ html.ps-lock body {
   background: var(--card-2);
   object-fit: cover;
 }
-/* 商品/非国家标的图标（OutlineIcon 金属锭 / 油滴 SVG），与 .peek-flag 同槽位对齐 */
+/* 商品/非国家标的图标（本地 PNG 图片：金/银/铜 锭 + 原油 水滴），与 .peek-flag 同槽位对齐 */
 .peek-flag-ic {
   flex: none;
   width: 24rpx;

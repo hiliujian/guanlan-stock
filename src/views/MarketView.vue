@@ -174,7 +174,7 @@
                   <view v-for="it in g.items" :key="it.secid" class="idx-item">
                     <view class="idx-item-head">
                       <image v-if="it.flag" class="peek-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
-                      <OutlineIcon v-else-if="it.icon" class="peek-flag-ic" :type="it.icon" :size="22" color="var(--text-2)" />
+                      <image v-else-if="it.icon" class="peek-flag-ic" :src="COMMODITY_ICON[it.icon]" mode="aspectFit" />
                       <text class="idx-item-name">{{ it.name }}</text>
                     </view>
                     <view class="idx-item-right">
@@ -198,6 +198,15 @@ import { ref, computed, onMounted, onActivated, onDeactivated, onUnmounted, watc
 // 经 KeepAlive 可能透传到本组件）：声明后 Vue 按自定义事件处理，避免 extraneous 告警。
 defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
 import OutlineIcon from "@/components/OutlineIcon.vue";
+// 商品期货本地 PNG 图标（与国旗 flag 同槽位，视觉统一）
+import goldIcon from "@/assets/icons/gold.png";
+import silverIcon from "@/assets/icons/silver.png";
+import copperIcon from "@/assets/icons/copper.png";
+import oilIcon from "@/assets/icons/oil.png";
+
+const COMMODITY_ICON: Record<string, string> = {
+  gold: goldIcon, silver: silverIcon, copper: copperIcon, oil: oilIcon,
+};
 import PriceText from "@/components/PriceText.vue";
 import AnalysisCard from "@/components/AnalysisCard.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";

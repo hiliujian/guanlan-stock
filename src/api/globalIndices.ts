@@ -13,7 +13,7 @@ export interface GlobalIndexItem {
   name: string;
   /** 国旗 ISO 3166-1 alpha-2 码（用于列表前的小国旗图标）；商品期货等非国家标的留空改用 icon */
   flag?: string;
-  /** 非国家标的（商品期货等）改用 OutlineIcon 图标（metal / oil），与 flag 二选一 */
+  /** 非国家标的（商品期货等）改用本地 PNG 图片图标（gold / silver / copper / oil），与 flag 二选一 */
   icon?: string;
 }
 export interface GlobalIndexGroup {
@@ -29,7 +29,7 @@ export interface GlobalIndexQuote {
 }
 
 // 全球重要市场指数目录（按地区/品种分组）。国家/地区标的用 flag（列表前小国旗）；
-// 商品期货等非国家标的改用 icon（OutlineIcon 图标，如 metal / oil），与 flag 二选一。
+// 商品期货等非国家标的改用 icon（本地 PNG 图片图标，如 gold / silver / copper / oil），与 flag 二选一。
 export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
   {
     title: "A股指数",
@@ -74,12 +74,12 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     title: "商品期货",
     items: [
       { secid: "100.XIN9", name: "富时中国A50", flag: "cn" },
-      { secid: "114.CU0", name: "沪铜主力", icon: "metal" },
+      { secid: "114.CU0", name: "沪铜主力", icon: "copper" },
       { secid: "114.SC0", name: "原油主力", icon: "oil" },
-      { secid: "114.AU0", name: "黄金主力", icon: "metal" },
-      { secid: "112.GC00Y", name: "纽约金", icon: "metal" },
-      { secid: "112.SI00Y", name: "纽约银", icon: "metal" },
-      { secid: "112.HG00Y", name: "美铜", icon: "metal" },
+      { secid: "114.AU0", name: "黄金主力", icon: "gold" },
+      { secid: "112.GC00Y", name: "纽约金", icon: "gold" },
+      { secid: "112.SI00Y", name: "纽约银", icon: "silver" },
+      { secid: "112.HG00Y", name: "美铜", icon: "copper" },
       { secid: "112.CL00Y", name: "美原油", icon: "oil" },
       { secid: "112.BR00Y", name: "布伦特原油", icon: "oil" },
     ],
