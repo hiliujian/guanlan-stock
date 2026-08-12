@@ -37,13 +37,16 @@ function defaultConfig(): ChartMaConfig {
   return { ma5: true, ma10: true, ma20: true, ma60: true, ma250: true };
 }
 
-// 读取本地已存偏好（容错：解析失败 / 无数据 → 回退默认全开）
+// 读取本地已存偏好（容错：解析失败 / 无数据 / 脏数据 → 回退默认全开）
+// 注意：uni.getStorageSync 在多数端返回的是「对象」而非字符串（底层已序列化），
+// 因此 load 兼容「字符串(解析)」与「对象(直接用)」两种形态，避免读不到已存设置。
 function load(): ChartMaConfig {
   const base = defaultConfig();
   try {
     const raw = uni.getStorageSync(STORAGE_KEY);
-    if (raw && typeof raw === "string") {
-      const parsed = JSON.parse(raw) as Partial<ChartMaConfig>;
+    if (raw == null) return base;
+    const parsed = (typeof raw === "string" ? JSON.parse(raw) : raw) as Partial<ChartMaConfig>;
+    if (parsed && typeof parsed === "object") {
       return { ...base, ...parsed };
     }
   } catch {
@@ -59,7 +62,7 @@ watch(
   maConfig,
   (val) => {
     try {
-      uni.setStorageSync(STORAGE_KEY, JSON.parse(JSON.stringify(val)));
+      uni.setStorageSync(STORAGE_KEY, { ...val });
     } catch {
       /* noop */
     }
