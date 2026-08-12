@@ -9,9 +9,9 @@
         <text class="lg-sec">主图</text>
         <text class="lg-time">{{ legend.time }}</text>
         <view class="lg-price"><text class="lg-k">价格</text><text class="lg-v" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ fmtPrice(legend.c) }}</text><text class="lg-chg" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ legend.chgPct != null ? (legend.chgPct >= 0 ? '+' : '') + legend.chgPct.toFixed(2) + '%' : '' }}</text></view>
-        <text class="lg-k">开</text><text class="lg-v">{{ fmtPrice(legend.o) }}</text>
-        <text class="lg-k">高</text><text class="lg-v">{{ fmtPrice(legend.h) }}</text>
-        <text class="lg-k">低</text><text class="lg-v">{{ fmtPrice(legend.l) }}</text>
+        <text v-if="props.mode !== 'kline'" class="lg-k">开</text><text v-if="props.mode !== 'kline'" class="lg-v">{{ fmtPrice(legend.o) }}</text>
+        <text v-if="props.mode !== 'kline'" class="lg-k">高</text><text v-if="props.mode !== 'kline'" class="lg-v">{{ fmtPrice(legend.h) }}</text>
+        <text v-if="props.mode !== 'kline'" class="lg-k">低</text><text v-if="props.mode !== 'kline'" class="lg-v">{{ fmtPrice(legend.l) }}</text>
         <text v-for="(it, i) in legend.main" :key="'m' + i" class="lg-it" :class="{ 'has-color': !!it.color }" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}</text><text class="lg-v">{{ it.value }}</text></text>
       </view>
       <view class="lg-row" :style="{ top: legendOffsets.vol + 'px' }">
