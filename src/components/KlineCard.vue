@@ -162,7 +162,7 @@ function toggleMa(key: keyof typeof maConfig) {
             <view class="aux-name-line">
               <text class="aux-label">成交量</text>
             </view>
-            <text class="aux-desc">K线=成交量 / 分时=分时量 + 量MA</text>
+            <text class="aux-desc">成交量及量均线</text>
           </view>
           <view
             class="cc-switch"
