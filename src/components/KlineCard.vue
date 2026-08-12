@@ -177,16 +177,50 @@ function toggleMa(key: keyof typeof maConfig) {
         <view class="aux-row aux-sub">
           <view class="aux-left">
             <view class="aux-name-line">
-              <text class="aux-label">量均线</text>
+              <view class="aux-color-dot" :style="{ background: '#f5a623' }"></view>
+              <text class="aux-label">量均线 MA5</text>
             </view>
-            <text class="aux-desc">成交量副图内的 MA5/10/20（关闭仅留量柱）</text>
           </view>
           <view
             class="cc-switch"
-            :class="{ on: panelConfig.volumeMa }"
+            :class="{ on: panelConfig.volumeMa5 }"
             hover-class="cc-switch-hover"
             role="button"
-            @click="panelConfig.volumeMa = !panelConfig.volumeMa"
+            @click="panelConfig.volumeMa5 = !panelConfig.volumeMa5"
+          >
+            <view class="cc-knob" />
+          </view>
+        </view>
+        <view class="aux-row aux-sub">
+          <view class="aux-left">
+            <view class="aux-name-line">
+              <view class="aux-color-dot" :style="{ background: '#1c9cf0' }"></view>
+              <text class="aux-label">量均线 MA10</text>
+            </view>
+          </view>
+          <view
+            class="cc-switch"
+            :class="{ on: panelConfig.volumeMa10 }"
+            hover-class="cc-switch-hover"
+            role="button"
+            @click="panelConfig.volumeMa10 = !panelConfig.volumeMa10"
+          >
+            <view class="cc-knob" />
+          </view>
+        </view>
+        <view class="aux-row aux-sub">
+          <view class="aux-left">
+            <view class="aux-name-line">
+              <view class="aux-color-dot" :style="{ background: '#9b59b6' }"></view>
+              <text class="aux-label">量均线 MA20</text>
+            </view>
+          </view>
+          <view
+            class="cc-switch"
+            :class="{ on: panelConfig.volumeMa20 }"
+            hover-class="cc-switch-hover"
+            role="button"
+            @click="panelConfig.volumeMa20 = !panelConfig.volumeMa20"
           >
             <view class="cc-knob" />
           </view>
@@ -211,16 +245,33 @@ function toggleMa(key: keyof typeof maConfig) {
         <view class="aux-row aux-sub">
           <view class="aux-left">
             <view class="aux-name-line">
-              <text class="aux-label">DIF/DEA</text>
+              <view class="aux-color-dot" :style="{ background: '#f5a623' }"></view>
+              <text class="aux-label">DIF</text>
             </view>
-            <text class="aux-desc">MACD 副图内的 DIF 与 DEA 线（关闭仅留 MACD 柱）</text>
           </view>
           <view
             class="cc-switch"
-            :class="{ on: panelConfig.macdLines }"
+            :class="{ on: panelConfig.macdDif }"
             hover-class="cc-switch-hover"
             role="button"
-            @click="panelConfig.macdLines = !panelConfig.macdLines"
+            @click="panelConfig.macdDif = !panelConfig.macdDif"
+          >
+            <view class="cc-knob" />
+          </view>
+        </view>
+        <view class="aux-row aux-sub">
+          <view class="aux-left">
+            <view class="aux-name-line">
+              <view class="aux-color-dot" :style="{ background: '#1c9cf0' }"></view>
+              <text class="aux-label">DEA</text>
+            </view>
+          </view>
+          <view
+            class="cc-switch"
+            :class="{ on: panelConfig.macdDea }"
+            hover-class="cc-switch-hover"
+            role="button"
+            @click="panelConfig.macdDea = !panelConfig.macdDea"
           >
             <view class="cc-knob" />
           </view>
@@ -264,9 +315,12 @@ function toggleMa(key: keyof typeof maConfig) {
     :height="height ?? 460"
     :show-ma="true"
     :show-macd="panelConfig.macd"
-    :macd-lines="panelConfig.macdLines"
+    :macd-dif="panelConfig.macdDif"
+    :macd-dea="panelConfig.macdDea"
     :show-vol="panelConfig.volume"
-    :volume-ma="panelConfig.volumeMa"
+    :volume-ma5="panelConfig.volumeMa5"
+    :volume-ma10="panelConfig.volumeMa10"
+    :volume-ma20="panelConfig.volumeMa20"
     :live-price="livePrice"
     :live-pre-close="livePreClose"
     :code="code"
@@ -285,9 +339,12 @@ function toggleMa(key: keyof typeof maConfig) {
     :height="height ?? 460"
     :show-ma="true"
     :show-macd="panelConfig.macd"
-    :macd-lines="panelConfig.macdLines"
+    :macd-dif="panelConfig.macdDif"
+    :macd-dea="panelConfig.macdDea"
     :show-vol="panelConfig.volume"
-    :volume-ma="panelConfig.volumeMa"
+    :volume-ma5="panelConfig.volumeMa5"
+    :volume-ma10="panelConfig.volumeMa10"
+    :volume-ma20="panelConfig.volumeMa20"
     :code="code"
     :show-tools="showTools"
     :auto-draw="showTools"

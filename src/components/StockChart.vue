@@ -307,12 +307,18 @@ const props = withDefaults(
     maConfig?: ChartMaConfig;
     /** 是否显示 MACD 面板（隐藏后成交量面板自动顶上补足），默认开 */
     showMacd?: boolean;
-    /** MACD 面板内部的 DIF/DEA 线是否绘制，默认开；关闭后仅保留 MACD 柱 */
-    macdLines?: boolean;
+    /** MACD 面板内部的 DIF 线是否绘制，默认开 */
+    macdDif?: boolean;
+    /** MACD 面板内部的 DEA 线是否绘制，默认开 */
+    macdDea?: boolean;
     /** 是否显示成交量面板（K线=成交量 / 分时=分时量，默认开），关闭后主图占满全高 */
     showVol?: boolean;
-    /** 成交量面板内部的量均线（MA5/10/20）是否绘制，默认开；关闭后仅保留量柱 */
-    volumeMa?: boolean;
+    /** 成交量面板内部的量均线 MA5 是否绘制，默认开 */
+    volumeMa5?: boolean;
+    /** 成交量面板内部的量均线 MA10 是否绘制，默认开 */
+    volumeMa10?: boolean;
+    /** 成交量面板内部的量均线 MA20 是否绘制，默认开 */
+    volumeMa20?: boolean;
     /** 实时最新价（仅分时模式生效）：把「最后一根分时柱」动态同步为实时价 */
     livePrice?: number;
     /** 实时昨收（与 livePrice 同源） */
@@ -332,7 +338,7 @@ const props = withDefaults(
     /** 当前 K线周期（d/w/M/y），用于各周期默认缩放（显示约一个月等）；不传默认日K */
     period?: PeriodKey;
   }>(),
-  { height: 440, showMA: true, showMacd: true, macdLines: true, showVol: true, volumeMa: true, showTools: false, autoDraw: false, persist: true }
+  { height: 440, showMA: true, showMacd: true, macdDif: true, macdDea: true, showVol: true, volumeMa5: true, volumeMa10: true, volumeMa20: true, showTools: false, autoDraw: false, persist: true }
 );
 
 // ---- 类型别名（klinecharts 运行时实例）----
@@ -1176,20 +1182,19 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
   legend.vol = [];
   if (vol) {
     if (vol.volume != null) legend.vol.push({ label: props.mode === "intraday" ? "分时量" : "成交量", value: fmtVol(vol.volume) });
-    if (props.volumeMa !== false) {
-      ["ma1", "ma2", "ma3"].forEach((k, i) => { if (vol[k] != null) legend.vol.push({ label: "MA" + (i + 1) * 5, value: fmtVol(vol[k]), color: INDICATOR_LINE_COLORS[i] }); });
-    }
+    // 量均线 MA5/MA10/MA20 各自独立开关（figure key: ma1/ma2/ma3）
+    const volMaOn = [props.volumeMa5 !== false, props.volumeMa10 !== false, props.volumeMa20 !== false];
+    const volMaKeys = ["ma1", "ma2", "ma3"];
+    volMaKeys.forEach((k, i) => { if (volMaOn[i] && vol[k] != null) legend.vol.push({ label: "MA" + (i + 1) * 5, value: fmtVol(vol[k]), color: INDICATOR_LINE_COLORS[i] }); });
   }
-  // MACD 图：DIF(橙)/DEA(蓝)/MACD(柱按正负红绿)
+  // MACD 图：DIF(橙)/DEA(蓝)/MACD(柱按正负红绿) —— DIF/DEA 各自独立开关
   const macdMap = paneMap("macd_pane", cross, idx);
   const md = macdMap[props.mode === "intraday" ? "MACDFS" : "MACD"];
   legend.macd = [];
   if (md) {
     if (md.macd != null) legend.macd.push({ label: "MACD", value: fmtPrice(md.macd), color: md.macd > 0 ? UP : md.macd < 0 ? DOWN : undefined });
-    if (props.macdLines !== false) {
-      if (md.dif != null) legend.macd.push({ label: "DIF", value: fmtPrice(md.dif), color: INDICATOR_LINE_COLORS[0] });
-      if (md.dea != null) legend.macd.push({ label: "DEA", value: fmtPrice(md.dea), color: INDICATOR_LINE_COLORS[1] });
-    }
+    if (props.macdDif !== false && md.dif != null) legend.macd.push({ label: "DIF", value: fmtPrice(md.dif), color: INDICATOR_LINE_COLORS[0] });
+    if (props.macdDea !== false && md.dea != null) legend.macd.push({ label: "DEA", value: fmtPrice(md.dea), color: INDICATOR_LINE_COLORS[1] });
   }
   legend.show = true;
 }
@@ -1276,26 +1281,27 @@ function restoreOverlays() {
 
 // 副图内部辅助线控制：成交量面板内的量均线 MA5/10/20、MACD 面板内的 DIF/DEA 线，
 // 均为内置指标写死的 figure，无独立开关。这里通过 overrideIndicator 按面板覆盖 figures：
-// 关闭量均线→仅保留量柱 figure；关闭 DIF/DEA→仅保留 MACD 柱 figure（涨跌着色沿用既有逻辑）。
-// 注意：override 仅改「绘制用的 figures」，calc 仍照算（ma1/ma2/ma3、dif/dea 仍进 result），
-// 故图例显示需由下方 buildLegend 同步按开关剔除，避免「图已隐、图例仍在」。
+// 量均线 MA5/MA10/MA20、MACD 的 DIF/DEA 各自独立开关——关闭某条线即只把该 figure 从绘制列表中剔除，
+// 其余线（含量柱 / MACD 柱的涨跌着色）保留。每根保留的线显式指定与图例一致的 INDICATOR_LINE_COLORS，
+// 保证「图线 ↔ 图例」颜色统一。
+// 注意：override 仅改「绘制用的 figures」，calc 仍照算，故图例显示需由 buildLegend 同步按开关剔除。
+// 仅当「存在被关闭的线」时才覆盖（全部开启时跳过，沿用内置默认外观，零行为变化）。
 function applySubOverrides() {
   if (!chart) return;
   const showVol = props.showVol !== false;
   const showMacd = props.showMacd !== false;
-  const volMa = props.volumeMa !== false;
-  const macdLines = props.macdLines !== false;
+  const volMaOn = [props.volumeMa5 !== false, props.volumeMa10 !== false, props.volumeMa20 !== false];
+  const macdDifOn = props.macdDif !== false;
+  const macdDeaOn = props.macdDea !== false;
 
-  // 成交量均线（MA5/10/20）独立开关：关闭时移除量均线，仅留量柱
-  if (showVol && !volMa) {
+  // 成交量面板：量柱 + 已开启的量均线（MA5=ma1/MA10=ma2/MA20=ma3），关闭的线直接剔除
+  if (showVol && volMaOn.some((v) => !v)) {
     const volName = props.mode === "intraday" ? "INTRADAY_VOL" : "VOL";
     const volBarFigure = {
       key: "volume",
       title: props.mode === "intraday" ? "分时量: " : "成交量: ",
       type: "bar",
       baseValue: 0,
-      // 量柱按「当前 K 线涨跌方向」着色（涨红跌绿、平盘中性），与内置 VOL 一致；
-      // 自定义/覆盖 figure 拿不到 defaultStyles.bars 兜底，故用项目统一涨跌色 UP/DOWN。
       styles: (data: any, _indicator: any, defaultStyles: any) => {
         const k = data?.current?.kLineData;
         const base = (defaultStyles?.bars && defaultStyles.bars[0]) || {};
@@ -1308,22 +1314,27 @@ function applySubOverrides() {
         return { color: noChange };
       },
     };
+    const maKeys = ["ma1", "ma2", "ma3"];
+    const maTitles = ["MA5: ", "MA10: ", "MA20: "];
+    const volFigures: any[] = [volBarFigure];
+    volMaOn.forEach((on, i) => {
+      if (on) volFigures.push({ key: maKeys[i], title: maTitles[i], type: "line", color: INDICATOR_LINE_COLORS[i] });
+    });
     try {
-      (chart as any).overrideIndicator({ name: volName, figures: [volBarFigure] }, "vol_pane");
+      (chart as any).overrideIndicator({ name: volName, figures: volFigures }, "vol_pane");
     } catch {
       /* noop */
     }
   }
 
-  // MACD 的 DIF/DEA 线独立开关：关闭时移除 DIF/DEA 线，仅留 MACD 柱
-  if (showMacd && !macdLines) {
+  // MACD 面板：MACD 柱 + 已开启的 DIF/DEA 线，关闭的线直接剔除
+  if (showMacd && (!macdDifOn || !macdDeaOn)) {
     const macdName = props.mode === "intraday" ? "MACDFS" : "MACD";
     const macdBarFigure = {
       key: "macd",
       title: "MACD: ",
       type: "bar",
       baseValue: 0,
-      // 柱按值正负着色（正红负绿、平中性），且当前值>前值时描边、否则填充——与内置 MACD 完全一致。
       styles: (data: any, _indicator: any, defaultStyles: any) => {
         const base = (defaultStyles?.bars && defaultStyles.bars[0]) || {};
         const up = base.upColor || UP;
@@ -1338,8 +1349,11 @@ function applySubOverrides() {
         return { style, color, borderColor: color };
       },
     };
+    const macdFigures: any[] = [macdBarFigure];
+    if (macdDifOn) macdFigures.push({ key: "dif", title: "DIF: ", type: "line", color: INDICATOR_LINE_COLORS[0] });
+    if (macdDeaOn) macdFigures.push({ key: "dea", title: "DEA: ", type: "line", color: INDICATOR_LINE_COLORS[1] });
     try {
-      (chart as any).overrideIndicator({ name: macdName, figures: [macdBarFigure] }, "macd_pane");
+      (chart as any).overrideIndicator({ name: macdName, figures: macdFigures }, "macd_pane");
     } catch {
       /* noop */
     }
@@ -1473,7 +1487,7 @@ watch(
   () => refreshData()
 );
 watch(
-  () => [props.mode, props.showMA, props.showMacd, props.macdLines, props.showVol, props.volumeMa, props.maConfig?.ma5, props.maConfig?.ma10, props.maConfig?.ma20, props.maConfig?.ma60, props.maConfig?.ma250],
+  () => [props.mode, props.showMA, props.showMacd, props.macdDif, props.macdDea, props.showVol, props.volumeMa5, props.volumeMa10, props.volumeMa20, props.maConfig?.ma5, props.maConfig?.ma10, props.maConfig?.ma20, props.maConfig?.ma60, props.maConfig?.ma250],
   () => buildChart()
 );
 watch(
