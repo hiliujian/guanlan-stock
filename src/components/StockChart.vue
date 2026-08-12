@@ -867,7 +867,11 @@ type BandType = "uptrend" | "downtrend" | "pullback" | "bounce" | "box";
 
 // 判定当前所处波段类型（5 类）。输入 highs/lows 必须来自「近端观测窗口」（即 prox），
 // 高低点结构只允许取近端 N/4 窗口内的最近 2 组摆动点，忽略超远期高低点。
-// 用近端最近 2 组摆动高/低点结构 + 当前价位置 + 近端整体方向联合判定。
+//
+// 判定优先级（严格按规则）：先识别是否「下跌结构 / 上涨结构」，在结构内优先辨别
+// 反弹 / 回档（否则才归为纯主跌 / 主升），最后箱体 / 方向兜底。
+// 关键：当近端呈现 hh+hl 抬升结构时，若价格已从近端高位回落且未跌破近端前低，
+//      应判为「回档 pullback」而非「主升 uptrend」（否则会漏掉回调前的近端成本位支撑）。
 function detectBandType(
   highs: Swing[], lows: Swing[], series: any[], current: number,
 ): BandType {
@@ -878,37 +882,50 @@ function detectBandType(
     return current >= (series[0]?.close ?? 0) ? "uptrend" : "downtrend";
   }
   // 高低点结构特征（基于近端窗口内的最近 2 组）
-  const hh = has2H && highs[highs.length - 1].value > highs[highs.length - 2].value; // 更高高点
-  const hl = has2L && lows[lows.length - 1].value > lows[lows.length - 2].value;   // 更高低点
-  const lh = has2H && highs[highs.length - 1].value < highs[highs.length - 2].value; // 更低高点
-  const ll = has2L && lows[lows.length - 1].value < lows[lows.length - 2].value;   // 更低低点
-
-  // 主升 / 主跌（结构清晰：两侧都满足）
-  if (hh && hl) return "uptrend";
-  if (lh && ll) return "downtrend";
+  const lastH = has2H ? highs[highs.length - 1] : null;
+  const prevH = has2H ? highs[highs.length - 2] : null;
+  const lastL = has2L ? lows[lows.length - 1] : null;
+  const prevL = has2L ? lows[lows.length - 2] : null;
+  const hh = !!lastH && !!prevH && lastH.value > prevH.value; // 更高高点
+  const hl = !!lastL && !!prevL && lastL.value > prevL.value; // 更高低点
+  const lh = !!lastH && !!prevH && lastH.value < prevH.value; // 更低高点
+  const ll = !!lastL && !!prevL && lastL.value < prevL.value; // 更低低点
 
   // 近端整体方向辅助（series 已是近端窗口，起点收盘即为近端起点）
   const firstClose = series[0]?.close ?? 0;
   const netUp = current > firstClose * 1.03;  // 近端涨幅 >3% 视为偏多
   const netDn = current < firstClose * 0.97;  // 近端跌幅 >3% 视为偏空
 
-  // 主升（单侧）：更高低点 + 近端整体上涨
-  if (hl && netUp && !ll) return "uptrend";
-  // 主跌（单侧）：更低高点 + 近端整体下跌
+  // 近端关键大阳/大阴实体边界（用于回档/反弹的排除校验，必须限定在近端窗口）
+  const { bull, bear } = findMaxBodyCandle(series);
+  const keyBullOpen = bull?.open ?? -Infinity; // 近端最大阳线实体下沿
+  const keyBearOpen = bear?.open ?? Infinity;  // 近端最大阴线实体上沿
+
+  // ===== 下跌结构：先看是否其实是「反弹 bounce」 =====
+  if (lh && ll) {
+    const rebounded = !!lastL && current > lastL.value;                 // 从近端低位反弹
+    const prevHigh = prevH ? prevH.value : lastH ? lastH.value : Infinity;
+    const notBrokenPrevHigh = current <= prevHigh;                      // 未突破近端前高
+    const exclusion = current > keyBearOpen;                            // 突破关键阴线上沿→反转，不再判反弹
+    if (rebounded && notBrokenPrevHigh && !exclusion) return "bounce";
+    return "downtrend";
+  }
+  // 单侧下跌结构（仅更低高点、无完整更低低点）→ 主跌
   if (lh && netDn && !hh) return "downtrend";
 
-  // 回档：近端整体仍抬升，但当前价已从最近摆动高点回落且未破坏前低
-  if ((hh || hl || netUp) && has2H && current < highs[highs.length - 1].value) {
-    const prevLow = has2L ? lows[lows.length - 2].value : -Infinity;
-    if (current > prevLow) return "pullback";
+  // ===== 上涨结构：先看是否其实是「回档 pullback」 =====
+  if (hh && hl) {
+    const pulledBack = !!lastH && current < lastH.value;                // 从近端高位回落
+    const prevLow = prevL ? prevL.value : lastL ? lastL.value : -Infinity;
+    const notBrokenPrevLow = current >= prevLow;                       // 未跌破近端前低
+    const exclusion = current < keyBullOpen;                            // 跌破关键大阳下沿→转弱，不再判回档
+    if (pulledBack && notBrokenPrevLow && !exclusion) return "pullback";
+    return "uptrend";
   }
-  // 反弹：近端整体仍降低，但当前价已从最近摆动低点反弹且未突破前高
-  if ((lh || ll || netDn) && has2L && current > lows[lows.length - 1].value) {
-    const prevHigh = has2H ? highs[highs.length - 2].value : Infinity;
-    if (current < prevHigh) return "bounce";
-  }
+  // 单侧上涨结构（仅更高低点、无完整更高高点）→ 主升
+  if (hl && netUp && !ll) return "uptrend";
 
-  // 箱体：近端窗口振幅 <6%（series 已是近端窗口，无需再切片）
+  // ===== 箱体：近端窗口振幅 <6%（series 已是近端窗口，无需再切片） =====
   if (series.length >= 5) {
     const tHigh = Math.max(...series.map((d) => d.high));
     const tLow = Math.min(...series.map((d) => d.low));
@@ -968,10 +985,11 @@ function computeAutoLevels(): AutoLevel[] {
   switch (band) {
     case "uptrend": {
       // ── 上涨主波段 ──
-      // 支撑：近端窗口内最大阳线 实体下沿(开盘价)=资金进场成本区
-      // 压力：近端阶段高点(摆动高点优先)；不足时用近端窗口实际最高价兜底
+      // 支撑：① 近端窗口内最大阳线 实体下沿(开盘价)=资金进场成本区；② 无则取近端最近摆动低点兜底
+      // 压力：① 近端阶段高点(摆动高点优先)；② 不足时用近端窗口实际最高价兜底
       const { bull } = findMaxBodyCandle(prox);
       if (bull) { supportPrice = bull.open; supportSrc = "近端最大阳线实体下沿(开盘)"; }
+      else if (lows.length) { supportPrice = lows[lows.length - 1].value; supportSrc = "近端最近摆动低点"; }
       if (highs.length) { pressurePrice = highs[highs.length - 1].value; pressureSrc = "近端阶段高点"; }
       else { pressurePrice = Math.max(...prox.map((d) => d.high)); pressureSrc = "近端最高价"; }
       break;
