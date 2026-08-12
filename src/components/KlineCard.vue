@@ -340,13 +340,18 @@ function toggleMa(key: keyof typeof maConfig) {
   box-shadow: var(--shadow-sheet);
 }
 .aux-pop-head {
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
   height: 66rpx;
   margin: 0 -20rpx 4rpx;
   padding: 0 20rpx;
+  background: var(--tabbar-bg);
+  backdrop-filter: blur(20rpx);
+  -webkit-backdrop-filter: blur(20rpx);
   border-bottom: 1rpx solid var(--border);
 }
 .aux-pop-title {
