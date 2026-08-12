@@ -254,6 +254,18 @@ const newsSig = ref<NewsSignal | null>(null);
 // 不再依赖 run()/switchPeriod() 里的手动赋值。
 const watched = computed(() => isWatched(curCode.value, curMarket.value));
 const realtime = ref<{ price: number; preClose: number; open?: number; high?: number; low?: number; time?: string } | null>(null);
+// 最近一次有效实时价（任何模式都缓存）：实时快照偶发失败 / 被全量刷新覆盖为 null 时，
+// 头部仍以「最近已知实时价」兜底，避免非分时模式直接回落到静态日线收盘价而「冻结」。
+const lastLivePrice = ref<number | null>(null);
+function setRealtime(snap: { price: number; preClose: number; open?: number; high?: number; low?: number; time?: string } | null) {
+  if (snap && typeof snap.price === "number" && isFinite(snap.price) && snap.price > 0) {
+    realtime.value = { price: snap.price, preClose: snap.preClose, open: snap.open, high: snap.high, low: snap.low, time: snap.time };
+    lastLivePrice.value = snap.price;
+  } else if (snap) {
+    // 价格非法（如 0）仍保留 preClose 等字段，但价格回退兜底
+    realtime.value = { ...snap };
+  }
+}
 
 // 底部指数卡片（复用自选页同款 PeekSheet 统一底部窗体）：收起态展示「当前匹配指数」——
 // 按当前查看的股票所属板块自动匹配对应指数（创业板/科创板→创业板指、沪A→上证指数、
@@ -449,12 +461,22 @@ const lastTrendPrice = computed(() => {
   const p = (trends.value[trends.value.length - 1] as any)?.price;
   return typeof p === "number" && isFinite(p) ? p : null;
 });
-// 头部展示「实时价」（东方财富实时行情，5s 刷新）；
-// 分时视图下若实时快照暂不可用，回退到分时序列最新点（与走势图同源），
-// 而非分析用日K收盘价——避免出现「头部=日K收盘、走势图=分时最新」的二次不一致。
-const dispPrice = computed(() =>
-  realtime.value?.price ?? (period.value === "m" ? lastTrendPrice.value : null) ?? (result.value ? result.value.last.close : 0)
-);
+// 头部展示「实时价」（东方财富实时行情，5s 刷新）。
+// 取值优先级（任一模式通用，杜绝「非分时模式下实时快照失败→回落到静态日线收盘而冻结」）：
+//   ① 实时快照价（realtime，5s 刷新，所有周期一致）
+//   ② 分时序列最新点（仅分时视图，与走势图同源，刷新更频繁）
+//   ③ 最近一次有效实时价（lastLivePrice，快照偶发失败时的兜底，避免跳变到静态收盘价）
+//   ④ 日K 最新收盘价（最终兜底，仍为静态但仅在全无实时数据时出现）
+const dispPrice = computed(() => {
+  const rt = realtime.value?.price;
+  if (typeof rt === "number" && isFinite(rt) && rt > 0) return rt;
+  if (period.value === "m") {
+    const lt = lastTrendPrice.value;
+    if (typeof lt === "number" && isFinite(lt) && lt > 0) return lt;
+  }
+  if (typeof lastLivePrice.value === "number" && isFinite(lastLivePrice.value) && lastLivePrice.value > 0) return lastLivePrice.value;
+  return result.value ? result.value.last.close : 0;
+});
 const chg = computed(() => dispPrice.value - preClose.value);
 // 涨跌幅格式化为两位小数，避免出现 0.07575757575757576% 这种超长小数
 const pctText = computed(() =>
@@ -521,14 +543,7 @@ function loadLastViewed(): boolean {
 async function refreshLight() {
   if (!secid.value) return;
   const snap = await fetchSnapshot(secid.value);
-  realtime.value = {
-    price: snap.price,
-    preClose: snap.preClose,
-    open: snap.open,
-    high: snap.high,
-    low: snap.low,
-    time: snap.time,
-  };
+  setRealtime({ price: snap.price, preClose: snap.preClose, open: snap.open, high: snap.high, low: snap.low, time: snap.time });
   preClose.value = snap.preClose;
 }
 
@@ -575,7 +590,9 @@ async function refreshFull() {
   bundle.value = b;
   name.value = b.name || chosen.value?.name || name.value || curCode.value;
   preClose.value = b.preClose;
-  realtime.value = b.realtime;
+  // 仅在有有效实时价时才覆盖（见 setRealtime），避免把实时快照偶发失败得到的 null 写回，
+  // 导致非分时模式头部回落到静态日线收盘而「冻结」。
+  setRealtime(b.realtime);
   // 关联资讯：先取行情拿到确切公司名，再按「代码 + 公司名」双关键词抓取，
   // 经「多维严格关联（代码/全称/核心词/简称）+ 时效（最近3天）」过滤后注入情绪量化。
   const n = await fetchNews(secid.value, name.value).catch(() => [] as NewsItem[]);
@@ -683,7 +700,9 @@ async function run(forceMarket?: Market, track = true) {
       recordSearch(curCode.value, name.value);
     }
     preClose.value = b.preClose;
-    realtime.value = b.realtime;
+    // 仅在有有效实时价时才覆盖（见 setRealtime），避免把实时快照偶发失败得到的 null 写回，
+    // 导致非分时模式头部回落到静态日线收盘而「冻结」。
+    setRealtime(b.realtime);
     // 关联资讯：先做「多维严格关联 + 时效（最近3天）」过滤，所有 scope 统一校验相关性，
     // 确保展示与情绪量化因子都只基于「对当前股票相关的近期资讯」；过滤后再计算情绪信号。
     const n = await fetchNews(sid, name.value).catch(() => [] as NewsItem[]);

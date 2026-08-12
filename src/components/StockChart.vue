@@ -691,6 +691,10 @@ function fitViewAll() {
 function onDataReady() {
   fitViewAll();
   updateLegendLatest();
+  // 关键修复：数据就绪（含首载 / 实时末根）后重画智能标注。
+  // applyNewData 是异步解析，buildChart 内的 rAF 绘制早于数据可用时机，
+  // 导致初始智能标注画不上（需手动关闭/打开一次开关才触发）；此处保证数据就绪即绘制。
+  drawAutoLevels();
 }
 
 // ---- 生命周期 ----
