@@ -14,7 +14,7 @@
         <text v-if="props.mode !== 'kline'" class="lg-k">低:</text><text v-if="props.mode !== 'kline'" class="lg-v">{{ fmtPrice(legend.l) }}</text>
         <text v-for="(it, i) in legend.main" :key="'m' + i" class="lg-it" :class="{ 'has-color': !!it.color }" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}:</text><text class="lg-v">{{ it.value }}</text></text>
       </view>
-      <view v-if="props.showVol !== false" class="lg-row" :style="{ top: legendOffsets.vol + 'px' }">
+      <view class="lg-row" :style="{ top: legendOffsets.vol + 'px' }">
         <text class="lg-sec">成交量</text>
         <text v-for="(it, i) in legend.vol" :key="'v' + i" class="lg-it" :class="{ 'has-color': !!it.color }" :style="it.color ? { color: it.color } : null"><text class="lg-l">{{ it.label }}:</text><text class="lg-v">{{ it.value }}</text></text>
       </view>
@@ -305,14 +305,10 @@ const props = withDefaults(
     showMA?: boolean;
     /** 各周期均线独立开关（MA5/MA10/MA20/MA60），默认全开；仅日K 模式生效 */
     maConfig?: ChartMaConfig;
-    /** 是否显示 MACD 面板（隐藏后成交量面板自动顶上补足），默认开 */
-    showMacd?: boolean;
     /** MACD 面板内部的 DIF 线是否绘制，默认开 */
     macdDif?: boolean;
     /** MACD 面板内部的 DEA 线是否绘制，默认开 */
     macdDea?: boolean;
-    /** 是否显示成交量面板（K线=成交量 / 分时=分时量，默认开），关闭后主图占满全高 */
-    showVol?: boolean;
     /** 成交量面板内部的量均线 MA5 是否绘制，默认开 */
     volumeMa5?: boolean;
     /** 成交量面板内部的量均线 MA10 是否绘制，默认开 */
@@ -338,7 +334,7 @@ const props = withDefaults(
     /** 当前 K线周期（d/w/M/y），用于各周期默认缩放（显示约一个月等）；不传默认日K */
     period?: PeriodKey;
   }>(),
-  { height: 440, showMA: true, showMacd: true, macdDif: true, macdDea: true, showVol: true, volumeMa5: true, volumeMa10: true, volumeMa20: true, showTools: false, autoDraw: false, persist: true }
+  { height: 440, showMA: true, macdDif: true, macdDea: true, volumeMa5: true, volumeMa10: true, volumeMa20: true, showTools: false, autoDraw: false, persist: true }
 );
 
 // ---- 类型别名（klinecharts 运行时实例）----
@@ -499,8 +495,8 @@ function buildStyles(): Record<string, unknown> {
 // ---- 布局（主图 + 成交量 + MACD 三分面，按比例控高）----
 function buildLayout(): any[] {
   const usable = Math.max(140, props.height - 24); // 预留 x 轴条
-  const showVol = props.showVol !== false;
-  const showMacd = props.showMacd !== false;
+  const showVol = true; // 成交量面板常驻
+  const showMacd = true; // MACD 面板常驻
   const subCount = (showVol ? 1 : 0) + (showMacd ? 1 : 0);
   // 副图数量决定主图高度占比：2 副图(量+MACD)→主图 0.56、量 0.22、MACD 顶满；
   // 1 副图→主图 0.7、副图 0.3；0 副图→主图占满全高。
@@ -533,11 +529,11 @@ function buildLayout(): any[] {
     { type: "candle", content: candleContent, options: { id: "candle_pane", height: priceH, minHeight: Math.round(priceH * 0.6) } },
   ];
   // 分时模式用 INTRADAY_VOL（图例显示「分时量」），K 线模式用内置 VOL（显示「成交量」）；
-  // 成交量面板可独立关闭（showVol）。
+  // 成交量面板常驻（不可整体关闭）。
   if (showVol) {
     layout.push({ type: "indicator", content: [props.mode === "intraday" ? "INTRADAY_VOL" : "VOL"], options: { id: "vol_pane", height: volH, minHeight: 40 } });
   }
-  // MACD 面板可独立关闭（showMacd）；关闭后成交量面板自动顶上补足。
+  // MACD 面板常驻（不可整体关闭）。
   if (showMacd) {
     layout.push({ type: "indicator", content: [props.mode === "intraday" ? "MACDFS" : "MACD"], options: { id: "macd_pane", height: macdH, minHeight: 60 } });
   }
@@ -1075,8 +1071,8 @@ const legend = reactive<{
 // 使「主图」组贴主图顶部、「成交量」组贴量图顶部、「MACD」组贴 MACD 顶部，而非三者全堆在价格图上方。
 const legendOffsets = computed(() => {
   const usable = Math.max(140, props.height - 24); // 预留底部 x 轴条
-  const showVol = props.showVol !== false;
-  const showMacd = props.showMacd !== false;
+  const showVol = true; // 成交量面板常驻
+  const showMacd = true; // MACD 面板常驻
   const subCount = (showVol ? 1 : 0) + (showMacd ? 1 : 0);
   let priceH: number;
   let volH = 0;
@@ -1288,8 +1284,8 @@ function restoreOverlays() {
 // 仅当「存在被关闭的线」时才覆盖（全部开启时跳过，沿用内置默认外观，零行为变化）。
 function applySubOverrides() {
   if (!chart) return;
-  const showVol = props.showVol !== false;
-  const showMacd = props.showMacd !== false;
+  const showVol = true; // 成交量面板常驻
+  const showMacd = true; // MACD 面板常驻
   const volMaOn = [props.volumeMa5 !== false, props.volumeMa10 !== false, props.volumeMa20 !== false];
   const macdDifOn = props.macdDif !== false;
   const macdDeaOn = props.macdDea !== false;
@@ -1487,7 +1483,7 @@ watch(
   () => refreshData()
 );
 watch(
-  () => [props.mode, props.showMA, props.showMacd, props.macdDif, props.macdDea, props.showVol, props.volumeMa5, props.volumeMa10, props.volumeMa20, props.maConfig?.ma5, props.maConfig?.ma10, props.maConfig?.ma20, props.maConfig?.ma60, props.maConfig?.ma250],
+  () => [props.mode, props.showMA, props.macdDif, props.macdDea, props.volumeMa5, props.volumeMa10, props.volumeMa20, props.maConfig?.ma5, props.maConfig?.ma10, props.maConfig?.ma20, props.maConfig?.ma60, props.maConfig?.ma250],
   () => buildChart()
 );
 watch(

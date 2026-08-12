@@ -14,7 +14,7 @@ import { PERIODS, PERIOD_ORDER, type PeriodKey } from "@/utils/period";
 import { auxConfig } from "@/store/chartAux";
 import { maConfig, MA_PERIODS } from "@/store/chartMa";
 import { panelConfig } from "@/store/chartPanel";
-import { computed, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 
 const props = defineProps<{
   period: PeriodKey;
@@ -55,9 +55,9 @@ function pick(p: PeriodKey) {
 }
 
 // ---- 图表设置抽屉（齿轮点开）----
-// 含三组：① 辅助线 = 均线 MA（MA5/MA10/MA20/MA60/MA250，逐周期独立开关）
-//        ② 副图指标 = 成交量面板 / MACD 面板（各自独立开关，无总开关），及其内部辅助线：量均线 MA5/10/20、DIF/DEA
-//        ③ 智能标注 = 系统自动标注的压力/支撑/趋势/关键区间（各线独立开关，无总开关）
+// 折叠式两级结构：一级 = 主图 / 成交量 / MACD / 智能标注（点击展开二级）；
+// 二级 = 各线独立开关（主图=均线 MA、成交量=量均线 MA5/10/20、MACD=DIF/DEA、智能标注=压力/支撑/趋势/关键区间）。
+// 成交量面板与 MACD 面板本身常驻显示（不提供整体隐藏开关），二级仅控制各自内部线。
 const auxOpen = ref(false);
 // 看盘画线工具栏开关：画板图标控制，淡入/淡出 StockChart 的 kc-tools
 const toolsOpen = ref(false);
@@ -72,6 +72,7 @@ function toggleAuxOpen() {
   auxOpen.value = next;
   if (next) toolsOpen.value = false;
 }
+// 智能标注各线元数据（颜色 + 描述），供二级列表渲染
 type AuxKey = "pressure" | "support" | "trend" | "zone";
 const auxItems: { key: AuxKey; label: string; desc: string; color: string }[] = [
   { key: "pressure", label: "压力线", desc: "红色虚线：上方阻力位", color: "#ef232a" },
@@ -79,15 +80,62 @@ const auxItems: { key: AuxKey; label: string; desc: string; color: string }[] = 
   { key: "trend", label: "趋势线", desc: "蓝色箭头：上行 / 下行方向", color: "#2f74ff" },
   { key: "zone", label: "关键区间", desc: "阻力与支撑之间的阴影带", color: "rgba(108,122,145,0.55)" },
 ];
-function toggleAux(key: AuxKey) {
-  auxConfig[key] = !auxConfig[key];
-}
-// 辅助线（均线）开关：MA5/MA10/MA20/MA60 各自独立控制
-const maItems = MA_PERIODS;
-// 与图表 MA 线颜色一致（见 StockChart INDICATOR_LINE_COLORS 顺序：MA5橙/MA10蓝/MA20紫/MA60绿）
+// 与图表 MA 线颜色一致（见 StockChart INDICATOR_LINE_COLORS 顺序：MA5橙/MA10蓝/MA20紫/MA60绿/MA250品红）
 const MA_COLORS = ["#f5a623", "#1c9cf0", "#9b59b6", "#2ecc71", "#e11d74"];
-function toggleMa(key: keyof typeof maConfig) {
-  maConfig[key] = !maConfig[key];
+// ---- 折叠式设置：一级分类 + 二级线开关 ----
+type ToggleRow = { key: string; label: string; desc?: string; color?: string; get: () => boolean; set: (v: boolean) => void };
+type SettingSection = { key: "main" | "volume" | "macd" | "aux"; title: string; rows: ToggleRow[] };
+const sections: SettingSection[] = [
+  {
+    key: "main",
+    title: "主图",
+    rows: MA_PERIODS.map((it, i) => ({
+      key: it.key,
+      label: it.label,
+      desc: it.period + " 日移动平均线",
+      color: MA_COLORS[i],
+      get: () => maConfig[it.key],
+      set: (v: boolean) => {
+        maConfig[it.key] = v;
+      },
+    })),
+  },
+  {
+    key: "volume",
+    title: "成交量",
+    rows: [
+      { key: "volumeMa5", label: "量均线 MA5", color: "#f5a623", get: () => panelConfig.volumeMa5, set: (v: boolean) => { panelConfig.volumeMa5 = v; } },
+      { key: "volumeMa10", label: "量均线 MA10", color: "#1c9cf0", get: () => panelConfig.volumeMa10, set: (v: boolean) => { panelConfig.volumeMa10 = v; } },
+      { key: "volumeMa20", label: "量均线 MA20", color: "#9b59b6", get: () => panelConfig.volumeMa20, set: (v: boolean) => { panelConfig.volumeMa20 = v; } },
+    ],
+  },
+  {
+    key: "macd",
+    title: "MACD",
+    rows: [
+      { key: "macdDif", label: "DIF", color: "#f5a623", get: () => panelConfig.macdDif, set: (v: boolean) => { panelConfig.macdDif = v; } },
+      { key: "macdDea", label: "DEA", color: "#1c9cf0", get: () => panelConfig.macdDea, set: (v: boolean) => { panelConfig.macdDea = v; } },
+    ],
+  },
+  {
+    key: "aux",
+    title: "智能标注",
+    rows: auxItems.map((it) => ({
+      key: it.key,
+      label: it.label,
+      desc: it.desc,
+      color: it.color,
+      get: () => auxConfig[it.key],
+      set: (v: boolean) => {
+        auxConfig[it.key] = v;
+      },
+    })),
+  },
+];
+// 一级展开状态：默认全收，仅点开的一级才显示其二级线开关
+const openMap = reactive<Record<string, boolean>>({ main: false, volume: false, macd: false, aux: false });
+function toggleAcc(key: string) {
+  openMap[key] = !openMap[key];
 }
 </script>
 
@@ -132,171 +180,31 @@ function toggleMa(key: keyof typeof maConfig) {
           </view>
         </view>
 
-        <!-- 分组一：辅助线 = 均线 MA（逐周期独立开关） -->
-        <text class="aux-group">辅助线</text>
-        <view v-for="(it, mi) in maItems" :key="it.key" class="aux-row">
-          <view class="aux-left">
-            <view class="aux-name-line">
-              <view class="aux-color-dot" :style="{ background: MA_COLORS[mi] }"></view>
-              <text class="aux-label">{{ it.label }}</text>
+        <!-- 一级：主图 / 成交量 / MACD / 智能标注；点击展开二级线开关 -->
+        <view v-for="sec in sections" :key="sec.key" class="aux-acc">
+          <view class="aux-acc-head" role="button" @click="toggleAcc(sec.key)">
+            <text class="aux-acc-title">{{ sec.title }}</text>
+            <view class="aux-acc-arrow" :class="{ open: openMap[sec.key] }"></view>
+          </view>
+          <view v-if="openMap[sec.key]" class="aux-acc-body">
+            <view v-for="row in sec.rows" :key="row.key" class="aux-row">
+              <view class="aux-left">
+                <view class="aux-name-line">
+                  <view v-if="row.color" class="aux-color-dot" :style="{ background: row.color }"></view>
+                  <text class="aux-label">{{ row.label }}</text>
+                </view>
+                <text v-if="row.desc" class="aux-desc">{{ row.desc }}</text>
+              </view>
+              <view
+                class="cc-switch"
+                :class="{ on: row.get() }"
+                hover-class="cc-switch-hover"
+                role="button"
+                @click="row.set(!row.get())"
+              >
+                <view class="cc-knob" />
+              </view>
             </view>
-            <text class="aux-desc">{{ it.period }} 日移动平均线</text>
-          </view>
-          <view
-            class="cc-switch"
-            :class="{ on: maConfig[it.key] }"
-            hover-class="cc-switch-hover"
-            role="button"
-            @click="toggleMa(it.key)"
-          >
-            <view class="cc-knob" />
-          </view>
-        </view>
-
-        <view class="aux-sep" />
-
-        <!-- 分组二：副图指标 = 成交量面板 / MACD 面板（各自独立开关），及其内部辅助线：量均线 MA5/10/20、DIF/DEA -->
-        <text class="aux-group">副图指标</text>
-        <view class="aux-row">
-          <view class="aux-left">
-            <view class="aux-name-line">
-              <text class="aux-label">成交量</text>
-            </view>
-            <text class="aux-desc">成交量及量均线</text>
-          </view>
-          <view
-            class="cc-switch"
-            :class="{ on: panelConfig.volume }"
-            hover-class="cc-switch-hover"
-            role="button"
-            @click="panelConfig.volume = !panelConfig.volume"
-          >
-            <view class="cc-knob" />
-          </view>
-        </view>
-        <view class="aux-row aux-sub">
-          <view class="aux-left">
-            <view class="aux-name-line">
-              <view class="aux-color-dot" :style="{ background: '#f5a623' }"></view>
-              <text class="aux-label">量均线 MA5</text>
-            </view>
-          </view>
-          <view
-            class="cc-switch"
-            :class="{ on: panelConfig.volumeMa5 }"
-            hover-class="cc-switch-hover"
-            role="button"
-            @click="panelConfig.volumeMa5 = !panelConfig.volumeMa5"
-          >
-            <view class="cc-knob" />
-          </view>
-        </view>
-        <view class="aux-row aux-sub">
-          <view class="aux-left">
-            <view class="aux-name-line">
-              <view class="aux-color-dot" :style="{ background: '#1c9cf0' }"></view>
-              <text class="aux-label">量均线 MA10</text>
-            </view>
-          </view>
-          <view
-            class="cc-switch"
-            :class="{ on: panelConfig.volumeMa10 }"
-            hover-class="cc-switch-hover"
-            role="button"
-            @click="panelConfig.volumeMa10 = !panelConfig.volumeMa10"
-          >
-            <view class="cc-knob" />
-          </view>
-        </view>
-        <view class="aux-row aux-sub">
-          <view class="aux-left">
-            <view class="aux-name-line">
-              <view class="aux-color-dot" :style="{ background: '#9b59b6' }"></view>
-              <text class="aux-label">量均线 MA20</text>
-            </view>
-          </view>
-          <view
-            class="cc-switch"
-            :class="{ on: panelConfig.volumeMa20 }"
-            hover-class="cc-switch-hover"
-            role="button"
-            @click="panelConfig.volumeMa20 = !panelConfig.volumeMa20"
-          >
-            <view class="cc-knob" />
-          </view>
-        </view>
-        <view class="aux-row">
-          <view class="aux-left">
-            <view class="aux-name-line">
-              <text class="aux-label">MACD</text>
-            </view>
-            <text class="aux-desc">指数平滑异同移动平均</text>
-          </view>
-          <view
-            class="cc-switch"
-            :class="{ on: panelConfig.macd }"
-            hover-class="cc-switch-hover"
-            role="button"
-            @click="panelConfig.macd = !panelConfig.macd"
-          >
-            <view class="cc-knob" />
-          </view>
-        </view>
-        <view class="aux-row aux-sub">
-          <view class="aux-left">
-            <view class="aux-name-line">
-              <view class="aux-color-dot" :style="{ background: '#f5a623' }"></view>
-              <text class="aux-label">DIF</text>
-            </view>
-          </view>
-          <view
-            class="cc-switch"
-            :class="{ on: panelConfig.macdDif }"
-            hover-class="cc-switch-hover"
-            role="button"
-            @click="panelConfig.macdDif = !panelConfig.macdDif"
-          >
-            <view class="cc-knob" />
-          </view>
-        </view>
-        <view class="aux-row aux-sub">
-          <view class="aux-left">
-            <view class="aux-name-line">
-              <view class="aux-color-dot" :style="{ background: '#1c9cf0' }"></view>
-              <text class="aux-label">DEA</text>
-            </view>
-          </view>
-          <view
-            class="cc-switch"
-            :class="{ on: panelConfig.macdDea }"
-            hover-class="cc-switch-hover"
-            role="button"
-            @click="panelConfig.macdDea = !panelConfig.macdDea"
-          >
-            <view class="cc-knob" />
-          </view>
-        </view>
-
-        <view class="aux-sep" />
-
-        <!-- 分组三：智能标注 = 系统自动标注的压力 / 支撑 / 趋势 / 关键区间（各线独立开关） -->
-        <text class="aux-group">智能标注</text>
-        <view v-for="it in auxItems" :key="it.key" class="aux-row">
-          <view class="aux-left">
-            <view class="aux-name-line">
-              <view class="aux-color-dot" :style="{ background: it.color }"></view>
-              <text class="aux-label">{{ it.label }}</text>
-            </view>
-            <text class="aux-desc">{{ it.desc }}</text>
-          </view>
-          <view
-            class="cc-switch"
-            :class="{ on: auxConfig[it.key] }"
-            hover-class="cc-switch-hover"
-            role="button"
-            @click="toggleAux(it.key)"
-          >
-            <view class="cc-knob" />
           </view>
         </view>
       </view>
@@ -314,10 +222,8 @@ function toggleMa(key: keyof typeof maConfig) {
     :pre-close="preClose"
     :height="height ?? 460"
     :show-ma="true"
-    :show-macd="panelConfig.macd"
     :macd-dif="panelConfig.macdDif"
     :macd-dea="panelConfig.macdDea"
-    :show-vol="panelConfig.volume"
     :volume-ma5="panelConfig.volumeMa5"
     :volume-ma10="panelConfig.volumeMa10"
     :volume-ma20="panelConfig.volumeMa20"
@@ -338,10 +244,8 @@ function toggleMa(key: keyof typeof maConfig) {
     :klines="klines"
     :height="height ?? 460"
     :show-ma="true"
-    :show-macd="panelConfig.macd"
     :macd-dif="panelConfig.macdDif"
     :macd-dea="panelConfig.macdDea"
-    :show-vol="panelConfig.volume"
     :volume-ma5="panelConfig.volumeMa5"
     :volume-ma10="panelConfig.volumeMa10"
     :volume-ma20="panelConfig.volumeMa20"
@@ -522,15 +426,6 @@ function toggleMa(key: keyof typeof maConfig) {
   gap: 14rpx;
   min-height: 84rpx;
 }
-/* 副图指标分组内的「子开关」：相对父面板缩进，体现从属关系 */
-.aux-row.aux-sub {
-  padding-left: 22rpx;
-  min-height: 72rpx;
-}
-.aux-row.aux-sub .aux-label {
-  font-size: var(--font-xs);
-  color: var(--text-2);
-}
 .aux-left {
   display: flex;
   flex-direction: column;
@@ -545,19 +440,6 @@ function toggleMa(key: keyof typeof maConfig) {
   font-size: var(--font-xs);
   color: var(--text-2);
   line-height: 1.4;
-}
-.aux-sep {
-  height: 1rpx;
-  background: var(--border);
-  margin: 6rpx 0;
-}
-/* 设置面板内的分组标题（辅助线 / 智能标注），与全局分组标题风格一致 */
-.aux-group {
-  display: block;
-  margin: 12rpx 0 4rpx;
-  font-size: var(--font-xs);
-  color: var(--text-2);
-  letter-spacing: 0.5rpx;
 }
 /* 设置弹层内的开关缩小（仅作用于本面板，不影响全局 .cc-switch） */
 .aux-pop .cc-switch {
@@ -584,5 +466,35 @@ function toggleMa(key: keyof typeof maConfig) {
   width: 18rpx;
   height: 18rpx;
   border-radius: 50%;
+}
+/* 折叠式设置：一级分类点击展开二级线开关 */
+.aux-acc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 76rpx;
+  cursor: pointer;
+}
+.aux-acc-title {
+  font-size: var(--font-sm);
+  color: var(--text);
+}
+.aux-acc-arrow {
+  width: 14rpx;
+  height: 14rpx;
+  margin-right: 6rpx;
+  border-right: 2rpx solid var(--text-2);
+  border-bottom: 2rpx solid var(--text-2);
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+}
+.aux-acc-arrow.open {
+  transform: rotate(-135deg);
+}
+.aux-acc-body {
+  padding: 2rpx 0 10rpx;
+}
+.aux-acc-body .aux-row {
+  min-height: 80rpx;
 }
 </style>
