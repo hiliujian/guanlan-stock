@@ -327,16 +327,16 @@ function toggleMa(key: keyof typeof maConfig) {
   top: calc(100% + 8rpx);
   right: 0;
   z-index: 31;
-  width: 340rpx;
-  max-width: 64vw;
-  max-height: 60vh;
+  width: 384rpx;
+  max-width: 72vw;
+  max-height: 66vh;
   overflow-y: auto;
-  padding: 4rpx 18rpx 12rpx;
+  padding: 6rpx 20rpx 14rpx;
   background: var(--tabbar-bg);
   backdrop-filter: blur(20rpx);
   -webkit-backdrop-filter: blur(20rpx);
   border: 1rpx solid var(--border);
-  border-radius: 18rpx;
+  border-radius: 20rpx;
   box-shadow: var(--shadow-sheet);
 }
 .aux-pop-head {
@@ -344,9 +344,9 @@ function toggleMa(key: keyof typeof maConfig) {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 62rpx;
-  margin: 0 -18rpx 4rpx;
-  padding: 0 18rpx;
+  height: 66rpx;
+  margin: 0 -20rpx 4rpx;
+  padding: 0 20rpx;
   border-bottom: 1rpx solid var(--border);
 }
 .aux-pop-title {
@@ -358,8 +358,8 @@ function toggleMa(key: keyof typeof maConfig) {
   right: 4rpx;
   top: 50%;
   transform: translateY(-50%);
-  width: 48rpx;
-  height: 48rpx;
+  width: 52rpx;
+  height: 52rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -376,7 +376,7 @@ function toggleMa(key: keyof typeof maConfig) {
   align-items: center;
   justify-content: space-between;
   gap: 14rpx;
-  min-height: 76rpx;
+  min-height: 84rpx;
 }
 .aux-left {
   display: flex;
