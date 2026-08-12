@@ -81,6 +81,8 @@ function toggleAux(key: AuxKey) {
 }
 // 辅助线（均线）开关：MA5/MA10/MA20/MA60 各自独立控制
 const maItems = MA_PERIODS;
+// 与图表 MA 线颜色一致（见 StockChart INDICATOR_LINE_COLORS 顺序：MA5橙/MA10蓝/MA20紫/MA60绿）
+const MA_COLORS = ["#f5a623", "#1c9cf0", "#9b59b6", "#2ecc71"];
 function toggleMa(key: keyof typeof maConfig) {
   maConfig[key] = !maConfig[key];
 }
@@ -129,9 +131,12 @@ function toggleMa(key: keyof typeof maConfig) {
 
         <!-- 分组一：辅助线 = 均线 MA（逐周期独立开关） -->
         <text class="aux-group">辅助线</text>
-        <view v-for="it in maItems" :key="it.key" class="aux-row">
+        <view v-for="(it, mi) in maItems" :key="it.key" class="aux-row">
           <view class="aux-left">
-            <text class="aux-label">{{ it.label }}</text>
+            <view class="aux-name-line">
+              <view class="aux-color-dot" :style="{ background: MA_COLORS[mi] }"></view>
+              <text class="aux-label">{{ it.label }}</text>
+            </view>
             <text class="aux-desc">{{ it.period }} 日移动平均线</text>
           </view>
           <view
