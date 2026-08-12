@@ -5,13 +5,15 @@
 // 周期切换轴与行情图「合为同一张卡片」：分段控件直接渲染在本卡片顶部、图表上方，
 // 切换周期时分段控件保持常驻（仅图表区转圈），不抢走用户对周期的控制权。
 // 周期条右侧工具簇：画板(pen，淡入/淡出看盘画线工具栏) + 设置(gear，点击在图标下弹出开关列表)。
-// 设置弹层含两组：① 辅助线 = 均线 MA（MA5/MA10/MA20/MA60，逐周期独立开关）
-//        ② 智能标注 = 系统自动标注的压力/支撑/趋势/关键区间
+// 设置弹层含三组：① 辅助线 = 均线 MA（MA5/MA10/MA20/MA60/MA250，逐周期独立开关）
+//        ② 副图指标 = 成交量面板 / MACD 面板（各自独立开关，持久化于 chartPanel）
+//        ③ 智能标注 = 系统自动标注的压力/支撑/趋势/关键区间
 import StockChart from "./StockChart.vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import { PERIODS, PERIOD_ORDER, type PeriodKey } from "@/utils/period";
 import { auxConfig } from "@/store/chartAux";
 import { maConfig, MA_PERIODS } from "@/store/chartMa";
+import { panelConfig } from "@/store/chartPanel";
 import { computed, ref } from "vue";
 
 const props = defineProps<{
@@ -53,8 +55,9 @@ function pick(p: PeriodKey) {
 }
 
 // ---- 图表设置抽屉（齿轮点开）----
-// 含两组：① 辅助线 = 均线 MA（MA5/MA10/MA20/MA60，逐周期独立开关）
-//        ② 智能标注 = 系统自动标注的压力/支撑/趋势/关键区间（各线独立开关，无总开关）
+// 含三组：① 辅助线 = 均线 MA（MA5/MA10/MA20/MA60/MA250，逐周期独立开关）
+//        ② 副图指标 = 成交量面板 / MACD 面板（各自独立开关，无总开关）
+//        ③ 智能标注 = 系统自动标注的压力/支撑/趋势/关键区间（各线独立开关，无总开关）
 const auxOpen = ref(false);
 // 看盘画线工具栏开关：画板图标控制，淡入/淡出 StockChart 的 kc-tools
 const toolsOpen = ref(false);
@@ -152,7 +155,46 @@ function toggleMa(key: keyof typeof maConfig) {
 
         <view class="aux-sep" />
 
-        <!-- 分组二：智能标注 = 系统自动标注的压力 / 支撑 / 趋势 / 关键区间（各线独立开关） -->
+        <!-- 分组二：副图指标 = 成交量面板 / MACD 面板（各自独立开关） -->
+        <text class="aux-group">副图指标</text>
+        <view class="aux-row">
+          <view class="aux-left">
+            <view class="aux-name-line">
+              <text class="aux-label">成交量</text>
+            </view>
+            <text class="aux-desc">K线=成交量 / 分时=分时量 + 量MA</text>
+          </view>
+          <view
+            class="cc-switch"
+            :class="{ on: panelConfig.volume }"
+            hover-class="cc-switch-hover"
+            role="button"
+            @click="panelConfig.volume = !panelConfig.volume"
+          >
+            <view class="cc-knob" />
+          </view>
+        </view>
+        <view class="aux-row">
+          <view class="aux-left">
+            <view class="aux-name-line">
+              <text class="aux-label">MACD</text>
+            </view>
+            <text class="aux-desc">指数平滑异同移动平均</text>
+          </view>
+          <view
+            class="cc-switch"
+            :class="{ on: panelConfig.macd }"
+            hover-class="cc-switch-hover"
+            role="button"
+            @click="panelConfig.macd = !panelConfig.macd"
+          >
+            <view class="cc-knob" />
+          </view>
+        </view>
+
+        <view class="aux-sep" />
+
+        <!-- 分组三：智能标注 = 系统自动标注的压力 / 支撑 / 趋势 / 关键区间（各线独立开关） -->
         <text class="aux-group">智能标注</text>
         <view v-for="it in auxItems" :key="it.key" class="aux-row">
           <view class="aux-left">
@@ -187,7 +229,8 @@ function toggleMa(key: keyof typeof maConfig) {
     :pre-close="preClose"
     :height="height ?? 460"
     :show-ma="true"
-    :show-macd="true"
+    :show-macd="panelConfig.macd"
+    :show-vol="panelConfig.volume"
     :live-price="livePrice"
     :live-pre-close="livePreClose"
     :code="code"
@@ -205,7 +248,8 @@ function toggleMa(key: keyof typeof maConfig) {
     :klines="klines"
     :height="height ?? 460"
     :show-ma="true"
-    :show-macd="true"
+    :show-macd="panelConfig.macd"
+    :show-vol="panelConfig.volume"
     :code="code"
     :show-tools="showTools"
     :auto-draw="showTools"
