@@ -413,4 +413,18 @@ function toggleMa(key: keyof typeof maConfig) {
   color: var(--text-2);
   letter-spacing: 0.5rpx;
 }
+/* 设置弹层内的开关缩小（仅作用于本面板，不影响全局 .cc-switch） */
+.aux-pop .cc-switch {
+  width: 72rpx;
+  height: 40rpx;
+}
+.aux-pop .cc-knob {
+  top: 3rpx;
+  left: 3rpx;
+  width: 32rpx;
+  height: 32rpx;
+}
+.aux-pop .cc-switch.on .cc-knob {
+  transform: translateX(34rpx);
+}
 </style>
