@@ -54,7 +54,7 @@ function pick(p: PeriodKey) {
 
 // ---- 图表设置抽屉（齿轮点开）----
 // 含两组：① 辅助线 = 均线 MA（MA5/MA10/MA20/MA60，逐周期独立开关）
-//        ② 智能标注 = 系统自动标注的压力/支撑/趋势/关键区间
+//        ② 智能标注 = 系统自动标注的压力/支撑/趋势/关键区间（各线独立开关，无总开关）
 const auxOpen = ref(false);
 // 看盘画线工具栏开关：画板图标控制，淡入/淡出 StockChart 的 kc-tools
 const toolsOpen = ref(false);
@@ -70,11 +70,11 @@ function toggleAuxOpen() {
   if (next) toolsOpen.value = false;
 }
 type AuxKey = "pressure" | "support" | "trend" | "zone";
-const auxItems: { key: AuxKey; label: string; desc: string }[] = [
-  { key: "pressure", label: "压力线", desc: "红色虚线：上方阻力位" },
-  { key: "support", label: "支撑线", desc: "绿色虚线：下方支撑位" },
-  { key: "trend", label: "趋势线", desc: "蓝色箭头：上行 / 下行方向" },
-  { key: "zone", label: "关键区间", desc: "阻力与支撑之间的阴影带" },
+const auxItems: { key: AuxKey; label: string; desc: string; color: string }[] = [
+  { key: "pressure", label: "压力线", desc: "红色虚线：上方阻力位", color: "#ef232a" },
+  { key: "support", label: "支撑线", desc: "绿色虚线：下方支撑位", color: "#09b07a" },
+  { key: "trend", label: "趋势线", desc: "蓝色箭头：上行 / 下行方向", color: "#2f74ff" },
+  { key: "zone", label: "关键区间", desc: "阻力与支撑之间的阴影带", color: "rgba(108,122,145,0.55)" },
 ];
 function toggleAux(key: AuxKey) {
   auxConfig[key] = !auxConfig[key];
@@ -147,25 +147,11 @@ function toggleMa(key: keyof typeof maConfig) {
 
         <view class="aux-sep" />
 
-        <!-- 分组二：智能标注 = 系统自动标注的压力 / 支撑 / 趋势 / 关键区间 -->
+        <!-- 分组二：智能标注 = 系统自动标注的压力 / 支撑 / 趋势 / 关键区间（各线独立开关） -->
         <text class="aux-group">智能标注</text>
-        <view class="aux-row">
-          <view class="aux-left">
-            <text class="aux-label">智能标注</text>
-            <text class="aux-desc">系统自动标注的压力 / 支撑 / 趋势与关键区间</text>
-          </view>
-          <view
-            class="cc-switch"
-            :class="{ on: auxConfig.enabled }"
-            hover-class="cc-switch-hover"
-            role="button"
-            @click="auxConfig.enabled = !auxConfig.enabled"
-          >
-            <view class="cc-knob" />
-          </view>
-        </view>
         <view v-for="it in auxItems" :key="it.key" class="aux-row">
           <view class="aux-left">
+            <view class="aux-color-dot" :style="{ background: it.color }"></view>
             <text class="aux-label">{{ it.label }}</text>
             <text class="aux-desc">{{ it.desc }}</text>
           </view>
@@ -426,5 +412,13 @@ function toggleMa(key: keyof typeof maConfig) {
 }
 .aux-pop .cc-switch.on .cc-knob {
   transform: translateX(34rpx);
+}
+/* 智能标注行内颜色圆点（与图表线颜色一致，让用户一眼对应） */
+.aux-color-dot {
+  flex: none;
+  width: 18rpx;
+  height: 18rpx;
+  border-radius: 50%;
+  margin-right: 8rpx;
 }
 </style>

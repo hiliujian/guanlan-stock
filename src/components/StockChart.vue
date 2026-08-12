@@ -37,13 +37,6 @@
         <view class="kct-btn kct-clear" role="button" @click="clearUserOverlays">清空</view>
       </view>
     </Transition>
-    <!-- 智能标注颜色图例（小白友好）：仅显示当前已开启的辅助线种类，开关关闭即隐藏对应项 -->
-    <view v-if="showTools && autoDraw && auxConfig?.enabled" class="kc-legend">
-      <text v-if="auxConfig.pressure" class="kcl-it"><text class="kcl-dot p"></text>压力</text>
-      <text v-if="auxConfig.support" class="kcl-it"><text class="kcl-dot s"></text>支撑</text>
-      <text v-if="auxConfig.trend" class="kcl-it"><text class="kcl-dot t"></text>趋势</text>
-      <text v-if="auxConfig.zone" class="kcl-it"><text class="kcl-dot z"></text>关键区间</text>
-    </view>
     <!-- 智能标注悬浮提示：跟随十字光标显示每条线的类型/价位/区间/触及次数/方向 -->
     <view v-if="tip.show" class="kc-tip" :style="tipStyle">
       <view v-for="(it, i) in tip.items" :key="i" class="kc-tip-row">
@@ -889,8 +882,9 @@ function drawAutoLevels() {
   autoIds.length = 0;
   autoLevels.length = 0;
   const cfg = props.auxConfig;
-  // 总开关关闭（或根本未启用智能标注）→ 不绘制任何辅助线
-  if (!props.autoDraw || !chart || !cfg || !cfg.enabled) return;
+  // 无任何智能标注线开启 → 不绘制（各线独立开关，无总开关）
+  if (!props.autoDraw || !chart || !cfg) return;
+  if (!(cfg.pressure || cfg.support || cfg.trend || cfg.zone)) return;
   const levels = computeAutoLevels();
   // 过滤：只保留「压力线整体在支撑线之上」的干净层级，避免红绿线倒置、区间失效
   let pres = levels.filter((l) => l.kind === "pressure" && typeof l.price === "number").map((l) => l.price as number);
@@ -1545,46 +1539,6 @@ onBeforeUnmount(() => {
 }
 .kct-clear:active {
   background: rgba(229, 72, 77, 0.12);
-}
-/* 智能标注颜色图例：浮于图表左下角，小白一眼看懂颜色含义 */
-.kc-legend {
-  position: absolute;
-  left: 12rpx;
-  bottom: 12rpx;
-  z-index: 5;
-  display: flex;
-  gap: 16rpx;
-  padding: 6rpx 14rpx;
-  background: var(--card);
-  border: 1rpx solid var(--border);
-  border-radius: 999rpx;
-  box-shadow: var(--shadow-1);
-  font-size: var(--font-xs);
-  color: var(--text-2);
-  pointer-events: none;
-}
-.kcl-it {
-  display: inline-flex;
-  align-items: center;
-  gap: 5rpx;
-}
-.kcl-dot {
-  width: 14rpx;
-  height: 14rpx;
-  border-radius: 50%;
-  display: inline-block;
-}
-.kcl-dot.s {
-  background: #09b07a;
-}
-.kcl-dot.p {
-  background: #ef232a;
-}
-.kcl-dot.t {
-  background: #2f74ff;
-}
-.kcl-dot.z {
-  background: rgba(108, 122, 145, 0.55);
 }
 /* 智能标注悬浮提示框：跟随十字光标，玻璃卡片，不拦截指针 */
 .kc-tip {
