@@ -1168,13 +1168,20 @@ function ensureTrendOverlay() {
         const overlay = params.overlay as any;
         if (!coordinates || coordinates.length < 1) return [];
         const y = coordinates[0].y;
-        // 文字颜色取线条颜色（支撑绿 / 压力红），与原生价格轴标签风格一致：无背景、无圆角
+        // 与原生价格轴标签(20.01 等)字体完全一致：字号/字体/字重沿用 overlay.text 默认 12 / Helvetica Neue / normal，
+        // 仅颜色取线条色（支撑绿 / 压力红）；必须显式关掉默认蓝底/蓝边/内边距，否则仍是「色块」而非纯文字。
         const col = overlay?.styles?.line?.color || "#888";
         const text = overlay?.extendData?.text || "";
         return [{
           type: "text",
           attrs: { x: bounding.width, y, text, align: "right", baseline: "middle" },
-          styles: { color: col, size: 11 },
+          styles: {
+            color: col,
+            backgroundColor: "transparent",
+            borderColor: "transparent",
+            borderSize: 0,
+            paddingLeft: 0, paddingRight: 0, paddingTop: 0, paddingBottom: 0,
+          },
           ignoreEvent: true,
         }];
       },
