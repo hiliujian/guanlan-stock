@@ -361,8 +361,7 @@ const gearOn = computed(
   border-bottom: 1rpx solid var(--border);
 }
 .aux-pop-title {
-  font-size: var(--font-lg);
-  font-weight: 600;
+  font-size: var(--font-md);
   color: var(--text);
 }
 .aux-pop-close {
@@ -397,7 +396,7 @@ const gearOn = computed(
   min-width: 0;
 }
 .aux-label {
-  font-size: var(--font-md);
+  font-size: var(--font-sm);
   color: var(--text);
 }
 .aux-desc {
@@ -414,8 +413,7 @@ const gearOn = computed(
 .aux-group {
   display: block;
   margin: 12rpx 0 4rpx;
-  font-size: var(--font-sm);
-  font-weight: 600;
+  font-size: var(--font-xs);
   color: var(--text-2);
   letter-spacing: 0.5rpx;
 }
