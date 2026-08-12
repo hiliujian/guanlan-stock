@@ -1098,11 +1098,10 @@ function drawAutoLevels() {
         } as never);
       } else if (typeof lv.price === "number") {
         const t0 = dataList[0].timestamp;
-        const bg = lv.kind === "support" ? DOWN : UP;
         const text = `${lv.kind === "support" ? "支" : "压"} ${lv.price.toFixed(2)}`;
         chart.createOverlay({
           id, name: "autoLevelLine", points: [{ timestamp: t0, value: lv.price }], lock: true,
-          extendData: { text, bg },
+          extendData: { text },
           styles: { line: { color: lv.color, style: "dashed", size: 1.2, dashedValue: [4, 3] } },
         } as never);
       }
@@ -1142,8 +1141,8 @@ function ensureTrendOverlay() {
         ];
       },
     } as never);
-    // 自动支撑/压力线：图内画虚线 + 右侧价格轴(y 轴)上画「支/压 + 价位」色块。
-    // 价位显示在对应的价格轴上（而非图内浮动块），与用户圈出的 y 轴 canvas 对齐；实色底白字、紧凑不溢出 57px 轴宽。
+    // 自动支撑/压力线：图内画虚线 + 右侧价格轴(y 轴)上画「支/压 + 价位」文字标签。
+    // 标签样式与原生价格轴数字（如 36.00 / 33.58）完全一致：纯文字、无背景、同字号同对齐。
     registerOverlay({
       name: "autoLevelLine",
       needDefaultPointFigure: false,
@@ -1169,16 +1168,13 @@ function ensureTrendOverlay() {
         const overlay = params.overlay as any;
         if (!coordinates || coordinates.length < 1) return [];
         const y = coordinates[0].y;
-        const bg = overlay?.extendData?.bg || "#888";
+        // 文字颜色取线条颜色（支撑绿 / 压力红），与原生价格轴标签风格一致：无背景、无圆角
+        const col = overlay?.styles?.line?.color || "#888";
         const text = overlay?.extendData?.text || "";
         return [{
           type: "text",
           attrs: { x: bounding.width, y, text, align: "right", baseline: "middle" },
-          styles: {
-            color: "#ffffff", size: 11, weight: "500",
-            backgroundColor: bg, paddingLeft: 6, paddingRight: 6, paddingTop: 3, paddingBottom: 3,
-            borderColor: bg, borderSize: 1, borderRadius: 3,
-          },
+          styles: { color: col, size: 11 },
           ignoreEvent: true,
         }];
       },
