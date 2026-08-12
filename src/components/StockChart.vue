@@ -253,6 +253,7 @@ const MA_DEFS: { key: string; period: number }[] = [
   { key: "ma10", period: 10 },
   { key: "ma20", period: 20 },
   { key: "ma60", period: 60 },
+  { key: "ma250", period: 250 },
 ];
 let maRegistered = false;
 function ensureMaIndicators() {
@@ -1355,7 +1356,7 @@ watch(
   () => refreshData()
 );
 watch(
-  () => [props.mode, props.showMA, props.showMacd, props.maConfig?.ma5, props.maConfig?.ma10, props.maConfig?.ma20, props.maConfig?.ma60],
+  () => [props.mode, props.showMA, props.showMacd, props.maConfig?.ma5, props.maConfig?.ma10, props.maConfig?.ma20, props.maConfig?.ma60, props.maConfig?.ma250],
   () => buildChart()
 );
 watch(

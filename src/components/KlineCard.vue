@@ -82,7 +82,7 @@ function toggleAux(key: AuxKey) {
 // 辅助线（均线）开关：MA5/MA10/MA20/MA60 各自独立控制
 const maItems = MA_PERIODS;
 // 与图表 MA 线颜色一致（见 StockChart INDICATOR_LINE_COLORS 顺序：MA5橙/MA10蓝/MA20紫/MA60绿）
-const MA_COLORS = ["#f5a623", "#1c9cf0", "#9b59b6", "#2ecc71"];
+const MA_COLORS = ["#f5a623", "#1c9cf0", "#9b59b6", "#2ecc71", "#e11d74"];
 function toggleMa(key: keyof typeof maConfig) {
   maConfig[key] = !maConfig[key];
 }

@@ -18,6 +18,8 @@ export interface ChartMaConfig {
   ma20: boolean;
   /** MA60（季线） */
   ma60: boolean;
+  /** MA250（年线） */
+  ma250: boolean;
 }
 
 /** 可调周期列表（顺序即图例/开关排列顺序） */
@@ -26,12 +28,13 @@ export const MA_PERIODS: { key: keyof ChartMaConfig; period: number; label: stri
   { key: "ma10", period: 10, label: "MA10" },
   { key: "ma20", period: 20, label: "MA20" },
   { key: "ma60", period: 60, label: "MA60" },
+  { key: "ma250", period: 250, label: "MA250" },
 ];
 
 const STORAGE_KEY = "gl_chart_ma";
 
 function defaultConfig(): ChartMaConfig {
-  return { ma5: true, ma10: true, ma20: true, ma60: true };
+  return { ma5: true, ma10: true, ma20: true, ma60: true, ma250: true };
 }
 
 // 读取本地已存偏好（容错：解析失败 / 无数据 → 回退默认全开）
