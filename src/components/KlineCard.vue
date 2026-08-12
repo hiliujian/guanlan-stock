@@ -6,7 +6,7 @@
 // 切换周期时分段控件保持常驻（仅图表区转圈），不抢走用户对周期的控制权。
 // 周期条右侧工具簇：画板(pen，淡入/淡出看盘画线工具栏) + 设置(gear，点击在图标下弹出开关列表)。
 // 设置弹层含三组：① 辅助线 = 均线 MA（MA5/MA10/MA20/MA60/MA250，逐周期独立开关）
-//        ② 副图指标 = 成交量面板 / MACD 面板（各自独立开关，持久化于 chartPanel）
+//        ② 副图指标 = 成交量面板 / MACD 面板（各自独立开关），及其内部辅助线：量均线 MA5/10/20、DIF/DEA（持久化于 chartPanel）
 //        ③ 智能标注 = 系统自动标注的压力/支撑/趋势/关键区间
 import StockChart from "./StockChart.vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
@@ -56,7 +56,7 @@ function pick(p: PeriodKey) {
 
 // ---- 图表设置抽屉（齿轮点开）----
 // 含三组：① 辅助线 = 均线 MA（MA5/MA10/MA20/MA60/MA250，逐周期独立开关）
-//        ② 副图指标 = 成交量面板 / MACD 面板（各自独立开关，无总开关）
+//        ② 副图指标 = 成交量面板 / MACD 面板（各自独立开关，无总开关），及其内部辅助线：量均线 MA5/10/20、DIF/DEA
 //        ③ 智能标注 = 系统自动标注的压力/支撑/趋势/关键区间（各线独立开关，无总开关）
 const auxOpen = ref(false);
 // 看盘画线工具栏开关：画板图标控制，淡入/淡出 StockChart 的 kc-tools
@@ -155,7 +155,7 @@ function toggleMa(key: keyof typeof maConfig) {
 
         <view class="aux-sep" />
 
-        <!-- 分组二：副图指标 = 成交量面板 / MACD 面板（各自独立开关） -->
+        <!-- 分组二：副图指标 = 成交量面板 / MACD 面板（各自独立开关），及其内部辅助线：量均线 MA5/10/20、DIF/DEA -->
         <text class="aux-group">副图指标</text>
         <view class="aux-row">
           <view class="aux-left">
@@ -174,6 +174,23 @@ function toggleMa(key: keyof typeof maConfig) {
             <view class="cc-knob" />
           </view>
         </view>
+        <view class="aux-row aux-sub">
+          <view class="aux-left">
+            <view class="aux-name-line">
+              <text class="aux-label">量均线</text>
+            </view>
+            <text class="aux-desc">成交量副图内的 MA5/10/20（关闭仅留量柱）</text>
+          </view>
+          <view
+            class="cc-switch"
+            :class="{ on: panelConfig.volumeMa }"
+            hover-class="cc-switch-hover"
+            role="button"
+            @click="panelConfig.volumeMa = !panelConfig.volumeMa"
+          >
+            <view class="cc-knob" />
+          </view>
+        </view>
         <view class="aux-row">
           <view class="aux-left">
             <view class="aux-name-line">
@@ -187,6 +204,23 @@ function toggleMa(key: keyof typeof maConfig) {
             hover-class="cc-switch-hover"
             role="button"
             @click="panelConfig.macd = !panelConfig.macd"
+          >
+            <view class="cc-knob" />
+          </view>
+        </view>
+        <view class="aux-row aux-sub">
+          <view class="aux-left">
+            <view class="aux-name-line">
+              <text class="aux-label">DIF/DEA</text>
+            </view>
+            <text class="aux-desc">MACD 副图内的 DIF 与 DEA 线（关闭仅留 MACD 柱）</text>
+          </view>
+          <view
+            class="cc-switch"
+            :class="{ on: panelConfig.macdLines }"
+            hover-class="cc-switch-hover"
+            role="button"
+            @click="panelConfig.macdLines = !panelConfig.macdLines"
           >
             <view class="cc-knob" />
           </view>
@@ -230,7 +264,9 @@ function toggleMa(key: keyof typeof maConfig) {
     :height="height ?? 460"
     :show-ma="true"
     :show-macd="panelConfig.macd"
+    :macd-lines="panelConfig.macdLines"
     :show-vol="panelConfig.volume"
+    :volume-ma="panelConfig.volumeMa"
     :live-price="livePrice"
     :live-pre-close="livePreClose"
     :code="code"
@@ -249,7 +285,9 @@ function toggleMa(key: keyof typeof maConfig) {
     :height="height ?? 460"
     :show-ma="true"
     :show-macd="panelConfig.macd"
+    :macd-lines="panelConfig.macdLines"
     :show-vol="panelConfig.volume"
+    :volume-ma="panelConfig.volumeMa"
     :code="code"
     :show-tools="showTools"
     :auto-draw="showTools"
@@ -426,6 +464,15 @@ function toggleMa(key: keyof typeof maConfig) {
   justify-content: space-between;
   gap: 14rpx;
   min-height: 84rpx;
+}
+/* 副图指标分组内的「子开关」：相对父面板缩进，体现从属关系 */
+.aux-row.aux-sub {
+  padding-left: 22rpx;
+  min-height: 72rpx;
+}
+.aux-row.aux-sub .aux-label {
+  font-size: var(--font-xs);
+  color: var(--text-2);
 }
 .aux-left {
   display: flex;

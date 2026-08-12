@@ -12,14 +12,18 @@ import { reactive, watch } from "vue";
 export interface ChartPanelConfig {
   /** 成交量面板（K线=成交量 / 分时=分时量 + 量MA5/10/20） */
   volume: boolean;
+  /** 成交量面板内部的量均线（MA5/10/20）是否绘制；关闭后仅保留量柱 */
+  volumeMa: boolean;
   /** MACD 面板 */
   macd: boolean;
+  /** MACD 面板内部的 DIF/DEA 线是否绘制；关闭后仅保留 MACD 柱 */
+  macdLines: boolean;
 }
 
 const STORAGE_KEY = "gl_chart_panel";
 
 function defaultConfig(): ChartPanelConfig {
-  return { volume: true, macd: true };
+  return { volume: true, volumeMa: true, macd: true, macdLines: true };
 }
 
 // 读取本地已存偏好（容错：解析失败 / 无数据 / 脏数据 → 回退默认全开）
