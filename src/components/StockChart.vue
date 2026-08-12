@@ -800,12 +800,13 @@ function hexA(hex: string, a: number): string {
   const b = parseInt(h.slice(4, 6), 16);
   return `rgba(${r},${g},${b},${a})`;
 }
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, v));
-}
+// 近端观测窗口固定 30 根：严格按《支撑/压力/趋势线量化绘制规则表》，
+// 所有画线点位（摆动点 / 聚类 / 趋势点）仅限最近 30 根 K 线，禁止用窗口外远期历史高低点。
+const PROX_WINDOW = 30;
 
-// 摆动点（pivot）：以 win 根为窗口取严格局部极值；窗口天然把相邻极值隔开 ≥win 根，无需额外 gap 过滤
-type Swing = { idx: number; t: number; value: number };
+// 摆动点（pivot）：以 win 根为半径取严格局部极值；窗口天然把相邻极值隔开 ≥win 根，无需额外 gap 过滤。
+// 高点 value=high(上影最顶端)、低点 value=low(下影最底端)——水平线严格对齐影线极值，永不落在实体内部。
+type Swing = { idx: number; t: number; value: number; vol: number };
 function findSwings(series: any[], win: number): { highs: Swing[]; lows: Swing[] } {
   const highs: Swing[] = [];
   const lows: Swing[] = [];
@@ -818,42 +819,25 @@ function findSwings(series: any[], win: number): { highs: Swing[]; lows: Swing[]
       if (series[j].high >= series[i].high) isHigh = false;
       if (series[j].low <= series[i].low) isLow = false;
     }
-    if (isHigh) highs.push({ idx: i, t: series[i].timestamp, value: series[i].high });
-    if (isLow) lows.push({ idx: i, t: series[i].timestamp, value: series[i].low });
+    if (isHigh) highs.push({ idx: i, t: series[i].timestamp, value: series[i].high, vol: series[i].volume || 0 });
+    if (isLow) lows.push({ idx: i, t: series[i].timestamp, value: series[i].low, vol: series[i].volume || 0 });
   }
   return { highs, lows };
 }
 
-// 判定主趋势：用「窗口内低点位移 + 高点位移」的净方向决定，避免末段噪声导致 up&&down 冲突而整条不画。
-// 净位移显著为正→上升趋势（沿低点连支撑线）；显著为负→下降趋势（沿高点连阻力线）；接近 0（真横盘）→不下结论。
-function detectTrend(highs: Swing[], lows: Swing[]): { dir: "up" | "down"; points: { timestamp: number; value: number }[] } | null {
-  const lo = lows.length >= 2 ? [lows[0], lows[lows.length - 1]] : null;
-  const hi = highs.length >= 2 ? [highs[0], highs[highs.length - 1]] : null;
-  if (!lo && !hi) return null;
-  const loDelta = lo ? lo[1].value - lo[0].value : 0;
-  const hiDelta = hi ? hi[1].value - hi[0].value : 0;
-  const net = loDelta + hiDelta;
-  const ref = (lo ? lo[0].value : 0) || (hi ? hi[0].value : 1) || 1;
-  const thr = ref * 0.01; // 窗口内净位移 >1% 才算有趋势，过滤无方向横盘
-  const upPts = (lo || hi) as { t: number; value: number }[];
-  const downPts = (hi || lo) as { t: number; value: number }[];
-  if (net > thr) return { dir: "up", points: [{ timestamp: upPts[0].t, value: upPts[0].value }, { timestamp: upPts[1].t, value: upPts[1].value }] };
-  if (net < -thr) return { dir: "down", points: [{ timestamp: downPts[0].t, value: downPts[0].value }, { timestamp: downPts[1].t, value: downPts[1].value }] };
-  return null;
+// 近 3 个值依次严格抬高 / 降低（主升=近3低抬高+近3高抬高；主跌=近3高降低+近3低降低）
+function rising3(vals: number[]): boolean {
+  return vals.length >= 3 && vals[vals.length - 3] < vals[vals.length - 2] && vals[vals.length - 2] < vals[vals.length - 1];
+}
+function falling3(vals: number[]): boolean {
+  return vals.length >= 3 && vals[vals.length - 3] > vals[vals.length - 2] && vals[vals.length - 2] > vals[vals.length - 1];
 }
 
-// 灵敏度→算法参数映射：灵敏度越高→聚类容差越小（更密更多线）、窗口越小、最多线数越多
-// （autoSensitivity 由调用方控制，当前 KlineCard 未传入，默认取中档 5）
+// 灵敏度→算法参数：win=摆动点半径；tolPct=价格聚类容差（容差越小聚类越细、线越多）
 function sensitivityParams() {
-  const s = 5;
-  const win = props.mode === "intraday" ? 3 : 5;
-  const tolPct = 0.003 + (10 - s) * 0.0009; // s=10→0.3%  s=1→≈1.1%
-  const maxLevels = clamp(Math.round(s / 2.5), 1, 4); // s=5→2  s=10→4  s=1→1
-  return { s, win, tolPct, maxLevels };
-}
-// 扫描窗口（近 N 根）：日K=120、分时=240（autoPeriod 由调用方控制，当前未传入，统一取默认）
-function scanPeriod(): number {
-  return Math.min(props.mode === "intraday" ? 240 : 120, dataList.length);
+  const win = props.mode === "intraday" ? 3 : 4;
+  const tolPct = props.mode === "intraday" ? 0.004 : 0.006;
+  return { win, tolPct };
 }
 
 interface AutoLevel {
@@ -863,252 +847,146 @@ interface AutoLevel {
   color: string;
   label: string;
   touches?: number;
-  src?: string; // 价位来源说明（如「大阳线实体下沿」），用于悬浮提示
+  src?: string; // 价位来源说明（如「近端摆动低点密集成交」），用于悬浮提示
   dir?: "up" | "down";
 }
 // ── 波段类型（5 类）──
 type BandType = "uptrend" | "downtrend" | "pullback" | "bounce" | "box";
 
-// 判定当前所处波段类型（5 类）。输入 highs/lows 必须来自「近端观测窗口」（即 prox），
-// 高低点结构只允许取近端 N/4 窗口内的最近 2 组摆动点，忽略超远期高低点。
-//
-// 判定优先级（严格按规则）：先识别是否「下跌结构 / 上涨结构」，在结构内优先辨别
-// 反弹 / 回档（否则才归为纯主跌 / 主升），最后箱体 / 方向兜底。
-// 关键：当近端呈现 hh+hl 抬升结构时，若价格已从近端高位回落且未跌破近端前低，
-//      应判为「回档 pullback」而非「主升 uptrend」（否则会漏掉回调前的近端成本位支撑）。
-function detectBandType(
-  highs: Swing[], lows: Swing[], series: any[], current: number,
-): BandType {
-  const has2H = highs.length >= 2;
-  const has2L = lows.length >= 2;
-  // 摆动点不足时，先用价格行为辅助识别「冲高回档」形态（避免把回档错判为主升）
-  if (!has2H && !has2L) {
-    const proxHigh = Math.max(...series.map((d) => d.high));
-    const proxLow = Math.min(...series.map((d) => d.low));
-    const mid = (proxHigh + proxLow) / 2;
-    // 从近端高点回落 >4% 且未跌回近端低点 → 回档（典型冲高回落形态）
-    const pulledFromHigh = proxHigh > 0 && current < proxHigh * 0.96;
-    const aboveLow = proxLow > 0 && current > proxLow * 1.02;
-    if (pulledFromHigh && aboveLow && mid > 0 && (proxHigh - proxLow) / mid > 0.06) return "pullback";
-    // 从近端低点反弹 >4% 且未突破近端高点 → 反弹
-    const bouncedFromLow = proxLow > 0 && current > proxLow * 1.04;
-    const belowHigh = proxHigh > 0 && current < proxHigh * 0.98;
-    if (bouncedFromLow && belowHigh && mid > 0 && (proxHigh - proxLow) / mid > 0.06) return "bounce";
-    return current >= (series[0]?.close ?? 0) ? "uptrend" : "downtrend";
+// 价格聚类 + 成交量加权打分：把相近摆动点聚成一簇，簇打分 = 成交量总和 ×(1+触碰次数加权)。
+// isLow=true 时簇代表价取成员最低下影(支撑底线)；false 取成员最高上影(压力顶线)。
+// minMembers 过滤孤立单根毛刺极值（箱体要求至少 2 次触碰才参与打分）。
+type Cluster = { members: Swing[]; vol: number; center: number; extVal: number; touches: number; score: number };
+function clusterSwings(swings: Swing[], tolPct: number, isLow: boolean, minMembers: number): Cluster[] {
+  const sorted = [...swings].sort((a, b) => a.value - b.value);
+  const clusters: Cluster[] = [];
+  for (const s of sorted) {
+    let placed = false;
+    for (const c of clusters) {
+      if (Math.abs(s.value - c.center) / c.center <= tolPct) {
+        c.members.push(s);
+        c.vol += s.vol;
+        c.center = (c.center * (c.members.length - 1) + s.value) / c.members.length;
+        c.extVal = isLow ? Math.min(c.extVal, s.value) : Math.max(c.extVal, s.value);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) clusters.push({ members: [s], vol: s.vol, center: s.value, extVal: s.value, touches: 1, score: 0 });
   }
-  // 高低点结构特征（基于近端窗口内的最近 2 组）
-  const lastH = has2H ? highs[highs.length - 1] : null;
-  const prevH = has2H ? highs[highs.length - 2] : null;
-  const lastL = has2L ? lows[lows.length - 1] : null;
-  const prevL = has2L ? lows[lows.length - 2] : null;
-  const hh = !!lastH && !!prevH && lastH.value > prevH.value; // 更高高点
-  const hl = !!lastL && !!prevL && lastL.value > prevL.value; // 更高低点
-  const lh = !!lastH && !!prevH && lastH.value < prevH.value; // 更低高点
-  const ll = !!lastL && !!prevL && lastL.value < prevL.value; // 更低低点
-
-  // 近端整体方向辅助（series 已是近端窗口，起点收盘即为近端起点）
-  const firstClose = series[0]?.close ?? 0;
-  const netUp = current > firstClose * 1.03;  // 近端涨幅 >3% 视为偏多
-  const netDn = current < firstClose * 0.97;  // 近端跌幅 >3% 视为偏空
-
-  // 近端关键大阳/大阴实体边界（用于回档/反弹的排除校验，必须限定在近端窗口）
-  const { bull, bear } = findMaxBodyCandle(series);
-  const keyBullOpen = bull?.open ?? -Infinity; // 近端最大阳线实体下沿
-  const keyBearOpen = bear?.open ?? Infinity;  // 近端最大阴线实体上沿
-
-  // ===== 下跌结构：先看是否其实是「反弹 bounce」 =====
-  if (lh && ll) {
-    const rebounded = !!lastL && current > lastL.value;                 // 从近端低位反弹
-    const prevHigh = prevH ? prevH.value : lastH ? lastH.value : Infinity;
-    const notBrokenPrevHigh = current <= prevHigh;                      // 未突破近端前高
-    const exclusion = current > keyBearOpen;                            // 突破关键阴线上沿→反转，不再判反弹
-    if (rebounded && notBrokenPrevHigh && !exclusion) return "bounce";
-    return "downtrend";
+  const out: Cluster[] = [];
+  for (const c of clusters) {
+    c.touches = c.members.length;
+    if (c.touches < minMembers) continue; // 孤立毛刺极值不参与聚类打分
+    c.score = c.vol * (1 + 0.15 * (c.touches - 1));
+    out.push(c);
   }
-  // 单侧下跌结构（仅更低高点、无完整更低低点）→ 主跌
-  if (lh && netDn && !hh) return "downtrend";
-
-  // ===== 上涨结构：先看是否其实是「回档 pullback」 =====
-  if (hh && hl) {
-    const pulledBack = !!lastH && current < lastH.value;                // 从近端高位回落
-    const prevLow = prevL ? prevL.value : lastL ? lastL.value : -Infinity;
-    const notBrokenPrevLow = current >= prevLow;                       // 未跌破近端前低
-    const exclusion = current < keyBullOpen;                            // 跌破关键大阳下沿→转弱，不再判回档
-    if (pulledBack && notBrokenPrevLow && !exclusion) return "pullback";
-    return "uptrend";
-  }
-  // 单侧上涨结构（仅更高低点、无完整更高高点）→ 主升
-  if (hl && netUp && !ll) return "uptrend";
-
-  // ===== 箱体：近端窗口振幅 <6%（series 已是近端窗口，无需再切片） =====
-  if (series.length >= 5) {
-    const tHigh = Math.max(...series.map((d) => d.high));
-    const tLow = Math.min(...series.map((d) => d.low));
-    const tMid = (tHigh + tLow) / 2;
-    if (tMid > 0 && (tHigh - tLow) / tMid < 0.06) return "box"; // 近端振幅 <6%
-  }
-  // 最终兜底：按近端整体方向
-  return netUp ? "uptrend" : netDn ? "downtrend" : "box";
+  return out;
 }
 
-// 在一段 K 线序列里找「实体最大」的阳线 / 阴线
-function findMaxBodyCandle(bars: any[]): { bull: any; bear: any } {
-  let bull: any = null, bear: any = null, bullB = -1, bearB = -1;
-  for (const d of bars) {
-    const o = d.open, c = d.close;
-    if (c > o) { const b = c - o; if (b > bullB) { bullB = b; bull = d; } }
-    else if (c < o) { const b = o - c; if (b > bearB) { bearB = b; bear = d; } }
-  }
-  return { bull, bear };
+// 判定当前所处波段类型（5 类，严格按规则表）。输入 highs/lows 必须来自「近端 30 根窗口」(prox)。
+function detectBandType(highs: Swing[], lows: Swing[], prox: any[], current: number): BandType {
+  const lowVals = lows.map((l) => l.value);
+  const highVals = highs.map((h) => h.value);
+  // 主升：近 3 低抬高 + 近 3 高抬高
+  if (rising3(lowVals) && rising3(highVals)) return "uptrend";
+  // 主跌：近 3 高降低 + 近 3 低降低
+  if (falling3(lowVals) && falling3(highVals)) return "downtrend";
+
+  // 上下文方向：窗口左半 vs 右半 收盘价均值，判断「大趋势」抬升 / 走低（回踩 / 反弹的判定前提）
+  const half = Math.max(1, Math.floor(prox.length / 2));
+  const leftAvg = avg(prox.slice(0, half).map((d) => d.close));
+  const rightAvg = avg(prox.slice(half).map((d) => d.close));
+  const upContext = rightAvg >= leftAvg;
+
+  const lastHigh = highs[highs.length - 1];
+  const lastLow = lows[lows.length - 1];
+  const prevLow = lows.length >= 2 ? lows[lows.length - 2] : null;
+  const prevHigh = highs.length >= 2 ? highs[highs.length - 2] : null;
+
+  const pulledBack = !!lastHigh && current < lastHigh.value;        // 从近端高位回落
+  const notBrokenPrevLow = !prevLow || current >= prevLow.value;    // 未跌破近端前低
+  const bouncedFromLow = !!lastLow && current > lastLow.value;      // 从近端低位反弹
+  const notBrokenPrevHigh = !prevHigh || current <= prevHigh.value; // 未突破近端前高
+
+  // 回踩：大趋势抬升 + 短期回落 + 上升结构未破坏 → 沿用上升趋势线(若低仍抬升)，否则信号冲突不画趋势
+  if (upContext && pulledBack && notBrokenPrevLow) return "pullback";
+  // 反弹：大趋势走低 + 短期反弹 + 下跌结构未破坏 → 保留下降趋势线(若高仍降低)，否则信号冲突不画趋势
+  if (!upContext && bouncedFromLow && notBrokenPrevHigh) return "bounce";
+  // 箱体：高低点升降信号互相冲突 / 无持续方向
+  return "box";
+}
+function avg(arr: number[]): number {
+  if (!arr.length) return 0;
+  let s = 0; for (const v of arr) s += v; return s / arr.length;
 }
 
-// 计算系统画线（支撑/压力/趋势），结果同时驱动 overlay 与悬浮提示。
-// ── 5 种波段各自独立规则（短线 1 支撑 + 1 压力，只取最强核心位）──
-// 通用强制约束：所有点位（含摆动点 / 大阳大阴实体 / 兜底高低点）必须取自「近端观测窗口」(最近 N/4 根)，
+// 计算系统画线（支撑/压力/趋势）。聚类 top-2 + 影线极值对齐 + 近 3 点趋势线；严格限时近端 30 根窗口。
+// ── 5 种波段各自独立规则 ──
+// 通用强制约束：所有点位（含摆动点 / 聚类）必须取自「近端 30 根观测窗口」(prox)，
 //   严禁跨周期取远端历史高低点作为实时画线；远端价位仅可作备注，不参与绘制。
-// ① 上涨主波段（主升）：高点抬高+低点抬高 → 支撑=近端窗口最大阳线实体下沿(开盘)；压力=近端阶段高点
-// ② 下跌主波段（主跌）：高点降低+低点降低 → 支撑=仅近端低点(距现价<15%才画)；压力=近端最大阴线实体上沿(开盘)
-// ③ 上涨回调波段（回档）：上涨中途回撤不破坏抬升 → 支撑=近端回调前区间最大阳线实体下沿；压力=近端回调起始高点
-// ④ 下跌反弹波段（修复）：下跌中途上涨不改变降低 → 支撑=反弹内部最大阳线实体下沿；压力=反弹前近端下跌段大阴线实体上沿
-// ⑤ 横盘箱体震荡：来回波动不持续创新高/新低 → 支撑=近端箱体下沿(摆动低点中位数)；压力=近端箱体上沿(摆动高点中位数)
+// ① 主升：支撑=摆动低点聚类 top2(量加权)对齐下影底端；压力=摆动高点聚类 top2 对齐上影顶端；趋势=连近3抬高低点(蓝实线上箭头)
+// ② 主跌：支撑=低点聚类 top2 对齐下影底端；压力=高点聚类 top2 对齐上影顶端；趋势=连近3降低高点(蓝实线下箭头)
+// ③ 回踩：沿用主升支撑/压力取法；趋势线沿用上升趋势线(若近3低仍抬高)，否则信号冲突不画
+// ④ 反弹：沿用主跌支撑/压力取法；趋势线保留下降趋势线(若近3高仍降低)，否则信号冲突不画
+// ⑤ 箱体：支撑/压力各取聚类 top2 且要求≥2次触碰(排除孤立毛刺)；高低点冲突统一不画趋势线
 function computeAutoLevels(): AutoLevel[] {
   const out: AutoLevel[] = [];
   const dl = dataList;
   if (!dl || dl.length < 10) return out;
-  const N = scanPeriod();
-  const recent = dl.slice(-N);
-  const last = recent[recent.length - 1];
+  // 近端观测窗口：最近 30 根（严格按规则表，禁止跨周期取远端历史高低点）
+  const prox = dl.slice(-PROX_WINDOW);
+  const last = prox[prox.length - 1];
   const current = last?.close ?? 0;
   if (!current) return out;
 
-  const { win } = sensitivityParams();
-  // 近端观测窗口：最近 N/4 根（至少保留 8 根以能识别摆动点）；所有实时画线点位仅限此窗口。
-  // 注意：findSwings 返回的 Swing.idx 是相对 prox 的下标，后续 slice 均基于 prox。
-  const proxLen = Math.max(Math.ceil(N / 4), 8);
-  const proxStart = Math.max(0, recent.length - proxLen);
-  const prox = recent.slice(proxStart);
-
-  // 摆动点仅取近端窗口内的最近 2 组，忽略超远期高低点
+  const { win, tolPct } = sensitivityParams();
+  // 摆动点仅取近端 30 根窗口内；findSwings 的 Swing.idx 即相对 prox 的下标。
   const { highs, lows } = findSwings(prox, win);
   const band = detectBandType(highs, lows, prox, current);
 
-  let supportPrice: number | null = null;
-  let supportSrc = "";
-  let pressurePrice: number | null = null;
-  let pressureSrc = "";
+  // 聚类打分（箱体过滤孤立单根毛刺：minMembers=2；趋势波段允许单根放量极值 minMembers=1）
+  const supportClusters = clusterSwings(lows, tolPct, true, band === "box" ? 2 : 1);
+  const pressureClusters = clusterSwings(highs, tolPct, false, band === "box" ? 2 : 1);
+  const sTop = [...supportClusters].sort((a, b) => b.score - a.score).slice(0, 2);
+  const pTop = [...pressureClusters].sort((a, b) => b.score - a.score).slice(0, 2);
 
-  switch (band) {
-    case "uptrend": {
-      // ── 上涨主波段 ──
-      // 支撑：① 近端窗口**后半段**（后60%）最大阳线 实体下沿(开盘价)=近期资金成本区；
-      //       限制在后半段可排除窗口前期的老突破阳线（如行情启动初期的底部大阳），确保支撑位贴近当前价位
-      //    ② 无则取近端最近摆动低点兜底
-      // 压力：① 近端阶段高点(摆动高点优先)；② 不足时用近端窗口实际最高价兜底
-      const searchProx = prox.slice(Math.floor(prox.length * 0.4)); // 后60%，至少保留prox尾部
-      const { bull } = findMaxBodyCandle(searchProx.length >= 3 ? searchProx : prox);
-      if (bull) { supportPrice = bull.open; supportSrc = "近端最大阳线实体下沿(开盘)"; }
-      else if (lows.length) { supportPrice = lows[lows.length - 1].value; supportSrc = "近端最近摆动低点"; }
-      if (highs.length) { pressurePrice = highs[highs.length - 1].value; pressureSrc = "近端阶段高点"; }
-      else { pressurePrice = Math.max(...prox.map((d) => d.high)); pressureSrc = "近端最高价"; }
-      break;
-    }
-    case "downtrend": {
-      // ── 下跌主波段 ──
-      // 压力：近端窗口内最大阴线 实体上沿(开盘价)=强压力位
-      // 支撑：仅取近端窗口内绝对最低点兜底；距现价 <15% 才画，否则不画（太远对短线无意义）
-      const { bear } = findMaxBodyCandle(prox);
-      if (bear) { pressurePrice = bear.open; pressureSrc = "近端最大阴线实体上沿(开盘·强压)"; }
-      const nearLow = Math.min(...prox.map((d) => d.low));
-      if (current > 0 && (current - nearLow) / current < 0.15) {
-        supportPrice = nearLow; supportSrc = "近端低点";
-      }
-      break;
-    }
-    case "pullback": {
-      // ── 上涨回调波段 ──
-      // 压力：优先摆动高点（回调起始点）；若近端后半段实际最高价比摆动高点高>2%（末端摆动识别不全），
-      //       则取近端后半段实际最高价为压力，更贴近真实走势。
-      // 支撑：在近端窗口**后半段**（后60%）找最大阳线实体下沿；
-      //       ❌ 禁止用「摆动起点之前的整段 preLeg」全窗搜索（会包含窗口前期老阳线如启动突破K），
-   //          必须限制在后半段，确保支撑位贴近当前价位。
-      const latterHalf = prox.slice(Math.floor(prox.length * 0.5));
-      const rawRecentHigh = latterHalf.length > 0 ? Math.max(...latterHalf.map((d) => d.high)) : 0;
-      if (highs.length) {
-        const pullStart = highs[highs.length - 1];
-        if (rawRecentHigh > pullStart.value * 1.02) {
-          pressurePrice = rawRecentHigh; pressureSrc = "近端阶段高点";
-        } else {
-          pressurePrice = pullStart.value; pressureSrc = "回调起始高点";
-        }
-      }
-      // 支撑：仅在后半段（后60%）找最大阳线，排除窗口前期的老阳线
-      const searchProx = prox.slice(Math.floor(prox.length * 0.4));
-      if (searchProx.length >= 3) {
-        const { bull } = findMaxBodyCandle(searchProx);
-        if (bull) { supportPrice = bull.open; supportSrc = "近期大阳线实体下沿(开盘)"; }
-      }
-      // 兜底：近端最近摆动低点（仍是近端，非远端历史低点）
-      if (supportPrice == null && lows.length) {
-        supportPrice = lows[lows.length - 1].value;
-        supportSrc = "近端前低(摆动低点)";
-      }
-      break;
-    }
-    case "bounce": {
-      // ── 下跌反弹波段 ──
-      // 支撑：反弹启动低点之后「近端区间」内最大阳线实体下沿
-      // 压力：反弹前近端下跌段大阴线实体上沿(强压力)；无则近端前高兜底
-      if (lows.length) {
-        const bounceStart = lows[lows.length - 1]; // 反弹起始低点
-        const bounceLeg = prox.slice(bounceStart.idx); // 反弹段（近端、起点之后）
-        const { bull } = findMaxBodyCandle(bounceLeg);
-        if (bull) { supportPrice = bull.open; supportSrc = "反弹最大阳线实体下沿(开盘)"; }
-        const preLeg = prox.slice(0, bounceStart.idx); // 反弹前的近端下跌段
-        if (preLeg.length >= 3) {
-          const { bear } = findMaxBodyCandle(preLeg);
-          if (bear) { pressurePrice = bear.open; pressureSrc = "下跌阴线实体上沿(开盘·强压)"; }
-        }
-      }
-      if (pressurePrice == null && highs.length) {
-        pressurePrice = highs[highs.length - 1].value;
-        pressureSrc = "近端前高(摆动高点)";
-      }
-      break;
-    }
-    case "box": {
-      // ── 横盘箱体震荡 ──
-      // 支撑/压力：近端最近 3 个摆动低/高点的中位数（多次回踩 / 遇阻带）
-      if (lows.length >= 2) {
-        const rl = lows.slice(-3).map((s) => s.value);
-        supportPrice = rl[Math.floor(rl.length / 2)];
-        supportSrc = "箱体下沿(多次回踩)";
-      }
-      if (highs.length >= 2) {
-        const rh = highs.slice(-3).map((s) => s.value);
-        pressurePrice = rh[Math.floor(rh.length / 2)];
-        pressureSrc = "箱体上沿(多次遇阻)";
-      }
-      break;
+  // 候选水平线：支撑=低点簇底(下影最底端)、压力=高点簇顶(上影最顶端)。
+  // 同一价格簇只画 1 条；跨角色(支撑/压力)重叠去重——保留打分更高者，避免同一价位画两条。
+  const candidates: { price: number; kind: "support" | "pressure"; score: number; touches: number; src: string }[] = [];
+  sTop.forEach((c, i) => candidates.push({ price: c.extVal, kind: "support", score: c.score, touches: c.touches, src: `近端摆动低点密集成交·量加权 top${i + 1}` }));
+  pTop.forEach((c, i) => candidates.push({ price: c.extVal, kind: "pressure", score: c.score, touches: c.touches, src: `近端摆动高点密集成交·量加权 top${i + 1}` }));
+  candidates.sort((a, b) => b.score - a.score);
+  const lines: typeof candidates = [];
+  const dedupTol = tolPct * 0.8;
+  for (const c of candidates) {
+    const dup = lines.some((l) => Math.abs(l.price - c.price) / c.price <= dedupTol);
+    if (!dup) lines.push(c);
+  }
+
+  for (const ln of lines) {
+    if (ln.kind === "support") {
+      out.push({ kind: "support", price: ln.price, color: hexA(DOWN, 0.62), label: "支撑", src: ln.src, touches: ln.touches });
+    } else {
+      out.push({ kind: "pressure", price: ln.price, color: hexA(UP, 0.62), label: "压力", src: ln.src, touches: ln.touches });
     }
   }
 
-  // 输出支撑线（仅在价位有效且不为 0 时）
-  if (supportPrice != null && Number.isFinite(supportPrice) && supportPrice > 0) {
-    out.push({
-      kind: "support", price: supportPrice,
-      color: hexA(DOWN, 0.62), label: "支撑", src: supportSrc,
-    });
+  // 趋势线：主升/回踩(低仍抬升) 连近 3 抬高摆动低点，蓝色实线上箭头；
+  //          主跌/反弹(高仍降低) 连近 3 降低摆动高点，蓝色实线下箭头；箱体/冲突不画。
+  const lowVals = lows.map((l) => l.value);
+  const highVals = highs.map((h) => h.value);
+  if (band === "uptrend" || (band === "pullback" && rising3(lowVals))) {
+    if (lows.length >= 3) {
+      const pts = lows.slice(-3).map((s) => ({ timestamp: s.t, value: s.value }));
+      out.push({ kind: "trend", points: pts, dir: "up", touches: 3, color: hexA(TREND, 0.72), label: "上升趋势" });
+    }
+  } else if (band === "downtrend" || (band === "bounce" && falling3(highVals))) {
+    if (highs.length >= 3) {
+      const pts = highs.slice(-3).map((s) => ({ timestamp: s.t, value: s.value }));
+      out.push({ kind: "trend", points: pts, dir: "down", touches: 3, color: hexA(TREND, 0.72), label: "下降趋势" });
+    }
   }
-  // 输出压力线
-  if (pressurePrice != null && Number.isFinite(pressurePrice) && pressurePrice > 0) {
-    out.push({
-      kind: "pressure", price: pressurePrice,
-      color: hexA(UP, 0.62), label: "压力", src: pressureSrc,
-    });
-  }
-  // 趋势线（沿用原逻辑，基于近端摆动点）
-  const tr = detectTrend(highs, lows);
-  if (tr) out.push({ kind: "trend", points: tr.points, dir: tr.dir, touches: tr.points.length, color: hexA(TREND, 0.72), label: tr.dir === "up" ? "上升趋势" : "下降趋势" });
   return out;
 }
 // 清旧智能标注并按当前辅助线开关重画（1 支撑 + 1 压力 + 趋势线，无区间阴影）
@@ -1130,7 +1008,7 @@ function drawAutoLevels() {
       if (lv.kind === "trend" && lv.points) {
         chart.createOverlay({
           id, name: "autoTrendLine", points: lv.points, lock: true,
-          styles: { line: { color: lv.color, style: "dashed", size: 1.4, dashedValue: [4, 3] } },
+          styles: { line: { color: lv.color, style: "solid", size: 1.6 } },
         } as never);
       } else if (typeof lv.price === "number") {
         const t0 = dataList[0].timestamp;
@@ -1174,7 +1052,7 @@ function ensureTrendOverlay() {
           ? [{ x: b.x, y: b.y }, { x: b.x - size, y: b.y + size * 1.6 }, { x: b.x + size, y: b.y + size * 1.6 }]
           : [{ x: b.x, y: b.y }, { x: b.x - size, y: b.y - size * 1.6 }, { x: b.x + size, y: b.y - size * 1.6 }];
         return [
-          { type: "line", attrs: { coordinates: [a, b] }, styles: { style: "dashed", size: 1.4, color: col, dashedValue: [4, 3] }, ignoreEvent: true },
+          { type: "line", attrs: { coordinates: [a, b] }, styles: { style: "solid", size: 1.6, color: col }, ignoreEvent: true },
           { type: "polygon", attrs: { coordinates: arrow }, styles: { style: "fill", color: col, borderColor: col, borderSize: 1 }, ignoreEvent: true },
         ];
       },
