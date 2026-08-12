@@ -331,7 +331,7 @@ function toggleMa(key: keyof typeof maConfig) {
   max-width: 72vw;
   max-height: 66vh;
   overflow-y: auto;
-  padding: 6rpx 20rpx 14rpx;
+  padding: 0 20rpx 14rpx;
   background: var(--tabbar-bg);
   backdrop-filter: blur(20rpx);
   -webkit-backdrop-filter: blur(20rpx);
