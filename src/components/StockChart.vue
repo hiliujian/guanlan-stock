@@ -57,9 +57,6 @@ const TREND = "#2f74ff"; // 趋势线专用蓝（与压力红/支撑绿三色区
 // 指标折线调色板：主图/量/MACD 各 pane 的折线按「内容顺序」循环取色（橙/蓝/紫/绿/品红）。
 // 与图表画线颜色保持一致，图例复用同一份颜色，避免图例与图线颜色脱节（用户要求各图例颜色不同）。
 const INDICATOR_LINE_COLORS = ["#f5a623", "#1c9cf0", "#9b59b6", "#2ecc71", "#e11d74"];
-const ZONE_FILL = "rgba(108,122,145,0.18)"; // 关键区间阴影填充（中性石板灰，深浅主题均可见，提升可见度）
-const ZONE_EDGE = "rgba(108,122,145,0.55)"; // 关键区间边界描边（与填充同色系，清晰可辨）
-const ZONE_TEXT = "rgba(125,140,165,0.95)"; // 关键区间标签文字
 import { computeChip, type ChipResult } from "@/utils/analyzer";
 import type { Kline, Trend, PeriodKey } from "@/utils/period";
 import type { ChartAuxConfig } from "@/store/chartAux";
@@ -329,7 +326,7 @@ const props = withDefaults(
     persist?: boolean;
     /** 当前股票代码，用于持久化 key；不传则不持久化（仅当前会话有效） */
     code?: string;
-    /** 辅助线显示配置（总开关 + 压力/支撑/趋势/关键区间逐线开关）；不传则按组件默认全开 */
+    /** 辅助线显示配置（总开关 + 压力/支撑/趋势逐线开关）；不传则按组件默认全开 */
     auxConfig?: ChartAuxConfig;
     /** 当前 K线周期（d/w/M/y），用于各周期默认缩放（显示约一个月等）；不传默认日K */
     period?: PeriodKey;
@@ -823,30 +820,6 @@ function findSwings(series: any[], win: number): { highs: Swing[]; lows: Swing[]
   return { highs, lows };
 }
 
-// 把摆动点按价位容差聚成关键价位区间，按 触及次数 + 近期权重 打分排序
-interface Cluster { price: number; min: number; max: number; touches: number; score: number; }
-function clusterLevels(pts: Swing[], tolPct: number, recentN: number): Cluster[] {
-  if (!pts.length) return [];
-  const sorted = [...pts].sort((a, b) => a.value - b.value);
-  const groups: { values: number[]; idxs: number[] }[] = [];
-  for (const p of sorted) {
-    const last = groups[groups.length - 1];
-    const center = last ? last.values[0] : p.value;
-    if (last && Math.abs(p.value - center) <= tolPct * center) last.values.push(p.value);
-    else groups.push({ values: [p.value], idxs: [p.idx] });
-  }
-  return groups
-    .map((g) => {
-      const avg = g.values.reduce((s, v) => s + v, 0) / g.values.length;
-      const min = Math.min(...g.values);
-      const max = Math.max(...g.values);
-      const lastTouch = Math.max(...g.idxs);
-      const recency = 1 - (recentN - lastTouch) / Math.max(1, recentN); // 0~1，越近权重越大
-      return { price: avg, min, max, touches: g.values.length, score: g.values.length * (0.5 + 0.5 * recency) };
-    })
-    .sort((a, b) => b.score - a.score);
-}
-
 // 判定主趋势：用「窗口内低点位移 + 高点位移」的净方向决定，避免末段噪声导致 up&&down 冲突而整条不画。
 // 净位移显著为正→上升趋势（沿低点连支撑线）；显著为负→下降趋势（沿高点连阻力线）；接近 0（真横盘）→不下结论。
 function detectTrend(highs: Swing[], lows: Swing[]): { dir: "up" | "down"; points: { timestamp: number; value: number }[] } | null {
@@ -882,32 +855,227 @@ function scanPeriod(): number {
 interface AutoLevel {
   kind: "pressure" | "support" | "trend";
   price?: number;
-  min?: number;
-  max?: number;
   points?: { timestamp: number; value: number }[];
   color: string;
   label: string;
-  touches: number;
+  touches?: number;
+  src?: string; // 价位来源说明（如「大阳线实体下沿」），用于悬浮提示
   dir?: "up" | "down";
 }
-// 计算系统画线（支撑/压力/趋势），结果同时驱动 overlay 与悬浮提示
+// ── 波段类型（5 类）──
+type BandType = "uptrend" | "downtrend" | "pullback" | "bounce" | "box";
+
+// 判定当前所处波段类型：用最近 2 组摆动高/低点的结构关系 + 当前价相对位置 + 整体价格方向
+function detectBandType(
+  highs: Swing[], lows: Swing[], series: any[], current: number,
+): BandType {
+  const has2H = highs.length >= 2;
+  const has2L = lows.length >= 2;
+  // 摆动点不足时，用整体价格方向兜底
+  if (!has2H && !has2L) {
+    return current >= (series[0]?.close ?? 0) ? "uptrend" : "downtrend";
+  }
+  // 高低点结构特征
+  const hh = has2H && highs[highs.length - 1].value > highs[highs.length - 2].value; // 更高高点
+  const hl = has2L && lows[lows.length - 1].value > lows[lows.length - 2].value;   // 更高低点
+  const lh = has2H && highs[highs.length - 1].value < highs[highs.length - 2].value; // 更低高点
+  const ll = has2L && lows[lows.length - 1].value < lows[lows.length - 2].value;   // 更低低点
+
+  // 主升 / 主跌（结构清晰：两侧都满足）
+  if (hh && hl) return "uptrend";
+  if (lh && ll) return "downtrend";
+
+  // 单侧满足 + 整体方向辅助判定
+  const firstClose = series[0]?.close ?? 0;
+  const netUp = current > firstClose * 1.03;  // 整体涨幅 >3% 视为偏多
+  const netDn = current < firstClose * 0.97;  // 整体跌幅 >3% 视为偏空
+
+  // 上涨主波段（单侧）：有更高低点 + 整体上涨（即使高点数不足，末端新高常因边缘效应漏检）
+  if (hl && netUp && !ll) return "uptrend";
+  // 下跌主波段（单侧）：有更低高点 + 整体下跌
+  if (lh && netDn && !hh) return "downtrend";
+
+  // 回调：整体仍抬升，但当前价已从近期高点回落且未破坏前低
+  if ((hh || hl || netUp) && current < (highs[highs.length - 1]?.value ?? Infinity)) {
+    const prevLow = has2L ? lows[lows.length - 2].value : -Infinity;
+    if (current > prevLow) return "pullback";
+  }
+  // 反弹：整体仍降低，但当前价已从近期低点反弹且未突破前高
+  if ((lh || ll || netDn) && current > (lows[lows.length - 1]?.value ?? 0)) {
+    const prevHigh = has2H ? highs[highs.length - 2].value : Infinity;
+    if (current < prevHigh) return "bounce";
+  }
+
+  // 箱体：用「近 1/4 窗口」的实际振幅判断（不用摆动点，避免边缘漏检误判）
+  const tail = series.slice(-Math.ceil(series.length / 4));
+  if (tail.length >= 5) {
+    const tHigh = Math.max(...tail.map((d) => d.high));
+    const tLow = Math.min(...tail.map((d) => d.low));
+    const tMid = (tHigh + tLow) / 2;
+    if (tMid > 0 && (tHigh - tLow) / tMid < 0.06) return "box"; // 近端振幅 <6%
+  }
+  // 最终兜底：按整体方向
+  return netUp ? "uptrend" : netDn ? "downtrend" : "box";
+}
+
+// 在一段 K 线序列里找「实体最大」的阳线 / 阴线
+function findMaxBodyCandle(bars: any[]): { bull: any; bear: any } {
+  let bull: any = null, bear: any = null, bullB = -1, bearB = -1;
+  for (const d of bars) {
+    const o = d.open, c = d.close;
+    if (c > o) { const b = c - o; if (b > bullB) { bullB = b; bull = d; } }
+    else if (c < o) { const b = o - c; if (b > bearB) { bearB = b; bear = d; } }
+  }
+  return { bull, bear };
+}
+
+// 计算系统画线（支撑/压力/趋势），结果同时驱动 overlay 与悬浮提示。
+// ── 5 种波段各自独立规则（短线 1 支撑 + 1 压力，只取最强核心位）──
+// ① 上涨主波段（主升）：高点抬高+低点抬高 → 支撑=波段最大阳线实体下沿(开盘)；压力=近期阶段高点
+// ② 下跌主波段（主跌）：高点降低+低点降低 → 支撑=仅最低点兜底；压力=波段最大阴线实体上沿(开盘)
+// ③ 上涨回调波段（回档）：上涨中途回撤不破坏抬升 → 支撑=上一轮大阳线实体下沿；压力=回调起始高点
+// ④ 下跌反弹波段（修复）：下跌中途上涨不改变降低 → 支撑=反弹内部最大阳线实体下沿；压力=下跌大阴线实体上沿
+// ⑤ 横盘箱体震荡：来回波动不持续创新高/新低 → 支撑=箱体多次回踩下沿；压力=箱体多次遇阻上沿
 function computeAutoLevels(): AutoLevel[] {
   const out: AutoLevel[] = [];
   const dl = dataList;
   if (!dl || dl.length < 10) return out;
   const N = scanPeriod();
   const recent = dl.slice(-N);
-  const { win, tolPct, maxLevels } = sensitivityParams();
+  const last = recent[recent.length - 1];
+  const current = last?.close ?? 0;
+  if (!current) return out;
+
+  const { win } = sensitivityParams();
   const { highs, lows } = findSwings(recent, win);
-  for (const r of clusterLevels(highs, tolPct, recent.length).slice(0, maxLevels))
-    out.push({ kind: "pressure", price: r.price, min: r.min, max: r.max, touches: r.touches, color: hexA(UP, 0.62), label: "压力" });
-  for (const sp of clusterLevels(lows, tolPct, recent.length).slice(0, maxLevels))
-    out.push({ kind: "support", price: sp.price, min: sp.min, max: sp.max, touches: sp.touches, color: hexA(DOWN, 0.62), label: "支撑" });
+  const band = detectBandType(highs, lows, recent, current);
+
+  let supportPrice: number | null = null;
+  let supportSrc = "";
+  let pressurePrice: number | null = null;
+  let pressureSrc = "";
+
+  switch (band) {
+    case "uptrend": {
+      // ── 上涨主波段 ──
+      // 支撑：本轮上涨段内最大阳线的 实体下沿(开盘价)=资金进场成本区
+      // 压力：近期阶段高点(摆动高点或近端实际高点)=短线获利了结区
+      const legStart = lows.length ? Math.max(0, lows[lows.length - 1].idx) : 0;
+      const upLeg = recent.slice(legStart);
+      const { bull } = findMaxBodyCandle(upLeg);
+      if (bull) { supportPrice = bull.open; supportSrc = "主升最大阳线实体下沿(开盘)"; }
+      // 压力：最近的阶段高点（摆动点优先，不足时用近端实际最高价兜底）
+      if (highs.length) { pressurePrice = highs[highs.length - 1].value; pressureSrc = "近期阶段高点"; }
+      else {
+        // 摆动高点不足（末端新高常因边缘效应漏检）→ 用近 1/4 窗口实际最高价
+        const tail = recent.slice(-Math.ceil(recent.length / 4));
+        if (tail.length) { pressurePrice = Math.max(...tail.map((d) => d.high)); pressureSrc = "近端最高价"; }
+      }
+      break;
+    }
+    case "downtrend": {
+      // ── 下跌主波段 ──
+      // 压力：本轮下跌段内最大阴线的 实体上沿(开盘价)=强压力位
+      // 支撑：仅取窗口内绝对最低点兜底（远期大底不取，太远对短线无意义→可返回 null 不画）
+      const legStart = highs.length ? Math.max(0, highs[highs.length - 1].idx) : 0;
+      const downLeg = recent.slice(legStart);
+      const { bear } = findMaxBodyCandle(downLeg);
+      if (bear) { pressurePrice = bear.open; pressureSrc = "主跌最大阴线实体上沿(开盘·强压)"; }
+      // 支撑：仅用近端低点（最近 N/4 根内的最低价），不用远古大底
+      const shortLookback = recent.slice(-Math.ceil(N / 4));
+      const nearLow = Math.min(...shortLookback.map((d) => d.low));
+      // 只有当近端低点与现价差距在合理范围（<15%）时才画支撑，否则不画（太远无意义）
+      if (current > 0 && (current - nearLow) / current < 0.15) {
+        supportPrice = nearLow; supportSrc = "近端低点";
+      }
+      break;
+    }
+    case "pullback": {
+      // ── 上涨回调波段 ──
+      // 支撑：上一轮（回调前）大阳线实体下沿=前次起涨位
+      // 压力：回调起始高点=本轮起跌点
+      // 找回调起点：最近一个摆动高点之后为回调段
+      if (highs.length >= 2) {
+        const pullStart = highs[highs.length - 1]; // 回调起始高点
+        pressurePrice = pullStart.value;
+        pressureSrc = "回调起始高点";
+        // 上一轮大阳线：在回调起点之前的一段找
+        const preLeg = recent.slice(0, pullStart.idx);
+        if (preLeg.length >= 3) {
+          const { bull } = findMaxBodyCandle(preLeg);
+          if (bull) { supportPrice = bull.open; supportSrc = "前轮大阳线实体下沿(开盘)"; }
+        }
+      }
+      // 兜底：如果没找到前轮阳线，用最近摆动低点
+      if (supportPrice == null && lows.length) {
+        supportPrice = lows[lows.length - 1].value;
+        supportSrc = "前低(摆动低点)";
+      }
+      break;
+    }
+    case "bounce": {
+      // ── 下跌反弹波段 ──
+      // 支撑：反弹内部最大阳线实体下沿=反弹成本区
+      // 压力：下跌大阴线实体上沿=前次砸盘点（强压力）
+      // 找反弹起点：最近一个摆动低点之后为反弹段
+      if (lows.length >= 2) {
+        const bounceStart = lows[lows.length - 1]; // 反弹起始低点
+        const bounceLeg = recent.slice(bounceStart.idx);
+        const { bull } = findMaxBodyCandle(bounceLeg);
+        if (bull) { supportPrice = bull.open; supportSrc = "反弹最大阳线实体下沿(开盘)"; }
+        // 压力：反弹段之前的下跌大阴线
+        const preLeg = recent.slice(0, bounceStart.idx);
+        if (preLeg.length >= 3) {
+          const { bear } = findMaxBodyCandle(preLeg);
+          if (bear) { pressurePrice = bear.open; pressureSrc = "下跌阴线实体上沿(开盘·强压)"; }
+        }
+      }
+      // 压力兜底：前高
+      if (pressurePrice == null && highs.length) {
+        pressurePrice = highs[highs.length - 1].value;
+        pressureSrc = "前高(摆动高点)";
+      }
+      break;
+    }
+    case "box": {
+      // ── 横盘箱体震荡 ──
+      // 支撑：箱体下沿（多次回踩的低价集中带）
+      // 压力：箱体上沿（多次遇阻的高价集中带）
+      // 用最近几个摆动低/高点的中位数作为箱体边界
+      if (lows.length >= 2) {
+        const recentLows = lows.slice(-3).map((s) => s.value);
+        supportPrice = recentLows[Math.floor(recentLows.length / 2)];
+        supportSrc = "箱体下沿(多次回踩)";
+      }
+      if (highs.length >= 2) {
+        const recentHighs = highs.slice(-3).map((s) => s.value);
+        pressurePrice = recentHighs[Math.floor(recentHighs.length / 2)];
+        pressureSrc = "箱体上沿(多次遇阻)";
+      }
+      break;
+    }
+  }
+
+  // 输出支撑线（仅在价位有效且不为 0 时）
+  if (supportPrice != null && Number.isFinite(supportPrice) && supportPrice > 0) {
+    out.push({
+      kind: "support", price: supportPrice,
+      color: hexA(DOWN, 0.62), label: "支撑", src: supportSrc,
+    });
+  }
+  // 输出压力线
+  if (pressurePrice != null && Number.isFinite(pressurePrice) && pressurePrice > 0) {
+    out.push({
+      kind: "pressure", price: pressurePrice,
+      color: hexA(UP, 0.62), label: "压力", src: pressureSrc,
+    });
+  }
+  // 趋势线（沿用原逻辑）
   const tr = detectTrend(highs, lows);
   if (tr) out.push({ kind: "trend", points: tr.points, dir: tr.dir, touches: tr.points.length, color: hexA(TREND, 0.72), label: tr.dir === "up" ? "上升趋势" : "下降趋势" });
   return out;
 }
-// 清旧智能标注并按当前辅助线开关重画
+// 清旧智能标注并按当前辅助线开关重画（1 支撑 + 1 压力 + 趋势线，无区间阴影）
 function drawAutoLevels() {
   autoIds.forEach((id) => { try { chart?.removeOverlay(id); } catch { /* noop */ } });
   autoIds.length = 0;
@@ -915,44 +1083,11 @@ function drawAutoLevels() {
   const cfg = props.auxConfig;
   // 无任何智能标注线开启 → 不绘制（各线独立开关，无总开关）
   if (!props.autoDraw || !chart || !cfg) return;
-  if (!(cfg.pressure || cfg.support || cfg.trend || cfg.zone)) return;
+  if (!(cfg.pressure || cfg.support || cfg.trend)) return;
   const levels = computeAutoLevels();
-  // 过滤：只保留「压力线整体在支撑线之上」的干净层级，避免红绿线倒置、区间失效
-  let pres = levels.filter((l) => l.kind === "pressure" && typeof l.price === "number").map((l) => l.price as number);
-  let sup = levels.filter((l) => l.kind === "support" && typeof l.price === "number").map((l) => l.price as number);
-  if (pres.length && sup.length) {
-    const hiSup = Math.max(...sup);
-    pres = pres.filter((p) => p > hiSup);           // 丢弃落在支撑区下方的"伪压力"
-    if (pres.length) {
-      const loPres = Math.min(...pres);
-      sup = sup.filter((s) => s < loPres);           // 丢弃落在压力区上方的"伪支撑"
-    }
-  }
-  const presSet = new Set(pres);
-  const supSet = new Set(sup);
-  // 先画「阻力组 ↔ 支撑组」中间的阴影带（关键区间），置于线下方，避免遮挡虚线；
-  // 仅当关键区间开关开启时绘制
-  if (cfg.zone && pres.length && sup.length && dataList.length) {
-    const topPrice = Math.min(...pres); // 阻力区下沿（最低压力）
-    const botPrice = Math.max(...sup);  // 支撑区上沿（最高支撑）
-    if (topPrice > botPrice) {
-      const zid = `auto_zone_${Math.random().toString(36).slice(2, 7)}`;
-      try {
-        chart.createOverlay({
-          id: zid, name: "autoZone",
-          points: [{ timestamp: dataList[0].timestamp, value: topPrice }, { timestamp: dataList[dataList.length - 1].timestamp, value: botPrice }],
-          lock: true,
-        } as never);
-        autoIds.push(zid);
-      } catch {
-        /* noop */
-      }
-    }
-  }
-  // 再画支撑/压力/趋势线（仅画过滤后仍保留且对应开关开启的层级）
   for (const lv of levels) {
-    if (lv.kind === "pressure" && typeof lv.price === "number" && (!cfg.pressure || !presSet.has(lv.price))) continue;
-    if (lv.kind === "support" && typeof lv.price === "number" && (!cfg.support || !supSet.has(lv.price))) continue;
+    if (lv.kind === "pressure" && !cfg.pressure) continue;
+    if (lv.kind === "support" && !cfg.support) continue;
     if (lv.kind === "trend" && !cfg.trend) continue;
     try {
       const id = `auto_${lv.kind}_${Math.random().toString(36).slice(2, 7)}`;
@@ -963,8 +1098,11 @@ function drawAutoLevels() {
         } as never);
       } else if (typeof lv.price === "number") {
         const t0 = dataList[0].timestamp;
+        const bg = lv.kind === "support" ? DOWN : UP;
+        const text = `${lv.kind === "support" ? "支" : "压"} ${lv.price.toFixed(2)}`;
         chart.createOverlay({
-          id, name: "horizontalStraightLine", points: [{ timestamp: t0, value: lv.price }], lock: true,
+          id, name: "autoLevelLine", points: [{ timestamp: t0, value: lv.price }], lock: true,
+          extendData: { text, bg },
           styles: { line: { color: lv.color, style: "dashed", size: 1.2, dashedValue: [4, 3] } },
         } as never);
       }
@@ -1004,39 +1142,45 @@ function ensureTrendOverlay() {
         ];
       },
     } as never);
-    // 关键区间阴影带（阻力组与支撑组之间的中间地带），横跨面板宽度，置于线下方
+    // 自动支撑/压力线：图内画虚线 + 右侧价格轴(y 轴)上画「支/压 + 价位」色块。
+    // 价位显示在对应的价格轴上（而非图内浮动块），与用户圈出的 y 轴 canvas 对齐；实色底白字、紧凑不溢出 57px 轴宽。
     registerOverlay({
-      name: "autoZone",
+      name: "autoLevelLine",
       needDefaultPointFigure: false,
       needDefaultXAxisFigure: false,
       needDefaultYAxisFigure: false,
       createPointFigures: (params: any) => {
         const coordinates = params.coordinates as { x: number; y: number }[];
-        const bounding = params.bounding as { width: number; height: number } | undefined;
-        if (!coordinates || coordinates.length < 2) return [];
-        const ys = [coordinates[0].y, coordinates[1].y].sort((a, b) => a - b);
-        // 边界各向内缩 1px，避免正好压在红/绿线上，形成清晰独立的阴影带
-        const topY = ys[0] + 1;
-        const botY = ys[1] - 1;
-        if (botY - topY < 2) return [];
-        // x 用面板全宽：bounding 仅含 {width,height}，(0,0) 为面板左上角（参考内置 fibonacciLine 写法）
-        const x0 = 0;
-        const x1 = (bounding && bounding.width) || Math.max(coordinates[0].x, coordinates[1].x);
-        return [
-          {
-            type: "polygon",
-            attrs: { coordinates: [{ x: x0, y: topY }, { x: x1, y: topY }, { x: x1, y: botY }, { x: x0, y: botY }] },
-            // stroke_fill：既填充又描边，虚线边界让区间范围清晰可辨
-            styles: { style: "stroke_fill", color: ZONE_FILL, borderColor: ZONE_EDGE, borderSize: 1, borderStyle: "dashed", borderDashedValue: [4, 3] },
-            ignoreEvent: true,
+        const bounding = params.bounding as { width: number; height: number };
+        const overlay = params.overlay as any;
+        if (!coordinates || coordinates.length < 1) return [];
+        const y = coordinates[0].y;
+        const col = overlay?.styles?.line?.color || "#888";
+        return [{
+          type: "line",
+          attrs: { coordinates: [{ x: 0, y }, { x: bounding.width, y }] },
+          styles: { style: "dashed", size: overlay?.styles?.line?.size || 1.2, color: col, dashedValue: overlay?.styles?.line?.dashedValue || [4, 3] },
+          ignoreEvent: true,
+        }];
+      },
+      createYAxisFigures: (params: any) => {
+        const coordinates = params.coordinates as { x: number; y: number }[];
+        const bounding = params.bounding as { width: number; height: number };
+        const overlay = params.overlay as any;
+        if (!coordinates || coordinates.length < 1) return [];
+        const y = coordinates[0].y;
+        const bg = overlay?.extendData?.bg || "#888";
+        const text = overlay?.extendData?.text || "";
+        return [{
+          type: "text",
+          attrs: { x: bounding.width, y, text, align: "right", baseline: "middle" },
+          styles: {
+            color: "#ffffff", size: 11, weight: "500",
+            backgroundColor: bg, paddingLeft: 6, paddingRight: 6, paddingTop: 3, paddingBottom: 3,
+            borderColor: bg, borderSize: 1, borderRadius: 3,
           },
-          {
-            type: "text",
-            attrs: { x: x1 - 6, y: topY + 3, text: "关键区间", align: "right", baseline: "top" },
-            styles: { color: ZONE_TEXT, size: 10, family: "sans-serif", weight: "normal" },
-            ignoreEvent: true,
-          },
-        ];
+          ignoreEvent: true,
+        }];
       },
     } as never);
     trendOverlayRegistered = true;
@@ -1238,8 +1382,8 @@ function onCrosshair(c: any) {
       }
     } else if (typeof lv.price === "number") {
       if (Math.abs(price - lv.price) <= tol) {
-        const zone = lv.min !== lv.max ? `区间 ${lv.min!.toFixed(2)}~${lv.max!.toFixed(2)}` : "";
-        items.push({ label: lv.label, color: lv.color, text: `${lv.price.toFixed(2)} ${zone} · 触及 ${lv.touches} 次`.trim() });
+        const src = lv.src ? ` · ${lv.src}` : "";
+        items.push({ label: lv.label, color: lv.color, text: `${lv.price.toFixed(2)}${src}` });
       }
     }
   }
@@ -1491,7 +1635,7 @@ watch(
   () => applyLivePrice()
 );
 watch(isDark, () => applyTheme());
-// 辅助线开关变化（总开关 / 压力 / 支撑 / 趋势 / 关键区间任一）→ 重画智能标注
+// 辅助线开关变化（总开关 / 压力 / 支撑 / 趋势任一）→ 重画智能标注
 watch(
   () => props.auxConfig,
   () => drawAutoLevels(),

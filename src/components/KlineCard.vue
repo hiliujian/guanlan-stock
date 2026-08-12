@@ -7,7 +7,7 @@
 // 周期条右侧工具簇：画板(pen，淡入/淡出看盘画线工具栏) + 设置(gear，点击在图标下弹出开关列表)。
 // 设置弹层含三组：① 辅助线 = 均线 MA（MA5/MA10/MA20/MA60/MA250，逐周期独立开关）
 //        ② 副图指标 = 成交量面板 / MACD 面板（各自独立开关），及其内部辅助线：量均线 MA5/10/20、DIF/DEA（持久化于 chartPanel）
-//        ③ 智能标注 = 系统自动标注的压力/支撑/趋势/关键区间
+//        ③ 智能标注 = 系统自动标注的压力/支撑/趋势
 import StockChart from "./StockChart.vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import { PERIODS, PERIOD_ORDER, type PeriodKey } from "@/utils/period";
@@ -56,7 +56,7 @@ function pick(p: PeriodKey) {
 
 // ---- 图表设置抽屉（齿轮点开）----
 // 折叠式两级结构：一级 = 主图 / 成交量 / MACD / 智能标注（点击展开二级）；
-// 二级 = 各线独立开关（主图=均线 MA、成交量=量均线 MA5/10/20、MACD=DIF/DEA、智能标注=压力/支撑/趋势/关键区间）。
+// 二级 = 各线独立开关（主图=均线 MA、成交量=量均线 MA5/10/20、MACD=DIF/DEA、智能标注=压力/支撑/趋势）。
 // 成交量面板与 MACD 面板本身常驻显示（不提供整体隐藏开关），二级仅控制各自内部线。
 const auxOpen = ref(false);
 // 看盘画线工具栏开关：画板图标控制，淡入/淡出 StockChart 的 kc-tools
@@ -73,12 +73,11 @@ function toggleAuxOpen() {
   if (next) toolsOpen.value = false;
 }
 // 智能标注各线元数据（颜色 + 描述），供二级列表渲染
-type AuxKey = "pressure" | "support" | "trend" | "zone";
+type AuxKey = "pressure" | "support" | "trend";
 const auxItems: { key: AuxKey; label: string; desc: string; color: string }[] = [
-  { key: "pressure", label: "压力线", desc: "红色虚线：上方阻力位", color: "#ef232a" },
-  { key: "support", label: "支撑线", desc: "绿色虚线：下方支撑位", color: "#09b07a" },
+  { key: "pressure", label: "压力线", desc: "红色虚线：当前价上方最强阻力（大K实体上沿/摆动高点）", color: "#ef232a" },
+  { key: "support", label: "支撑线", desc: "绿色虚线：当前价下方最强支撑（大K实体下沿/反转位）", color: "#09b07a" },
   { key: "trend", label: "趋势线", desc: "蓝色箭头：上行 / 下行方向", color: "#2f74ff" },
-  { key: "zone", label: "关键区间", desc: "阻力与支撑之间的阴影带", color: "rgba(108,122,145,0.55)" },
 ];
 // 与图表 MA 线颜色一致（见 StockChart INDICATOR_LINE_COLORS 顺序：MA5橙/MA10蓝/MA20紫/MA60绿/MA250品红）
 const MA_COLORS = ["#f5a623", "#1c9cf0", "#9b59b6", "#2ecc71", "#e11d74"];
@@ -104,17 +103,17 @@ const sections: SettingSection[] = [
     key: "volume",
     title: "成交量",
     rows: [
-      { key: "volumeMa5", label: "量均线 MA5", color: "#f5a623", get: () => panelConfig.volumeMa5, set: (v: boolean) => { panelConfig.volumeMa5 = v; } },
-      { key: "volumeMa10", label: "量均线 MA10", color: "#1c9cf0", get: () => panelConfig.volumeMa10, set: (v: boolean) => { panelConfig.volumeMa10 = v; } },
-      { key: "volumeMa20", label: "量均线 MA20", color: "#9b59b6", get: () => panelConfig.volumeMa20, set: (v: boolean) => { panelConfig.volumeMa20 = v; } },
+      { key: "volumeMa5", label: "MA5", desc: "5 日成交量均线", color: "#f5a623", get: () => panelConfig.volumeMa5, set: (v: boolean) => { panelConfig.volumeMa5 = v; } },
+      { key: "volumeMa10", label: "MA10", desc: "10 日成交量均线", color: "#1c9cf0", get: () => panelConfig.volumeMa10, set: (v: boolean) => { panelConfig.volumeMa10 = v; } },
+      { key: "volumeMa20", label: "MA20", desc: "20 日成交量均线", color: "#9b59b6", get: () => panelConfig.volumeMa20, set: (v: boolean) => { panelConfig.volumeMa20 = v; } },
     ],
   },
   {
     key: "macd",
     title: "MACD",
     rows: [
-      { key: "macdDif", label: "DIF", color: "#f5a623", get: () => panelConfig.macdDif, set: (v: boolean) => { panelConfig.macdDif = v; } },
-      { key: "macdDea", label: "DEA", color: "#1c9cf0", get: () => panelConfig.macdDea, set: (v: boolean) => { panelConfig.macdDea = v; } },
+      { key: "macdDif", label: "DIF", desc: "差离值", color: "#f5a623", get: () => panelConfig.macdDif, set: (v: boolean) => { panelConfig.macdDif = v; } },
+      { key: "macdDea", label: "DEA", desc: "异同平均数", color: "#1c9cf0", get: () => panelConfig.macdDea, set: (v: boolean) => { panelConfig.macdDea = v; } },
     ],
   },
   {
@@ -174,7 +173,7 @@ function toggleAcc(key: string) {
       <!-- 设置弹层：锚定工具簇下方、图标右侧对齐；无遮罩、文档流内，永不超出可视区域 -->
       <view v-if="auxOpen" class="aux-pop anim-rise-soft">
         <view class="aux-pop-head">
-          <text class="aux-pop-title">图表设置</text>
+          <text class="aux-pop-title sheet-title">图表设置</text>
           <view class="aux-pop-close" role="button" @click="auxOpen = false">
             <OutlineIcon type="close" :size="30" color="var(--text-2)" />
           </view>
@@ -396,10 +395,6 @@ function toggleAcc(key: string) {
   backdrop-filter: blur(20rpx);
   -webkit-backdrop-filter: blur(20rpx);
   border-bottom: 1rpx solid var(--border);
-}
-.aux-pop-title {
-  font-size: var(--font-md);
-  color: var(--text);
 }
 .aux-pop-close {
   position: absolute;
