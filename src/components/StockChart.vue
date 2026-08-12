@@ -877,8 +877,19 @@ function detectBandType(
 ): BandType {
   const has2H = highs.length >= 2;
   const has2L = lows.length >= 2;
-  // 摆动点不足时，用近端整体价格方向兜底
+  // 摆动点不足时，先用价格行为辅助识别「冲高回档」形态（避免把回档错判为主升）
   if (!has2H && !has2L) {
+    const proxHigh = Math.max(...series.map((d) => d.high));
+    const proxLow = Math.min(...series.map((d) => d.low));
+    const mid = (proxHigh + proxLow) / 2;
+    // 从近端高点回落 >4% 且未跌回近端低点 → 回档（典型冲高回落形态）
+    const pulledFromHigh = proxHigh > 0 && current < proxHigh * 0.96;
+    const aboveLow = proxLow > 0 && current > proxLow * 1.02;
+    if (pulledFromHigh && aboveLow && mid > 0 && (proxHigh - proxLow) / mid > 0.06) return "pullback";
+    // 从近端低点反弹 >4% 且未突破近端高点 → 反弹
+    const bouncedFromLow = proxLow > 0 && current > proxLow * 1.04;
+    const belowHigh = proxHigh > 0 && current < proxHigh * 0.98;
+    if (bouncedFromLow && belowHigh && mid > 0 && (proxHigh - proxLow) / mid > 0.06) return "bounce";
     return current >= (series[0]?.close ?? 0) ? "uptrend" : "downtrend";
   }
   // 高低点结构特征（基于近端窗口内的最近 2 组）
@@ -985,9 +996,12 @@ function computeAutoLevels(): AutoLevel[] {
   switch (band) {
     case "uptrend": {
       // ── 上涨主波段 ──
-      // 支撑：① 近端窗口内最大阳线 实体下沿(开盘价)=资金进场成本区；② 无则取近端最近摆动低点兜底
+      // 支撑：① 近端窗口**后半段**（后60%）最大阳线 实体下沿(开盘价)=近期资金成本区；
+      //       限制在后半段可排除窗口前期的老突破阳线（如行情启动初期的底部大阳），确保支撑位贴近当前价位
+      //    ② 无则取近端最近摆动低点兜底
       // 压力：① 近端阶段高点(摆动高点优先)；② 不足时用近端窗口实际最高价兜底
-      const { bull } = findMaxBodyCandle(prox);
+      const searchProx = prox.slice(Math.floor(prox.length * 0.4)); // 后60%，至少保留prox尾部
+      const { bull } = findMaxBodyCandle(searchProx.length >= 3 ? searchProx : prox);
       if (bull) { supportPrice = bull.open; supportSrc = "近端最大阳线实体下沿(开盘)"; }
       else if (lows.length) { supportPrice = lows[lows.length - 1].value; supportSrc = "近端最近摆动低点"; }
       if (highs.length) { pressurePrice = highs[highs.length - 1].value; pressureSrc = "近端阶段高点"; }
@@ -1008,18 +1022,26 @@ function computeAutoLevels(): AutoLevel[] {
     }
     case "pullback": {
       // ── 上涨回调波段 ──
-      // 压力：近端最近摆动高点（回调起始点）
-      // 支撑：回调起始高点之前「近端区间」内最大阳线实体下沿；无则近端最近摆动低点兜底
-      //   ❌ 禁止取远端历史低点（如行情启动底部）作为支撑绘图
+      // 压力：优先摆动高点（回调起始点）；若近端后半段实际最高价比摆动高点高>2%（末端摆动识别不全），
+      //       则取近端后半段实际最高价为压力，更贴近真实走势。
+      // 支撑：在近端窗口**后半段**（后60%）找最大阳线实体下沿；
+      //       ❌ 禁止用「摆动起点之前的整段 preLeg」全窗搜索（会包含窗口前期老阳线如启动突破K），
+   //          必须限制在后半段，确保支撑位贴近当前价位。
+      const latterHalf = prox.slice(Math.floor(prox.length * 0.5));
+      const rawRecentHigh = latterHalf.length > 0 ? Math.max(...latterHalf.map((d) => d.high)) : 0;
       if (highs.length) {
-        const pullStart = highs[highs.length - 1]; // 回调起始高点
-        pressurePrice = pullStart.value;
-        pressureSrc = "回调起始高点";
-        const preLeg = prox.slice(0, pullStart.idx); // 限定在近端窗口、回调起点之前
-        if (preLeg.length >= 3) {
-          const { bull } = findMaxBodyCandle(preLeg);
-          if (bull) { supportPrice = bull.open; supportSrc = "前轮大阳线实体下沿(开盘)"; }
+        const pullStart = highs[highs.length - 1];
+        if (rawRecentHigh > pullStart.value * 1.02) {
+          pressurePrice = rawRecentHigh; pressureSrc = "近端阶段高点";
+        } else {
+          pressurePrice = pullStart.value; pressureSrc = "回调起始高点";
         }
+      }
+      // 支撑：仅在后半段（后60%）找最大阳线，排除窗口前期的老阳线
+      const searchProx = prox.slice(Math.floor(prox.length * 0.4));
+      if (searchProx.length >= 3) {
+        const { bull } = findMaxBodyCandle(searchProx);
+        if (bull) { supportPrice = bull.open; supportSrc = "近期大阳线实体下沿(开盘)"; }
       }
       // 兜底：近端最近摆动低点（仍是近端，非远端历史低点）
       if (supportPrice == null && lows.length) {
