@@ -84,10 +84,6 @@ const maItems = MA_PERIODS;
 function toggleMa(key: keyof typeof maConfig) {
   maConfig[key] = !maConfig[key];
 }
-// 齿轮高亮：任一 MA 或智能标注开启、或设置弹层打开即高亮（反映「图表设置」里有内容开着）
-const gearOn = computed(
-  () => auxOpen || auxConfig.enabled || maConfig.ma5 || maConfig.ma10 || maConfig.ma20 || maConfig.ma60
-);
 </script>
 
 <template>
@@ -116,11 +112,11 @@ const gearOn = computed(
       </view>
       <view
         class="kline-tool-btn"
-        :class="{ on: gearOn }"
+        :class="{ on: auxOpen }"
         role="button"
         @click="toggleAuxOpen"
       >
-        <OutlineIcon type="gear" :size="30" :color="gearOn ? 'var(--primary)' : 'var(--text-2)'" />
+        <OutlineIcon type="gear" :size="30" :color="auxOpen ? 'var(--primary)' : 'var(--text-2)'" />
       </view>
       <!-- 设置弹层：锚定工具簇下方、图标右侧对齐；无遮罩、文档流内，永不超出可视区域 -->
       <view v-if="auxOpen" class="aux-pop anim-rise-soft">
