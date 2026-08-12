@@ -151,8 +151,10 @@ function toggleMa(key: keyof typeof maConfig) {
         <text class="aux-group">智能标注</text>
         <view v-for="it in auxItems" :key="it.key" class="aux-row">
           <view class="aux-left">
-            <view class="aux-color-dot" :style="{ background: it.color }"></view>
-            <text class="aux-label">{{ it.label }}</text>
+            <view class="aux-name-line">
+              <view class="aux-color-dot" :style="{ background: it.color }"></view>
+              <text class="aux-label">{{ it.label }}</text>
+            </view>
             <text class="aux-desc">{{ it.desc }}</text>
           </view>
           <view
@@ -413,12 +415,16 @@ function toggleMa(key: keyof typeof maConfig) {
 .aux-pop .cc-switch.on .cc-knob {
   transform: translateX(34rpx);
 }
-/* 智能标注行内颜色圆点（与图表线颜色一致，让用户一眼对应） */
+/* 智能标注行：颜色圆点 + 名称 同行，描述文字另起一行 */
+.aux-name-line {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
 .aux-color-dot {
   flex: none;
   width: 18rpx;
   height: 18rpx;
   border-radius: 50%;
-  margin-right: 8rpx;
 }
 </style>
