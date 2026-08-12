@@ -1099,9 +1099,11 @@ function drawAutoLevels() {
       } else if (typeof lv.price === "number") {
         const t0 = dataList[0].timestamp;
         const text = `${lv.kind === "support" ? "支" : "压"} ${lv.price.toFixed(2)}`;
+        // 背景用实色线条色（压=UP红 / 支=DOWN绿），复刻原生最后价标签背景；白字在图内样式统一设。
+        const bg = lv.kind === "support" ? DOWN : UP;
         chart.createOverlay({
           id, name: "autoLevelLine", points: [{ timestamp: t0, value: lv.price }], lock: true,
-          extendData: { text },
+          extendData: { text, bg },
           styles: { line: { color: lv.color, style: "dashed", size: 1.2, dashedValue: [4, 3] } },
         } as never);
       }
@@ -1141,8 +1143,9 @@ function ensureTrendOverlay() {
         ];
       },
     } as never);
-    // 自动支撑/压力线：图内画虚线 + 右侧价格轴(y 轴)上画「支/压 + 价位」文字标签。
-    // 标签样式与原生价格轴数字（如 36.00 / 33.58）完全一致：纯文字、无背景、同字号同对齐。
+    // 自动支撑/压力线：图内画虚线 + 右侧价格轴(y 轴)上画「支/压 + 价位」标签。
+    // 标签样式完全复刻原生「最后价标签」(priceMark.last.text)：彩色实底（压红/支绿）+ 白字 + 方形无圆角 +
+    // padding 4/2 + 字号 12/Helvetica Neue；紧贴轴左缘(x:0, align:left)去除多余左侧间距。
     registerOverlay({
       name: "autoLevelLine",
       needDefaultPointFigure: false,
@@ -1168,19 +1171,18 @@ function ensureTrendOverlay() {
         const overlay = params.overlay as any;
         if (!coordinates || coordinates.length < 1) return [];
         const y = coordinates[0].y;
-        // 与原生价格轴标签(20.01 等)字体完全一致：字号/字体/字重沿用 overlay.text 默认 12 / Helvetica Neue / normal，
-        // 仅颜色取线条色（支撑绿 / 压力红）；必须显式关掉默认蓝底/蓝边/内边距，否则仍是「色块」而非纯文字。
-        const col = overlay?.styles?.line?.color || "#888";
+        // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角 + padding 4/2；紧贴轴左缘(x:0, align:left)去多余左侧间距。
+        const bg = overlay?.extendData?.bg || overlay?.styles?.line?.color || "#888";
         const text = overlay?.extendData?.text || "";
         return [{
           type: "text",
-          attrs: { x: bounding.width, y, text, align: "right", baseline: "middle" },
+          attrs: { x: 0, y, text, align: "left", baseline: "middle" },
           styles: {
-            color: col,
-            backgroundColor: "transparent",
+            color: "#ffffff",
+            backgroundColor: bg,
             borderColor: "transparent",
             borderSize: 0,
-            paddingLeft: 0, paddingRight: 0, paddingTop: 0, paddingBottom: 0,
+            paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2,
           },
           ignoreEvent: true,
         }];
