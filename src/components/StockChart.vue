@@ -919,7 +919,7 @@ interface AutoLevel {
 type BandType = "uptrend" | "downtrend" | "pullback" | "bounce" | "box";
 
 // 判定当前所处波段类型（5 类），输入 highs/lows 来自 30 根波段窗口。
-// breakDown：上涨结构（hh&&hl）但现价跌破前摆动低点→结构已破坏，屏蔽全部 S 交易参考线、仅保留 B 压力线。
+// breakDown：箱体/上涨结构但现价跌破前摆动低点→结构已破坏，统一判定支撑失效（结构支撑 + 交易S 全部隐藏），压力线保留。
 function detectBandType(highs: SwingPt[], lows: SwingPt[], series: any[], current: number): { band: BandType; breakDown: boolean } {
   const has2H = highs.length >= 2;
   const has2L = lows.length >= 2;
@@ -1161,24 +1161,31 @@ function computeAutoLevelsFromSeries(dl: Kline[], guard: ReturnType<typeof resol
   const structSupPrice = supStruct ? (band === "box" ? supStruct.cl.center : bodyEdge(supStruct.cl, "support")) : null;
   const structPresPrice = presStruct ? (band === "box" ? presStruct.cl.center : bodyEdge(presStruct.cl, "pressure")) : null;
 
+  // 统一失效判定（破位隐藏）：结构/交易支撑线在「连续2根实体击穿(sc.broken)」或「箱体破位(breakDown)」任一成立时即视为失效，
+  // 全部过滤不渲染，不再区分两套隐藏规则；仅保留未被击穿的有效价位线。压力线仅受自身 sc.broken 约束（箱体破位不影响上沿阻力）。
+  const supInvalid = (supStruct?.sc.broken ?? false) || breakDown;
+  const presInvalid = presStruct?.sc.broken ?? false;
+  const supTradeInvalid = (supTrade?.sc.broken ?? false) || breakDown;
+  const presTradeInvalid = presTrade?.sc.broken ?? false;
+
   // 结构支撑（绿粗虚线，满宽，无 S/B 标签；破位失效则不渲染）
-  if (supStruct && !supStruct.sc.broken && structSupPrice != null) {
+  if (supStruct && !supInvalid && structSupPrice != null) {
     out.push({ kind: "support", role: "structSupport", price: structSupPrice, color: SUPPORT_COLOR, bg: SUPPORT_COLOR, size: 1, dashed: true, tag: L.sS.tag, label: L.sS.name, src: "结构支撑·波段低点簇 No.1" });
   }
   // 交易参考支撑（红细虚线，挂载 S 标签；与结构线同价则去重，避免密集平行线）
-  // 硬性准入：①单脉冲过滤 ②总分≥30 ③未被连续2根实体破位；④结构破坏(box breakDown)屏蔽全部 S 交易参考线，仅留 B
-  if (supTrade && !breakDown && !supTrade.sc.broken && supTrade.sc.score >= MIN_TOTAL_SCORE) {
+  // 硬性准入：①单脉冲过滤 ②总分≥30 ③未被统一失效判定(supTradeInvalid：连续2根实体破位或箱体破位)
+  if (supTrade && !supTradeInvalid && supTrade.sc.score >= MIN_TOTAL_SCORE) {
     const price = supTrade.cl.center;
     // 结构线被渲染屏蔽（如分时 disableStruct）时视为不存在，不去重交易参考线，避免 S/B 被连带隐藏
     if (structSupPrice == null || guard.disableStruct || Math.abs(price - structSupPrice) / structSupPrice > TOL_PCT)
       out.push({ kind: "support", role: "tradeSupport", price, color: TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR, size: 1, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
   }
   // 结构压力（红粗虚线，满宽，无 S/B 标签；破位失效则不渲染）
-  if (presStruct && !presStruct.sc.broken && structPresPrice != null) {
+  if (presStruct && !presInvalid && structPresPrice != null) {
     out.push({ kind: "pressure", role: "structPressure", price: structPresPrice, color: PRESSURE_COLOR, bg: PRESSURE_COLOR, size: 1, dashed: true, tag: L.sP.tag, label: L.sP.name, src: "结构压力·波段高点簇 No.1" });
   }
   // 交易参考压力（绿细虚线，挂载 B 标签；硬性准入：单脉冲过滤 + 总分≥30 + 未破位）
-  if (presTrade && !presTrade.sc.broken && presTrade.sc.score >= MIN_TOTAL_SCORE) {
+  if (presTrade && !presTradeInvalid && presTrade.sc.score >= MIN_TOTAL_SCORE) {
     const price = presTrade.cl.center;
     if (structPresPrice == null || guard.disableStruct || Math.abs(price - structPresPrice) / structPresPrice > TOL_PCT)
       out.push({ kind: "pressure", role: "tradePressure", price, color: TRADE_PRESSURE_COLOR, bg: TRADE_PRESSURE_COLOR, size: 1, dashed: true, tag: L.tP.tag, sub: L.tP.sub, label: L.tP.name, src: "交易参考压力·短线高点簇 No.1" });
