@@ -194,7 +194,7 @@ function ensureMacdfs() {
         { key: "dea", title: "DEA: ", type: "line" },
         {
           key: "macd",
-          title: "MACD: ",
+          title: "MACDFS: ", // 分时专属指标，图例前缀与面板标题 MACDFS 一致，避免与日K 的 MACD 混淆误导
           type: "bar",
           baseValue: 0, // 关键：与内置 MACD 一致锚定零轴；缺失时 klinecharts 会用 yAxis 区间下沿（getRange().from）作基线，分时 MACD 柱从底部向上画、零轴穿越消失、图形错乱
           // 量柱逐根着色：klinecharts 自定义指标不会自动按值正负选色（内置 MACD 才会）
@@ -1823,7 +1823,7 @@ function applySubOverrides() {
     const macdName = props.mode === "intraday" ? "MACDFS" : "MACD";
     const macdBarFigure = {
       key: "macd",
-      title: "MACD: ",
+      title: macdName === "MACDFS" ? "MACDFS: " : "MACD: ",
       type: "bar",
       baseValue: 0,
       styles: (data: any, _indicator: any, defaultStyles: any) => {
