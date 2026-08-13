@@ -333,7 +333,7 @@ const props = withDefaults(
     code?: string;
     /** 辅助线显示配置（总开关 + 压力/支撑/趋势逐线开关）；不传则按组件默认全开 */
     auxConfig?: ChartAuxConfig;
-    /** 当前 K线周期（d/w/M/y），用于各周期默认缩放（显示约一个月等）；不传默认日K */
+    /** 当前 K线周期（m=分时/d/w/M），用于各周期默认缩放与智能标注多周期隔离；不传默认日K */
     period?: PeriodKey;
   }>(),
   { height: 440, showMA: true, macdDif: true, macdDea: true, volumeMa5: true, volumeMa10: true, volumeMa20: true, showTools: false, autoDraw: false, persist: true }
@@ -944,6 +944,7 @@ function detectBandType(highs: SwingPt[], lows: SwingPt[], series: any[], curren
   if (hh && hl) {
     const pulledBack = !!lastH && current < lastH.value;  // 从近端高位回落
     const prevLow = prevL ? prevL.value : (lastL ? lastL.value : -Infinity);
+    if (current < prevLow) return "box";                   // 跌破前低→结构已破坏，降级箱体，禁主升浪与 S 低吸
     if (pulledBack && current >= prevLow) return "pullback"; // 未跌破近端前低
     return "uptrend";
   }
@@ -982,7 +983,7 @@ interface ClusterScore { touches: number; reversal: number; swap: number; score:
 function scoreCluster(series: any[], cl: PriceCluster, role: "support" | "pressure", tol: number): ClusterScore {
   const center = cl.center;
   const lo = center * (1 - tol), hi = center * (1 + tol);
-  let touches = 0, broken = false, revSum = 0;
+  let touches = 0, broken = false, breakCount = 0, revSum = 0;
   let prevSide = 0, crossed = false;
   const n = series.length;
   for (let i = 0; i < n; i++) {
@@ -990,11 +991,12 @@ function scoreCluster(series: any[], cl: PriceCluster, role: "support" | "pressu
     let touched = false;
     if (role === "support") {
       if (d.low <= hi && d.low >= lo) touched = true;
-      if (d.close < center) broken = true; // 实体收盘跌破→支撑失守
+      if (d.close < center) breakCount++; else breakCount = 0; // 连续实体收盘击穿计数
     } else {
       if (d.high >= lo && d.high <= hi) touched = true;
-      if (d.close > center) broken = true; // 实体收盘突破→压力失守
+      if (d.close > center) breakCount++; else breakCount = 0;
     }
+    if (breakCount >= 2) broken = true; // 连续 2 根实体击穿才判失守，单根毛刺/影线不惩罚
     if (touched) {
       touches++;
       // 触碰后 1~2 根的反转反应（大阳拉起 / 大阴回落）
@@ -1016,7 +1018,7 @@ function scoreCluster(series: any[], cl: PriceCluster, role: "support" | "pressu
   // 频次：单次毛刺穿刺最高 10 分
   const freq = touches <= 1 ? Math.min(10, touches * 8) : Math.min(SWING_FREQ_MAX, touches * 8);
   const reversal = Math.min(SWING_REV_MAX, revSum);
-  const swap = crossed ? SWING_SWAP_MAX : 8; // 完成支撑↔压力互换拿满，单一角色得基础分
+  const swap = crossed ? 8 : SWING_SWAP_MAX; // 稳定未被穿越的支撑/压力拿满；来回震荡穿越位仅基础分（更符合交易常识）
   let score = freq + reversal + swap;
   if (broken) score *= 0.4; // 被实体击穿的价位大幅扣分（不再作为有效支撑/压力）
   return { touches, reversal, swap, score, broken };
@@ -1053,8 +1055,37 @@ const BAND_LABELS: Record<BandType, {
   box:       { sS: { tag: "支", name: "结构支撑" }, tS: { tag: "S", sub: "企稳买", name: "交易参考支撑 S" }, sP: { tag: "压", name: "结构压力" }, tP: { tag: "B", sub: "止盈减仓", name: "交易参考压力 B" } },
 };
 
+// 多周期前置隔离守卫：不同 K 线周期的窗口参数与可绘制线种完全不同，
+// 防止分时出现波段大结构/趋势线、周月线出现 S/B 买卖标签误导交易（P0 缺陷 2）。
+// 说明：本项目 PeriodKey 为 "m"|"d"|"w"|"M"（无年 K 周期），故按 mode(分时) + period(日/周/月) 隔离。
+function resolvePeriodGuard(): {
+  bandWin: number; tradeWin: number;
+  disableStruct: boolean; disableTrade: boolean; disableTrend: boolean;
+} {
+  let bandWin = BAND_WIN;
+  let tradeWin = TRADE_WIN;
+  let disableStruct = false;
+  let disableTrade = false;
+  let disableTrend = false;
+  if (props.mode === "intraday") {
+    bandWin = 0;
+    tradeWin = dataList.length; // 分时仅当日 T 线，用全部分时 K
+    disableStruct = true;
+    disableTrend = true;
+  } else if (props.period === "w") {
+    bandWin = 60;
+    disableTrade = true; // 周 K：禁用 T 线 S/B，仅结构线 + 合规趋势线
+  } else if (props.period === "M") {
+    bandWin = 80;
+    disableTrade = true;
+    disableTrend = true; // 月 K：仅长期结构线
+  }
+  // 日 K（默认）保持 bandWin=30 / tradeWin=20，全开
+  return { bandWin, tradeWin, disableStruct, disableTrade, disableTrend };
+}
+
 // 计算系统画线（智能标注）：每条 K 线图固定输出 4 根水平线（结构支撑/交易参考支撑/结构压力/交易参考压力）
-// + 按需趋势线。结构线取自 30 根波段窗口、交易线取自 20 根短线窗口，同方向价格簇综合得分取第 1 名。
+// + 按需趋势线。结构线取自波段窗口、交易线取自短线窗口（窗口随周期变化，见 resolvePeriodGuard），同方向价格簇综合得分取第 1 名。
 function computeAutoLevels(): AutoLevel[] {
   const out: AutoLevel[] = [];
   const dl = dataList;
@@ -1063,8 +1094,9 @@ function computeAutoLevels(): AutoLevel[] {
   const current = last?.close ?? 0;
   if (!current) return out;
 
-  const bandSeries = dl.slice(-BAND_WIN);
-  const tradeSeries = dl.slice(-TRADE_WIN);
+  const guard = resolvePeriodGuard();
+  const bandSeries = guard.bandWin > 0 ? dl.slice(-guard.bandWin) : [];
+  const tradeSeries = guard.tradeWin > 0 ? dl.slice(-guard.tradeWin) : [];
   const { highs, lows } = findSwings(bandSeries, SWING_WIN);
   const band = detectBandType(highs, lows, bandSeries, current);
   const L = BAND_LABELS[band];
@@ -1102,10 +1134,11 @@ function computeAutoLevels(): AutoLevel[] {
       out.push({ kind: "pressure", role: "tradePressure", price, color: PRESSURE_COLOR, bg: PRESSURE_COLOR, size: 1, dashed: true, tag: L.tP.tag, sub: L.tP.sub, label: L.tP.name, src: "交易参考压力·短线高点簇 No.1" });
   }
 
-  // 趋势线：上升结构（主升/上涨回调）连 3 个抬升摆动低点；主跌连 3 个降低摆动高点；冲突场景不绘制
+  // 趋势线：仅主升 uptrend 连 3 个抬升摆动低点；主跌连 3 个降低摆动高点；
+  // pullback(走弱回调)/bounce/box 禁止绘制上升趋势线（防假多头视觉误导，对齐风控硬规则）
   let trendPts: { timestamp: number; value: number }[] | null = null;
   let trendDir: "up" | "down" = "up";
-  if (band === "uptrend" || band === "pullback") {
+  if (band === "uptrend") {
     if (lows.length >= 3) {
       const a = lows[lows.length - 3], b = lows[lows.length - 2], c = lows[lows.length - 1];
       if (c.value > b.value && b.value > a.value) trendPts = [a, b, c].map((s) => ({ timestamp: s.t, value: s.value }));
@@ -1130,8 +1163,13 @@ function drawAutoLevels() {
   // 无任何智能标注线开启 → 不绘制（各线独立开关，无总开关）
   if (!props.autoDraw || !chart || !cfg) return;
   if (!(cfg.structLine || cfg.tradeLine || cfg.trend)) return;
+  const guard = resolvePeriodGuard();
   const levels = computeAutoLevels();
   for (const lv of levels) {
+    // 多周期隔离：对应周期禁用的线种直接跳过（分时禁结构/趋势；周禁 T；月禁 T/趋势）
+    if (guard.disableStruct && (lv.role === "structSupport" || lv.role === "structPressure")) continue;
+    if (guard.disableTrade && (lv.role === "tradeSupport" || lv.role === "tradePressure")) continue;
+    if (guard.disableTrend && lv.kind === "trend") continue;
     // 结构线开关 → 结构支撑 + 结构压力（与交易线同色：绿/红）
     if ((lv.role === "structSupport" || lv.role === "structPressure") && !cfg.structLine) continue;
     // 交易线开关 → S 交易参考支撑 + B 交易参考压力（浅绿/浅红）
