@@ -374,7 +374,6 @@ const CARD_RENDERERS: Record<CardId, { comp: Component; props: () => Record<stri
       // 实时最新价/昨收（与头部同源 5s 实时快照）：分时模式同步到走势图最后一根，
       // 确保「股票卡片头部」与「实时走势图」显示的最新净值完全同步、同源、实时更新。
       livePrice: realtime.value?.price ?? lastTrendPrice.value,
-      livePreClose: realtime.value?.preClose ?? preClose.value,
       // 看盘画线：行情主图启用工具栏，并透传当前股票代码用于按股持久化画线
       code: curCode.value,
       showTools: true,

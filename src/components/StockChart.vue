@@ -57,7 +57,7 @@ import { computeChip, type ChipResult } from "@/utils/analyzer";
 import type { Kline, Trend, PeriodKey } from "@/utils/period";
 import type { ChartAuxConfig } from "@/store/chartAux";
 import { MA_PERIODS, type ChartMaConfig } from "@/store/chartMa";
-import { fmtPrice } from "@/utils/format";
+import { fmtPrice, fmtAmount } from "@/utils/format";
 
 // 图表涨跌色以 global.css 的 --up/--down 为单一真源（CSS 变量驱动），与全站价格文字保持一致。
 // canvas 不能解析 var()，故此处初始化时解析一次真实 hex 再喂给图表引擎；--up/--down 为主题不变量
@@ -74,6 +74,11 @@ function readBarColors(defaultStyles: any): { up: string; down: string; noChange
     down: base.downColor || DOWN,
     noChange: base.noChangeColor || NO_CHANGE,
   };
+}
+
+// 量均线 MA5/MA10/MA20 各自独立开关（与 applySubOverrides 共用，避免重复构造）
+function volMaOnEnabled(): boolean[] {
+  return [props.volumeMa5 !== false, props.volumeMa10 !== false, props.volumeMa20 !== false];
 }
 
 // ---- 分时均价（AVP）自定义指标：累计成交额 / 累计成交量，叠加在主图 ----
@@ -316,8 +321,6 @@ const props = withDefaults(
     volumeMa20?: boolean;
     /** 实时最新价（仅分时模式生效）：把「最后一根分时柱」动态同步为实时价 */
     livePrice?: number;
-    /** 实时昨收（与 livePrice 同源） */
-    livePreClose?: number;
     /** 是否显示看盘画线工具栏（支撑/压力/趋势/黄金分割/自动/清空），默认关 */
     showTools?: boolean;
     /** 看盘画线工具栏开关：由外部画板图标控制淡入/淡出，默认关 */
@@ -426,13 +429,13 @@ function buildStyles(): Record<string, unknown> {
       bar: {
         upColor: UP,
         downColor: DOWN,
-        noChangeColor: "#888888",
+        noChangeColor: NO_CHANGE,
         upBorderColor: UP,
         downBorderColor: DOWN,
-        noChangeBorderColor: "#888888",
+        noChangeBorderColor: NO_CHANGE,
         upWickColor: UP,
         downWickColor: DOWN,
-        noChangeWickColor: "#888888",
+        noChangeWickColor: NO_CHANGE,
       },
       priceMark: {
         high: { show: false },
@@ -441,7 +444,7 @@ function buildStyles(): Record<string, unknown> {
           show: true,
           upColor: UP,
           downColor: DOWN,
-          noChangeColor: "#888888",
+          noChangeColor: NO_CHANGE,
           line: { show: false, style: "dashed", size: 1, dashedValue: [4, 3] },
           text: { show: true, color: "#ffffff", backgroundColor: UP, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2 },
         },
@@ -464,7 +467,7 @@ function buildStyles(): Record<string, unknown> {
       tooltip: { showRule: "none" },
       lastValueMark: { show: false },
       bars: [
-        { style: "fill", upColor: UP, downColor: DOWN, noChangeColor: "#888888", borderStyle: "solid", borderSize: 1, borderDashedValue: [2, 2] },
+        { style: "fill", upColor: UP, downColor: DOWN, noChangeColor: NO_CHANGE, borderStyle: "solid", borderSize: 1, borderDashedValue: [2, 2] },
       ],
       lines: INDICATOR_LINE_COLORS.map((c) => ({ color: c, size: 1 })),
     },
@@ -567,7 +570,7 @@ function drawCyq() {
     const yp = chart.convertToPixel({ price: prices[i] } as any, { paneId: "candle_pane" }) as any;
     if (!yp || typeof yp.y !== "number") continue;
     const bw = (chip.vals[i] / maxV) * regionW;
-    ctx.fillStyle = chip.colors[i] || "#888888";
+    ctx.fillStyle = chip.colors[i] || NO_CHANGE;
     ctx.fillRect(xLeft, yp.y - barH / 2, bw, barH);
   }
 }
@@ -848,10 +851,8 @@ const SWING_WIN = 2;      // 摆动点左右确认 K 线：左右各 2 根验证
 const SWING_FREQ_MAX = 40;// 触碰频次满分
 const SWING_REV_MAX = 35; // 反转反应满分
 const SWING_SWAP_MAX = 25;// 角色互换满分
-const STRUCT_SUPPORT_COLOR = DOWN;       // 结构支撑（与交易线浅绿一致）
-const TRADE_SUPPORT_COLOR = DOWN;       // 浅绿（交易参考支撑）
-const STRUCT_PRESSURE_COLOR = UP;       // 结构压力（与交易线浅红一致）
-const TRADE_PRESSURE_COLOR = UP;        // 浅红（交易参考压力）
+const SUPPORT_COLOR = DOWN;   // 支撑（结构支撑 / 交易参考支撑同为浅绿）
+const PRESSURE_COLOR = UP;    // 压力（结构压力 / 交易参考压力同为浅红）
 
 // 摆动点（pivot）：以 win 根为窗口取严格局部极值；窗口天然把相邻极值隔开 ≥win 根，无需额外 gap 过滤
 // 全局强制约束：K 线靠近图表首尾不足 win 根则不生成摆动点（findSwings 循环边界已保证）。
@@ -1082,23 +1083,23 @@ function computeAutoLevels(): AutoLevel[] {
 
   // 结构支撑（绿粗虚线，满宽，无 S/B 标签）
   if (supStruct && structSupPrice != null) {
-    out.push({ kind: "support", role: "structSupport", price: structSupPrice, color: STRUCT_SUPPORT_COLOR, bg: STRUCT_SUPPORT_COLOR, size: 1, dashed: true, tag: L.sS.tag, label: L.sS.name, src: "结构支撑·波段低点簇 No.1" });
+    out.push({ kind: "support", role: "structSupport", price: structSupPrice, color: SUPPORT_COLOR, bg: SUPPORT_COLOR, size: 1, dashed: true, tag: L.sS.tag, label: L.sS.name, src: "结构支撑·波段低点簇 No.1" });
   }
   // 交易参考支撑（浅绿细虚线，挂载 S 标签；与结构线同价则去重，避免密集平行线）
   if (supTrade) {
     const price = supTrade.cl.center;
     if (structSupPrice == null || Math.abs(price - structSupPrice) / structSupPrice > TOL_PCT)
-      out.push({ kind: "support", role: "tradeSupport", price, color: TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR, size: 1, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
+      out.push({ kind: "support", role: "tradeSupport", price, color: SUPPORT_COLOR, bg: SUPPORT_COLOR, size: 1, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
   }
   // 结构压力（红粗虚线，满宽，无 S/B 标签）
   if (presStruct && structPresPrice != null) {
-    out.push({ kind: "pressure", role: "structPressure", price: structPresPrice, color: STRUCT_PRESSURE_COLOR, bg: STRUCT_PRESSURE_COLOR, size: 1, dashed: true, tag: L.sP.tag, label: L.sP.name, src: "结构压力·波段高点簇 No.1" });
+    out.push({ kind: "pressure", role: "structPressure", price: structPresPrice, color: PRESSURE_COLOR, bg: PRESSURE_COLOR, size: 1, dashed: true, tag: L.sP.tag, label: L.sP.name, src: "结构压力·波段高点簇 No.1" });
   }
   // 交易参考压力（浅红细虚线，挂载 B 标签）
   if (presTrade) {
     const price = presTrade.cl.center;
     if (structPresPrice == null || Math.abs(price - structPresPrice) / structPresPrice > TOL_PCT)
-      out.push({ kind: "pressure", role: "tradePressure", price, color: TRADE_PRESSURE_COLOR, bg: TRADE_PRESSURE_COLOR, size: 1, dashed: true, tag: L.tP.tag, sub: L.tP.sub, label: L.tP.name, src: "交易参考压力·短线高点簇 No.1" });
+      out.push({ kind: "pressure", role: "tradePressure", price, color: PRESSURE_COLOR, bg: PRESSURE_COLOR, size: 1, dashed: true, tag: L.tP.tag, sub: L.tP.sub, label: L.tP.name, src: "交易参考压力·短线高点簇 No.1" });
   }
 
   // 趋势线：上升结构（主升/上涨回调）连 3 个抬升摆动低点；主跌连 3 个降低摆动高点；冲突场景不绘制
@@ -1179,16 +1180,15 @@ function ensureTrendOverlay() {
         const b = coordinates[coordinates.length - 1];
         const col = overlay?.styles?.line?.color || TREND;
         const up = b.y < a.y; // 像素坐标 y 越小价格越高
-        // 末端开放 V 形箭头（无填充，比实心三角更精致）：b 为箭头尖，两翼向趋势反方向张开
+        // 末端实心箭头（指向趋势方向，尖端略超出线末端；比开放 V 形更直观准确）
         const lw = overlay?.styles?.line?.size || 1.6;
-        const wing = 9, dx = wing * 0.55, dy = wing * 0.85;
-        const left = up ? { x: b.x - dx, y: b.y + dy } : { x: b.x - dx, y: b.y - dy };
-        const right = up ? { x: b.x + dx, y: b.y + dy } : { x: b.x + dx, y: b.y - dy };
-        const aw = Math.max(2, lw * 1.4); // 箭头线宽略粗于趋势线
+        const headLen = 10, headW = 5; // 细长实心箭头：长 10、半宽 5
+        const tip = up ? { x: b.x, y: b.y - headLen } : { x: b.x, y: b.y + headLen };
+        const left = { x: b.x - headW, y: b.y };
+        const right = { x: b.x + headW, y: b.y };
         return [
           { type: "line", attrs: { coordinates: [a, b] }, styles: { style: "solid", size: lw, color: col }, ignoreEvent: true },
-          { type: "line", attrs: { coordinates: [left, b] }, styles: { style: "solid", size: aw, color: col }, ignoreEvent: true },
-          { type: "line", attrs: { coordinates: [right, b] }, styles: { style: "solid", size: aw, color: col }, ignoreEvent: true },
+          { type: "polygon", attrs: { coordinates: [tip, left, right] }, styles: { style: "fill", color: col, borderColor: col, borderSize: 1 }, ignoreEvent: true },
         ];
       },
     } as never);
@@ -1481,12 +1481,6 @@ const legendOffsets = computed(() => {
   const { priceH, volH } = subPaneHeights(usable);
   return { price: 0, vol: priceH, macd: priceH + volH };
 });
-function fmtVol(v: number): string {
-  if (!Number.isFinite(v) || v <= 0) return "--";
-  if (v >= 1e8) return (v / 1e8).toFixed(2) + "亿";
-  if (v >= 1e4) return (v / 1e4).toFixed(2) + "万";
-  return String(Math.round(v));
-}
 // 从图表实例读取某 pane 各指标在「最后一根」的已算结果（用于无十字光标时显示最新值）
 function readIndicatorResults(paneId: string, idx?: number): Record<string, any> {
   const out: Record<string, any> = {};
@@ -1571,11 +1565,11 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
   const vol = volMap[props.mode === "intraday" ? "INTRADAY_VOL" : "VOL"];
   legend.vol = [];
   if (vol) {
-    if (vol.volume != null) legend.vol.push({ label: props.mode === "intraday" ? "分时量" : "成交量", value: fmtVol(vol.volume) });
+    if (vol.volume != null) legend.vol.push({ label: props.mode === "intraday" ? "分时量" : "成交量", value: fmtAmount(vol.volume) });
     // 量均线 MA5/MA10/MA20 各自独立开关（figure key: ma1/ma2/ma3）
-    const volMaOn = [props.volumeMa5 !== false, props.volumeMa10 !== false, props.volumeMa20 !== false];
+    const volMaOn = volMaOnEnabled();
     const volMaKeys = ["ma1", "ma2", "ma3"];
-    volMaKeys.forEach((k, i) => { if (volMaOn[i] && vol[k] != null) legend.vol.push({ label: "MA" + (i + 1) * 5, value: fmtVol(vol[k]), color: INDICATOR_LINE_COLORS[i] }); });
+    volMaKeys.forEach((k, i) => { if (volMaOn[i] && vol[k] != null) legend.vol.push({ label: "MA" + (i + 1) * 5, value: fmtAmount(vol[k]), color: INDICATOR_LINE_COLORS[i] }); });
   }
   // MACD 图：DIF(橙)/DEA(蓝)/MACD(柱按正负红绿) —— DIF/DEA 各自独立开关
   const macdMap = paneMap("macd_pane", cross, idx);
@@ -1695,7 +1689,7 @@ function restoreOverlays() {
 // 仅当「存在被关闭的线」时才覆盖（全部开启时跳过，沿用内置默认外观，零行为变化）。
 function applySubOverrides() {
   if (!chart) return;
-  const volMaOn = [props.volumeMa5 !== false, props.volumeMa10 !== false, props.volumeMa20 !== false];
+  const volMaOn = volMaOnEnabled();
   const macdDifOn = props.macdDif !== false;
   const macdDeaOn = props.macdDea !== false;
 
@@ -1709,10 +1703,7 @@ function applySubOverrides() {
       baseValue: 0,
       styles: (data: any, _indicator: any, defaultStyles: any) => {
         const k = data?.current?.kLineData;
-        const base = (defaultStyles?.bars && defaultStyles.bars[0]) || {};
-        const up = base.upColor || UP;
-        const down = base.downColor || DOWN;
-        const noChange = base.noChangeColor || "#888888";
+        const { up, down, noChange } = readBarColors(defaultStyles);
         if (!k) return { color: noChange };
         if (k.close > k.open) return { color: up };
         if (k.close < k.open) return { color: down };
@@ -1741,10 +1732,7 @@ function applySubOverrides() {
       type: "bar",
       baseValue: 0,
       styles: (data: any, _indicator: any, defaultStyles: any) => {
-        const base = (defaultStyles?.bars && defaultStyles.bars[0]) || {};
-        const up = base.upColor || UP;
-        const down = base.downColor || DOWN;
-        const noChange = base.noChangeColor || "#888888";
+        const { up, down, noChange } = readBarColors(defaultStyles);
         const prevMacd = data?.prev?.indicatorData?.macd ?? Number.MIN_SAFE_INTEGER;
         const curMacd = data?.current?.indicatorData?.macd ?? Number.MIN_SAFE_INTEGER;
         let color = noChange;
@@ -1897,7 +1885,7 @@ watch(
   () => buildChart()
 );
 watch(
-  () => [props.livePrice, props.livePreClose],
+  () => [props.livePrice],
   () => applyLivePrice()
 );
 watch(isDark, () => applyTheme());

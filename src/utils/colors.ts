@@ -25,12 +25,3 @@ export function cssColor(name: string, fallback: string): string {
     return fallback;
   }
 }
-
-// 图表涨跌色：以 global.css 的 --up/--down 为单一真源（CSS 变量驱动），
-// 与全站价格文字保持一致；无 DOM 时回退到硬编码常量 UP/DOWN。
-export function upColor(): string {
-  return cssColor("--up", UP);
-}
-export function downColor(): string {
-  return cssColor("--down", DOWN);
-}

@@ -11,7 +11,7 @@
 import StockChart from "./StockChart.vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import { PERIODS, PERIOD_ORDER, type PeriodKey } from "@/utils/period";
-import { INDICATOR_LINE_COLORS, cssColor, UP, DOWN } from "@/utils/colors";
+import { INDICATOR_LINE_COLORS, cssColor, UP, DOWN, TREND } from "@/utils/colors";
 import { auxConfig } from "@/store/chartAux";
 import { maConfig, MA_PERIODS } from "@/store/chartMa";
 import { panelConfig } from "@/store/chartPanel";
@@ -26,7 +26,6 @@ const props = defineProps<{
   loading?: boolean;
   /** 实时最新价（与头部同源 5s 快照），分时模式同步到走势图最后一根，确保与卡片一致 */
   livePrice?: number;
-  livePreClose?: number;
   /** 当前股票代码：透传给 StockChart 用于看盘画线按股票持久化 */
   code?: string;
   /** 是否显示看盘画线工具栏（仅行情页主图启用） */
@@ -80,7 +79,7 @@ type AuxKey = "structLine" | "tradeLine" | "trend";
 const auxItems: { key: AuxKey; label: string; desc: string; dotSplit?: [string, string]; color?: string }[] = [
   { key: "structLine", label: "结构线", desc: "红压力/绿支撑", dotSplit: [cssColor("--up", UP), cssColor("--down", DOWN)] },
   { key: "tradeLine", label: "T线", desc: "红S买入/绿B卖出", dotSplit: [cssColor("--up", UP), cssColor("--down", DOWN)] },
-  { key: "trend", label: "趋势线", desc: "蓝色箭头：上行 / 下行方向", color: "#2f74ff" },
+  { key: "trend", label: "趋势线", desc: "蓝色箭头：上行 / 下行方向", color: TREND },
 ];
 // 与图表 MA 线颜色一致（见 colors.ts INDICATOR_LINE_COLORS 顺序：MA5橙/MA10蓝/MA20紫/MA60绿/MA250品红）
 // ---- 折叠式设置：一级分类 + 二级线开关 ----
@@ -105,17 +104,17 @@ const sections: SettingSection[] = [
     key: "volume",
     title: "成交量",
     rows: [
-      { key: "volumeMa5", label: "MA5", desc: "5 日成交量均线", color: "#f5a623", get: () => panelConfig.volumeMa5, set: (v: boolean) => { panelConfig.volumeMa5 = v; } },
-      { key: "volumeMa10", label: "MA10", desc: "10 日成交量均线", color: "#1c9cf0", get: () => panelConfig.volumeMa10, set: (v: boolean) => { panelConfig.volumeMa10 = v; } },
-      { key: "volumeMa20", label: "MA20", desc: "20 日成交量均线", color: "#9b59b6", get: () => panelConfig.volumeMa20, set: (v: boolean) => { panelConfig.volumeMa20 = v; } },
+      { key: "volumeMa5", label: "MA5", desc: "5 日成交量均线", color: INDICATOR_LINE_COLORS[0], get: () => panelConfig.volumeMa5, set: (v: boolean) => { panelConfig.volumeMa5 = v; } },
+      { key: "volumeMa10", label: "MA10", desc: "10 日成交量均线", color: INDICATOR_LINE_COLORS[1], get: () => panelConfig.volumeMa10, set: (v: boolean) => { panelConfig.volumeMa10 = v; } },
+      { key: "volumeMa20", label: "MA20", desc: "20 日成交量均线", color: INDICATOR_LINE_COLORS[2], get: () => panelConfig.volumeMa20, set: (v: boolean) => { panelConfig.volumeMa20 = v; } },
     ],
   },
   {
     key: "macd",
     title: "MACD",
     rows: [
-      { key: "macdDif", label: "DIF", desc: "差离值", color: "#f5a623", get: () => panelConfig.macdDif, set: (v: boolean) => { panelConfig.macdDif = v; } },
-      { key: "macdDea", label: "DEA", desc: "异同平均数", color: "#1c9cf0", get: () => panelConfig.macdDea, set: (v: boolean) => { panelConfig.macdDea = v; } },
+      { key: "macdDif", label: "DIF", desc: "差离值", color: INDICATOR_LINE_COLORS[0], get: () => panelConfig.macdDif, set: (v: boolean) => { panelConfig.macdDif = v; } },
+      { key: "macdDea", label: "DEA", desc: "异同平均数", color: INDICATOR_LINE_COLORS[1], get: () => panelConfig.macdDea, set: (v: boolean) => { panelConfig.macdDea = v; } },
     ],
   },
   {
@@ -236,7 +235,6 @@ function toggleAcc(key: string) {
     :volume-ma10="panelConfig.volumeMa10"
     :volume-ma20="panelConfig.volumeMa20"
     :live-price="livePrice"
-    :live-pre-close="livePreClose"
     :code="code"
     :show-tools="showTools"
     :auto-draw="showTools"

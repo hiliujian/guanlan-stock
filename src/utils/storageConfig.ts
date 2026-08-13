@@ -19,7 +19,7 @@ export function loadConfig<T extends object>(key: string, defaults: () => T): T 
 }
 
 // 配置变化即时落盘（仅持久化已知字段，忽略多余脏字段）
-export function persistConfig<T extends object>(state: T, key: string): void {
+function persistConfig<T extends object>(state: T, key: string): void {
   try {
     uni.setStorageSync(key, { ...state });
   } catch {
