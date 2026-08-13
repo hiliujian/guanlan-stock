@@ -446,7 +446,7 @@ function buildStyles(): Record<string, unknown> {
           downColor: DOWN,
           noChangeColor: NO_CHANGE,
           line: { show: false, style: "dashed", size: 1, dashedValue: [4, 3] },
-          text: { show: true, color: "#ffffff", backgroundColor: UP, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2 },
+          text: { show: true, color: "#ffffff", backgroundColor: UP, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 10 },
         },
       },
       // 关闭内置 tooltip/图例（指标名+数值默认常显并覆盖在图内，改为图表上方自定义图例）
@@ -1274,7 +1274,7 @@ function ensureTrendOverlay() {
         if (sub) {
           figs.push({
             type: "text",
-            attrs: { x: 0, y: y + 15, text: sub, align: "left", baseline: "middle" },
+            attrs: { x: 0, y: y + 13, text: sub, align: "left", baseline: "middle" },
             styles: {
               color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
               paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 8,
