@@ -335,6 +335,8 @@ const props = withDefaults(
     auxConfig?: ChartAuxConfig;
     /** 当前 K线周期（m=分时/d/w/M），用于各周期默认缩放与智能标注多周期隔离；不传默认日K */
     period?: PeriodKey;
+    /** 日K序列（period="d"）：仅分时模式用于「复用日K结构线/T线S·B价位」，使分时与日K画线价格/标签/风控完全同步；不传则分时回退按自身数据。 */
+    dailyKlines?: Kline[];
   }>(),
   { height: 440, showMA: true, macdDif: true, macdDea: true, volumeMa5: true, volumeMa10: true, volumeMa20: true, showTools: false, autoDraw: false, persist: true }
 );
@@ -1058,7 +1060,9 @@ const BAND_LABELS: Record<BandType, {
 // 多周期前置隔离守卫：不同 K 线周期的窗口参数与可绘制线种完全不同，
 // 防止分时出现波段大结构/趋势线、周月线出现 S/B 买卖标签误导交易（P0 缺陷 2）。
 // 说明：本项目 PeriodKey 为 "m"|"d"|"w"|"M"（无年 K 周期），故按 mode(分时) + period(日/周/月) 隔离。
-function resolvePeriodGuard(): {
+// 分时默认仍隔离（bandWin=0 禁结构/趋势、仅自身当日 T）；但分时可通过显式传入日K参数(dailyKlines + mode="kline",period="d")
+// 改为「复用日K结构线/T线」——见 drawAutoLevels 的 intraday 复用分支。
+function resolvePeriodGuard(mode: "intraday" | "kline" = props.mode, period: string = props.period ?? "d"): {
   bandWin: number; tradeWin: number;
   disableStruct: boolean; disableTrade: boolean; disableTrend: boolean;
 } {
@@ -1067,15 +1071,15 @@ function resolvePeriodGuard(): {
   let disableStruct = false;
   let disableTrade = false;
   let disableTrend = false;
-  if (props.mode === "intraday") {
+  if (mode === "intraday") {
     bandWin = 0;
     tradeWin = dataList.length; // 分时仅当日 T 线，用全部分时 K
     disableStruct = true;
     disableTrend = true;
-  } else if (props.period === "w") {
+  } else if (period === "w") {
     bandWin = 60;
     disableTrade = true; // 周 K：禁用 T 线 S/B，仅结构线 + 合规趋势线
-  } else if (props.period === "M") {
+  } else if (period === "M") {
     bandWin = 80;
     disableTrade = true;
     disableTrend = true; // 月 K：仅长期结构线
@@ -1085,16 +1089,15 @@ function resolvePeriodGuard(): {
 }
 
 // 计算系统画线（智能标注）：每条 K 线图固定输出 4 根水平线（结构支撑/交易参考支撑/结构压力/交易参考压力）
-// + 按需趋势线。结构线取自波段窗口、交易线取自短线窗口（窗口随周期变化，见 resolvePeriodGuard），同方向价格簇综合得分取第 1 名。
-function computeAutoLevels(): AutoLevel[] {
+// + 按需趋势线。结构线取自波段窗口、交易线取自短线窗口（窗口随周期变化，见 resolvePeriodGuard），
+// 同方向价格簇综合得分取第 1 名。纯函数：由调用方决定数据序列与守卫（分时复用日K时传入日K序列 + 日K守卫即可完全同步）。
+function computeAutoLevelsFromSeries(dl: Kline[], guard: ReturnType<typeof resolvePeriodGuard>): AutoLevel[] {
   const out: AutoLevel[] = [];
-  const dl = dataList;
   if (!dl || dl.length < 12) return out;
   const last = dl[dl.length - 1];
   const current = last?.close ?? 0;
   if (!current) return out;
 
-  const guard = resolvePeriodGuard();
   const bandSeries = guard.bandWin > 0 ? dl.slice(-guard.bandWin) : [];
   const tradeSeries = guard.tradeWin > 0 ? dl.slice(-guard.tradeWin) : [];
   const { highs, lows } = findSwings(bandSeries, SWING_WIN);
@@ -1163,8 +1166,21 @@ function drawAutoLevels() {
   // 无任何智能标注线开启 → 不绘制（各线独立开关，无总开关）
   if (!props.autoDraw || !chart || !cfg) return;
   if (!(cfg.structLine || cfg.tradeLine || cfg.trend)) return;
-  const guard = resolvePeriodGuard();
-  const levels = computeAutoLevels();
+
+  // 分时复用日K：统一用日K经 30/20 窗口聚类打分得出的结构线 + T线 S/B 价位，分时与日K画线价格/标签/风控完全同步；
+  // 分时禁用趋势线、不再生成日内脉冲杂线（盘前日线锁定做T价位，盘中分时同价执行高抛低吸）。其余周/月K沿用各自隔离算法。
+  const isIntraday = props.mode === "intraday";
+  let guard: ReturnType<typeof resolvePeriodGuard>;
+  let series: Kline[];
+  if (isIntraday) {
+    guard = resolvePeriodGuard("kline", "d"); // 日K参数（bandWin=30/tradeWin=20，结构+T全开）
+    guard.disableTrend = true;                // 分时禁用趋势线
+    series = (props.dailyKlines && props.dailyKlines.length ? props.dailyKlines : dataList) as Kline[];
+  } else {
+    guard = resolvePeriodGuard();
+    series = dataList as Kline[];
+  }
+  const levels = computeAutoLevelsFromSeries(series, guard);
   for (const lv of levels) {
     // 多周期隔离：对应周期禁用的线种直接跳过（分时禁结构/趋势；周禁 T；月禁 T/趋势）
     if (guard.disableStruct && (lv.role === "structSupport" || lv.role === "structPressure")) continue;
