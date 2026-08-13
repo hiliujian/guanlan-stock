@@ -1188,7 +1188,7 @@ function drawAutoLevels() {
         const sub = lv.sub || "";
         chart.createOverlay({
           id, name: "autoLevelLine", points: [{ timestamp: t0, value: lv.price }], lock: true,
-          extendData: { text: main, sub, bg: lv.bg },
+          extendData: { text: main, sub, bg: lv.bg, smallTag: lv.role === "tradeSupport" || lv.role === "tradePressure" },
           styles: { line: { color: lv.color, style: lv.dashed ? "dashed" : "solid", size: lv.size || 1, dashedValue: [4, 3] } },
         } as never);
       }
@@ -1198,6 +1198,19 @@ function drawAutoLevels() {
       /* noop */
     }
   }
+}
+
+// 估算文本像素宽度（用于轴标签「标签小字 + 价格大字」并排布局）；无 canvas 环境降级为长度估算。
+let _measureCtx: CanvasRenderingContext2D | null = null;
+function measureText(txt: string, size: number, font = "Helvetica Neue"): number {
+  if (typeof document !== "undefined" && !_measureCtx) {
+    try { _measureCtx = document.createElement("canvas").getContext("2d"); } catch { _measureCtx = null; }
+  }
+  if (_measureCtx) {
+    _measureCtx.font = `${size}px ${font}`;
+    return _measureCtx.measureText(txt).width;
+  }
+  return txt.length * size * 0.55; // 降级估算
 }
 
 // ---- 自动趋势线自定义 overlay（线段 + 末端开放箭头标示方向）----
@@ -1257,19 +1270,44 @@ function ensureTrendOverlay() {
         const overlay = params.overlay as any;
         if (!coordinates || coordinates.length < 1) return [];
         const y = coordinates[0].y;
-        // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角 + padding 4/2；紧贴轴左缘(x:0, align:left)去多余左侧间距。
+        // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角 + padding；紧贴轴左缘(x:0, align:left)去多余左侧间距。
         const bg = overlay?.extendData?.bg || overlay?.styles?.line?.color || "#888";
         const main = overlay?.extendData?.text || "";
         const sub = overlay?.extendData?.sub || "";
-        const figs: any[] = [{
-          type: "text",
-          attrs: { x: 0, y, text: main, align: "left", baseline: "middle" },
-          styles: {
-            color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
-            paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 12,
-          },
-          ignoreEvent: true,
-        }];
+        const smallTag = overlay?.extendData?.smallTag === true;
+        const figs: any[] = [];
+        if (smallTag) {
+          // 交易线标签（S/B）：字母小字(size 9，与下方 sub 提示同号) + 价格大字(size 12)，并排成同一药丸。
+          const parts = main.trim().split(/\s+/);
+          const tag = parts[0] || "";
+          const price = parts.slice(1).join(" ");
+          const tagSize = 9, priceSize = 12, padX = 4, gap = 2;
+          const tagW = measureText(tag, tagSize);
+          const priceW = measureText(price, priceSize);
+          // 两枚同色实底相邻拼成一颗药丸；padding 不同使高度一致(≈16)，无缝衔接。
+          figs.push({
+            type: "text",
+            attrs: { x: 0, y, text: tag, align: "left", baseline: "middle" },
+            styles: { color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0, paddingLeft: padX, paddingRight: padX, paddingTop: 4, paddingBottom: 4, size: tagSize },
+            ignoreEvent: true,
+          });
+          figs.push({
+            type: "text",
+            attrs: { x: padX + tagW + gap, y, text: price, align: "left", baseline: "middle" },
+            styles: { color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0, paddingLeft: padX, paddingRight: padX, paddingTop: 2, paddingBottom: 2, size: priceSize },
+            ignoreEvent: true,
+          });
+        } else {
+          figs.push({
+            type: "text",
+            attrs: { x: 0, y, text: main, align: "left", baseline: "middle" },
+            styles: {
+              color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
+              paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 12,
+            },
+            ignoreEvent: true,
+          });
+        }
         if (sub) {
           figs.push({
             type: "text",
