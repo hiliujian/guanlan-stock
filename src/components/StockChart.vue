@@ -454,7 +454,7 @@ function buildStyles(): Record<string, unknown> {
       // 关闭内置 tooltip/图例（指标名+数值默认常显并覆盖在图内，改为图表上方自定义图例）
       tooltip: { showRule: "none" },
       area: {
-        lineSize: 2,
+        lineSize: 1.5,
         lineColor: "#1677ff",
         value: "close",
         smooth: false,
