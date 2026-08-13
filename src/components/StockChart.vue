@@ -335,8 +335,6 @@ const props = withDefaults(
     auxConfig?: ChartAuxConfig;
     /** 当前 K线周期（m=分时/d/w/M），用于各周期默认缩放与智能标注多周期隔离；不传默认日K */
     period?: PeriodKey;
-    /** 日K序列（period="d"）：仅分时模式用于「复用日K结构线/交易参考线S·B价位」，使分时与日K画线价格/标签/风控完全同步；不传则分时回退按自身数据。 */
-    dailyKlines?: Kline[];
   }>(),
   { height: 440, showMA: true, macdDif: true, macdDea: true, volumeMa5: true, volumeMa10: true, volumeMa20: true, showTools: false, autoDraw: false, persist: true }
 );
@@ -1103,11 +1101,10 @@ const BAND_LABELS: Record<BandType, {
 };
 
 // 多周期前置隔离守卫：不同 K 线周期的窗口参数与可绘制线种完全不同，
-// 防止分时出现波段大结构/趋势线、周月线出现 S/B 买卖标签误导交易（P0 缺陷 2）。
-// 说明：本项目 PeriodKey 为 "m"|"d"|"w"|"M"（无年 K 周期），故按 mode(分时) + period(日/周/月) 隔离。
-// 分时特殊分支（见 drawAutoLevels 的 intraday 复用）：计算层传日K序列 + 日K守卫(bandWin=30/tradeWin=20)，
-// 与日K同源算出结构线+交易参考线价格/标签/风控（保证做T价位完全一致）；渲染层额外 disableStruct=true 屏蔽结构线，仅显示 S/B 交易参考线、禁趋势线。
-function resolvePeriodGuard(mode: "intraday" | "kline" = props.mode, period: string = props.period ?? "d"): {
+// 多周期隔离：防止周/月 K 出现 S/B 买卖标签误导交易（P0 缺陷 2）。
+// 说明：本项目 PeriodKey 为 "m"|"d"|"w"|"M"（无年 K 周期）。分时(m)视图不绘制任何智能标注线，
+// 由 drawAutoLevels 提前 return 处理；此守卫只负责 kline 模式下的 d/w/M 周期隔离。
+function resolvePeriodGuard(period: string = props.period ?? "d"): {
   bandWin: number; tradeWin: number;
   disableStruct: boolean; disableTrade: boolean; disableTrend: boolean;
 } {
@@ -1116,12 +1113,7 @@ function resolvePeriodGuard(mode: "intraday" | "kline" = props.mode, period: str
   let disableStruct = false;
   let disableTrade = false;
   let disableTrend = false;
-  if (mode === "intraday") {
-    bandWin = 0;
-    tradeWin = dataList.length; // 分时仅当日 T 线，用全部分时 K
-    disableStruct = true;
-    disableTrend = true;
-  } else if (period === "w") {
+  if (period === "w") {
     bandWin = 60;
     disableTrade = true; // 周 K：禁用 T 线 S/B，仅结构线 + 合规趋势线
   } else if (period === "M") {
@@ -1135,7 +1127,7 @@ function resolvePeriodGuard(mode: "intraday" | "kline" = props.mode, period: str
 
 // 计算系统画线（智能标注）：每条 K 线图固定输出 4 根水平线（结构支撑/交易参考支撑/结构压力/交易参考压力）
 // + 按需趋势线。结构线取自波段窗口、交易参考线取自短线窗口（窗口随周期变化，见 resolvePeriodGuard），
-// 同方向价格簇综合得分取第 1 名。纯函数：由调用方决定数据序列与守卫（分时复用日K时传入日K序列 + 日K守卫即可完全同步）。
+// 同方向价格簇综合得分取第 1 名。纯函数：由调用方（drawAutoLevels）决定数据序列与守卫（随周期变化的窗口/禁用开关见 resolvePeriodGuard）。
 function computeAutoLevelsFromSeries(dl: Kline[], guard: ReturnType<typeof resolvePeriodGuard>): AutoLevel[] {
   const out: AutoLevel[] = [];
   if (!dl || dl.length < 12) return out;
@@ -1176,8 +1168,8 @@ function computeAutoLevelsFromSeries(dl: Kline[], guard: ReturnType<typeof resol
   // 硬性准入：①单脉冲过滤 ②总分≥30 ③未被统一失效判定(supTradeInvalid：连续2根实体破位或箱体破位)
   if (supTrade && !supTradeInvalid && supTrade.sc.score >= MIN_TOTAL_SCORE) {
     const price = supTrade.cl.center;
-    // 结构线被渲染屏蔽（如分时 disableStruct）时视为不存在，不去重交易参考线，避免 S/B 被连带隐藏
-    if (structSupPrice == null || guard.disableStruct || Math.abs(price - structSupPrice) / structSupPrice > TOL_PCT)
+    // 结构支撑已存在且同价 → 去重交易参考支撑，避免密集平行线
+    if (structSupPrice == null || Math.abs(price - structSupPrice) / structSupPrice > TOL_PCT)
       out.push({ kind: "support", role: "tradeSupport", price, color: TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR, size: 1, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
   }
   // 结构压力（红粗虚线，满宽，无 S/B 标签；破位失效则不渲染）
@@ -1187,7 +1179,7 @@ function computeAutoLevelsFromSeries(dl: Kline[], guard: ReturnType<typeof resol
   // 交易参考压力（绿细虚线，挂载 B 标签；硬性准入：单脉冲过滤 + 总分≥30 + 未破位）
   if (presTrade && !presTradeInvalid && presTrade.sc.score >= MIN_TOTAL_SCORE) {
     const price = presTrade.cl.center;
-    if (structPresPrice == null || guard.disableStruct || Math.abs(price - structPresPrice) / structPresPrice > TOL_PCT)
+    if (structPresPrice == null || Math.abs(price - structPresPrice) / structPresPrice > TOL_PCT)
       out.push({ kind: "pressure", role: "tradePressure", price, color: TRADE_PRESSURE_COLOR, bg: TRADE_PRESSURE_COLOR, size: 1, dashed: true, tag: L.tP.tag, sub: L.tP.sub, label: L.tP.name, src: "交易参考压力·短线高点簇 No.1" });
   }
 
@@ -1221,28 +1213,12 @@ function drawAutoLevels() {
   if (!props.autoDraw || !chart || !cfg) return;
   if (!(cfg.structLine || cfg.tradeLine || cfg.trend)) return;
 
-  // 分时复用日K：计算层用日K经 30/20 窗口聚类打分，与日K结构线+交易参考线价格/标签/风控同源一致（做T价位统一）；
-  // 渲染层屏蔽结构线（波段结构在分时无意义）、禁趋势线，仅显示 S/B 交易参考线、不再生成日内脉冲杂线。周/月K沿用各自隔离算法。
-  const isIntraday = props.mode === "intraday";
-  let guard: ReturnType<typeof resolvePeriodGuard>;
-  let series: Kline[];
-  if (isIntraday) {
-    guard = resolvePeriodGuard("kline", "d"); // 计算层：日K参数(bandWin=30/tradeWin=20)，与日K同源算结构线+交易参考线
-    guard.disableStruct = true;               // 渲染层：分时屏蔽结构线，仅显示 S/B 交易参考线
-    guard.disableTrend = true;                // 分时禁用趋势线
-    // 分时必须复用日K序列：上层 KlineCard 必须传入 daily-klines。
-    // 若缺失，直接放弃画线，绝不降级回当日分时数据自算（旧版两套点位不一致的根因）。
-    if (!props.dailyKlines || props.dailyKlines.length < 12) {
-      if ((import.meta as any)?.env?.DEV) {
-        console.warn("[StockChart] 分时缺少 dailyKlines，跳过智能标注绘制（应在 KlineCard 传入 :daily-klines）");
-      }
-      return;
-    }
-    series = props.dailyKlines as Kline[];
-  } else {
-    guard = resolvePeriodGuard();
-    series = dataList as Kline[];
-  }
+  // 分时视图不绘制任何智能标注线（结构支撑/压力、交易参考 S/B、趋势线）。
+  // 原因：分时价格轴自适应当日窄幅，且做T价位与日K不同源；曾尝试复用日K价位但落在轴外被裁、
+  // 钳制贴边后又与分时走势脱节产生误导。权衡后统一不在分时显示智能标注，杜绝误导性信号。
+  if (props.mode === "intraday") return;
+  const guard = resolvePeriodGuard();
+  const series = dataList as Kline[];
   const levels = computeAutoLevelsFromSeries(series, guard);
   for (const lv of levels) {
     // 多周期隔离：对应周期禁用的线种直接跳过（分时禁结构/趋势；周禁 T；月禁 T/趋势）
@@ -1322,9 +1298,7 @@ function ensureTrendOverlay() {
         const bounding = params.bounding as { width: number; height: number };
         const overlay = params.overlay as any;
         if (!coordinates || coordinates.length < 1) return [];
-        // 钳制到可见区：分时价格轴自适应当日分时窄幅，日K级别的 S/B 价位常落在可视区外被裁掉；
-        // 钳制后线条始终可见（标签仍显示真实价位），保证分时 S/B 交易线正常显示（日K视图价位在区内，钳制为 no-op）。
-        const y = Math.max(1, Math.min(bounding.height - 1, coordinates[0].y));
+        const y = coordinates[0].y;
         const col = overlay?.styles?.line?.color || "#888";
         return [{
           type: "line",
@@ -1335,11 +1309,9 @@ function ensureTrendOverlay() {
       },
       createYAxisFigures: (params: any) => {
         const coordinates = params.coordinates as { x: number; y: number }[];
-        const bounding = params.bounding as { width: number; height: number };
         const overlay = params.overlay as any;
         if (!coordinates || coordinates.length < 1) return [];
-        // 钳制到可见区（与线条一致）：分时日K级别价位常落在可视区外，钳制后标签始终可见（真实价位保留在标签文字中）。
-        const y = Math.max(14, Math.min(bounding.height - 14, coordinates[0].y));
+        const y = coordinates[0].y;
         // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角 + padding；紧贴轴左缘(x:0, align:left)去多余左侧间距。
         // 标签（含价格）统一 size 10；下方 sub 提示统一 size 8（无论结构线/交易参考线/S/B/支压）。
         const bg = overlay?.extendData?.bg || overlay?.styles?.line?.color || "#888";
@@ -1357,7 +1329,7 @@ function ensureTrendOverlay() {
         if (sub) {
           figs.push({
             type: "text",
-            attrs: { x: 0, y: Math.max(14, Math.min(bounding.height - 14, y + 13)), text: sub, align: "left", baseline: "middle" },
+            attrs: { x: 0, y: y + 13, text: sub, align: "left", baseline: "middle" },
             styles: {
               color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
               paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 8,

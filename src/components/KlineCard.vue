@@ -226,7 +226,6 @@ function toggleAcc(key: string) {
     v-else-if="period === 'm' && trends.length"
     mode="intraday"
     :trends="trends"
-    :daily-klines="klines"
     :pre-close="preClose"
     :height="height ?? 460"
     :show-ma="true"
