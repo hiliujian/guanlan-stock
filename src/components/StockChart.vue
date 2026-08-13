@@ -335,7 +335,7 @@ const props = withDefaults(
     auxConfig?: ChartAuxConfig;
     /** 当前 K线周期（m=分时/d/w/M），用于各周期默认缩放与智能标注多周期隔离；不传默认日K */
     period?: PeriodKey;
-    /** 日K序列（period="d"）：仅分时模式用于「复用日K结构线/T线S·B价位」，使分时与日K画线价格/标签/风控完全同步；不传则分时回退按自身数据。 */
+    /** 日K序列（period="d"）：仅分时模式用于「复用日K结构线/交易参考线S·B价位」，使分时与日K画线价格/标签/风控完全同步；不传则分时回退按自身数据。 */
     dailyKlines?: Kline[];
   }>(),
   { height: 440, showMA: true, macdDif: true, macdDea: true, volumeMa5: true, volumeMa10: true, volumeMa20: true, showTools: false, autoDraw: false, persist: true }
@@ -864,6 +864,9 @@ const SWING_WIN = 2;      // 摆动点左右确认 K 线：左右各 2 根验证
 const SWING_FREQ_MAX = 40;// 触碰频次满分
 const SWING_REV_MAX = 35; // 反转反应满分
 const SWING_SWAP_MAX = 25;// 角色互换满分
+const MIN_TOUCH_COUNT = 2;   // S/B 最低触碰次数（价格簇摆动点个数）：单根插针脉冲（仅 1 个摆动点）不生成 S/B
+const MIN_TOTAL_SCORE = 30;  // S/B 总分最低合格门槛：综合打分 < 30 不渲染（杜绝弱位错出买卖信号）
+const BREAK_CONFIRM_CNT = 2; // 连续 N 根实体收盘击穿判定价位失效（仅尾部连续计入；单根影线/历史破位已收回不计）
 const SUPPORT_COLOR = DOWN;        // 结构支撑（绿，对应 desc「红压力/绿支撑」）
 const PRESSURE_COLOR = UP;         // 结构压力（红，对应 desc「红压力/绿支撑」）
 const TRADE_SUPPORT_COLOR = UP;    // 交易参考支撑 S（红，买入信号，对应 desc「红S买入」）
@@ -907,7 +910,7 @@ interface AutoLevel {
   size: number;
   dashed: boolean;
   tag?: string;           // 轴标签短前缀：支/压/S/B（价格线用；趋势线无需）
-  sub?: string;           // 轴标签小字描述（交易线），如 反弹/回调低吸
+  sub?: string;           // 轴标签小字描述（交易参考线），如 反弹/回调低吸
   label: string;          // 悬浮提示用的线条名称
   src?: string;           // 价位来源说明，用于悬浮提示
   dir?: "up" | "down";
@@ -916,7 +919,8 @@ interface AutoLevel {
 type BandType = "uptrend" | "downtrend" | "pullback" | "bounce" | "box";
 
 // 判定当前所处波段类型（5 类），输入 highs/lows 来自 30 根波段窗口。
-function detectBandType(highs: SwingPt[], lows: SwingPt[], series: any[], current: number): BandType {
+// breakDown：上涨结构（hh&&hl）但现价跌破前摆动低点→结构已破坏，屏蔽全部 S 交易参考线、仅保留 B 压力线。
+function detectBandType(highs: SwingPt[], lows: SwingPt[], series: any[], current: number): { band: BandType; breakDown: boolean } {
   const has2H = highs.length >= 2;
   const has2L = lows.length >= 2;
   // 摆动点不足时，先用价格行为辅助识别「冲高回档 / 下跌反弹」形态
@@ -927,11 +931,11 @@ function detectBandType(highs: SwingPt[], lows: SwingPt[], series: any[], curren
     const amp = mid > 0 ? (ph - pl) / mid : 0;
     if (amp > 0.06) {
       // 从近端高点回落 >4% 且未跌回近端低点 → 回档（典型冲高回落形态）
-      if (ph > 0 && current < ph * 0.96 && pl > 0 && current > pl * 1.02) return "pullback";
+      if (ph > 0 && current < ph * 0.96 && pl > 0 && current > pl * 1.02) return { band: "pullback", breakDown: false };
       // 从近端低点反弹 >4% 且未突破近端高点 → 反弹
-      if (pl > 0 && current > pl * 1.04 && ph > 0 && current < ph * 0.98) return "bounce";
+      if (pl > 0 && current > pl * 1.04 && ph > 0 && current < ph * 0.98) return { band: "bounce", breakDown: false };
     }
-    return current >= (series[0]?.close ?? 0) ? "uptrend" : "downtrend";
+    return { band: current >= (series[0]?.close ?? 0) ? "uptrend" : "downtrend", breakDown: false };
   }
   const lastH = has2H ? highs[highs.length - 1] : null;
   const prevH = has2H ? highs[highs.length - 2] : null;
@@ -950,30 +954,30 @@ function detectBandType(highs: SwingPt[], lows: SwingPt[], series: any[], curren
   if (lh && ll) {
     const rebounded = !!lastL && current > lastL.value;   // 从近端低位反弹
     const prevHigh = prevH ? prevH.value : (lastH ? lastH.value : Infinity);
-    if (rebounded && current <= prevHigh) return "bounce"; // 未突破近端前高
-    return "downtrend";
+    if (rebounded && current <= prevHigh) return { band: "bounce", breakDown: false }; // 未突破近端前高
+    return { band: "downtrend", breakDown: false };
   }
-  if (lh && netDn && !hh) return "downtrend";
+  if (lh && netDn && !hh) return { band: "downtrend", breakDown: false };
 
   // ===== 上涨结构：先看是否其实是「回档 pullback」 =====
   if (hh && hl) {
     const pulledBack = !!lastH && current < lastH.value;  // 从近端高位回落
     const prevLow = prevL ? prevL.value : (lastL ? lastL.value : -Infinity);
-    if (current < prevLow) return "box";                   // 跌破前低→结构已破坏，降级箱体，禁主升浪与 S 低吸
-    if (pulledBack && current >= prevLow) return "pullback"; // 未跌破近端前低
-    return "uptrend";
+    if (current < prevLow) return { band: "box", breakDown: true }; // 跌破前低→结构已破坏，降级箱体，屏蔽全部 S 交易参考线、仅保留 B 压力线
+    if (pulledBack && current >= prevLow) return { band: "pullback", breakDown: false }; // 未跌破近端前低
+    return { band: "uptrend", breakDown: false };
   }
-  if (hl && netUp && !ll) return "uptrend";
+  if (hl && netUp && !ll) return { band: "uptrend", breakDown: false };
 
   // ===== 箱体：近端窗口振幅 <6% =====
   if (series.length >= 5) {
     const ph = Math.max(...series.map((d) => d.high));
     const pl = Math.min(...series.map((d) => d.low));
     const mid = (ph + pl) / 2;
-    if (mid > 0 && (ph - pl) / mid < 0.06) return "box";
+    if (mid > 0 && (ph - pl) / mid < 0.06) return { band: "box", breakDown: false };
   }
   // 最终兜底：按近端整体方向
-  return netUp ? "uptrend" : netDn ? "downtrend" : "box";
+  return { band: netUp ? "uptrend" : netDn ? "downtrend" : "box", breakDown: false };
 }
 
 // 价格簇：把相近摆动点（≤TOL_PCT）合并为一簇，簇中枢取价位中位数（筹码密集中枢）
@@ -1011,7 +1015,6 @@ function scoreCluster(series: any[], cl: PriceCluster, role: "support" | "pressu
       if (d.high >= lo && d.high <= hi) touched = true;
       if (d.close > center) breakCount++; else breakCount = 0;
     }
-    if (breakCount >= 2) broken = true; // 连续 2 根实体击穿才判失守，单根毛刺/影线不惩罚
     if (touched) {
       touches++;
       // 触碰后 1~2 根的反转反应（大阳拉起 / 大阴回落）
@@ -1030,6 +1033,9 @@ function scoreCluster(series: any[], cl: PriceCluster, role: "support" | "pressu
     if (prevSide !== 0 && side !== 0 && side !== prevSide) crossed = true;
     if (side !== 0) prevSide = side;
   }
+  // 失守判定：仅统计「尾部连续」实体击穿（breakCount 每遇未击穿即归零）。
+  // 单根影线穿刺、或历史中段曾破位但已收回的情况，breakCount 在末尾已归零，不判失效——对齐规范「后续视图不再渲染」=当前破位。
+  broken = breakCount >= BREAK_CONFIRM_CNT;
   // 频次：单次毛刺穿刺最高 10 分
   const freq = touches <= 1 ? Math.min(10, touches * 8) : Math.min(SWING_FREQ_MAX, touches * 8);
   const reversal = Math.min(SWING_REV_MAX, revSum);
@@ -1039,11 +1045,12 @@ function scoreCluster(series: any[], cl: PriceCluster, role: "support" | "pressu
   return { touches, reversal, swap, score, broken };
 }
 
-// 窗口内取某角色综合得分第 1 的价格簇
-function bestCluster(series: any[], pts: SwingPt[], role: "support" | "pressure", tol: number): { cl: PriceCluster; sc: ClusterScore } | null {
+// 窗口内取某角色综合得分第 1 的价格簇；minTouch 过滤单脉冲簇（摆动点个数 < minTouch 不生成线，默认不过滤）
+function bestCluster(series: any[], pts: SwingPt[], role: "support" | "pressure", tol: number, minTouch = 1): { cl: PriceCluster; sc: ClusterScore } | null {
   const clusters = clusterSwings(pts, tol);
   let best: PriceCluster | null = null, bestSc: ClusterScore | null = null, bestScore = -1;
   for (const cl of clusters) {
+    if (cl.members.length < minTouch) continue; // 单次插针脉冲（仅 1 个摆动点）直接过滤，不生成 S/B
     const sc = scoreCluster(series, cl, role, tol);
     if (sc.score > bestScore) { bestScore = sc.score; best = cl; bestSc = sc; }
   }
@@ -1056,25 +1063,50 @@ function bodyEdge(cl: PriceCluster, role: "support" | "pressure"): number {
   return role === "support" ? Math.min(rep.k.open, rep.k.close) : Math.max(rep.k.open, rep.k.close);
 }
 
-// 各波段线条标签映射（轴标签短前缀 tag + 小字描述 sub + 悬浮名 name），按规则总表
+// 各波段线条标签映射（轴标签短前缀 tag + 小字描述 sub + 悬浮名 name），严格按规范文档第八条映射
 const BAND_LABELS: Record<BandType, {
   sS: { tag: string; name: string };
   tS: { tag: string; sub: string; name: string };
   sP: { tag: string; name: string };
   tP: { tag: string; sub: string; name: string };
 }> = {
-  uptrend:   { sS: { tag: "支", name: "结构支撑" }, tS: { tag: "S", sub: "回调低吸", name: "交易参考支撑 S" }, sP: { tag: "压", name: "结构压力" }, tP: { tag: "B", sub: "止盈减仓", name: "交易参考压力 B" } },
-  downtrend: { sP: { tag: "压", name: "结构压力" }, tP: { tag: "B", sub: "逢高离场", name: "交易参考压力 B" }, sS: { tag: "支", name: "结构支撑" }, tS: { tag: "S", sub: "超跌博弈", name: "交易参考支撑 S" } },
-  pullback:  { sS: { tag: "支", name: "结构支撑" }, tS: { tag: "S", sub: "企稳买", name: "交易参考支撑 S" }, sP: { tag: "压", name: "结构压力" }, tP: { tag: "B", sub: "止盈减仓", name: "交易参考压力 B" } },
-  bounce:    { sP: { tag: "压", name: "结构压力" }, tP: { tag: "B", sub: "逢高离场", name: "交易参考压力 B" }, sS: { tag: "支", name: "结构支撑" }, tS: { tag: "S", sub: "超跌博弈", name: "交易参考支撑 S" } },
-  box:       { sS: { tag: "支", name: "结构支撑" }, tS: { tag: "S", sub: "企稳买", name: "交易参考支撑 S" }, sP: { tag: "压", name: "结构压力" }, tP: { tag: "B", sub: "止盈减仓", name: "交易参考压力 B" } },
+  uptrend: {
+    sS: { tag: "支", name: "结构支撑" },
+    tS: { tag: "S", sub: "回调低（趋势内稳健买点）", name: "交易参考支撑 S" },
+    sP: { tag: "压", name: "结构压力" },
+    tP: { tag: "B", sub: "止盈减仓", name: "交易参考压力 B" },
+  },
+  pullback: {
+    sS: { tag: "支", name: "结构支撑" },
+    tS: { tag: "S", sub: "回踩参考，轻仓试多", name: "交易参考支撑 S" },
+    sP: { tag: "压", name: "结构压力" },
+    tP: { tag: "B", sub: "止盈减仓", name: "交易参考压力 B" },
+  },
+  downtrend: {
+    sP: { tag: "压", name: "结构压力" },
+    tP: { tag: "B", sub: "逢高离场，勿追多", name: "交易参考压力 B" },
+    sS: { tag: "支", name: "结构支撑" },
+    tS: { tag: "S", sub: "超跌博弈，严控仓位", name: "交易参考支撑 S" },
+  },
+  bounce: {
+    sP: { tag: "压", name: "结构压力" },
+    tP: { tag: "B", sub: "反弹承压，减仓离场", name: "交易参考压力 B" },
+    sS: { tag: "支", name: "结构支撑" },
+    tS: { tag: "S", sub: "超跌博弈，快进快出", name: "交易参考支撑 S" },
+  },
+  box: {
+    sS: { tag: "支", name: "结构支撑" },
+    tS: { tag: "S", sub: "箱体下沿，区间低", name: "交易参考支撑 S" },
+    sP: { tag: "压", name: "结构压力" },
+    tP: { tag: "B", sub: "箱体上沿，高抛减仓", name: "交易参考压力 B" },
+  },
 };
 
 // 多周期前置隔离守卫：不同 K 线周期的窗口参数与可绘制线种完全不同，
 // 防止分时出现波段大结构/趋势线、周月线出现 S/B 买卖标签误导交易（P0 缺陷 2）。
 // 说明：本项目 PeriodKey 为 "m"|"d"|"w"|"M"（无年 K 周期），故按 mode(分时) + period(日/周/月) 隔离。
 // 分时特殊分支（见 drawAutoLevels 的 intraday 复用）：计算层传日K序列 + 日K守卫(bandWin=30/tradeWin=20)，
-// 与日K同源算出结构线+T线价格/标签/风控（保证做T价位完全一致）；渲染层额外 disableStruct=true 屏蔽结构线，仅显示 S/B T线、禁趋势线。
+// 与日K同源算出结构线+交易参考线价格/标签/风控（保证做T价位完全一致）；渲染层额外 disableStruct=true 屏蔽结构线，仅显示 S/B 交易参考线、禁趋势线。
 function resolvePeriodGuard(mode: "intraday" | "kline" = props.mode, period: string = props.period ?? "d"): {
   bandWin: number; tradeWin: number;
   disableStruct: boolean; disableTrade: boolean; disableTrend: boolean;
@@ -1102,7 +1134,7 @@ function resolvePeriodGuard(mode: "intraday" | "kline" = props.mode, period: str
 }
 
 // 计算系统画线（智能标注）：每条 K 线图固定输出 4 根水平线（结构支撑/交易参考支撑/结构压力/交易参考压力）
-// + 按需趋势线。结构线取自波段窗口、交易线取自短线窗口（窗口随周期变化，见 resolvePeriodGuard），
+// + 按需趋势线。结构线取自波段窗口、交易参考线取自短线窗口（窗口随周期变化，见 resolvePeriodGuard），
 // 同方向价格簇综合得分取第 1 名。纯函数：由调用方决定数据序列与守卫（分时复用日K时传入日K序列 + 日K守卫即可完全同步）。
 function computeAutoLevelsFromSeries(dl: Kline[], guard: ReturnType<typeof resolvePeriodGuard>): AutoLevel[] {
   const out: AutoLevel[] = [];
@@ -1114,38 +1146,39 @@ function computeAutoLevelsFromSeries(dl: Kline[], guard: ReturnType<typeof resol
   const bandSeries = guard.bandWin > 0 ? dl.slice(-guard.bandWin) : [];
   const tradeSeries = guard.tradeWin > 0 ? dl.slice(-guard.tradeWin) : [];
   const { highs, lows } = findSwings(bandSeries, SWING_WIN);
-  const band = detectBandType(highs, lows, bandSeries, current);
+  const { band, breakDown } = detectBandType(highs, lows, bandSeries, current);
   const L = BAND_LABELS[band];
 
-  // 结构线：30 根波段窗口取同方向价格簇 No.1
+  // 结构线：30 根波段窗口取同方向价格簇 No.1（破位失效则不渲染，避免误导）
   const supStruct = bestCluster(bandSeries, lows, "support", TOL_PCT);
   const presStruct = bestCluster(bandSeries, highs, "pressure", TOL_PCT);
-  // 交易线：20 根短线窗口独立重算摆动点后取 No.1
+  // 交易参考线：20 根短线窗口独立重算摆动点后取 No.1；MIN_TOUCH_COUNT 过滤单脉冲簇
   const tradeSwings = findSwings(tradeSeries, SWING_WIN);
-  const supTrade = bestCluster(tradeSeries, tradeSwings.lows, "support", TOL_PCT);
-  const presTrade = bestCluster(tradeSeries, tradeSwings.highs, "pressure", TOL_PCT);
+  const supTrade = bestCluster(tradeSeries, tradeSwings.lows, "support", TOL_PCT, MIN_TOUCH_COUNT);
+  const presTrade = bestCluster(tradeSeries, tradeSwings.highs, "pressure", TOL_PCT, MIN_TOUCH_COUNT);
 
-  // 点位取值：结构线取拐点 K 实体边缘（横盘取平台中轴）；交易线取筹码密集中枢
+  // 点位取值：结构线取拐点 K 实体边缘（横盘取平台中轴）；交易参考线取筹码密集中枢
   const structSupPrice = supStruct ? (band === "box" ? supStruct.cl.center : bodyEdge(supStruct.cl, "support")) : null;
   const structPresPrice = presStruct ? (band === "box" ? presStruct.cl.center : bodyEdge(presStruct.cl, "pressure")) : null;
 
-  // 结构支撑（绿粗虚线，满宽，无 S/B 标签）
-  if (supStruct && structSupPrice != null) {
+  // 结构支撑（绿粗虚线，满宽，无 S/B 标签；破位失效则不渲染）
+  if (supStruct && !supStruct.sc.broken && structSupPrice != null) {
     out.push({ kind: "support", role: "structSupport", price: structSupPrice, color: SUPPORT_COLOR, bg: SUPPORT_COLOR, size: 1, dashed: true, tag: L.sS.tag, label: L.sS.name, src: "结构支撑·波段低点簇 No.1" });
   }
-  // 交易参考支撑（浅绿细虚线，挂载 S 标签；与结构线同价则去重，避免密集平行线）
-  if (supTrade) {
+  // 交易参考支撑（红细虚线，挂载 S 标签；与结构线同价则去重，避免密集平行线）
+  // 硬性准入：①单脉冲过滤 ②总分≥30 ③未被连续2根实体破位；④结构破坏(box breakDown)屏蔽全部 S 交易参考线，仅留 B
+  if (supTrade && !breakDown && !supTrade.sc.broken && supTrade.sc.score >= MIN_TOTAL_SCORE) {
     const price = supTrade.cl.center;
-    // 结构线被渲染屏蔽（如分时 disableStruct）时视为不存在，不去重交易线，避免 S/B 被连带隐藏
+    // 结构线被渲染屏蔽（如分时 disableStruct）时视为不存在，不去重交易参考线，避免 S/B 被连带隐藏
     if (structSupPrice == null || guard.disableStruct || Math.abs(price - structSupPrice) / structSupPrice > TOL_PCT)
       out.push({ kind: "support", role: "tradeSupport", price, color: TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR, size: 1, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
   }
-  // 结构压力（红粗虚线，满宽，无 S/B 标签）
-  if (presStruct && structPresPrice != null) {
+  // 结构压力（红粗虚线，满宽，无 S/B 标签；破位失效则不渲染）
+  if (presStruct && !presStruct.sc.broken && structPresPrice != null) {
     out.push({ kind: "pressure", role: "structPressure", price: structPresPrice, color: PRESSURE_COLOR, bg: PRESSURE_COLOR, size: 1, dashed: true, tag: L.sP.tag, label: L.sP.name, src: "结构压力·波段高点簇 No.1" });
   }
-  // 交易参考压力（浅红细虚线，挂载 B 标签）
-  if (presTrade) {
+  // 交易参考压力（绿细虚线，挂载 B 标签；硬性准入：单脉冲过滤 + 总分≥30 + 未破位）
+  if (presTrade && !presTrade.sc.broken && presTrade.sc.score >= MIN_TOTAL_SCORE) {
     const price = presTrade.cl.center;
     if (structPresPrice == null || guard.disableStruct || Math.abs(price - structPresPrice) / structPresPrice > TOL_PCT)
       out.push({ kind: "pressure", role: "tradePressure", price, color: TRADE_PRESSURE_COLOR, bg: TRADE_PRESSURE_COLOR, size: 1, dashed: true, tag: L.tP.tag, sub: L.tP.sub, label: L.tP.name, src: "交易参考压力·短线高点簇 No.1" });
@@ -1181,14 +1214,14 @@ function drawAutoLevels() {
   if (!props.autoDraw || !chart || !cfg) return;
   if (!(cfg.structLine || cfg.tradeLine || cfg.trend)) return;
 
-  // 分时复用日K：计算层用日K经 30/20 窗口聚类打分，与日K结构线+T线价格/标签/风控同源一致（做T价位统一）；
-  // 渲染层屏蔽结构线（波段结构在分时无意义）、禁趋势线，仅显示 S/B T线、不再生成日内脉冲杂线。周/月K沿用各自隔离算法。
+  // 分时复用日K：计算层用日K经 30/20 窗口聚类打分，与日K结构线+交易参考线价格/标签/风控同源一致（做T价位统一）；
+  // 渲染层屏蔽结构线（波段结构在分时无意义）、禁趋势线，仅显示 S/B 交易参考线、不再生成日内脉冲杂线。周/月K沿用各自隔离算法。
   const isIntraday = props.mode === "intraday";
   let guard: ReturnType<typeof resolvePeriodGuard>;
   let series: Kline[];
   if (isIntraday) {
-    guard = resolvePeriodGuard("kline", "d"); // 计算层：日K参数(bandWin=30/tradeWin=20)，与日K同源算结构线+T线
-    guard.disableStruct = true;               // 渲染层：分时屏蔽结构线，仅显示 S/B T线
+    guard = resolvePeriodGuard("kline", "d"); // 计算层：日K参数(bandWin=30/tradeWin=20)，与日K同源算结构线+交易参考线
+    guard.disableStruct = true;               // 渲染层：分时屏蔽结构线，仅显示 S/B 交易参考线
     guard.disableTrend = true;                // 分时禁用趋势线
     // 分时必须复用日K序列：上层 KlineCard 必须传入 daily-klines。
     // 若缺失，直接放弃画线，绝不降级回当日分时数据自算（旧版两套点位不一致的根因）。
@@ -1209,9 +1242,9 @@ function drawAutoLevels() {
     if (guard.disableStruct && (lv.role === "structSupport" || lv.role === "structPressure")) continue;
     if (guard.disableTrade && (lv.role === "tradeSupport" || lv.role === "tradePressure")) continue;
     if (guard.disableTrend && lv.kind === "trend") continue;
-    // 结构线开关 → 结构支撑 + 结构压力（与交易线同色：绿/红）
+    // 结构线开关 → 结构支撑 + 结构压力（与交易参考线同色：绿/红）
     if ((lv.role === "structSupport" || lv.role === "structPressure") && !cfg.structLine) continue;
-    // 交易线开关 → S 交易参考支撑 + B 交易参考压力（浅绿/浅红）
+    // 交易参考线开关 → S 交易参考支撑 + B 交易参考压力（浅绿/浅红）
     if ((lv.role === "tradeSupport" || lv.role === "tradePressure") && !cfg.tradeLine) continue;
     if (lv.kind === "trend" && !cfg.trend) continue;
     const id = `auto_${lv.kind}_${Math.random().toString(36).slice(2, 7)}`;
@@ -1297,7 +1330,7 @@ function ensureTrendOverlay() {
         if (!coordinates || coordinates.length < 1) return [];
         const y = coordinates[0].y;
         // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角 + padding；紧贴轴左缘(x:0, align:left)去多余左侧间距。
-        // 标签（含价格）统一 size 10；下方 sub 提示统一 size 8（无论结构线/交易线/S/B/支压）。
+        // 标签（含价格）统一 size 10；下方 sub 提示统一 size 8（无论结构线/交易参考线/S/B/支压）。
         const bg = overlay?.extendData?.bg || overlay?.styles?.line?.color || "#888";
         const main = overlay?.extendData?.text || "";
         const sub = overlay?.extendData?.sub || "";

@@ -13,7 +13,7 @@ import { loadConfig, watchPersist } from "@/utils/storageConfig";
 export interface ChartAuxConfig {
   /** 结构线（结构支撑 + 结构压力，深绿/深红；波段高低点结构位） */
   structLine: boolean;
-  /** 交易线（S 交易参考支撑 + B 交易参考压力，浅绿/浅红；短线筹码密集中枢） */
+  /** 交易参考线（S 交易参考支撑 + B 交易参考压力，浅绿/浅红；短线筹码密集中枢） */
   tradeLine: boolean;
   /** 趋势线 */
   trend: boolean;
