@@ -10,10 +10,10 @@
 import { reactive, watch } from "vue";
 
 export interface ChartAuxConfig {
-  /** 压力线 */
-  pressure: boolean;
-  /** 支撑线 */
-  support: boolean;
+  /** 结构线（结构支撑 + 结构压力，深绿/深红；波段高低点结构位） */
+  structLine: boolean;
+  /** 交易线（S 交易参考支撑 + B 交易参考压力，浅绿/浅红；短线筹码密集中枢） */
+  tradeLine: boolean;
   /** 趋势线 */
   trend: boolean;
 }
@@ -21,7 +21,7 @@ export interface ChartAuxConfig {
 const STORAGE_KEY = "gl_chart_aux";
 
 function defaultConfig(): ChartAuxConfig {
-  return { pressure: true, support: true, trend: true };
+  return { structLine: true, tradeLine: true, trend: true };
 }
 
 // 读取本地已存偏好（容错：解析失败 / 无数据 / 脏数据 → 回退默认全开）

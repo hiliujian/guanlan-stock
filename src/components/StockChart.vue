@@ -1068,11 +1068,13 @@ function drawAutoLevels() {
   const cfg = props.auxConfig;
   // 无任何智能标注线开启 → 不绘制（各线独立开关，无总开关）
   if (!props.autoDraw || !chart || !cfg) return;
-  if (!(cfg.pressure || cfg.support || cfg.trend)) return;
+  if (!(cfg.structLine || cfg.tradeLine || cfg.trend)) return;
   const levels = computeAutoLevels();
   for (const lv of levels) {
-    if (lv.kind === "pressure" && !cfg.pressure) continue;
-    if (lv.kind === "support" && !cfg.support) continue;
+    // 结构线开关 → 结构支撑 + 结构压力（深绿/深红）
+    if ((lv.role === "structSupport" || lv.role === "structPressure") && !cfg.structLine) continue;
+    // 交易线开关 → S 交易参考支撑 + B 交易参考压力（浅绿/浅红）
+    if ((lv.role === "tradeSupport" || lv.role === "tradePressure") && !cfg.tradeLine) continue;
     if (lv.kind === "trend" && !cfg.trend) continue;
     const id = `auto_${lv.kind}_${Math.random().toString(36).slice(2, 7)}`;
     try {

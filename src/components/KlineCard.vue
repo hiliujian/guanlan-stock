@@ -56,7 +56,7 @@ function pick(p: PeriodKey) {
 
 // ---- 图表设置抽屉（齿轮点开）----
 // 折叠式两级结构：一级 = 主图 / 成交量 / MACD / 智能标注（点击展开二级）；
-// 二级 = 各线独立开关（主图=均线 MA、成交量=量均线 MA5/10/20、MACD=DIF/DEA、智能标注=压力/支撑/趋势）。
+// 二级 = 各线独立开关（主图=均线 MA、成交量=量均线 MA5/10/20、MACD=DIF/DEA、智能标注=结构线/交易线/趋势线）。
 // 成交量面板与 MACD 面板本身常驻显示（不提供整体隐藏开关），二级仅控制各自内部线。
 const auxOpen = ref(false);
 // 看盘画线工具栏开关：画板图标控制，淡入/淡出 StockChart 的 kc-tools
@@ -73,10 +73,11 @@ function toggleAuxOpen() {
   if (next) toolsOpen.value = false;
 }
 // 智能标注各线元数据（颜色 + 描述），供二级列表渲染
-type AuxKey = "pressure" | "support" | "trend";
+// 分组：结构线（结构支撑+结构压力）/ 交易线（S 支撑+B 压力）/ 趋势线
+type AuxKey = "structLine" | "tradeLine" | "trend";
 const auxItems: { key: AuxKey; label: string; desc: string; color: string }[] = [
-  { key: "pressure", label: "压力线", desc: "红色虚线：当前价上方最强阻力（大K实体上沿/摆动高点）", color: "#ef232a" },
-  { key: "support", label: "支撑线", desc: "绿色虚线：当前价下方最强支撑（大K实体下沿/反转位）", color: "#09b07a" },
+  { key: "structLine", label: "结构线", desc: "深绿支撑 + 深红压力：波段高低点结构位（30 根窗口）", color: "#0a8f4d" },
+  { key: "tradeLine", label: "交易线", desc: "浅绿 S 支撑 + 浅红 B 压力：短线筹码密集中枢（20 根窗口）", color: "#09b07a" },
   { key: "trend", label: "趋势线", desc: "蓝色箭头：上行 / 下行方向", color: "#2f74ff" },
 ];
 // 与图表 MA 线颜色一致（见 StockChart INDICATOR_LINE_COLORS 顺序：MA5橙/MA10蓝/MA20紫/MA60绿/MA250品红）
