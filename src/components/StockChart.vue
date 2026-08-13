@@ -739,58 +739,90 @@ function persistSave() {
     /* noop */
   }
 }
-// 调用 KLineCharts 进入绘制交互；绘制完成后 onDrawEnd 落盘
+// 自定义画线工具：点击工具后保持激活，可连续画多条；再次点击同一工具才关闭。
 type DrawAction = "support" | "pressure" | "trend" | "fib";
 const activeAction = ref<DrawAction | "">("");
-// 收尾上一笔「未落点/未画完」的绘制：klinecharts 是单进度实例模型（addInstances 会把新创建的 overlay
-// 直接覆盖 _progressInstanceInfo，导致上一笔还在绘制中的线被丢弃→表现为互斥/线条消失）。
-// 切换工具前显式丢弃上一笔未完成绘制，保证已完成的线互不干扰、稳定共存。
-function finalizeProgress() {
-  if (!chart) return;
-  try {
-    const store: any = (chart as any).getChartStore?.()?.getOverlayStore?.();
-    if (!store || typeof store.getProgressInstanceInfo !== "function") return;
-    const info = store.getProgressInstanceInfo();
-    if (info && info.instance && info.instance.id) {
-      chart!.removeOverlay(info.instance.id);
-    }
-  } catch {
-    /* noop */
-  }
+// 当前已"装填"、等待下一次点击落线的进度 overlay id（连续绘制模式）
+let armedId: string | null = null;
+// 关闭/清空过程中的守卫：避免 removeOverlay 触发的 onRemoved 又去重新装填
+let disarming = false;
+
+// 动作 → 自定义 overlay 名 + 线色 + 标签前缀（不再用内置名，避免「都绿/互斥」）
+function mapDrawAction(a: DrawAction): { name: string; color?: string; tag: string } {
+  if (a === "support") return { name: "kcHLine", color: DOWN, tag: "支" };
+  if (a === "pressure") return { name: "kcHLine", color: UP, tag: "压" };
+  if (a === "trend") return { name: "kcTrend", color: TREND, tag: "" };
+  return { name: "kcFib", color: undefined, tag: "" };
 }
-function drawLine(action: DrawAction) {
-  if (!chart) return;
-  finalizeProgress();
+
+// 工具仍处于激活态时，立即装填下一条待绘制的线（连续绘制）。
+// 用 setTimeout 让上一次鼠标落线事件彻底结束后，再进入下一次绘制，避免复用同一次点击。
+function reArm() {
+  if (disarming || !activeAction.value || !chart) return;
+  const { name, color, tag } = mapDrawAction(activeAction.value);
   const id = genOverlayId();
   overlayIds.push(id);
-  activeAction.value = action;
-  // 动作 → 自定义 overlay 名 + 线色 + 标签前缀（不再用内置名，避免「都绿/互斥」）
-  let name = "kcHLine";
-  let color: string | undefined;
-  let tag = "";
-  if (action === "support") { name = "kcHLine"; color = DOWN; tag = "支"; }
-  else if (action === "pressure") { name = "kcHLine"; color = UP; tag = "压"; }
-  else if (action === "trend") { name = "kcTrend"; color = TREND; }
-  else if (action === "fib") { name = "kcFib"; }
+  armedId = id;
   const created = chart.createOverlay({
     id,
     name,
     extendData: { tag },
     styles: color ? { line: { color, style: "solid", size: 1.4 } } : undefined,
     onDrawEnd: () => {
-      activeAction.value = "";
+      armedId = null;
       persistSave();
+      // 完成一笔后继续保持激活，装填下一笔（下一帧，避免复用当前鼠标事件）
+      setTimeout(reArm, 0);
+    },
+    onRemoved: () => {
+      // 取消（ESC/右键删）半截线：若仍处于激活态则重新装填，保持连续绘制
+      if (disarming) return;
+      armedId = null;
+      if (activeAction.value && chart) setTimeout(reArm, 0);
     },
   } as never);
   if (!created) {
     overlayIds.pop(); // 创建失败（如已有绘制进行中）回退
-    activeAction.value = "";
+    armedId = null;
   }
+}
+
+// 关闭当前激活的工具：移除已装填的待绘线、清空激活态
+function disarm() {
+  disarming = true;
+  if (armedId && chart) {
+    try { chart.removeOverlay(armedId); } catch { /* noop */ }
+  }
+  armedId = null;
+  disarming = false;
+  activeAction.value = "";
+}
+
+// 点击工具按钮：激活 / 切换 / 关闭。再次点击同一工具 = 关闭。
+function drawLine(action: DrawAction) {
+  if (!chart) return;
+  // 已是同一工具 → 关闭
+  if (activeAction.value === action) {
+    disarm();
+    return;
+  }
+  // 切到另一工具：先清掉旧的待绘线
+  if (armedId) {
+    disarming = true;
+    try { chart.removeOverlay(armedId); } catch { /* noop */ }
+    armedId = null;
+    disarming = false;
+  }
+  activeAction.value = action;
+  reArm();
 }
 // 清空用户手动画的线（不影响系统智能标注），并清本地存储
 function clearUserOverlays() {
+  disarming = true;
   if (chart) overlayIds.forEach((id) => { try { chart!.removeOverlay(id); } catch { /* noop */ } });
+  disarming = false;
   overlayIds.length = 0;
+  armedId = null;
   activeAction.value = "";
   const key = persistKey();
   if (key) {
@@ -1219,7 +1251,8 @@ function ensureTrendOverlay() {
 // ---- 用户手绘画线自定义 overlay（kcHLine / kcTrend / kcFib）----
 // 解决内置 horizontalStraightLine/straightLine/fibonacciLine 的三处问题：
 //  1) 互斥/标签消失：内置线在「绘制未完成」时若被新绘制覆盖会被丢弃（见 klinecharts addInstances 单进度实例逻辑）；
-//     这里配合 drawLine 里 finalizeProgress() 收尾上一笔，且每条线独立实例、单点即完成，互不干扰。
+//     这里每条线独立实例、单点即完成，互不干扰；drawLine 采用连续绘制模式（armedId 跟踪当前待绘线，
+//     完成 / ESC 取消后自动 reArm 保持激活，再次点击同一工具或点「清空」才关闭），从根本上规避互斥。
 //  2) 标签都绿：内置 needDefaultYAxisFigure 的标签背景不跟随线色；这里用自定义 createYAxisFigures 按线色生成彩色实底白字。
 //  3) 磁吸：performEventMoveForDrawing / performEventPressedMove 中把价位吸附到光标所在 K 线（箱体）的 high/low/open/close。
 // 注意：registerOverlay 为「替换」语义，改内置线行为必须用新名字 + 完整渲染定义。
