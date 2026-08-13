@@ -1071,8 +1071,8 @@ const BAND_LABELS: Record<BandType, {
 // 多周期前置隔离守卫：不同 K 线周期的窗口参数与可绘制线种完全不同，
 // 防止分时出现波段大结构/趋势线、周月线出现 S/B 买卖标签误导交易（P0 缺陷 2）。
 // 说明：本项目 PeriodKey 为 "m"|"d"|"w"|"M"（无年 K 周期），故按 mode(分时) + period(日/周/月) 隔离。
-// 分时默认仍隔离（bandWin=0 禁结构/趋势、仅自身当日 T）；但分时可通过显式传入日K参数(dailyKlines + mode="kline",period="d")
-// 改为「复用日K结构线/T线」——见 drawAutoLevels 的 intraday 复用分支。
+// 分时特殊分支（见 drawAutoLevels 的 intraday 复用）：计算层传日K序列 + 日K守卫(bandWin=30/tradeWin=20)，
+// 与日K同源算出结构线+T线价格/标签/风控（保证做T价位完全一致）；渲染层额外 disableStruct=true 屏蔽结构线，仅显示 S/B T线、禁趋势线。
 function resolvePeriodGuard(mode: "intraday" | "kline" = props.mode, period: string = props.period ?? "d"): {
   bandWin: number; tradeWin: number;
   disableStruct: boolean; disableTrade: boolean; disableTrend: boolean;
@@ -1134,7 +1134,8 @@ function computeAutoLevelsFromSeries(dl: Kline[], guard: ReturnType<typeof resol
   // 交易参考支撑（浅绿细虚线，挂载 S 标签；与结构线同价则去重，避免密集平行线）
   if (supTrade) {
     const price = supTrade.cl.center;
-    if (structSupPrice == null || Math.abs(price - structSupPrice) / structSupPrice > TOL_PCT)
+    // 结构线被渲染屏蔽（如分时 disableStruct）时视为不存在，不去重交易线，避免 S/B 被连带隐藏
+    if (structSupPrice == null || guard.disableStruct || Math.abs(price - structSupPrice) / structSupPrice > TOL_PCT)
       out.push({ kind: "support", role: "tradeSupport", price, color: SUPPORT_COLOR, bg: SUPPORT_COLOR, size: 1, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
   }
   // 结构压力（红粗虚线，满宽，无 S/B 标签）
@@ -1144,7 +1145,7 @@ function computeAutoLevelsFromSeries(dl: Kline[], guard: ReturnType<typeof resol
   // 交易参考压力（浅红细虚线，挂载 B 标签）
   if (presTrade) {
     const price = presTrade.cl.center;
-    if (structPresPrice == null || Math.abs(price - structPresPrice) / structPresPrice > TOL_PCT)
+    if (structPresPrice == null || guard.disableStruct || Math.abs(price - structPresPrice) / structPresPrice > TOL_PCT)
       out.push({ kind: "pressure", role: "tradePressure", price, color: PRESSURE_COLOR, bg: PRESSURE_COLOR, size: 1, dashed: true, tag: L.tP.tag, sub: L.tP.sub, label: L.tP.name, src: "交易参考压力·短线高点簇 No.1" });
   }
 
@@ -1178,13 +1179,14 @@ function drawAutoLevels() {
   if (!props.autoDraw || !chart || !cfg) return;
   if (!(cfg.structLine || cfg.tradeLine || cfg.trend)) return;
 
-  // 分时复用日K：统一用日K经 30/20 窗口聚类打分得出的结构线 + T线 S/B 价位，分时与日K画线价格/标签/风控完全同步；
-  // 分时禁用趋势线、不再生成日内脉冲杂线（盘前日线锁定做T价位，盘中分时同价执行高抛低吸）。其余周/月K沿用各自隔离算法。
+  // 分时复用日K：计算层用日K经 30/20 窗口聚类打分，与日K结构线+T线价格/标签/风控同源一致（做T价位统一）；
+  // 渲染层屏蔽结构线（波段结构在分时无意义）、禁趋势线，仅显示 S/B T线、不再生成日内脉冲杂线。周/月K沿用各自隔离算法。
   const isIntraday = props.mode === "intraday";
   let guard: ReturnType<typeof resolvePeriodGuard>;
   let series: Kline[];
   if (isIntraday) {
-    guard = resolvePeriodGuard("kline", "d"); // 日K参数（bandWin=30/tradeWin=20，结构+T全开）
+    guard = resolvePeriodGuard("kline", "d"); // 计算层：日K参数(bandWin=30/tradeWin=20)，与日K同源算结构线+T线
+    guard.disableStruct = true;               // 渲染层：分时屏蔽结构线，仅显示 S/B T线
     guard.disableTrend = true;                // 分时禁用趋势线
     series = (props.dailyKlines && props.dailyKlines.length ? props.dailyKlines : dataList) as Kline[];
   } else {
