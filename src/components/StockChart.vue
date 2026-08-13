@@ -1022,23 +1022,23 @@ function computeAutoLevels(): AutoLevel[] {
 
   // 结构支撑（深绿粗虚线，满宽，无 S/B 标签）
   if (supStruct && structSupPrice != null) {
-    out.push({ kind: "support", role: "structSupport", price: structSupPrice, color: STRUCT_SUPPORT_COLOR, bg: STRUCT_SUPPORT_COLOR, size: 2, dashed: true, tag: L.sS.tag, label: L.sS.name, src: "结构支撑·波段低点簇 No.1" });
+    out.push({ kind: "support", role: "structSupport", price: structSupPrice, color: STRUCT_SUPPORT_COLOR, bg: STRUCT_SUPPORT_COLOR, size: 1.6, dashed: true, tag: L.sS.tag, label: L.sS.name, src: "结构支撑·波段低点簇 No.1" });
   }
   // 交易参考支撑（浅绿细虚线，挂载 S 标签；与结构线同价则去重，避免密集平行线）
   if (supTrade) {
     const price = supTrade.cl.center;
     if (structSupPrice == null || Math.abs(price - structSupPrice) / structSupPrice > TOL_PCT)
-      out.push({ kind: "support", role: "tradeSupport", price, color: TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR, size: 1.2, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
+      out.push({ kind: "support", role: "tradeSupport", price, color: TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR, size: 1.6, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
   }
   // 结构压力（深红粗虚线，满宽，无 S/B 标签）
   if (presStruct && structPresPrice != null) {
-    out.push({ kind: "pressure", role: "structPressure", price: structPresPrice, color: STRUCT_PRESSURE_COLOR, bg: STRUCT_PRESSURE_COLOR, size: 2, dashed: true, tag: L.sP.tag, label: L.sP.name, src: "结构压力·波段高点簇 No.1" });
+    out.push({ kind: "pressure", role: "structPressure", price: structPresPrice, color: STRUCT_PRESSURE_COLOR, bg: STRUCT_PRESSURE_COLOR, size: 1.6, dashed: true, tag: L.sP.tag, label: L.sP.name, src: "结构压力·波段高点簇 No.1" });
   }
   // 交易参考压力（浅红细虚线，挂载 B 标签）
   if (presTrade) {
     const price = presTrade.cl.center;
     if (structPresPrice == null || Math.abs(price - structPresPrice) / structPresPrice > TOL_PCT)
-      out.push({ kind: "pressure", role: "tradePressure", price, color: TRADE_PRESSURE_COLOR, bg: TRADE_PRESSURE_COLOR, size: 1.2, dashed: true, tag: L.tP.tag, sub: L.tP.sub, label: L.tP.name, src: "交易参考压力·短线高点簇 No.1" });
+      out.push({ kind: "pressure", role: "tradePressure", price, color: TRADE_PRESSURE_COLOR, bg: TRADE_PRESSURE_COLOR, size: 1.6, dashed: true, tag: L.tP.tag, sub: L.tP.sub, label: L.tP.name, src: "交易参考压力·短线高点簇 No.1" });
   }
 
   // 趋势线：上升结构（主升/上涨回调）连 3 个抬升摆动低点；主跌连 3 个降低摆动高点；冲突场景不绘制
@@ -1088,7 +1088,7 @@ function drawAutoLevels() {
         chart.createOverlay({
           id, name: "autoLevelLine", points: [{ timestamp: t0, value: lv.price }], lock: true,
           extendData: { text: main, sub, bg: lv.bg },
-          styles: { line: { color: lv.color, style: lv.dashed ? "dashed" : "solid", size: lv.size || 1.2, dashedValue: [4, 3] } },
+          styles: { line: { color: lv.color, style: lv.dashed ? "dashed" : "solid", size: lv.size || 1.6, dashedValue: [4, 3] } },
         } as never);
       }
       autoIds.push(id);
