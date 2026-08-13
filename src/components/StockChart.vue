@@ -196,6 +196,7 @@ function ensureMacdfs() {
           key: "macd",
           title: "MACD: ",
           type: "bar",
+          baseValue: 0, // 关键：与内置 MACD 一致锚定零轴；缺失时 klinecharts 会用 yAxis 区间下沿（getRange().from）作基线，分时 MACD 柱从底部向上画、零轴穿越消失、图形错乱
           // 量柱逐根着色：klinecharts 自定义指标不会自动按值正负选色（内置 MACD 才会）
           // 正确数据路径：data.current.indicatorData.macd（已验证 v3 修复）
           // 复刻内置 MACD 的柱着色/描边逻辑（data.current/prev.indicatorData.macd 为正确路径）
