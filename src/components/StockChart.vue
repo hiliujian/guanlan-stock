@@ -830,8 +830,9 @@ interface AutoLevel {
   bg: string;
   size: number;
   dashed: boolean;
-  symbol?: string;        // S-01 / B-01 等交易标签符号
-  label: string;          // 线条侧边/轴标签文字
+  tag?: string;           // 轴标签短前缀：支/压/S/B（价格线用；趋势线无需）
+  sub?: string;           // 轴标签小字描述（交易线），如 反弹/回调低吸
+  label: string;          // 悬浮提示用的线条名称
   src?: string;           // 价位来源说明，用于悬浮提示
   dir?: "up" | "down";
 }
@@ -977,15 +978,18 @@ function bodyEdge(cl: PriceCluster, role: "support" | "pressure"): number {
   return role === "support" ? Math.min(rep.k.open, rep.k.close) : Math.max(rep.k.open, rep.k.close);
 }
 
-// 各波段线条标签映射（标签符号 + 文字），完全按规则总表
+// 各波段线条标签映射（轴标签短前缀 tag + 小字描述 sub + 悬浮名 name），按规则总表
 const BAND_LABELS: Record<BandType, {
-  sS: { t: string }; tS: { sym: string; t: string }; sP: { t: string }; tP: { sym: string; t: string };
+  sS: { tag: string; name: string };
+  tS: { tag: string; sub: string; name: string };
+  sP: { tag: string; name: string };
+  tP: { tag: string; sub: string; name: string };
 }> = {
-  uptrend:   { sS: { t: "结构支撑" }, tS: { sym: "S-01", t: "回调低吸 S" }, sP: { t: "结构压力" }, tP: { sym: "B-01", t: "止盈减仓 B" } },
-  downtrend: { sP: { t: "结构压力" }, tP: { sym: "B-02", t: "逢高离场 B" }, sS: { t: "结构支撑" }, tS: { sym: "S-03", t: "超跌博弈 S" } },
-  pullback:  { sS: { t: "结构支撑" }, tS: { sym: "S-02", t: "企稳买 S" }, sP: { t: "结构压力" }, tP: { sym: "B-01", t: "止盈减仓 B" } },
-  bounce:    { sP: { t: "结构压力" }, tP: { sym: "B-02", t: "逢高离场 B" }, sS: { t: "结构支撑" }, tS: { sym: "S-03", t: "超跌博弈 S" } },
-  box:       { sS: { t: "结构支撑" }, tS: { sym: "S-02", t: "企稳买 S" }, sP: { t: "结构压力" }, tP: { sym: "B-01", t: "止盈减仓 B" } },
+  uptrend:   { sS: { tag: "支", name: "结构支撑" }, tS: { tag: "S", sub: "回调低吸", name: "交易参考支撑 S" }, sP: { tag: "压", name: "结构压力" }, tP: { tag: "B", sub: "止盈减仓", name: "交易参考压力 B" } },
+  downtrend: { sP: { tag: "压", name: "结构压力" }, tP: { tag: "B", sub: "逢高离场", name: "交易参考压力 B" }, sS: { tag: "支", name: "结构支撑" }, tS: { tag: "S", sub: "超跌博弈", name: "交易参考支撑 S" } },
+  pullback:  { sS: { tag: "支", name: "结构支撑" }, tS: { tag: "S", sub: "企稳买", name: "交易参考支撑 S" }, sP: { tag: "压", name: "结构压力" }, tP: { tag: "B", sub: "止盈减仓", name: "交易参考压力 B" } },
+  bounce:    { sP: { tag: "压", name: "结构压力" }, tP: { tag: "B", sub: "逢高离场", name: "交易参考压力 B" }, sS: { tag: "支", name: "结构支撑" }, tS: { tag: "S", sub: "超跌博弈", name: "交易参考支撑 S" } },
+  box:       { sS: { tag: "支", name: "结构支撑" }, tS: { tag: "S", sub: "企稳买", name: "交易参考支撑 S" }, sP: { tag: "压", name: "结构压力" }, tP: { tag: "B", sub: "止盈减仓", name: "交易参考压力 B" } },
 };
 
 // 计算系统画线（智能标注）：每条 K 线图固定输出 4 根水平线（结构支撑/交易参考支撑/结构压力/交易参考压力）
@@ -1018,23 +1022,23 @@ function computeAutoLevels(): AutoLevel[] {
 
   // 结构支撑（深绿粗虚线，满宽，无 S/B 标签）
   if (supStruct && structSupPrice != null) {
-    out.push({ kind: "support", role: "structSupport", price: structSupPrice, color: STRUCT_SUPPORT_COLOR, bg: STRUCT_SUPPORT_COLOR, size: 2, dashed: true, label: L.sS.t, src: "结构支撑·波段低点簇 No.1" });
+    out.push({ kind: "support", role: "structSupport", price: structSupPrice, color: STRUCT_SUPPORT_COLOR, bg: STRUCT_SUPPORT_COLOR, size: 2, dashed: true, tag: L.sS.tag, label: L.sS.name, src: "结构支撑·波段低点簇 No.1" });
   }
   // 交易参考支撑（浅绿细虚线，挂载 S 标签；与结构线同价则去重，避免密集平行线）
   if (supTrade) {
     const price = supTrade.cl.center;
     if (structSupPrice == null || Math.abs(price - structSupPrice) / structSupPrice > TOL_PCT)
-      out.push({ kind: "support", role: "tradeSupport", price, color: TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR, size: 1.2, dashed: true, symbol: L.tS.sym, label: L.tS.t, src: "交易参考支撑·短线低点簇 No.1" });
+      out.push({ kind: "support", role: "tradeSupport", price, color: TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR, size: 1.2, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
   }
   // 结构压力（深红粗虚线，满宽，无 S/B 标签）
   if (presStruct && structPresPrice != null) {
-    out.push({ kind: "pressure", role: "structPressure", price: structPresPrice, color: STRUCT_PRESSURE_COLOR, bg: STRUCT_PRESSURE_COLOR, size: 2, dashed: true, label: L.sP.t, src: "结构压力·波段高点簇 No.1" });
+    out.push({ kind: "pressure", role: "structPressure", price: structPresPrice, color: STRUCT_PRESSURE_COLOR, bg: STRUCT_PRESSURE_COLOR, size: 2, dashed: true, tag: L.sP.tag, label: L.sP.name, src: "结构压力·波段高点簇 No.1" });
   }
   // 交易参考压力（浅红细虚线，挂载 B 标签）
   if (presTrade) {
     const price = presTrade.cl.center;
     if (structPresPrice == null || Math.abs(price - structPresPrice) / structPresPrice > TOL_PCT)
-      out.push({ kind: "pressure", role: "tradePressure", price, color: TRADE_PRESSURE_COLOR, bg: TRADE_PRESSURE_COLOR, size: 1.2, dashed: true, symbol: L.tP.sym, label: L.tP.t, src: "交易参考压力·短线高点簇 No.1" });
+      out.push({ kind: "pressure", role: "tradePressure", price, color: TRADE_PRESSURE_COLOR, bg: TRADE_PRESSURE_COLOR, size: 1.2, dashed: true, tag: L.tP.tag, sub: L.tP.sub, label: L.tP.name, src: "交易参考压力·短线高点簇 No.1" });
   }
 
   // 趋势线：上升结构（主升/上涨回调）连 3 个抬升摆动低点；主跌连 3 个降低摆动高点；冲突场景不绘制
@@ -1079,11 +1083,11 @@ function drawAutoLevels() {
         } as never);
       } else if (typeof lv.price === "number") {
         const t0 = dataList[0].timestamp;
-        const tag = lv.symbol ? lv.symbol + " " : "";
-        const text = `${tag}${lv.label} ${lv.price.toFixed(2)}`;
+        const main = `${lv.tag ?? ""} ${lv.price.toFixed(2)}`;
+        const sub = lv.sub || "";
         chart.createOverlay({
           id, name: "autoLevelLine", points: [{ timestamp: t0, value: lv.price }], lock: true,
-          extendData: { text, bg: lv.bg },
+          extendData: { text: main, sub, bg: lv.bg },
           styles: { line: { color: lv.color, style: lv.dashed ? "dashed" : "solid", size: lv.size || 1.2, dashedValue: [4, 3] } },
         } as never);
       }
@@ -1153,19 +1157,29 @@ function ensureTrendOverlay() {
         const y = coordinates[0].y;
         // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角 + padding 4/2；紧贴轴左缘(x:0, align:left)去多余左侧间距。
         const bg = overlay?.extendData?.bg || overlay?.styles?.line?.color || "#888";
-        const text = overlay?.extendData?.text || "";
-        return [{
+        const main = overlay?.extendData?.text || "";
+        const sub = overlay?.extendData?.sub || "";
+        const figs: any[] = [{
           type: "text",
-          attrs: { x: 0, y, text, align: "left", baseline: "middle" },
+          attrs: { x: 0, y, text: main, align: "left", baseline: "middle" },
           styles: {
-            color: "#ffffff",
-            backgroundColor: bg,
-            borderColor: "transparent",
-            borderSize: 0,
-            paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2,
+            color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
+            paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 12,
           },
           ignoreEvent: true,
         }];
+        if (sub) {
+          figs.push({
+            type: "text",
+            attrs: { x: 0, y: y + 15, text: sub, align: "left", baseline: "middle" },
+            styles: {
+              color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
+              paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 9,
+            },
+            ignoreEvent: true,
+          });
+        }
+        return figs;
       },
     } as never);
     trendOverlayRegistered = true;
