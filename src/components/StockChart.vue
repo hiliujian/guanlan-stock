@@ -864,8 +864,10 @@ const SWING_WIN = 2;      // 摆动点左右确认 K 线：左右各 2 根验证
 const SWING_FREQ_MAX = 40;// 触碰频次满分
 const SWING_REV_MAX = 35; // 反转反应满分
 const SWING_SWAP_MAX = 25;// 角色互换满分
-const SUPPORT_COLOR = DOWN;   // 支撑（结构支撑 / 交易参考支撑同为浅绿）
-const PRESSURE_COLOR = UP;    // 压力（结构压力 / 交易参考压力同为浅红）
+const SUPPORT_COLOR = DOWN;        // 结构支撑（绿，对应 desc「红压力/绿支撑」）
+const PRESSURE_COLOR = UP;         // 结构压力（红，对应 desc「红压力/绿支撑」）
+const TRADE_SUPPORT_COLOR = UP;    // 交易参考支撑 S（红，买入信号，对应 desc「红S买入」）
+const TRADE_PRESSURE_COLOR = DOWN; // 交易参考压力 B（绿，卖出信号，对应 desc「绿B卖出」）
 
 // 摆动点（pivot）：以 win 根为窗口取严格局部极值；窗口天然把相邻极值隔开 ≥win 根，无需额外 gap 过滤
 // 全局强制约束：K 线靠近图表首尾不足 win 根则不生成摆动点（findSwings 循环边界已保证）。
@@ -1136,7 +1138,7 @@ function computeAutoLevelsFromSeries(dl: Kline[], guard: ReturnType<typeof resol
     const price = supTrade.cl.center;
     // 结构线被渲染屏蔽（如分时 disableStruct）时视为不存在，不去重交易线，避免 S/B 被连带隐藏
     if (structSupPrice == null || guard.disableStruct || Math.abs(price - structSupPrice) / structSupPrice > TOL_PCT)
-      out.push({ kind: "support", role: "tradeSupport", price, color: SUPPORT_COLOR, bg: SUPPORT_COLOR, size: 1, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
+      out.push({ kind: "support", role: "tradeSupport", price, color: TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR, size: 1, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
   }
   // 结构压力（红粗虚线，满宽，无 S/B 标签）
   if (presStruct && structPresPrice != null) {
@@ -1146,7 +1148,7 @@ function computeAutoLevelsFromSeries(dl: Kline[], guard: ReturnType<typeof resol
   if (presTrade) {
     const price = presTrade.cl.center;
     if (structPresPrice == null || guard.disableStruct || Math.abs(price - structPresPrice) / structPresPrice > TOL_PCT)
-      out.push({ kind: "pressure", role: "tradePressure", price, color: PRESSURE_COLOR, bg: PRESSURE_COLOR, size: 1, dashed: true, tag: L.tP.tag, sub: L.tP.sub, label: L.tP.name, src: "交易参考压力·短线高点簇 No.1" });
+      out.push({ kind: "pressure", role: "tradePressure", price, color: TRADE_PRESSURE_COLOR, bg: TRADE_PRESSURE_COLOR, size: 1, dashed: true, tag: L.tP.tag, sub: L.tP.sub, label: L.tP.name, src: "交易参考压力·短线高点簇 No.1" });
   }
 
   // 趋势线：仅主升 uptrend 连 3 个抬升摆动低点；主跌连 3 个降低摆动高点；
