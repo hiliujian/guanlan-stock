@@ -1161,7 +1161,7 @@ function drawAutoLevels() {
   }
 }
 
-// ---- 自动趋势线自定义 overlay（线段 + 末端三角箭头标示方向）----
+// ---- 自动趋势线自定义 overlay（线段 + 末端开放箭头标示方向）----
 let trendOverlayRegistered = false;
 function ensureTrendOverlay() {
   if (trendOverlayRegistered) return;
@@ -1179,13 +1179,16 @@ function ensureTrendOverlay() {
         const b = coordinates[coordinates.length - 1];
         const col = overlay?.styles?.line?.color || TREND;
         const up = b.y < a.y; // 像素坐标 y 越小价格越高
-        const size = 7;
-        const arrow = up
-          ? [{ x: b.x, y: b.y }, { x: b.x - size, y: b.y + size * 1.6 }, { x: b.x + size, y: b.y + size * 1.6 }]
-          : [{ x: b.x, y: b.y }, { x: b.x - size, y: b.y - size * 1.6 }, { x: b.x + size, y: b.y - size * 1.6 }];
+        // 末端开放 V 形箭头（无填充，比实心三角更精致）：b 为箭头尖，两翼向趋势反方向张开
+        const lw = overlay?.styles?.line?.size || 1.6;
+        const wing = 9, dx = wing * 0.55, dy = wing * 0.85;
+        const left = up ? { x: b.x - dx, y: b.y + dy } : { x: b.x - dx, y: b.y - dy };
+        const right = up ? { x: b.x + dx, y: b.y + dy } : { x: b.x + dx, y: b.y - dy };
+        const aw = Math.max(2, lw * 1.4); // 箭头线宽略粗于趋势线
         return [
-          { type: "line", attrs: { coordinates: [a, b] }, styles: { style: "solid", size: 1.6, color: col }, ignoreEvent: true },
-          { type: "polygon", attrs: { coordinates: arrow }, styles: { style: "fill", color: col, borderColor: col, borderSize: 1 }, ignoreEvent: true },
+          { type: "line", attrs: { coordinates: [a, b] }, styles: { style: "solid", size: lw, color: col }, ignoreEvent: true },
+          { type: "line", attrs: { coordinates: [left, b] }, styles: { style: "solid", size: aw, color: col }, ignoreEvent: true },
+          { type: "line", attrs: { coordinates: [right, b] }, styles: { style: "solid", size: aw, color: col }, ignoreEvent: true },
         ];
       },
     } as never);
