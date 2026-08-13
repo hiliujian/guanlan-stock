@@ -30,10 +30,10 @@
          由外部画板图标控制 toolsOpen 淡入/淡出（<Transition> 处理进出场动画）。 -->
     <Transition name="kct">
       <view v-if="showTools && toolsOpen" class="kc-tools">
-        <view class="kct-btn" :class="{ active: activeAction === 'support' }" role="button" @click="drawLine('support', 'horizontalStraightLine', DOWN)">支撑</view>
-        <view class="kct-btn" :class="{ active: activeAction === 'pressure' }" role="button" @click="drawLine('pressure', 'horizontalStraightLine', UP)">压力</view>
-        <view class="kct-btn" :class="{ active: activeAction === 'trend' }" role="button" @click="drawLine('trend', 'straightLine', TREND)">趋势</view>
-        <view class="kct-btn" :class="{ active: activeAction === 'fib' }" role="button" @click="drawLine('fib', 'fibonacciLine')">分割</view>
+        <view class="kct-btn" :class="{ active: activeAction === 'support' }" role="button" @click="drawLine('support')">支撑</view>
+        <view class="kct-btn" :class="{ active: activeAction === 'pressure' }" role="button" @click="drawLine('pressure')">压力</view>
+        <view class="kct-btn" :class="{ active: activeAction === 'trend' }" role="button" @click="drawLine('trend')">趋势</view>
+        <view class="kct-btn" :class="{ active: activeAction === 'fib' }" role="button" @click="drawLine('fib')">分割</view>
         <view class="kct-btn kct-clear" role="button" @click="clearUserOverlays">清空</view>
       </view>
     </Transition>
@@ -742,14 +742,40 @@ function persistSave() {
 // 调用 KLineCharts 进入绘制交互；绘制完成后 onDrawEnd 落盘
 type DrawAction = "support" | "pressure" | "trend" | "fib";
 const activeAction = ref<DrawAction | "">("");
-function drawLine(action: DrawAction, type: string, color?: string) {
+// 收尾上一笔「未落点/未画完」的绘制：klinecharts 是单进度实例模型（addInstances 会把新创建的 overlay
+// 直接覆盖 _progressInstanceInfo，导致上一笔还在绘制中的线被丢弃→表现为互斥/线条消失）。
+// 切换工具前显式丢弃上一笔未完成绘制，保证已完成的线互不干扰、稳定共存。
+function finalizeProgress() {
   if (!chart) return;
+  try {
+    const store: any = (chart as any).getChartStore?.()?.getOverlayStore?.();
+    if (!store || typeof store.getProgressInstanceInfo !== "function") return;
+    const info = store.getProgressInstanceInfo();
+    if (info && info.instance && info.instance.id) {
+      chart!.removeOverlay(info.instance.id);
+    }
+  } catch {
+    /* noop */
+  }
+}
+function drawLine(action: DrawAction) {
+  if (!chart) return;
+  finalizeProgress();
   const id = genOverlayId();
   overlayIds.push(id);
   activeAction.value = action;
+  // 动作 → 自定义 overlay 名 + 线色 + 标签前缀（不再用内置名，避免「都绿/互斥」）
+  let name = "kcHLine";
+  let color: string | undefined;
+  let tag = "";
+  if (action === "support") { name = "kcHLine"; color = DOWN; tag = "支"; }
+  else if (action === "pressure") { name = "kcHLine"; color = UP; tag = "压"; }
+  else if (action === "trend") { name = "kcTrend"; color = TREND; }
+  else if (action === "fib") { name = "kcFib"; }
   const created = chart.createOverlay({
     id,
-    name: type, // 关键：KLineCharts 用 overlay.name 匹配内置类型，不是 type
+    name,
+    extendData: { tag },
     styles: color ? { line: { color, style: "solid", size: 1.4 } } : undefined,
     onDrawEnd: () => {
       activeAction.value = "";
@@ -1190,6 +1216,205 @@ function ensureTrendOverlay() {
   }
 }
 
+// ---- 用户手绘画线自定义 overlay（kcHLine / kcTrend / kcFib）----
+// 解决内置 horizontalStraightLine/straightLine/fibonacciLine 的三处问题：
+//  1) 互斥/标签消失：内置线在「绘制未完成」时若被新绘制覆盖会被丢弃（见 klinecharts addInstances 单进度实例逻辑）；
+//     这里配合 drawLine 里 finalizeProgress() 收尾上一笔，且每条线独立实例、单点即完成，互不干扰。
+//  2) 标签都绿：内置 needDefaultYAxisFigure 的标签背景不跟随线色；这里用自定义 createYAxisFigures 按线色生成彩色实底白字。
+//  3) 磁吸：performEventMoveForDrawing / performEventPressedMove 中把价位吸附到光标所在 K 线（箱体）的 high/low/open/close。
+// 注意：registerOverlay 为「替换」语义，改内置线行为必须用新名字 + 完整渲染定义。
+const SNAP_TOL_PX = 9; // 磁吸像素容差（与十字光标灵敏度同量级，手感贴近「竖线选箱体」）
+// 两点间在给定 x 处的线性 y（趋势线延伸到面板左右边缘用）
+function linearY(a: { x: number; y: number }, b: { x: number; y: number }, x: number): number {
+  if (b.x === a.x) return a.y;
+  return a.y + ((b.y - a.y) * (x - a.x)) / (b.x - a.x);
+}
+// 把价位吸附到光标所在蜡烛（dataIndex）的 O/H/L/C 关键价位（容差内才吸附，否则保持自由画线）
+function snapValueToCandle(raw: number, dataIndex?: number): number {
+  if (!chart || !dataList.length) return raw;
+  if (typeof dataIndex !== "number" || dataIndex < 0 || dataIndex >= dataList.length) return raw;
+  const k = dataList[dataIndex];
+  if (!k) return raw;
+  const cand = [k.high, k.low, k.open, k.close].filter((v: number) => Number.isFinite(v));
+  if (!cand.length) return raw;
+  // 价格→像素斜率，换算磁吸容差（价格轴线性，单点斜率足够）
+  let pxPerPrice = 1;
+  try {
+    const r1 = (chart as any).convertToPixel([{ value: raw }], { paneId: "candle_pane" }) as any;
+    const r2 = (chart as any).convertToPixel([{ value: raw + 1 }], { paneId: "candle_pane" }) as any;
+    const y1 = Array.isArray(r1) ? r1[0]?.y : r1?.y;
+    const y2 = Array.isArray(r2) ? r2[0]?.y : r2?.y;
+    if (typeof y1 === "number" && typeof y2 === "number") pxPerPrice = Math.abs(y2 - y1) || 1;
+  } catch {
+    /* noop */
+  }
+  const priceTol = SNAP_TOL_PX / pxPerPrice;
+  let best = raw;
+  let bestD = priceTol;
+  for (const lv of cand) {
+    const d = Math.abs(lv - raw);
+    if (d < bestD) {
+      bestD = d;
+      best = lv;
+    }
+  }
+  return best;
+}
+// 就地吸附某个绘点（performPoint 即 points[i]，直接改 .value 即可）
+function snapPointValue(pt: any) {
+  if (!pt || typeof pt.value !== "number") return;
+  const snapped = snapValueToCandle(pt.value, pt.dataIndex);
+  if (snapped !== pt.value) pt.value = snapped;
+}
+let drawOverlayRegistered = false;
+function ensureDrawOverlays() {
+  if (drawOverlayRegistered) return;
+  try {
+    // ===== 横线（支撑/压力）：单指点完即完成；右侧价格标签按线色生成彩色实底白字 =====
+    registerOverlay({
+      name: "kcHLine",
+      totalStep: 2,
+      needDefaultPointFigure: true,
+      needDefaultXAxisFigure: false,
+      needDefaultYAxisFigure: false,
+      createPointFigures: (params: any) => {
+        const coordinates = params.coordinates as { x: number; y: number }[];
+        const bounding = params.bounding as { width: number; height: number };
+        if (!coordinates || coordinates.length < 1) return [];
+        const y = coordinates[0].y;
+        return [{ type: "line", attrs: { coordinates: [{ x: 0, y }, { x: bounding.width, y }] } }];
+      },
+      createYAxisFigures: (params: any) => {
+        const coordinates = params.coordinates as { x: number; y: number }[];
+        const overlay = params.overlay as any;
+        if (!coordinates || coordinates.length < 1) return [];
+        const y = coordinates[0].y;
+        const col = overlay?.styles?.line?.color || "#888";
+        const tag = overlay?.extendData?.tag || "";
+        const price = overlay?.points?.[0]?.value;
+        const text = (tag ? tag + " " : "") + (price != null ? Number(price).toFixed(2) : "");
+        return [{
+          type: "text",
+          attrs: { x: 0, y, text, align: "left", baseline: "middle" },
+          styles: {
+            color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
+            paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 12,
+          },
+          ignoreEvent: true,
+        }];
+      },
+      performEventPressedMove: (params: any) => {
+        const points = params.points as any[];
+        if (points[params.performPointIndex]) snapPointValue(points[params.performPointIndex]);
+      },
+      performEventMoveForDrawing: (params: any) => {
+        const points = params.points as any[];
+        if (points[points.length - 1]) snapPointValue(points[points.length - 1]);
+      },
+    } as never);
+    // ===== 趋势线（两点线段，可斜/可竖）=====
+    registerOverlay({
+      name: "kcTrend",
+      totalStep: 3,
+      needDefaultPointFigure: true,
+      needDefaultXAxisFigure: false,
+      needDefaultYAxisFigure: false,
+      createPointFigures: (params: any) => {
+        const coordinates = params.coordinates as { x: number; y: number }[];
+        const bounding = params.bounding as { width: number; height: number };
+        if (coordinates.length === 2) {
+          if (coordinates[0].x === coordinates[1].x) {
+            return [{ type: "line", attrs: { coordinates: [{ x: coordinates[0].x, y: 0 }, { x: coordinates[0].x, y: bounding.height }] } }];
+          }
+          return [{ type: "line", attrs: { coordinates: [
+            { x: 0, y: linearY(coordinates[0], coordinates[1], 0) },
+            { x: bounding.width, y: linearY(coordinates[0], coordinates[1], bounding.width) },
+          ] } }];
+        }
+        return [];
+      },
+      createYAxisFigures: (params: any) => {
+        const coordinates = params.coordinates as { x: number; y: number }[];
+        const overlay = params.overlay as any;
+        if (!coordinates || coordinates.length < 1) return [];
+        const col = overlay?.styles?.line?.color || TREND;
+        const figs: any[] = [];
+        coordinates.forEach((c: any, i: number) => {
+          const price = overlay?.points?.[i]?.value;
+          if (price == null) return;
+          figs.push({
+            type: "text",
+            attrs: { x: 0, y: c.y, text: Number(price).toFixed(2), align: "left", baseline: "middle" },
+            styles: {
+              color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
+              paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 12,
+            },
+            ignoreEvent: true,
+          });
+        });
+        return figs;
+      },
+      performEventPressedMove: (params: any) => {
+        const points = params.points as any[];
+        if (points[params.performPointIndex]) snapPointValue(points[params.performPointIndex]);
+      },
+      performEventMoveForDrawing: (params: any) => {
+        const points = params.points as any[];
+        if (points[points.length - 1]) snapPointValue(points[points.length - 1]);
+      },
+    } as never);
+    // ===== 黄金分割（两点：起点/终点；按比例展开 7 档）=====
+    registerOverlay({
+      name: "kcFib",
+      totalStep: 3,
+      needDefaultPointFigure: true,
+      needDefaultXAxisFigure: false,
+      needDefaultYAxisFigure: false,
+      createPointFigures: (params: any) => {
+        const coordinates = params.coordinates as { x: number; y: number }[];
+        const bounding = params.bounding as { width: number; height: number };
+        const overlay = params.overlay as any;
+        const points = overlay.points as any[];
+        const pricePrec = (params.precision && params.precision.price) ?? 2;
+        const col = overlay?.styles?.line?.color || "#888";
+        const lines: any[] = [];
+        const texts: any[] = [];
+        if (coordinates.length > 1 && Number.isFinite(points[0]?.value) && Number.isFinite(points[1]?.value)) {
+          const percents = [1, 0.786, 0.618, 0.5, 0.382, 0.236, 0];
+          const yDif = coordinates[0].y - coordinates[1].y;
+          const valueDif = points[0].value - points[1].value;
+          percents.forEach((percent: number) => {
+            const y = coordinates[1].y + yDif * percent;
+            const value = ((points[1].value ?? 0) + valueDif * percent).toFixed(pricePrec);
+            lines.push({ coordinates: [{ x: 0, y }, { x: bounding.width, y }] });
+            texts.push({
+              x: 0, y, text: `${value} (${(percent * 100).toFixed(1)}%)`, baseline: "bottom",
+              // 分割线标签也跟随线色生成彩色实底白字，避免与横线一样出现「都绿」
+              color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
+              paddingLeft: 4, paddingRight: 4, paddingTop: 1, paddingBottom: 1, size: 11,
+            });
+          });
+        }
+        return [
+          { type: "line", attrs: lines },
+          { type: "text", isCheckEvent: false, attrs: texts },
+        ];
+      },
+      performEventPressedMove: (params: any) => {
+        const points = params.points as any[];
+        if (points[params.performPointIndex]) snapPointValue(points[params.performPointIndex]);
+      },
+      performEventMoveForDrawing: (params: any) => {
+        const points = params.points as any[];
+        if (points[points.length - 1]) snapPointValue(points[points.length - 1]);
+      },
+    } as never);
+    drawOverlayRegistered = true;
+  } catch {
+    /* noop */
+  }
+}
+
 // ---- 智能标注悬浮提示框（跟随十字光标，显示类型/价位/区间/触及次数/方向）----
 // 智能标注 lock:true 不响应 overlay 事件，故改用 onCrosshairChange + convertFromPixel 反算价格匹配最近线
 interface TipItem { label: string; color: string; text: string; }
@@ -1385,6 +1610,22 @@ function onCrosshair(c: any) {
   tip.y = c.y;
   tip.show = true;
 }
+// 旧版 localStorage 存的是内置 overlay 名，统一映射到自定义名（保留线色/样式，横线据线色补「支/压」标签）
+const DRAW_TYPE_MAP: Record<string, string> = {
+  horizontalStraightLine: "kcHLine",
+  straightLine: "kcTrend",
+  fibonacciLine: "kcFib",
+};
+function mapRestoreType(it: any): { name: string; extendData: any } {
+  const name = DRAW_TYPE_MAP[it.type] || it.type;
+  const extendData: any = {};
+  if (name === "kcHLine") {
+    const col = it.styles?.line?.color;
+    // 旧版支撑=DOW(绿)、压力=UP(红)；线色即可区分，补标签前缀
+    extendData.tag = col === UP ? "压" : "支";
+  }
+  return { name, extendData };
+}
 // 从本地存储恢复已画线（在 applyNewData 之后调用，依赖数据坐标系）
 function restoreOverlays() {
   const key = persistKey();
@@ -1400,7 +1641,8 @@ function restoreOverlays() {
     if (!it || !it.type || !Array.isArray(it.points) || !it.points.length) continue;
     try {
       const id = it.id || genOverlayId();
-      chart.createOverlay({ id, name: it.type, points: it.points, styles: it.styles } as never);
+      const { name, extendData } = mapRestoreType(it);
+      chart.createOverlay({ id, name, extendData, points: it.points, styles: it.styles } as never);
       if (!overlayIds.includes(id)) overlayIds.push(id);
     } catch {
       /* noop */
@@ -1496,6 +1738,7 @@ function buildChart() {
   ensureMacdfs();
   ensureMaIndicators();
   ensureTrendOverlay();
+  ensureDrawOverlays();
   dataList = toKLineData();
   if (dataList.length) lastTs = dataList[dataList.length - 1].timestamp;
   chipData = props.klines && props.klines.length ? computeChip(props.klines) : null;
