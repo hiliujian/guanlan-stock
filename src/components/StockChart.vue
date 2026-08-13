@@ -1322,7 +1322,9 @@ function ensureTrendOverlay() {
         const bounding = params.bounding as { width: number; height: number };
         const overlay = params.overlay as any;
         if (!coordinates || coordinates.length < 1) return [];
-        const y = coordinates[0].y;
+        // 钳制到可见区：分时价格轴自适应当日分时窄幅，日K级别的 S/B 价位常落在可视区外被裁掉；
+        // 钳制后线条始终可见（标签仍显示真实价位），保证分时 S/B 交易线正常显示（日K视图价位在区内，钳制为 no-op）。
+        const y = Math.max(1, Math.min(bounding.height - 1, coordinates[0].y));
         const col = overlay?.styles?.line?.color || "#888";
         return [{
           type: "line",
@@ -1333,9 +1335,11 @@ function ensureTrendOverlay() {
       },
       createYAxisFigures: (params: any) => {
         const coordinates = params.coordinates as { x: number; y: number }[];
+        const bounding = params.bounding as { width: number; height: number };
         const overlay = params.overlay as any;
         if (!coordinates || coordinates.length < 1) return [];
-        const y = coordinates[0].y;
+        // 钳制到可见区（与线条一致）：分时日K级别价位常落在可视区外，钳制后标签始终可见（真实价位保留在标签文字中）。
+        const y = Math.max(14, Math.min(bounding.height - 14, coordinates[0].y));
         // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角 + padding；紧贴轴左缘(x:0, align:left)去多余左侧间距。
         // 标签（含价格）统一 size 10；下方 sub 提示统一 size 8（无论结构线/交易参考线/S/B/支压）。
         const bg = overlay?.extendData?.bg || overlay?.styles?.line?.color || "#888";
@@ -1353,7 +1357,7 @@ function ensureTrendOverlay() {
         if (sub) {
           figs.push({
             type: "text",
-            attrs: { x: 0, y: y + 13, text: sub, align: "left", baseline: "middle" },
+            attrs: { x: 0, y: Math.max(14, Math.min(bounding.height - 14, y + 13)), text: sub, align: "left", baseline: "middle" },
             styles: {
               color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
               paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 8,
