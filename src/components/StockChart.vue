@@ -1671,7 +1671,7 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
   const md = macdMap[props.mode === "intraday" ? "MACDFS" : "MACD"];
   legend.macd = [];
   if (md) {
-    if (md.macd != null) legend.macd.push({ label: "MACD", value: fmtPrice(md.macd), color: md.macd > 0 ? UP : md.macd < 0 ? DOWN : undefined });
+    if (md.macd != null) legend.macd.push({ label: props.mode === "intraday" ? "MACDFS" : "MACD", value: fmtPrice(md.macd), color: md.macd > 0 ? UP : md.macd < 0 ? DOWN : undefined });
     if (props.macdDif !== false && md.dif != null) legend.macd.push({ label: "DIF", value: fmtPrice(md.dif), color: INDICATOR_LINE_COLORS[0] });
     if (props.macdDea !== false && md.dea != null) legend.macd.push({ label: "DEA", value: fmtPrice(md.dea), color: INDICATOR_LINE_COLORS[1] });
   }
