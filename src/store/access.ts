@@ -17,7 +17,7 @@ import { fetchPageAccess, type PageAccessRow } from "@/config/remote";
 import { userState } from "@/store/user";
 
 // 单条白名单元数据
-export interface AccessMeta {
+interface AccessMeta {
   path: string;
   open: boolean;
   showInMenu: boolean;
@@ -56,7 +56,7 @@ function builtinEntries(): Map<string, AccessMeta> {
   return m;
 }
 
-export const accessState = reactive<{
+const accessState = reactive<{
   ready: boolean;
   entries: Map<string, AccessMeta>;
 }>({
@@ -68,7 +68,7 @@ let initialized = false;
 let lastFetched = 0;
 
 // 路由标准化：去 query、去前导 "/"，与内置 / 数据库 path 一致
-export function normalizeRoute(route: string): string {
+function normalizeRoute(route: string): string {
   return route.split("?")[0].replace(/^\/+/, "");
 }
 
@@ -116,13 +116,6 @@ export async function initPageAccess(): Promise<void> {
   lastFetched = now;
 }
 
-/** 强制刷新白名单（远程配置变更后手动调用，绕过 TTL）。 */
-export async function refreshPageAccess(): Promise<void> {
-  initialized = false;
-  lastFetched = 0;
-  await initPageAccess();
-}
-
 /** 路由是否对游客开放（白名单开关）。未登记路由默认 false（fail-closed：未开放即拦截）。 */
 export function isRouteOpen(route: string): boolean {
   const e = accessState.entries.get(normalizeRoute(route));
@@ -133,11 +126,6 @@ export function isRouteOpen(route: string): boolean {
 export function showInMenu(route: string): boolean {
   const e = accessState.entries.get(normalizeRoute(route));
   return e ? e.showInMenu : false;
-}
-
-/** 取路由完整元数据（未来扩展维度：角色权限 / 时间段开放等从 extra 读取）。 */
-export function getRouteMeta(route: string): AccessMeta | null {
-  return accessState.entries.get(normalizeRoute(route)) ?? null;
 }
 
 /**

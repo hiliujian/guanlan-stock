@@ -10,7 +10,7 @@ import { DEFAULT_SETTINGS, type AppSettings, type TabKey } from "@/config/app";
 import { fetchRemoteSettings } from "@/config/remote";
 
 // 深拷贝本地默认值，避免被远程覆盖污染 DEFAULT_SETTINGS 常量
-export const runtimeConfig = reactive<AppSettings>(
+const runtimeConfig = reactive<AppSettings>(
   JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) as AppSettings
 );
 

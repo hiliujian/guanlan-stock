@@ -8,7 +8,7 @@
 
 export type Band = "bronze" | "silver" | "gold" | "diamond";
 
-export interface LevelMeta {
+interface LevelMeta {
   id: number;
   name: string;
   band: Band;
@@ -19,7 +19,7 @@ export interface LevelMeta {
 
 // 等级阶梯（数组下标 = 等级序号；0 = 新手散户）
 // 经验阈值门槛：每级所需累计经验值（expMin）。perks 为该等级解锁的权益。
-export const TIERS: LevelMeta[] = [
+const TIERS: LevelMeta[] = [
   {
     id: 1,
     name: "新手散户",
@@ -78,11 +78,8 @@ export const TIERS: LevelMeta[] = [
   },
 ];
 
-// 最高等级序号
-export const MAX_LEVEL = TIERS.length - 1;
-
 // 色带配色：仅用于等级标签 / 徽章的渐变与图标色（深 / 浅主题下均清晰可读）
-export interface BandColor {
+interface BandColor {
   from: string;
   to: string;
   icon: string; // 与渐变搭配的文字 / 图标色（深色，保证对比度）
@@ -104,14 +101,14 @@ export function levelMeta(level: number): LevelMeta {
   return TIERS[clampLevel(level)] ?? TIERS[0];
 }
 
-export interface LevelRange {
+interface LevelRange {
   min: number;
   max: number | null; // null 表示最高等级（无上限）
   label: string; // 如 "0–99" 或 "4000+"
 }
 
 /** 某等级的「经验值范围」：下界为 expMin，上界为下一级 expMin-1；最高级无上限。 */
-export function expRangeOf(level: number): LevelRange {
+function expRangeOf(level: number): LevelRange {
   const lv = clampLevel(level);
   const min = TIERS[lv].expMin;
   const next = TIERS[lv + 1];
@@ -120,7 +117,7 @@ export function expRangeOf(level: number): LevelRange {
   return { min, max, label };
 }
 
-export interface LevelProgress {
+interface LevelProgress {
   exp: number; // 实际经验（已 clamp 到合理范围）
   range: LevelRange;
   span: number; // 当前等级宽度（max ? max-min+1 : 1）
@@ -169,7 +166,7 @@ export function levelLadder(currentLevel: number, currentExp: number) {
 //   后端据此累加（见 deploy.sql / 业务逻辑层）。
 // - once=true 表示仅首次触发（如完善资料），否则为可重复行为（每日/每次）。
 // =====================================================================
-export interface ExpSource {
+interface ExpSource {
   key: string;
   label: string; // 行为名称
   exp: number; // 该行为获得的经验值

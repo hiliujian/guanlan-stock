@@ -8,7 +8,7 @@
 // =====================================================================
 import { getSupabase } from "@/api/supabase";
 
-export interface HeatStock {
+interface HeatStock {
   code: string;
   name: string;
   market: string;

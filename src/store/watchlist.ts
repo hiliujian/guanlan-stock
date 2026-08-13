@@ -143,7 +143,7 @@ function subscribeRealtime(userId: string) {
 }
 
 /** 取消自选 Realtime 订阅（登出 / 切到本地模式 / 应用卸载时调用，防止 channel 泄漏） */
-export function unsubscribeWatchlistRealtime() {
+function unsubscribeWatchlistRealtime() {
   const sb = getSupabase();
   if (sb && realtimeChannel) {
     try {

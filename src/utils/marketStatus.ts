@@ -7,11 +7,11 @@
 // 在 open=false 时跳过拉取，避免休市期间重复请求无变化的数据。
 // =====================================================================
 
-export type MarketKind = "sh" | "sz" | "hk" | "bj" | "auto" | string;
+type MarketKind = "sh" | "sz" | "hk" | "bj" | "auto" | string;
 
-export type MarketState = "open" | "lunch" | "closed" | "weekend" | "holiday" | "temp";
+type MarketState = "open" | "lunch" | "closed" | "weekend" | "holiday" | "temp";
 
-export interface MarketStatus {
+interface MarketStatus {
   state: MarketState;
   label: string;
   open: boolean; // 是否处于可交易时段（用于决定是否轮询实时行情）

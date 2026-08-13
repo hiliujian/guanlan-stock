@@ -13,9 +13,6 @@
 // 底部 Tab 键（与 src/pages/index/index.vue / AppTabBar 对应）
 export type TabKey = "market" | "watch" | "community" | "profile";
 
-// 数据源唯一标识（与后端网关返回的 source 一致，用于前端解析分发）
-export type SourceId = "eastmoney" | "tencent" | "sina";
-
 // 菜单配置：每类 Tab 是否启用（false = 底部导航隐藏、入口一并隐藏）
 export type MenuConfig = Record<TabKey, boolean>;
 
@@ -33,7 +30,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
 };
 
-export interface AppConfig {
+interface AppConfig {
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
 }

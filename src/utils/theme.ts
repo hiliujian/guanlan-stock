@@ -2,7 +2,7 @@
 // 通过给 <html> 加 .theme-light 类切换 CSS 变量；图表读取 isDark 做主题适配。
 import { ref, computed } from "vue";
 
-export type ThemeMode = "dark" | "light";
+type ThemeMode = "dark" | "light";
 
 const KEY = "guanlan-theme";
 

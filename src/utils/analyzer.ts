@@ -330,7 +330,7 @@ function detectLimitMove(klines: Kline[], code?: string) {
 }
 
 // ---------------- 主分析 ----------------
-export interface FlowSummary {
+interface FlowSummary {
   sum: number; // 亿元
   has: boolean;
 }

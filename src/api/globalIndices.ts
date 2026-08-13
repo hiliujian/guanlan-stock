@@ -8,7 +8,7 @@
 // COMEX 金/银/铜、WTI/布伦特原油）Eastmoney 不提供，改走新浪期货接口返回真实价格。
 import { getUlistQuotes, getFuturesQuotes, getTencentFallbackQuotes, FUTURES_SECIDS, type UlistQuote } from "@/api/sources";
 
-export interface GlobalIndexItem {
+interface GlobalIndexItem {
   secid: string;
   name: string;
   /** 国旗 ISO 3166-1 alpha-2 码（用于列表前的小国旗图标）；商品期货等非国家标的留空改用 icon */
@@ -16,7 +16,7 @@ export interface GlobalIndexItem {
   /** 非国家标的（商品期货等）改用本地 PNG 图片图标（gold / silver / copper / oil），与 flag 二选一 */
   icon?: string;
 }
-export interface GlobalIndexGroup {
+interface GlobalIndexGroup {
   title: string; // 分组标题：A股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货
   items: GlobalIndexItem[];
 }
@@ -85,14 +85,6 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     ],
   },
 ];
-
-// secid → 国旗 ISO 码（折叠卡匹配指数时快速查国旗，避免逐项遍历）。
-// 仅收录带 flag 的国家/地区标的；商品期货等用 icon 的标的跳过（flag 为 undefined）。
-export const SECID_FLAG: Record<string, string> = Object.fromEntries(
-  GLOBAL_INDEX_GROUPS.flatMap((g) =>
-    g.items.filter((i) => i.flag).map((i) => [i.secid, i.flag as string])
-  )
-);
 
 // 全部待取 secid（去重），供批量请求一次拿全。
 const ALL_SECIDS: string[] = Array.from(

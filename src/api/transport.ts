@@ -13,7 +13,7 @@ import { getSupabase } from "@/api/supabase";
 
 const EDGE_FN = "guanlan-quote-proxy";
 
-export interface GatewayResponse {
+interface GatewayResponse {
   source: string; // 实际命中的数据源（eastmoney | tencent | sina），决定用哪家解析器
   text: string; // 该源返回的原始响应文本（解析仍由前端各源解析器完成）
 }
@@ -72,4 +72,3 @@ export async function requestGateway(
 }
 
 export { withTimeout };
-export const FETCH_TIMEOUT = GATEWAY_TIMEOUT;

@@ -169,7 +169,7 @@ export function scoreNews(items: NewsItem[], now: number = Date.now()): NewsSign
 // 说明：若 code / name 均为空（极端情况下尚未解析出股票身份），关联性门槛
 // 退化为「不过滤」（无法判断即不误杀），仅执行时效过滤。
 // =====================================================================
-export interface NewsFilterOpts {
+interface NewsFilterOpts {
   code: string; // 6 位股票代码
   name: string; // 股票名称（全称或标准简称）
   now?: number; // 基准时间（epoch ms），默认 Date.now()

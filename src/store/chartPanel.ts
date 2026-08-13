@@ -9,7 +9,7 @@
 // =====================================================================
 import { reactive, watch } from "vue";
 
-export interface ChartPanelConfig {
+interface ChartPanelConfig {
   /** 成交量面板内部的量均线 MA5 是否绘制 */
   volumeMa5: boolean;
   /** 成交量面板内部的量均线 MA10 是否绘制 */

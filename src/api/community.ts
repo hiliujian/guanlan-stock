@@ -19,7 +19,6 @@ import { userState } from "@/store/user";
 // ---------------------------------------------------------------------
 // 类型定义（TS / UI 侧 camelCase）
 // ---------------------------------------------------------------------
-export type CardKind = "holding" | "operation" | "profit";
 
 /** 持仓卡片：展示某只股票的持仓成本 / 数量 / 现价与浮动盈亏 */
 export interface HoldingCard {
@@ -61,7 +60,7 @@ export interface Topic {
   code?: string; // 个股代码（可选）
 }
 
-export interface Reply {
+interface Reply {
   id: string;
   author: string;
   content: string;

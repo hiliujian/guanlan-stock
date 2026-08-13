@@ -15,7 +15,7 @@ export interface MarketCardMeta {
 }
 
 // 卡片元数据（顺序即默认展示顺序）
-export const MARKET_CARDS: MarketCardMeta[] = [
+const MARKET_CARDS: MarketCardMeta[] = [
   { id: "kline", title: "行情图", icon: "bars" },
   { id: "report", title: "分析报告", icon: "chatbubble" },
 ];

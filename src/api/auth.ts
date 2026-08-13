@@ -4,7 +4,7 @@
 // =====================================================================
 import { getSupabase } from "./supabase";
 
-export interface AuthResult {
+interface AuthResult {
   ok: boolean;
   error?: string;
   /** 仅在 updatePassword 中置位：新密码与账号当前密码相同，即该邮箱已注册 */
@@ -214,7 +214,7 @@ export async function deleteAccount(): Promise<AuthResult> {
   return { ok: true };
 }
 
-export interface ProfilePatch {
+interface ProfilePatch {
   display_name?: string;
   username?: string;
   bio?: string;
@@ -231,7 +231,7 @@ export interface LoginInfo {
   location?: string; // 登录地点（服务端 IP 地理定位，已本地化为中文，如「广州市, 广东省, 中国」；展示时取城市名「广州」；缺失时前端显示「未知」）
 }
 
-export interface UploadResult {
+interface UploadResult {
   url: string | null;
   error?: string;
 }

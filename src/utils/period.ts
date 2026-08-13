@@ -2,7 +2,7 @@
 
 export type PeriodKey = "m" | "d" | "w" | "M";
 
-export interface PeriodMeta {
+interface PeriodMeta {
   key: PeriodKey;
   label: string;
   type: "trend" | "kline";

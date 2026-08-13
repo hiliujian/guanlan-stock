@@ -1211,7 +1211,6 @@ function ensureTrendOverlay() {
       },
       createYAxisFigures: (params: any) => {
         const coordinates = params.coordinates as { x: number; y: number }[];
-        const bounding = params.bounding as { width: number; height: number };
         const overlay = params.overlay as any;
         if (!coordinates || coordinates.length < 1) return [];
         const y = coordinates[0].y;
@@ -1780,7 +1779,7 @@ function buildChart() {
     layout: buildLayout(),
     styles: buildStyles(),
     customApi: {
-      formatDate: (dt: Intl.DateTimeFormat, timestamp: number, format: string) => {
+      formatDate: (_dt: Intl.DateTimeFormat, timestamp: number, format: string) => {
         const d = new Date(timestamp);
         const p = (n: number) => String(n).padStart(2, "0");
         const y = String(d.getFullYear()).slice(-2); // 两位年份
