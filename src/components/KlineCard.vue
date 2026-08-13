@@ -74,16 +74,17 @@ function toggleAuxOpen() {
 }
 // 智能标注各线元数据（颜色 + 描述），供二级列表渲染
 // 分组：结构线（结构支撑+结构压力）/ 交易线（S 支撑+B 压力）/ 趋势线
+// dotSplit：图标用左红右绿双色圆点（红=压力，绿=支撑），趋势线为蓝单色
 type AuxKey = "structLine" | "tradeLine" | "trend";
-const auxItems: { key: AuxKey; label: string; desc: string; color: string }[] = [
-  { key: "structLine", label: "结构线", desc: "深绿支撑 + 深红压力：波段高低点结构位（30 根窗口）", color: "#0a8f4d" },
-  { key: "tradeLine", label: "交易线", desc: "浅绿 S 支撑 + 浅红 B 压力：短线筹码密集中枢（20 根窗口）", color: "#09b07a" },
+const auxItems: { key: AuxKey; label: string; desc: string; dotSplit?: [string, string]; color?: string }[] = [
+  { key: "structLine", label: "结构线", desc: "深红压力/深绿支撑", dotSplit: ["#c8102e", "#0a8f4d"] },
+  { key: "tradeLine", label: "交易线", desc: "浅绿S支撑/浅红B压力", dotSplit: ["#ef232a", "#09b07a"] },
   { key: "trend", label: "趋势线", desc: "蓝色箭头：上行 / 下行方向", color: "#2f74ff" },
 ];
 // 与图表 MA 线颜色一致（见 StockChart INDICATOR_LINE_COLORS 顺序：MA5橙/MA10蓝/MA20紫/MA60绿/MA250品红）
 const MA_COLORS = ["#f5a623", "#1c9cf0", "#9b59b6", "#2ecc71", "#e11d74"];
 // ---- 折叠式设置：一级分类 + 二级线开关 ----
-type ToggleRow = { key: string; label: string; desc?: string; color?: string; get: () => boolean; set: (v: boolean) => void };
+type ToggleRow = { key: string; label: string; desc?: string; color?: string; dotSplit?: [string, string]; get: () => boolean; set: (v: boolean) => void };
 type SettingSection = { key: "main" | "volume" | "macd" | "aux"; title: string; rows: ToggleRow[] };
 const sections: SettingSection[] = [
   {
@@ -125,6 +126,7 @@ const sections: SettingSection[] = [
       label: it.label,
       desc: it.desc,
       color: it.color,
+      dotSplit: it.dotSplit,
       get: () => auxConfig[it.key],
       set: (v: boolean) => {
         auxConfig[it.key] = v;
@@ -190,7 +192,13 @@ function toggleAcc(key: string) {
             <view v-for="row in sec.rows" :key="row.key" class="aux-row">
               <view class="aux-left">
                 <view class="aux-name-line">
-                  <view v-if="row.color" class="aux-color-dot" :style="{ background: row.color }"></view>
+                  <view
+                    v-if="row.dotSplit || row.color"
+                    class="aux-color-dot"
+                    :style="row.dotSplit
+                      ? { background: `linear-gradient(90deg, ${row.dotSplit[0]} 0 50%, ${row.dotSplit[1]} 50% 100%)` }
+                      : { background: row.color }"
+                  ></view>
                   <text class="aux-label">{{ row.label }}</text>
                 </view>
                 <text v-if="row.desc" class="aux-desc">{{ row.desc }}</text>
