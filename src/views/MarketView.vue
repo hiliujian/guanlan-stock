@@ -219,6 +219,7 @@ import { fetchHotSearches, recordSearch, type HotStock } from "@/api/hot";
 import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, resolveIndexForStock, type SearchHit, type QuoteBundle, type NewsItem } from "@/api/quote";
 import { fetchGlobalIndices, GLOBAL_INDEX_GROUPS, type GlobalIndexQuote } from "@/api/globalIndices";
 import { getMarketStatus } from "@/utils/marketStatus";
+import { fmtPrice } from "@/utils/format";
 import {
   resolveSecid,
   marketFromSecid,
@@ -294,9 +295,6 @@ async function refreshIndex() {
 async function loadIndex() {
   resolveIdx();
   await refreshIndex();
-}
-function fmtPrice(v: number | null | undefined): string {
-  return v != null && Number.isFinite(v) ? v.toFixed(2) : "--";
 }
 function fmtPct(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return "--";

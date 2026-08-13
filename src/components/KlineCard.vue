@@ -11,6 +11,7 @@
 import StockChart from "./StockChart.vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import { PERIODS, PERIOD_ORDER, type PeriodKey } from "@/utils/period";
+import { INDICATOR_LINE_COLORS } from "@/utils/colors";
 import { auxConfig } from "@/store/chartAux";
 import { maConfig, MA_PERIODS } from "@/store/chartMa";
 import { panelConfig } from "@/store/chartPanel";
@@ -81,8 +82,7 @@ const auxItems: { key: AuxKey; label: string; desc: string; dotSplit?: [string, 
   { key: "tradeLine", label: "交易线", desc: "浅绿S支撑/浅红B压力", dotSplit: ["#ef232a", "#09b07a"] },
   { key: "trend", label: "趋势线", desc: "蓝色箭头：上行 / 下行方向", color: "#2f74ff" },
 ];
-// 与图表 MA 线颜色一致（见 StockChart INDICATOR_LINE_COLORS 顺序：MA5橙/MA10蓝/MA20紫/MA60绿/MA250品红）
-const MA_COLORS = ["#f5a623", "#1c9cf0", "#9b59b6", "#2ecc71", "#e11d74"];
+// 与图表 MA 线颜色一致（见 colors.ts INDICATOR_LINE_COLORS 顺序：MA5橙/MA10蓝/MA20紫/MA60绿/MA250品红）
 // ---- 折叠式设置：一级分类 + 二级线开关 ----
 type ToggleRow = { key: string; label: string; desc?: string; color?: string; dotSplit?: [string, string]; get: () => boolean; set: (v: boolean) => void };
 type SettingSection = { key: "main" | "volume" | "macd" | "aux"; title: string; rows: ToggleRow[] };
@@ -94,7 +94,7 @@ const sections: SettingSection[] = [
       key: it.key,
       label: it.label,
       desc: it.period + " 日移动平均线",
-      color: MA_COLORS[i],
+      color: INDICATOR_LINE_COLORS[i],
       get: () => maConfig[it.key],
       set: (v: boolean) => {
         maConfig[it.key] = v;

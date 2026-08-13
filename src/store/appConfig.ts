@@ -7,7 +7,7 @@
 // =====================================================================
 import { reactive } from "vue";
 import { DEFAULT_SETTINGS, type AppSettings, type TabKey } from "@/config/app";
-import { fetchRemoteSettings } from "@/config/remote";
+import { fetchRemoteSettings, TAB_KEYS } from "@/config/remote";
 
 // 深拷贝本地默认值，避免被远程覆盖污染 DEFAULT_SETTINGS 常量
 const runtimeConfig = reactive<AppSettings>(
@@ -37,7 +37,5 @@ export function isTabEnabled(key: TabKey): boolean {
 
 // 已启用的 Tab 列表（按固定顺序，过滤被关闭的模块）
 export function enabledTabs(): TabKey[] {
-  return (["market", "watch", "community", "profile"] as TabKey[]).filter(
-    (k) => runtimeConfig.menus[k]
-  );
+  return TAB_KEYS.filter((k) => runtimeConfig.menus[k]);
 }

@@ -52,15 +52,23 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import { init, dispose, registerIndicator, registerOverlay, ActionType } from "klinecharts";
 import { isDark } from "@/utils/theme";
-import { UP, DOWN } from "@/utils/colors";
-const TREND = "#2f74ff"; // 趋势线专用蓝（与压力红/支撑绿三色区分，互不混淆，且对红绿色盲更友好）
-// 指标折线调色板：主图/量/MACD 各 pane 的折线按「内容顺序」循环取色（橙/蓝/紫/绿/品红）。
-// 与图表画线颜色保持一致，图例复用同一份颜色，避免图例与图线颜色脱节（用户要求各图例颜色不同）。
-const INDICATOR_LINE_COLORS = ["#f5a623", "#1c9cf0", "#9b59b6", "#2ecc71", "#e11d74"];
+import { UP, DOWN, NO_CHANGE, TREND, INDICATOR_LINE_COLORS } from "@/utils/colors";
 import { computeChip, type ChipResult } from "@/utils/analyzer";
 import type { Kline, Trend, PeriodKey } from "@/utils/period";
 import type { ChartAuxConfig } from "@/store/chartAux";
-import type { ChartMaConfig } from "@/store/chartMa";
+import { MA_PERIODS, type ChartMaConfig } from "@/store/chartMa";
+import { fmtPrice } from "@/utils/format";
+
+// 量柱/MACD 柱取涨跌色（兜底 UP/DOWN/中性色）：自定义指标拿不到 klinecharts 内置量柱默认样式，
+// 故用项目统一涨跌色兜底，确保量柱可见——否则量面板会退化成无柱的平直线。
+function readBarColors(defaultStyles: any): { up: string; down: string; noChange: string } {
+  const base = (defaultStyles?.bars && defaultStyles.bars[0]) || {};
+  return {
+    up: base.upColor || UP,
+    down: base.downColor || DOWN,
+    noChange: base.noChangeColor || NO_CHANGE,
+  };
+}
 
 // ---- 分时均价（AVP）自定义指标：累计成交额 / 累计成交量，叠加在主图 ----
 let avpRegistered = false;
@@ -125,10 +133,7 @@ function ensureIntradayVol() {
           // 故用项目统一涨跌色 UP/DOWN 兜底，确保量柱可见——否则量面板会退化成无柱的平直线。
           styles: (data: any, _indicator: any, defaultStyles: any) => {
             const k = data?.current?.kLineData;
-            const base = (defaultStyles?.bars && defaultStyles.bars[0]) || {};
-            const up = base.upColor || UP;
-            const down = base.downColor || DOWN;
-            const noChange = base.noChangeColor || "#888888";
+            const { up, down, noChange } = readBarColors(defaultStyles);
             if (!k) return { color: noChange };
             if (k.close > k.open) return { color: up };
             if (k.close < k.open) return { color: down };
@@ -184,10 +189,7 @@ function ensureMacdfs() {
           // 正确数据路径：data.current.indicatorData.macd（已验证 v3 修复）
           // 复刻内置 MACD 的柱着色/描边逻辑（data.current/prev.indicatorData.macd 为正确路径）
           styles: (data: any, _indicator: any, defaultStyles: any) => {
-            const base = (defaultStyles?.bars && defaultStyles.bars[0]) || {};
-            const up = base.upColor || UP;
-            const down = base.downColor || DOWN;
-            const noChange = base.noChangeColor || "#888888";
+            const { up, down, noChange } = readBarColors(defaultStyles);
             const prevMacd = data?.prev?.indicatorData?.macd ?? Number.MIN_SAFE_INTEGER;
             const curMacd = data?.current?.indicatorData?.macd ?? Number.MIN_SAFE_INTEGER;
             let color = noChange;
@@ -245,21 +247,15 @@ function ensureMacdfs() {
 // klinecharts 内置 "MA" 指标一次渲染 4 条（calcParams=[5,10,20,60]）无法独立开关，
 // 故注册 4 个独立指标，buildLayout 按 maConfig 决定往主图 push 哪几条。
 // 每条线颜色由 buildStyles 的 indicator.lines 调色板按 content 顺序循环分配（橙/蓝/紫/绿）。
-const MA_DEFS: { key: string; period: number }[] = [
-  { key: "ma5", period: 5 },
-  { key: "ma10", period: 10 },
-  { key: "ma20", period: 20 },
-  { key: "ma60", period: 60 },
-  { key: "ma250", period: 250 },
-];
+// 周期列表复用 chartMa 的 MA_PERIODS（与设置面板开关顺序一致）。
 let maRegistered = false;
 function ensureMaIndicators() {
   if (maRegistered) return;
   try {
-    for (let i = 0; i < MA_DEFS.length; i++) {
-      const def = MA_DEFS[i];
+    for (let i = 0; i < MA_PERIODS.length; i++) {
+      const def = MA_PERIODS[i];
       const key = def.key;
-      // 每条 MA 在注册时就把线色烤进 figure 的 styles 回调（按 MA_DEFS 顺序取调色板：
+      // 每条 MA 在注册时就把线色烤进 figure 的 styles 回调（按 MA_PERIODS 顺序取调色板：
       // MA5橙/MA10蓝/MA20紫/MA60绿）。这样不依赖全局 indicator.lines（单线指标都会抢 lines[0]）
       // 也不依赖运行时 overrideIndicator（实测会扰乱渲染与图表交互）。图例配色在 buildLegend 中
       // 用同一份 INDICATOR_LINE_COLORS 按相同顺序取，保证图例与图线颜色一致。
@@ -508,7 +504,7 @@ function buildLayout(): any[] {
     const mc = props.maConfig;
     // 按 maConfig 逐周期独立开关决定主图叠加哪些 MA（MA5/MA10/MA20/MA60/MA250）；
     // showMA 为总开关，false 时不叠加任何均线。分时模式无 MA（用 AVP 均价线）。
-    const visibleMas = MA_DEFS.filter((d) => (mc ? mc[d.key as keyof ChartMaConfig] : true));
+    const visibleMas = MA_PERIODS.filter((d) => (mc ? mc[d.key as keyof ChartMaConfig] : true));
     if (props.showMA !== false && visibleMas.length) {
       visibleMas.forEach((d) => candleContent.push("MA" + d.period));
     }
@@ -1476,7 +1472,6 @@ const legendOffsets = computed(() => {
   const { priceH, volH } = subPaneHeights(usable);
   return { price: 0, vol: priceH, macd: priceH + volH };
 });
-function fmtPrice(v: number | null | undefined): string { return v != null && Number.isFinite(v) ? v.toFixed(2) : "--"; }
 function fmtVol(v: number): string {
   if (!Number.isFinite(v) || v <= 0) return "--";
   if (v >= 1e8) return (v / 1e8).toFixed(2) + "亿";
@@ -1554,7 +1549,7 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
     const cfg = props.maConfig;
     const vis = (k: string) => props.showMA !== false && (cfg ? cfg[k as keyof ChartMaConfig] : true);
     let mi = 0;
-    for (const def of MA_DEFS) {
+    for (const def of MA_PERIODS) {
       if (!vis(def.key)) continue;
       // 指标结果是一个对象（如 {ma5: 值}），取子键才得到数值；直接取会拿到对象导致 fmtPrice 显示 "--"
       const obj = candle["MA" + def.period] as Record<string, any> | undefined;

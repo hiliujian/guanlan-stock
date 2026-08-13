@@ -24,7 +24,7 @@ export interface PageAccessRow {
   is_tab: boolean;
 }
 
-const TAB_KEYS: TabKey[] = ["market", "watch", "community", "profile"];
+export const TAB_KEYS: TabKey[] = ["market", "watch", "community", "profile"];
 
 export async function fetchRemoteSettings(): Promise<Partial<AppSettings>> {
   if (!isSupabaseConfigured) return {};

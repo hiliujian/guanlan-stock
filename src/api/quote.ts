@@ -11,6 +11,7 @@
 // 对外公开函数：
 //   fetchSnapshot / fetchBundle / searchStocks / localSuggest
 // =====================================================================
+import { codeFromSecid } from "@/utils/period";
 import type { Kline, Trend, PeriodKey } from "@/utils/period";
 import type { RawRealtime, SearchHit, FlowMap } from "@/api/sources/types";
 import { getRealtime, getKline, getTrend, getFlow, getSearch, getNews, getIndexBreadth, getStockIndustry, getIndustryBoards, fetchTurnoverAnchor, type IndustryBoard } from "@/api/sources";
@@ -236,7 +237,7 @@ export async function fetchBundle(secid: string): Promise<QuoteBundle> {
   if (hit) return hit;
 
   // 解析对应大盘指数（按代码自动匹配市场主指数，beta 感知前提）
-  const pureCode = secid.split(".")[1] || secid;
+  const pureCode = codeFromSecid(secid);
   const idx = resolveIndexForStock(pureCode);
   // 指数K线：与股票数据并行拉取，给 3s 硬超时兜底，失败不影响主流程（marketCtx 为 null 时 analyze 自动降级）
   const indexPromise = idx
