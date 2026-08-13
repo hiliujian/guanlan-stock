@@ -1188,7 +1188,15 @@ function drawAutoLevels() {
     guard = resolvePeriodGuard("kline", "d"); // 计算层：日K参数(bandWin=30/tradeWin=20)，与日K同源算结构线+T线
     guard.disableStruct = true;               // 渲染层：分时屏蔽结构线，仅显示 S/B T线
     guard.disableTrend = true;                // 分时禁用趋势线
-    series = (props.dailyKlines && props.dailyKlines.length ? props.dailyKlines : dataList) as Kline[];
+    // 分时必须复用日K序列：上层 KlineCard 必须传入 daily-klines。
+    // 若缺失，直接放弃画线，绝不降级回当日分时数据自算（旧版两套点位不一致的根因）。
+    if (!props.dailyKlines || props.dailyKlines.length < 12) {
+      if ((import.meta as any)?.env?.DEV) {
+        console.warn("[StockChart] 分时缺少 dailyKlines，跳过智能标注绘制（应在 KlineCard 传入 :daily-klines）");
+      }
+      return;
+    }
+    series = props.dailyKlines as Kline[];
   } else {
     guard = resolvePeriodGuard();
     series = dataList as Kline[];
