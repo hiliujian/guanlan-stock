@@ -462,6 +462,17 @@ function buildStyles(): Record<string, unknown> {
           { offset: 0, color: "rgba(22,119,255,0.12)" },
           { offset: 1, color: "rgba(22,119,255,0.01)" },
         ],
+        // 分时走势线最前端的脉动圆点（默认 radius:4 / rippleRadius:8，偏大）；
+        // 与 lineSize 2→1.5 同步调细，颜色与走势线一致，保留脉动闪烁。
+        point: {
+          show: true,
+          color: "#1677ff",
+          radius: 3,
+          rippleColor: "rgba(22,119,255,0.25)",
+          rippleRadius: 6,
+          animation: true,
+          animationDuration: 1000,
+        },
       },
     },
     indicator: {
