@@ -78,7 +78,7 @@ function toggleAuxOpen() {
 // dotSplit：图标用左红右绿双色圆点（红=压力，绿=支撑），趋势线为蓝单色
 type AuxKey = "structLine" | "tradeLine" | "trend";
 const auxItems: { key: AuxKey; label: string; desc: string; dotSplit?: [string, string]; color?: string }[] = [
-  { key: "structLine", label: "结构线", desc: "深红压力/深绿支撑", dotSplit: ["#c8102e", "#0a8f4d"] },
+  { key: "structLine", label: "结构线", desc: "红压力/绿支撑（与交易线同色）", dotSplit: [cssColor("--up", UP), cssColor("--down", DOWN)] },
   { key: "tradeLine", label: "交易线", desc: "浅绿S支撑/浅红B压力", dotSplit: [cssColor("--up", UP), cssColor("--down", DOWN)] },
   { key: "trend", label: "趋势线", desc: "蓝色箭头：上行 / 下行方向", color: "#2f74ff" },
 ];

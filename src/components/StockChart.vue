@@ -848,9 +848,9 @@ const SWING_WIN = 2;      // 摆动点左右确认 K 线：左右各 2 根验证
 const SWING_FREQ_MAX = 40;// 触碰频次满分
 const SWING_REV_MAX = 35; // 反转反应满分
 const SWING_SWAP_MAX = 25;// 角色互换满分
-const STRUCT_SUPPORT_COLOR = "#0a8f4d"; // 深绿（结构支撑）
+const STRUCT_SUPPORT_COLOR = DOWN;       // 结构支撑（与交易线浅绿一致）
 const TRADE_SUPPORT_COLOR = DOWN;       // 浅绿（交易参考支撑）
-const STRUCT_PRESSURE_COLOR = "#c8102e";// 深红（结构压力）
+const STRUCT_PRESSURE_COLOR = UP;       // 结构压力（与交易线浅红一致）
 const TRADE_PRESSURE_COLOR = UP;        // 浅红（交易参考压力）
 
 // 摆动点（pivot）：以 win 根为窗口取严格局部极值；窗口天然把相邻极值隔开 ≥win 根，无需额外 gap 过滤
@@ -1080,7 +1080,7 @@ function computeAutoLevels(): AutoLevel[] {
   const structSupPrice = supStruct ? (band === "box" ? supStruct.cl.center : bodyEdge(supStruct.cl, "support")) : null;
   const structPresPrice = presStruct ? (band === "box" ? presStruct.cl.center : bodyEdge(presStruct.cl, "pressure")) : null;
 
-  // 结构支撑（深绿粗虚线，满宽，无 S/B 标签）
+  // 结构支撑（绿粗虚线，满宽，无 S/B 标签）
   if (supStruct && structSupPrice != null) {
     out.push({ kind: "support", role: "structSupport", price: structSupPrice, color: STRUCT_SUPPORT_COLOR, bg: STRUCT_SUPPORT_COLOR, size: 1, dashed: true, tag: L.sS.tag, label: L.sS.name, src: "结构支撑·波段低点簇 No.1" });
   }
@@ -1090,7 +1090,7 @@ function computeAutoLevels(): AutoLevel[] {
     if (structSupPrice == null || Math.abs(price - structSupPrice) / structSupPrice > TOL_PCT)
       out.push({ kind: "support", role: "tradeSupport", price, color: TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR, size: 1, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
   }
-  // 结构压力（深红粗虚线，满宽，无 S/B 标签）
+  // 结构压力（红粗虚线，满宽，无 S/B 标签）
   if (presStruct && structPresPrice != null) {
     out.push({ kind: "pressure", role: "structPressure", price: structPresPrice, color: STRUCT_PRESSURE_COLOR, bg: STRUCT_PRESSURE_COLOR, size: 1, dashed: true, tag: L.sP.tag, label: L.sP.name, src: "结构压力·波段高点簇 No.1" });
   }
@@ -1131,7 +1131,7 @@ function drawAutoLevels() {
   if (!(cfg.structLine || cfg.tradeLine || cfg.trend)) return;
   const levels = computeAutoLevels();
   for (const lv of levels) {
-    // 结构线开关 → 结构支撑 + 结构压力（深绿/深红）
+    // 结构线开关 → 结构支撑 + 结构压力（与交易线同色：绿/红）
     if ((lv.role === "structSupport" || lv.role === "structPressure") && !cfg.structLine) continue;
     // 交易线开关 → S 交易参考支撑 + B 交易参考压力（浅绿/浅红）
     if ((lv.role === "tradeSupport" || lv.role === "tradePressure") && !cfg.tradeLine) continue;
