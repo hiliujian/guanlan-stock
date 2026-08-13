@@ -776,10 +776,6 @@ function drawLine(action: DrawAction) {
     id,
     name,
     extendData: { tag },
-    // 启用 klinecharts 内置磁吸（strong_magnet）：绘制/拖拽时价位自动吸附到光标所在 K 线（箱体）的
-    // high/low/open/close 关键价位——这正是「竖线选择箱体」那种磁力感。modeSensitivity 为吸附缓冲像素。
-    mode: "strong_magnet",
-    modeSensitivity: 6,
     styles: color ? { line: { color, style: "solid", size: 1.4 } } : undefined,
     onDrawEnd: () => {
       activeAction.value = "";
@@ -1270,18 +1266,6 @@ function snapPointValue(pt: any) {
   const snapped = snapValueToCandle(pt.value, pt.dataIndex);
   if (snapped !== pt.value) pt.value = snapped;
 }
-// 横向（时间轴）磁吸：把绘点的 timestamp/dataIndex 吸附到最近的 K 线（箱体）中心，
-// 使画线/选点时时间轴像「竖线选择箱体」那样逐根锁定，产生横向磁力感。
-function snapPointTime(pt: any) {
-  if (!pt || typeof pt.dataIndex !== "number" || !dataList.length) return;
-  let idx = Math.round(pt.dataIndex);
-  if (idx < 0) idx = 0;
-  if (idx > dataList.length - 1) idx = dataList.length - 1;
-  const k = dataList[idx];
-  if (!k || typeof k.timestamp !== "number") return;
-  pt.dataIndex = idx;
-  pt.timestamp = k.timestamp;
-}
 let drawOverlayRegistered = false;
 function ensureDrawOverlays() {
   if (drawOverlayRegistered) return;
@@ -1321,13 +1305,11 @@ function ensureDrawOverlays() {
       },
       performEventPressedMove: (params: any) => {
         const points = params.points as any[];
-        const p = points[params.performPointIndex];
-        if (p) { snapPointTime(p); snapPointValue(p); }
+        if (points[params.performPointIndex]) snapPointValue(points[params.performPointIndex]);
       },
       performEventMoveForDrawing: (params: any) => {
         const points = params.points as any[];
-        const p = points[points.length - 1];
-        if (p) { snapPointTime(p); snapPointValue(p); }
+        if (points[points.length - 1]) snapPointValue(points[points.length - 1]);
       },
     } as never);
     // ===== 趋势线（两点线段，可斜/可竖）=====
@@ -1374,13 +1356,11 @@ function ensureDrawOverlays() {
       },
       performEventPressedMove: (params: any) => {
         const points = params.points as any[];
-        const p = points[params.performPointIndex];
-        if (p) { snapPointTime(p); snapPointValue(p); }
+        if (points[params.performPointIndex]) snapPointValue(points[params.performPointIndex]);
       },
       performEventMoveForDrawing: (params: any) => {
         const points = params.points as any[];
-        const p = points[points.length - 1];
-        if (p) { snapPointTime(p); snapPointValue(p); }
+        if (points[points.length - 1]) snapPointValue(points[points.length - 1]);
       },
     } as never);
     // ===== 黄金分割（两点：起点/终点；按比例展开 7 档）=====
@@ -1422,13 +1402,11 @@ function ensureDrawOverlays() {
       },
       performEventPressedMove: (params: any) => {
         const points = params.points as any[];
-        const p = points[params.performPointIndex];
-        if (p) { snapPointTime(p); snapPointValue(p); }
+        if (points[params.performPointIndex]) snapPointValue(points[params.performPointIndex]);
       },
       performEventMoveForDrawing: (params: any) => {
         const points = params.points as any[];
-        const p = points[points.length - 1];
-        if (p) { snapPointTime(p); snapPointValue(p); }
+        if (points[points.length - 1]) snapPointValue(points[points.length - 1]);
       },
     } as never);
     drawOverlayRegistered = true;
@@ -1664,7 +1642,7 @@ function restoreOverlays() {
     try {
       const id = it.id || genOverlayId();
       const { name, extendData } = mapRestoreType(it);
-      chart.createOverlay({ id, name, extendData, points: it.points, styles: it.styles, mode: "strong_magnet", modeSensitivity: 6 } as never);
+      chart.createOverlay({ id, name, extendData, points: it.points, styles: it.styles } as never);
       if (!overlayIds.includes(id)) overlayIds.push(id);
     } catch {
       /* noop */
