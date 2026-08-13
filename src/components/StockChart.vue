@@ -1072,33 +1072,33 @@ const BAND_LABELS: Record<BandType, {
 }> = {
   uptrend: {
     sS: { tag: "支", name: "结构支撑" },
-    tS: { tag: "S", sub: "回调低（趋势内稳健买点）", name: "交易参考支撑 S" },
+    tS: { tag: "S", sub: "回调低吸", name: "交易参考支撑 S" },
     sP: { tag: "压", name: "结构压力" },
     tP: { tag: "B", sub: "止盈减仓", name: "交易参考压力 B" },
   },
   pullback: {
     sS: { tag: "支", name: "结构支撑" },
-    tS: { tag: "S", sub: "回踩参考，轻仓试多", name: "交易参考支撑 S" },
+    tS: { tag: "S", sub: "轻仓试多", name: "交易参考支撑 S" },
     sP: { tag: "压", name: "结构压力" },
     tP: { tag: "B", sub: "止盈减仓", name: "交易参考压力 B" },
   },
   downtrend: {
     sP: { tag: "压", name: "结构压力" },
-    tP: { tag: "B", sub: "逢高离场，勿追多", name: "交易参考压力 B" },
+    tP: { tag: "B", sub: "逢高离场", name: "交易参考压力 B" },
     sS: { tag: "支", name: "结构支撑" },
-    tS: { tag: "S", sub: "超跌博弈，严控仓位", name: "交易参考支撑 S" },
+    tS: { tag: "S", sub: "轻仓反弹", name: "交易参考支撑 S" },
   },
   bounce: {
     sP: { tag: "压", name: "结构压力" },
-    tP: { tag: "B", sub: "反弹承压，减仓离场", name: "交易参考压力 B" },
+    tP: { tag: "B", sub: "反弹减仓", name: "交易参考压力 B" },
     sS: { tag: "支", name: "结构支撑" },
-    tS: { tag: "S", sub: "超跌博弈，快进快出", name: "交易参考支撑 S" },
+    tS: { tag: "S", sub: "短线反弹", name: "交易参考支撑 S" },
   },
   box: {
     sS: { tag: "支", name: "结构支撑" },
-    tS: { tag: "S", sub: "箱体下沿，区间低", name: "交易参考支撑 S" },
+    tS: { tag: "S", sub: "区间低吸", name: "交易参考支撑 S" },
     sP: { tag: "压", name: "结构压力" },
-    tP: { tag: "B", sub: "箱体上沿，高抛减仓", name: "交易参考压力 B" },
+    tP: { tag: "B", sub: "区间高抛", name: "交易参考压力 B" },
   },
 };
 
