@@ -344,12 +344,12 @@ function resetProfit() {
 .cp-side-btn.buy {
   color: var(--up);
   border-color: var(--up);
-  background: rgba(255, 91, 91, 0.1);
+  background: rgba(239, 35, 42, 0.1);
 }
 .cp-side-btn.sell {
   color: var(--down);
   border-color: var(--down);
-  background: rgba(31, 216, 116, 0.1);
+  background: rgba(9, 176, 122, 0.1);
 }
 .cp-foot {
   display: flex;

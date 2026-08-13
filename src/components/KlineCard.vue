@@ -11,7 +11,7 @@
 import StockChart from "./StockChart.vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import { PERIODS, PERIOD_ORDER, type PeriodKey } from "@/utils/period";
-import { INDICATOR_LINE_COLORS } from "@/utils/colors";
+import { INDICATOR_LINE_COLORS, cssColor, UP, DOWN } from "@/utils/colors";
 import { auxConfig } from "@/store/chartAux";
 import { maConfig, MA_PERIODS } from "@/store/chartMa";
 import { panelConfig } from "@/store/chartPanel";
@@ -79,7 +79,7 @@ function toggleAuxOpen() {
 type AuxKey = "structLine" | "tradeLine" | "trend";
 const auxItems: { key: AuxKey; label: string; desc: string; dotSplit?: [string, string]; color?: string }[] = [
   { key: "structLine", label: "结构线", desc: "深红压力/深绿支撑", dotSplit: ["#c8102e", "#0a8f4d"] },
-  { key: "tradeLine", label: "交易线", desc: "浅绿S支撑/浅红B压力", dotSplit: ["#ef232a", "#09b07a"] },
+  { key: "tradeLine", label: "交易线", desc: "浅绿S支撑/浅红B压力", dotSplit: [cssColor("--up", UP), cssColor("--down", DOWN)] },
   { key: "trend", label: "趋势线", desc: "蓝色箭头：上行 / 下行方向", color: "#2f74ff" },
 ];
 // 与图表 MA 线颜色一致（见 colors.ts INDICATOR_LINE_COLORS 顺序：MA5橙/MA10蓝/MA20紫/MA60绿/MA250品红）

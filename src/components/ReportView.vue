@@ -818,7 +818,7 @@ function openNews(it: NewsItem) {
 }
 /* 通知语义配色：绿=好事/偏强，红=紧急/风险（与行情涨跌红绿相反）。 */
 .banner.ok {
-  background: rgba(31, 216, 116, 0.1);
+  background: rgba(9, 176, 122, 0.1);
   color: var(--down);
 }
 .banner.warn {
@@ -826,7 +826,7 @@ function openNews(it: NewsItem) {
   color: #c87f00;
 }
 .banner.bad {
-  background: rgba(255, 91, 91, 0.1);
+  background: rgba(239, 35, 42, 0.1);
   color: var(--up);
 }
 .banner-text {
@@ -834,7 +834,7 @@ function openNews(it: NewsItem) {
 }
 
 /* 今日盘中异动警示条（内嵌于信号卡片：涨停/跌停/炸板/跌停开板）
-   A股约定：涨=红(var(--up)=#ff5b5b)、跌=绿(var(--down)=#1fd874)。 */
+   A股约定：涨=红(var(--up)=#ef232a)、跌=绿(var(--down)=#09b07a)。 */
 .sig-alert {
   display: flex;
   align-items: center;
@@ -843,8 +843,8 @@ function openNews(it: NewsItem) {
   border-top: 1rpx solid var(--r-edge);
   font-size: var(--font-sm);
 }
-.sig-alert.up { background: rgba(255, 91, 91, 0.08); color: var(--up); }
-.sig-alert.down { background: rgba(31, 216, 116, 0.1); color: var(--down); }
+.sig-alert.up { background: rgba(239, 35, 42, 0.08); color: var(--up); }
+.sig-alert.down { background: rgba(9, 176, 122, 0.1); color: var(--down); }
 /* 实时脉冲圆点：让「盘中」语义一目了然 */
 .sa-live {
   flex: none;
@@ -1052,11 +1052,11 @@ function openNews(it: NewsItem) {
   transform: scale(0.96);
 }
 .dec-item.ok {
-  background: rgba(250, 81, 81, 0.1);
+  background: rgba(239, 35, 42, 0.1);
   color: var(--up);
 }
 .dec-item.warn {
-  background: rgba(31, 216, 116, 0.12);
+  background: rgba(9, 176, 122, 0.12);
   color: var(--down);
 }
 .dec-item.wait {
@@ -1105,8 +1105,8 @@ function openNews(it: NewsItem) {
   justify-content: space-between;
   padding: 20rpx 24rpx;
 }
-.signal-card.buy .signal { background: rgba(250, 81, 81, 0.1); }
-.signal-card.sell .signal { background: rgba(31, 216, 116, 0.12); }
+.signal-card.buy .signal { background: rgba(239, 35, 42, 0.1); }
+.signal-card.sell .signal { background: rgba(9, 176, 122, 0.12); }
 .signal-card.hold .signal { background: rgba(59, 130, 246, 0.1); }
 .signal-card.watch .signal { background: rgba(255, 159, 28, 0.12); }
 .signal-card.wait .signal { background: var(--card-2); }
@@ -1140,8 +1140,8 @@ function openNews(it: NewsItem) {
 /* 关键价位状态徽标（A股约定：已突破/上涨=红 var(--up)、已跌破/下跌=绿 var(--down)） */
 .lv-right { display: flex; align-items: center; gap: 12rpx; }
 .lv-tag { font-size: var(--font-xs); padding: 4rpx 12rpx; border-radius: 8rpx; font-weight: 600; }
-.lv-tag.ok { color: var(--up); background: rgba(250, 81, 81, 0.12); }
-.lv-tag.bad { color: var(--down); background: rgba(31, 216, 116, 0.12); }
+.lv-tag.ok { color: var(--up); background: rgba(239, 35, 42, 0.12); }
+.lv-tag.bad { color: var(--down); background: rgba(9, 176, 122, 0.12); }
 .lv-tag.warn { color: #c87f00; background: rgba(255, 159, 28, 0.14); }
 
 .risks {
@@ -1213,8 +1213,8 @@ function openNews(it: NewsItem) {
   border-radius: 6rpx;
   margin-top: 4rpx;
 }
-.ni-tag.ok { color: var(--up); background: rgba(250, 81, 81, 0.14); }
-.ni-tag.bad { color: var(--down); background: rgba(9, 187, 7, 0.14); }
+.ni-tag.ok { color: var(--up); background: rgba(239, 35, 42, 0.14); }
+.ni-tag.bad { color: var(--down); background: rgba(9, 176, 122, 0.14); }
 .ni-tag.neutral { color: var(--text-2); background: var(--border); }
 .ni-title {
   flex: 1;
@@ -1270,8 +1270,8 @@ function openNews(it: NewsItem) {
   padding: 3rpx 12rpx;
   border-radius: 6rpx;
 }
-.ni-k.ok { color: var(--up); background: rgba(250, 81, 81, 0.12); }
-.ni-k.bad { color: var(--down); background: rgba(9, 187, 7, 0.12); }
+.ni-k.ok { color: var(--up); background: rgba(239, 35, 42, 0.12); }
+.ni-k.bad { color: var(--down); background: rgba(9, 176, 122, 0.12); }
 .ni-v {
   flex: 1;
   font-size: var(--font-sm);

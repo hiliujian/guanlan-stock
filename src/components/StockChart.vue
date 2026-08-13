@@ -52,12 +52,18 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import { init, dispose, registerIndicator, registerOverlay, ActionType } from "klinecharts";
 import { isDark } from "@/utils/theme";
-import { UP, DOWN, NO_CHANGE, TREND, INDICATOR_LINE_COLORS } from "@/utils/colors";
+import { UP as UP_FALLBACK, DOWN as DOWN_FALLBACK, NO_CHANGE, TREND, INDICATOR_LINE_COLORS, cssColor } from "@/utils/colors";
 import { computeChip, type ChipResult } from "@/utils/analyzer";
 import type { Kline, Trend, PeriodKey } from "@/utils/period";
 import type { ChartAuxConfig } from "@/store/chartAux";
 import { MA_PERIODS, type ChartMaConfig } from "@/store/chartMa";
 import { fmtPrice } from "@/utils/format";
+
+// 图表涨跌色以 global.css 的 --up/--down 为单一真源（CSS 变量驱动），与全站价格文字保持一致。
+// canvas 不能解析 var()，故此处初始化时解析一次真实 hex 再喂给图表引擎；--up/--down 为主题不变量
+// （浅/深主题值相同，见 global.css），无需在数据层监听主题切换。无 DOM 时回退到硬编码常量。
+const UP = cssColor("--up", UP_FALLBACK);
+const DOWN = cssColor("--down", DOWN_FALLBACK);
 
 // 量柱/MACD 柱取涨跌色（兜底 UP/DOWN/中性色）：自定义指标拿不到 klinecharts 内置量柱默认样式，
 // 故用项目统一涨跌色兜底，确保量柱可见——否则量面板会退化成无柱的平直线。
@@ -2003,10 +2009,10 @@ onBeforeUnmount(() => {
   color: var(--text-3);
 }
 .up {
-  color: #ef232a;
+  color: var(--up);
 }
 .down {
-  color: #09b07a;
+  color: var(--down);
 }
 .kc-ov {
   position: absolute;

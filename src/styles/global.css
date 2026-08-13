@@ -17,8 +17,8 @@
   --primary-soft: rgba(7, 193, 96, 0.12);
   --danger: #e5484d;
   --danger-dark: #c93b40;
-  --up: #ff5b5b;
-  --down: #1fd874;
+  --up: #ef232a;
+  --down: #09b07a;
   --text: #16202e;
   --text-2: #5b6677;
   --text-3: #97a1b0;
@@ -87,8 +87,8 @@
   --primary-soft: rgba(7, 193, 96, 0.18);
   --danger: #e5484d;
   --danger-dark: #c93b40;
-  --up: #ff5b5b;
-  --down: #1fd874;
+  --up: #ef232a;
+  --down: #09b07a;
   --text: #eaf0fb;
   --text-2: #aab4c8;
   --text-3: #6b7689;
@@ -344,11 +344,11 @@ textarea {
 }
 .tag-up {
   color: var(--up);
-  background: rgba(250, 81, 81, 0.1);
+  background: rgba(239, 35, 42, 0.1);
 }
 .tag-down {
   color: var(--down);
-  background: rgba(9, 187, 7, 0.1);
+  background: rgba(9, 176, 122, 0.1);
 }
 .tag-info {
   color: var(--text-2);
@@ -447,7 +447,7 @@ textarea {
 }
 @keyframes flashUp {
   0% {
-    background: rgba(255, 91, 91, 0.20);
+    background: rgba(239, 35, 42, 0.20);
   }
   100% {
     background: transparent;
@@ -455,7 +455,7 @@ textarea {
 }
 @keyframes flashDown {
   0% {
-    background: rgba(31, 216, 116, 0.20);
+    background: rgba(9, 176, 122, 0.20);
   }
   100% {
     background: transparent;

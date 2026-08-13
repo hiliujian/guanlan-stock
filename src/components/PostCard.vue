@@ -245,8 +245,8 @@ function preview(current: string) {
   padding: 4rpx 14rpx;
   border-radius: 8rpx;
 }
-.cs-side.buy { color: var(--up); background: rgba(255, 91, 91, 0.12); }
-.cs-side.sell { color: var(--down); background: rgba(31, 216, 116, 0.12); }
+.cs-side.buy { color: var(--up); background: rgba(239, 35, 42, 0.12); }
+.cs-side.sell { color: var(--down); background: rgba(9, 176, 122, 0.12); }
 .cs-title {
   font-size: var(--font-md);
   font-weight: 700;
