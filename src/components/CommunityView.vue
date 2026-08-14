@@ -4,8 +4,11 @@
     <PageHeader brand-text="社区" brand-icon="chatbubble">
       <template #right>
         <view class="cm-msg" @click="msgOpen = true">
+          <!-- 图标容器与自选「分组切换」(cm-me) 内的 .cm-avatar 完全一致：48rpx 主色渐变圆 + 白色居中图标 -->
           <view class="cm-msg-ic">
-            <OutlineIcon type="bell" :size="30" color="var(--text)" />
+            <view class="cm-msg-circle flex-center" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
+              <OutlineIcon type="bell" :size="24" color="#fff" />
+            </view>
             <view v-if="unreadTotal > 0" class="cm-badge">{{ unreadTotal > 99 ? '99+' : unreadTotal }}</view>
           </view>
           <text class="cm-msg-text">消息</text>
@@ -318,11 +321,19 @@ defineExpose({ refresh: load });
 .cm-msg:active {
   opacity: 0.6;
 }
+/* 图标外层（相对定位，承载角标；不裁剪，避免角标被渐变圆 overflow:hidden 切掉） */
 .cm-msg-ic {
   position: relative;
+  flex: none;
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
+}
+/* 渐变图标圆：与 WatchlistView .cm-avatar 完全一致（48rpx、主色渐变、白色图标、圆形裁剪） */
+.cm-msg-circle {
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 50%;
+  overflow: hidden;
+  flex: none;
 }
 .cm-msg-text {
   font-size: var(--font-md);
