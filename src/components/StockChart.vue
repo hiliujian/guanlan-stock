@@ -514,23 +514,28 @@ function buildStyles(): Record<string, unknown> {
   };
 }
 
-// 副图高度分配（成交量 + MACD 两面板常驻）：返回各面板相对图表容器的高度（px）。
-// 主图占 0.56、量图占 0.22、MACD 顶满剩余（≥60px）。buildLayout 与 legendOffsets 共用，避免重复计算。
-function subPaneHeights(usable: number): { priceH: number; volH: number; macdH: number } {
-  const priceH = Math.round(usable * 0.56);
-  const volH = Math.round(usable * 0.22);
-  const macdH = Math.max(60, usable - priceH - volH);
+// 副图高度分配（成交量 + MACD 两面板常驻）：返回各面板绝对高度（px），三者之和精确等于 total。
+// 主图占 0.56、量图占 0.22、MACD 顶满剩余（≥60px）。
+function subPaneHeights(total: number): { priceH: number; volH: number; macdH: number } {
+  const priceH = Math.round(total * 0.56);
+  const volH = Math.round(total * 0.22);
+  const macdH = Math.max(60, total - priceH - volH); // 余量全给 MACD，确保总和 = total（无舍入误差残留）
   return { priceH, volH, macdH };
 }
 
 // ---- 布局（主图 + 成交量 + MACD 三分面，按比例控高）----
 // 成交量面板与 MACD 面板均常驻显示（不可整体关闭），故布局恒为主图 0.56 + 量图 0.22 + MACD 顶满。
 function buildLayout(): any[] {
-  // 用真实容器高度（而非仅靠 props.height）：若 init 时容器尚未完成布局、量到的高度偏小，
-  // 会导致 pane 总高 < 容器 → 画布下方露出容器底色（底部空白）、主图被压扁。回退 props.height 兜底。
-  const h = Math.max(0, chartEl.value?.clientHeight ?? 0) || props.height;
-  const usable = Math.max(140, h - 24); // 预留 x 轴条
-  const { priceH, volH, macdH } = subPaneHeights(usable);
+  // 始终用 props.height（即 inline style 设定的容器高）作为唯一真源：
+  // init 时读 clientHeight 可能偏小（父级 flex 尚未完成布局 / CSS 尚未回流），
+  // 导致按小值算出的 pane 总和远小于最终容器 → klinecharts 内部画布矮于容器 →
+  // 各 pane 内容向下溢出穿透（主图穿成交量、成交量穿 MACD）+ 底部露白。
+  // 后续 chart.resize() 会用真实尺寸修正，但初始布局错误仍会造成首帧闪烁/穿透。
+  const h = props.height;
+  const SEP = 2;   // 每条分隔线厚度（与 styles.separator.size 一致）
+  const GAP_COUNT = 2; // 3 个 pane 之间有 2 条分隔
+  const totalContent = Math.max(140, h - SEP * GAP_COUNT); // 扣除分隔线后全部空间分给 pane
+  const { priceH, volH, macdH } = subPaneHeights(totalContent);
   const candleContent: string[] = [];
   if (props.mode === "kline") {
     const mc = props.maConfig;
@@ -704,6 +709,8 @@ function fitViewAll() {
 
 // 数据就绪回调：每次数据变化（首载 / 刷新 / 实时末根）后保持「铺满全貌」+ 刷新图例（所有模式通用）
 function onDataReady() {
+  // 数据就绪后再次确认布局尺寸正确（某些情况下 applyNewData 异步解析后内部尺寸可能漂移）
+  try { if (chart) chart.resize(); } catch { /* noop */ }
   fitViewAll();
   updateLegendLatest();
   // 关键修复：数据就绪（含首载 / 实时末根）后重画智能标注。
@@ -1248,9 +1255,11 @@ const legendOffsets = computed(() => {
       /* noop */
     }
   }
-  const usable = Math.max(140, props.height - 24); // 预留底部 x 轴条
-  const { priceH, volH } = subPaneHeights(usable);
-  return { price: 0, vol: priceH, macd: priceH + volH };
+  // 回退：与 buildLayout 精确一致的算法（含分隔线扣除），确保图例偏移与面板顶边对齐
+  const SEP = 2, GAP_COUNT = 2;
+  const totalContent = Math.max(140, props.height - SEP * GAP_COUNT);
+  const { priceH, volH } = subPaneHeights(totalContent);
+  return { price: 0, vol: priceH, macd: priceH + volH + SEP }; // SEP = 分隔线厚度
 });
 // 从图表实例读取某 pane 各指标在「最后一根」的已算结果（用于无十字光标时显示最新值）
 function readIndicatorResults(paneId: string, idx?: number): Record<string, any> {
@@ -1600,8 +1609,16 @@ function buildChart() {
       drawAutoLevels();
       chartReady.value = true; // 触发 legendOffsets 改用真实分面顶边
     };
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => requestAnimationFrame(drawOverlays));
-    else setTimeout(drawOverlays, 60);
+    if (typeof requestAnimationFrame === "function") {
+      // 双 rAF：第一帧等浏览器布局完成，第二帧等绘制完成；再挂一个 setTimeout 兜底
+      // （部分低端 Android WebView / 微信内置浏览器双 rAF 仍可能提前于最终回流）
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        drawOverlays();
+        setTimeout(() => { if (chart && chartEl.value) { try { chart.resize(); } catch {} } }, 0);
+      }));
+    } else {
+      setTimeout(drawOverlays, 60);
+    }
   });
 }
 
