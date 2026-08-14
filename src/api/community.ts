@@ -446,7 +446,15 @@ async function addReplyRemote(id: string, content: string): Promise<CommunityPos
   if (!sb) return null;
   await sb
     .from("community_replies")
-    .insert({ post_id: id, author: getMyName(), content: content.trim() });
+    .insert({
+      post_id: id,
+      // 关键：写入当前用户 id，否则后端 get_my_notifications 用
+      // `user_id is distinct from auth.uid()` 仍会把 NULL 当他人纳入，
+      // 但更稳妥的做法是始终显式归属，避免 NULL 模糊语义。
+      user_id: userState.userId || null,
+      author: getMyName(),
+      content: content.trim(),
+    });
   // 仅重查该帖（含最新回复数与点赞态），避免 listRemote 整表 + liked 集合二次拉取
   const { data, error } = await sb
     .from("community_posts")

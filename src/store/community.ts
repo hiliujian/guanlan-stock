@@ -13,6 +13,8 @@ import {
   type Conversation,
   type DmMessage,
 } from "@/api/community";
+import { getSupabase } from "@/api/supabase";
+import { userState } from "@/store/user";
 
 const posts = ref<CommunityPost[]>([]);
 const loading = ref(false);
@@ -131,38 +133,100 @@ function persistSeen() {
   }
 }
 
-export function useMessageCenter() {
-  async function loadNotifications() {
-    notifLoading.value = true;
-    try {
-      notifications.value = await communityRepo.myNotifications();
-      // 首次加载（基线为 0）：把基线设为「最早一条通知时间 - 1」，
-      // 使历史通知不被一次性计为未读；之后再有新通知才会触发角标。
-      if (lastNotifSeenAt.value === 0 && notifications.value.length) {
-        const minT = notifications.value
-          .map((n) => new Date(n.createdAt).getTime())
-          .filter((t) => Number.isFinite(t));
-        if (minT.length) {
-          lastNotifSeenAt.value = Math.min(...minT) - 1;
-          persistSeen();
-        }
+/** 拉取我的活动通知（点赞 / 评论），并校准「已读基线」。 */
+async function loadNotifications() {
+  notifLoading.value = true;
+  try {
+    notifications.value = await communityRepo.myNotifications();
+    // 首次加载（基线为 0）：把基线设为「最早一条通知时间 - 1」，
+    // 使历史通知不被一次性计为未读；之后再有新通知才会触发角标。
+    if (lastNotifSeenAt.value === 0 && notifications.value.length) {
+      const minT = notifications.value
+        .map((n) => new Date(n.createdAt).getTime())
+        .filter((t) => Number.isFinite(t));
+      if (minT.length) {
+        lastNotifSeenAt.value = Math.min(...minT) - 1;
+        persistSeen();
       }
-    } finally {
-      notifLoading.value = false;
     }
+  } finally {
+    notifLoading.value = false;
   }
+}
 
-  async function loadConversations() {
-    convLoading.value = true;
+/** 拉取私信会话列表并聚合未读数（供徽标与消息中心共用）。 */
+async function loadConversations() {
+  convLoading.value = true;
+  try {
+    conversations.value = await communityRepo.listConversations();
+    // 会话未读之和即为私信角标数
+    unreadDm.value = conversations.value.reduce((s, c) => s + c.unreadCount, 0);
+  } finally {
+    convLoading.value = false;
+  }
+}
+
+// ── 实时订阅（与 watchlist 同款保活模式）──────────────────────────────
+// 监听社区点赞 / 评论 / 私信的 INSERT，有新互动即重拉通知与会话，
+// 使顶部铃铛徽标实时刷新，无需切回社区页或手动刷新。
+let msgRealtimeChannel: any = null;
+
+function subscribeMessageRealtime() {
+  const sb = getSupabase();
+  if (!sb) return;
+  // 先清掉旧 channel，避免重复 init 时堆叠多个订阅导致重复回调
+  if (msgRealtimeChannel) {
     try {
-      conversations.value = await communityRepo.listConversations();
-      // 会话未读之和即为私信角标数
-      unreadDm.value = conversations.value.reduce((s, c) => s + c.unreadCount, 0);
-    } finally {
-      convLoading.value = false;
+      sb.removeChannel(msgRealtimeChannel);
+    } catch {
+      /* ignore */
+    }
+    msgRealtimeChannel = null;
+  }
+  // 小程序端实时依赖 WebSocket，环境不支持时静默降级（手动刷新即可）
+  try {
+    const onEvent = () => {
+      loadNotifications();
+      loadConversations();
+    };
+    msgRealtimeChannel = sb
+      .channel("message-center-changes")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "community_likes" }, onEvent)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "community_replies" }, onEvent)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "community_dms" }, onEvent)
+      .subscribe();
+  } catch {
+    /* ignore */
+  }
+}
+
+function unsubscribeMessageRealtime() {
+  const sb = getSupabase();
+  if (sb && msgRealtimeChannel) {
+    try {
+      sb.removeChannel(msgRealtimeChannel);
+    } catch {
+      /* ignore */
     }
   }
+  msgRealtimeChannel = null;
+}
 
+/** 初始化消息中心实时订阅（幂等；未登录时自动退订）。登录态变化时调用。 */
+export function initMessageRealtime() {
+  if (userState.loggedIn && userState.userId && getSupabase()) {
+    subscribeMessageRealtime();
+  } else {
+    unsubscribeMessageRealtime();
+  }
+}
+
+/** 停止消息中心实时订阅（登出 / 应用卸载时调用，防止 channel 泄漏）。 */
+export function stopMessageRealtime() {
+  unsubscribeMessageRealtime();
+}
+
+export function useMessageCenter() {
   /** 单独刷私信未读数（轻量，供顶部栏角标用） */
   async function loadUnreadDm() {
     unreadDm.value = await communityRepo.unreadDmCount();
@@ -193,6 +257,8 @@ export function useMessageCenter() {
   }
 
   function reset() {
+    // 登出 / 切换账号：退订实时，避免旧账号 channel 泄漏与误回调
+    stopMessageRealtime();
     notifications.value = [];
     conversations.value = [];
     unreadDm.value = 0;

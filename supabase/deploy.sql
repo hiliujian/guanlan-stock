@@ -540,13 +540,15 @@ language sql security definer set search_path = public as $$
     select l.post_id, l.user_id as actor_id, l.created_at
     from public.community_likes l
     join public.community_posts p on p.id = l.post_id
-    where p.user_id = auth.uid() and l.user_id <> auth.uid()
+    -- is distinct from：NULL actor（历史脏数据）一律视为「他人」纳入通知，
+    -- 同时仍正确排除自己（auth.uid()）点赞自己的帖子。
+    where p.user_id = auth.uid() and l.user_id is distinct from auth.uid()
   ),
   comments as (
     select r.post_id, r.user_id as actor_id, r.content, r.created_at
     from public.community_replies r
     join public.community_posts p on p.id = r.post_id
-    where p.user_id = auth.uid() and r.user_id <> auth.uid()
+    where p.user_id = auth.uid() and r.user_id is distinct from auth.uid()
       and r.status = 'published'
   ),
   like_rows as (

@@ -35,6 +35,7 @@ import { enabledTabs } from "@/store/appConfig";
 import { showInMenu } from "@/store/access";
 import { useUser, userState } from "@/store/user";
 import { initWatchlist } from "@/store/watchlist";
+import { initMessageRealtime } from "@/store/community";
 import { openInMarket, navTab, goTab } from "@/store/nav";
 import { handleCallback } from "@/store/authFlow";
 
@@ -87,6 +88,8 @@ watch(
 
 // 打开即用：启动即初始化用户态与自选（未登录走本地降级，无门禁）
 initWatchlist();
+// 消息中心实时订阅：启动即尝试建立（未登录时内部自动退订，登录态恢复后由下方 watch 补建）
+initMessageRealtime();
 
 // 关键修复：登录态恢复 / 切换（含冷启动时 Supabase 从 storage 异步恢复会话、以及登出）
 // 后，自选数据源会随之切换 cloud/local。setup 里那次 initWatchlist() 只能覆盖首帧，
@@ -94,7 +97,10 @@ initWatchlist();
 // 保证「重新登录后自选与分组」从云端正常持久化恢复。
 watch(
   () => userState.loggedIn,
-  () => initWatchlist()
+  () => {
+    initWatchlist();
+    initMessageRealtime(); // 登录态变化（含登出）时同步建/退订实时频道
+  }
 );
 
 onMounted(() => {
