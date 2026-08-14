@@ -217,11 +217,11 @@ export async function deleteAccount(): Promise<AuthResult> {
 interface ProfilePatch {
   display_name?: string;
   username?: string;
-  signature?: string;
   avatar_url?: string;
   avatar_frame?: string;
   last_login?: LoginInfo | null;
 }
+// 注：个人简介（原「个性签名」）不持久化到数据库，故不在 ProfilePatch 中；见 src/store/bio.ts。
 
 /** 最近一次登录信息（供「账号安全」页展示）：地点 / 时间 / 设备 */
 export interface LoginInfo {
