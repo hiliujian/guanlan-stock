@@ -497,7 +497,8 @@ function buildStyles(): Record<string, unknown> {
       horizontal: { lineColor: cross, lineStyle: "dashed", lineSize: 1, textColor: crossText, textBackgroundColor: crossTextBg, textBorderColor: crossTextBg, textBorderSize: 1 },
       vertical: { lineColor: cross, lineStyle: "dashed", lineSize: 1, textColor: crossText, textBackgroundColor: crossTextBg, textBorderColor: crossTextBg, textBorderSize: 1 },
     },
-    separator: { color: sep, size: 1 },
+    // 分面分隔线加粗到 2px 并略加深，使主图/成交量/MACD 三块清晰分界，避免「主图穿到成交量」的粘连观感
+    separator: { color: sep, size: 2 },
     overlay: {
       point: { color: "#07c160", radius: 4, borderColor: "#07c160", borderSize: 1 },
       line: { color: "#07c160", size: 1, style: "dashed" },
@@ -518,7 +519,10 @@ function subPaneHeights(usable: number): { priceH: number; volH: number; macdH: 
 // ---- 布局（主图 + 成交量 + MACD 三分面，按比例控高）----
 // 成交量面板与 MACD 面板均常驻显示（不可整体关闭），故布局恒为主图 0.56 + 量图 0.22 + MACD 顶满。
 function buildLayout(): any[] {
-  const usable = Math.max(140, props.height - 24); // 预留 x 轴条
+  // 用真实容器高度（而非仅靠 props.height）：若 init 时容器尚未完成布局、量到的高度偏小，
+  // 会导致 pane 总高 < 容器 → 画布下方露出容器底色（底部空白）、主图被压扁。回退 props.height 兜底。
+  const h = Math.max(0, chartEl.value?.clientHeight ?? 0) || props.height;
+  const usable = Math.max(140, h - 24); // 预留 x 轴条
   const { priceH, volH, macdH } = subPaneHeights(usable);
   const candleContent: string[] = [];
   if (props.mode === "kline") {
@@ -1569,9 +1573,24 @@ const legend = reactive<{
   show: false, time: "", o: null, h: null, l: null, c: null, chgPct: null,
   main: [], vol: [], macd: [],
 });
-// 图例分组对齐到各自面板顶部：复用 buildLayout 的高度算法，算出每个面板相对图表容器的 top（px），
-// 使「主图」组贴主图顶部、「成交量」组贴量图顶部、「MACD」组贴 MACD 顶部，而非三者全堆在价格图上方。
+// 图例分组对齐到各自面板顶部：优先读取 klinecharts 真实分面顶边（getBounding().top），
+// 保证图例分组精确贴到各面板顶部；图表未就绪时回退到与 buildLayout 一致的高度算法。
+// 关键：不能只按 props.height 硬编码推算——若初始化时容器实测高度与 props.height 不一致（如绘制前量到偏小值），
+// 硬编码偏移会让图例压错面板，看起来像「主图穿到成交量」。
+const chartReady = ref(false);
 const legendOffsets = computed(() => {
+  if (chartReady.value && chart) {
+    try {
+      // 用图表实例真实分面包围盒的 top（相对容器），精确对齐图例分组到各面板顶部
+      const vt = (chart as any).getSize?.("vol_pane")?.top;
+      const mt = (chart as any).getSize?.("macd_pane")?.top;
+      if (typeof vt === "number" && typeof mt === "number" && vt > 0 && mt > vt) {
+        return { price: 0, vol: vt, macd: mt };
+      }
+    } catch {
+      /* noop */
+    }
+  }
   const usable = Math.max(140, props.height - 24); // 预留底部 x 轴条
   const { priceH, volH } = subPaneHeights(usable);
   return { price: 0, vol: priceH, macd: priceH + volH };
@@ -1851,6 +1870,7 @@ function applySubOverrides() {
 // 完整构建图表（销毁旧实例并从头初始化）：仅在结构变化（mode/layout）或首次挂载时调用
 function buildChart() {
   if (!chartEl.value) return;
+  chartReady.value = false; // 重建期间图例偏移回退到高度算法，待真实分面就绪后再用 getBounding 对齐
   destroyChart();
   ensureAvp();
   ensureIntradayVol();
@@ -1906,16 +1926,22 @@ function buildChart() {
   applySubOverrides();
   nextTick(() => {
     if (!chart || !chartEl.value) return;
-    chart.resize();
-    // 等主图比例尺测量完成再叠加 overlay，避免价格→像素映射过早被钳到顶部（表现为所有线堆在顶部一条虚线）
+    // 关键：chart.resize() 必须放到「浏览器完成布局/绘制之后」（post-paint rAF），而非 nextTick 微任务。
+    // 否则 init 时若容器实测高度偏小（绘制前量到），画布会矮于容器 → 底部露出容器底色（空白）、
+    // 主图被压扁、分面间隔被压缩到几乎不可见，看起来像「主图穿到成交量」。绘制后 resize 用真实尺寸重排，
+    // 三个分面（主图/成交量/MACD）精确填满容器、互不重叠。
     const drawOverlays = () => {
       if (!chart || !chartEl.value) return;
+      try { chart.resize(); } catch {
+        /* noop */
+      }
       // 首载兜底：确保铺满全貌（OnDataReady 在 applyNewData 异步解析后才触发，
       // 此处保证容器尺寸确定后也对齐一次，所有模式通用）
       fitViewAll();
       drawCyq();
       restoreOverlays();
       drawAutoLevels();
+      chartReady.value = true; // 触发 legendOffsets 改用真实分面顶边
     };
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => requestAnimationFrame(drawOverlays));
     else setTimeout(drawOverlays, 60);
