@@ -504,8 +504,10 @@ function buildStyles(): Record<string, unknown> {
         text: { size: 10 },
       },
     },
-    // 分面分隔线加粗到 2px 并略加深，使主图/成交量/MACD 三块清晰分界，避免「主图穿到成交量」的粘连观感
-    separator: { color: sep, size: 2 },
+    // 分隔线尺寸置 0：不渲染可见分隔线、且不占高度（klinecharts 的 SeparatorWidget 始终渲染且其
+    // 容器硬编码 cursor:'ns-resize'，仅靠 dragEnabled:false 无法消除那条线 / 拉拽光标——size:0 让线不可见，
+    // 再用 scoped CSS 把 ns-resize 光标改回 default）。各分面由 legendOffsets(getSize 实测) 精确对齐。
+    separator: { color: sep, size: 0 },
     overlay: {
       point: { color: "#07c160", radius: 4, borderColor: "#07c160", borderSize: 1 },
       line: { color: "#07c160", size: 1, style: "dashed" },
@@ -532,9 +534,9 @@ function buildLayout(): any[] {
   // 各 pane 内容向下溢出穿透（主图穿成交量、成交量穿 MACD）+ 底部露白。
   // 后续 chart.resize() 会用真实尺寸修正，但初始布局错误仍会造成首帧闪烁/穿透。
   const h = props.height;
-  const SEP = 2;   // 每条分隔线厚度（与 styles.separator.size 一致）
-  const GAP_COUNT = 2; // 3 个 pane 之间有 2 条分隔
-  const totalContent = Math.max(140, h - SEP * GAP_COUNT); // 扣除分隔线后全部空间分给 pane
+  const SEP = 0;   // 分隔线厚度：styles.separator.size 已置 0（无可见线、不占高度），此处不再为分隔预留
+  const GAP_COUNT = 2; // 3 个 pane 之间有 2 条分隔（size=0 时不占位）
+  const totalContent = Math.max(140, h - SEP * GAP_COUNT); // 全部空间分给 pane（x 轴高度由 klinecharts 内部扣除）
   const { priceH, volH, macdH } = subPaneHeights(totalContent);
   const candleContent: string[] = [];
   if (props.mode === "kline") {
@@ -719,6 +721,8 @@ function onDataReady() {
   // applyNewData 是异步解析，buildChart 内的 rAF 绘制早于数据可用时机，
   // 导致初始智能标注画不上（需手动关闭/打开一次开关才触发）；此处保证数据就绪即绘制。
   drawAutoLevels();
+  // 数据就绪（图表尺寸可能在 applyNewData 异步解析后微调）后刷新图例分组顶边
+  legendReady.value++;
 }
 
 // ---- 生命周期 ----
@@ -1239,16 +1243,36 @@ const legend = reactive<{
   show: false, time: "", o: null, h: null, l: null, c: null, chgPct: null,
   main: [], vol: [], macd: [],
 });
-// 图例分组对齐到各自面板顶部：与 buildLayout 使用同源的精确高度算法（subPaneHeights），
-// 不再读取 klinecharts 的 getSize() 动态值——实测 getSize 返回的 vol/macd 面板 top 与
-// 真实渲染位置存在偏差，导致成交量/MACD 图例标题未贴在面板顶部（偏上或压错面板）。
-// 由于三个面板高度由 buildLayout 固定（dragEnabled:false 锁定），用同一算法算出的顶部坐标
-// 必然与渲染位置 100% 一致，图例标题精确贴在每个面板顶部。
+// 图例分组对齐到各自面板顶部：直接读取 klinecharts 渲染后的真实面板顶边（getSize(paneId).top）。
+// 为什么不用「同算法估算」：klinecharts 把 x 轴高度扣在容器最底部，蜡烛面板实际高度 = 总高 − x轴高，
+// 公式估算不含 x 轴偏移，会让成交量/MACD 图例标题比真实面板顶低约一个 x 轴高度（即用户看到的 GAP）。
+// getSize 返回的是 pane 真实 bounding.top（相对图表容器），与图例叠加层坐标系一致，定位 100% 精确。
+// legendReady 在图表布局稳定后（post-init resize / resizeAll / 数据就绪）自增，驱动本 computed 重算——
+// 首帧（resize 前）用 fallback 估算兜底，布局完成后立即被 getSize 实测值覆盖。
+const legendReady = ref(0);
+function readPaneTop(paneId: string): number | null {
+  try {
+    const c: any = chart;
+    if (c && typeof c.getSize === "function") {
+      const b = c.getSize(paneId);
+      if (b && typeof b.top === "number" && b.top > 0) return b.top;
+    }
+  } catch {
+    /* noop */
+  }
+  return null;
+}
 const legendOffsets = computed(() => {
-  const SEP = 2, GAP_COUNT = 2;
-  const totalContent = Math.max(140, props.height - SEP * GAP_COUNT);
+  void legendReady.value; // 依赖：布局稳定后重算
+  const vt = readPaneTop("vol_pane");
+  const mt = readPaneTop("macd_pane");
+  if (vt != null && mt != null && mt > vt) {
+    return { price: 0, vol: vt, macd: mt };
+  }
+  // 回退（首帧 / 图表未就绪）：按同源算法估算，布局完成后会被 getSize 实测覆盖。
+  const totalContent = Math.max(140, props.height);
   const { priceH, volH } = subPaneHeights(totalContent);
-  return { price: 0, vol: priceH, macd: priceH + volH + SEP }; // SEP = 分隔线厚度
+  return { price: 0, vol: priceH, macd: priceH + volH };
 });
 // 从图表实例读取某 pane 各指标在「最后一根」的已算结果（用于无十字光标时显示最新值）
 function readIndicatorResults(paneId: string, idx?: number): Record<string, any> {
@@ -1595,13 +1619,15 @@ function buildChart() {
       drawCyq();
       restoreOverlays();
       drawAutoLevels();
+      // 图表布局稳定后刷新图例分组顶边（getSize 实测面板 top），使成交量/MACD 标题精确贴顶
+      legendReady.value++;
     };
     if (typeof requestAnimationFrame === "function") {
       // 双 rAF：第一帧等浏览器布局完成，第二帧等绘制完成；再挂一个 setTimeout 兜底
       // （部分低端 Android WebView / 微信内置浏览器双 rAF 仍可能提前于最终回流）
       requestAnimationFrame(() => requestAnimationFrame(() => {
         drawOverlays();
-        setTimeout(() => { if (chart && chartEl.value) { try { chart.resize(); } catch {} } }, 0);
+        setTimeout(() => { if (chart && chartEl.value) { try { chart.resize(); } catch {} legendReady.value++; } }, 0);
       }));
     } else {
       setTimeout(drawOverlays, 60);
@@ -1640,6 +1666,8 @@ function resizeAll() {
   // 容器尺寸变化（旋转/布局）后：重新铺满全貌，避免回到默认 barSpace 只显示末尾片段
   if (chart) fitViewAll();
   drawCyq();
+  // 尺寸变化后面板高度可能微调，刷新图例分组顶边
+  legendReady.value++;
 }
 
 function applyTheme() {
@@ -1704,6 +1732,12 @@ onBeforeUnmount(() => {
   border-radius: 16rpx;
   overflow: hidden;
   touch-action: none;
+}
+/* 干掉分隔线 / y 轴自带的 ns-resize 拉拽光标（klinecharts SeparatorWidget 容器硬编码 cursor:'ns-resize'，
+   且 size:0 仍渲染该 7px 容器）：用属性选择器精确命中内联 cursor:ns-resize 的元素，覆写为 default。
+   仅影响分隔线/y 轴，绝不波及主图区/十字光标（其 cursor 为 crosshair / ew-resize，不会被此选择器命中）。 */
+.kc-chart :deep([style*="ns-resize"]) {
+  cursor: default !important;
 }
 /* 自定义图例：覆盖在图表之上的绝对定位层（不再单独占高度），三组分别对齐到各自面板顶部，
    替代原先堆在价格图上方的整块图例；pointer-events:none 避免遮挡图表交互。 */
