@@ -72,8 +72,9 @@ export interface CommunityPost {
   type: "text" | "card";
   author: string;
   userId?: string | null; // 发布者账号 id（登录后写入，用于判定"我的"帖子）
-  authorAvatarUrl?: string; // 作者头像 URL（联表 profiles 取得，缺省回退「字」头像）
-  authorFrame?: string; // 作者头像框 id（联表 profiles 取得；'' = 无边框）
+  authorAvatarUrl?: string; // 作者头像 URL（发布时冗余快照 + 联表 profiles 兜底；缺省回退「字」头像）
+  authorFrame?: string; // 作者头像框 id（发布时冗余快照 + 联表 profiles 兜底；'' = 无边框）
+  authorUsername?: string; // 作者用户名（冗余快照）：默认头像种子用，保证与个人资料页一致（用户名首字）
   topic?: Topic; // 关联标的（个股 / 板块），用于分类
   createdAt: number;
   content?: string;
@@ -256,8 +257,11 @@ function mapRowToPost(
     type: r.type,
     author: r.author,
     userId: r.user_id || null,
-    authorAvatarUrl: ai.avatar_url,
-    authorFrame: ai.avatar_frame,
+    // 作者展示字段：优先用帖子冗余快照（发布时写入，不依赖 profiles RLS），
+    // 旧帖（迁移前）无快照则回退 profiles 联表结果（profiles 现已公开可读）。
+    authorAvatarUrl: r.author_avatar_url || ai.avatar_url || "",
+    authorFrame: r.author_frame || ai.avatar_frame || "",
+    authorUsername: r.author_username || "",
     topic: r.topic || undefined,
     createdAt: new Date(r.created_at).getTime(),
     content: r.content ?? undefined,
@@ -353,6 +357,10 @@ async function createRemote(
   const row: any = {
     author: getMyName(),
     user_id: userState.userId || null,
+    // 发布时冗余快照作者公开资料：使信息流展示自包含，不受 profiles RLS 影响。
+    author_avatar_url: userState.profile?.avatar_url || "",
+    author_frame: userState.profile?.avatar_frame || "",
+    author_username: userState.profile?.username || "",
     topic: input.type === "text" ? input.topic ?? null : null,
     type: input.type,
     content: input.type === "text" ? input.content.trim() : null,
@@ -368,8 +376,10 @@ async function createRemote(
     type: d.type,
     author: d.author,
     userId: d.user_id || null,
-    authorAvatarUrl: userState.profile?.avatar_url || "",
-    authorFrame: userState.profile?.avatar_frame || "",
+    // 优先用行内快照（与入库值一致），profile 兜底（极端情况下快照为空时）
+    authorAvatarUrl: d.author_avatar_url || userState.profile?.avatar_url || "",
+    authorFrame: d.author_frame || userState.profile?.avatar_frame || "",
+    authorUsername: d.author_username || userState.profile?.username || "",
     topic: d.topic || undefined,
     createdAt: new Date(d.created_at).getTime(),
     content: d.content ?? undefined,
@@ -412,8 +422,9 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
     type: f.type,
     author: f.author,
     userId: f.user_id || null,
-    authorAvatarUrl: ai.avatar_url,
-    authorFrame: ai.avatar_frame,
+    authorAvatarUrl: f.author_avatar_url || ai.avatar_url || "",
+    authorFrame: f.author_frame || ai.avatar_frame || "",
+    authorUsername: f.author_username || "",
     topic: f.topic || undefined,
     createdAt: new Date(f.created_at).getTime(),
     content: f.content ?? undefined,
@@ -440,18 +451,22 @@ async function addReplyRemote(id: string, content: string): Promise<CommunityPos
   const { data, error } = await sb
     .from("community_posts")
     .select(
-      "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, content, created_at)"
+      "id, type, author, user_id, author_avatar_url, author_frame, author_username, topic, content, card, images, likes, created_at, replies:community_replies(id, author, content, created_at)"
     )
     .eq("id", id)
     .single();
   if (error || !data) return null;
   const d = data as any;
+  const ai = authorInfoOf(d.user_id); // profiles 联表兜底（profiles 现已公开可读）
   const liked = likedCache ? likedCache.ids.has(id) : false;
   return {
     id: d.id,
     type: d.type,
     author: d.author,
     userId: d.user_id || null,
+    authorAvatarUrl: d.author_avatar_url || ai.avatar_url || "",
+    authorFrame: d.author_frame || ai.avatar_frame || "",
+    authorUsername: d.author_username || "",
     topic: d.topic || undefined,
     createdAt: new Date(d.created_at).getTime(),
     content: d.content ?? undefined,

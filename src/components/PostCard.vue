@@ -2,7 +2,7 @@
   <view class="post glass anim-fade-up">
     <!-- 头部：头像 + 昵称 + 时间 + 话题 + 删除 -->
     <view class="p-head">
-      <UserAvatar :url="post.authorAvatarUrl || ''" :seed="post.author" :size="60" :frame="post.authorFrame" />
+      <UserAvatar :url="post.authorAvatarUrl || ''" :seed="post.authorUsername || post.author" :size="60" :frame="post.authorFrame" />
       <view class="p-meta">
         <text class="p-name">{{ post.author }}</text>
         <text class="p-time">{{ timeText }}</text>
