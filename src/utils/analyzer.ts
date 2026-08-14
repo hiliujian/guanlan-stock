@@ -2,8 +2,9 @@
 // 分析引擎（纯函数，跨端通用，无任何 DOM / 平台依赖）
 // 指标计算 + 综合研判 + 白话报告所需的全部数据结构
 // =====================================================================
-import type { Kline } from "./period";
+import type { Kline, PeriodKey } from "./period";
 import { UP, DOWN } from "./colors";
+import { computePriceLevels, resolvePeriodGuard, type PriceLevelGroup, type LevelCtx } from "@/utils/autoLevels";
 import type { NewsSignal } from "./newsSentiment";
 
 // ---------------- 指标计算 ----------------
@@ -87,23 +88,8 @@ function rsi(close: number[], n: number): (number | null)[] {
   }
   return r;
 }
-function pivots(klines: Kline[], win: number, lookback: number) {
-  const n = klines.length;
-  const start = Math.max(0, n - lookback);
-  const highs: number[] = [];
-  const lows: number[] = [];
-  for (let i = start + win; i < n - win; i++) {
-    let isH = true;
-    let isL = true;
-    for (let j = i - win; j <= i + win; j++) {
-      if (klines[j].high > klines[i].high) isH = false;
-      if (klines[j].low < klines[i].low) isL = false;
-    }
-    if (isH) highs.push(klines[i].high);
-    if (isL) lows.push(klines[i].low);
-  }
-  return { highs, lows };
-}
+// pivots 已废弃：支撑/压力统一改用 autoLevels.ts 的分层引擎（与图表 StockChart 智能标注 100% 同源），
+// 旧逻辑仅做窗口极值、无聚类/打分/破位验证/量价·筹码·趋势联动，且会导致报告与图表两套数值。
 // Wilder 平滑 (RMA)：前 n 项用 SMA 初始化，之后递推。ATR/ADX 的标准算法（与 RSI 同源）。
 function rma(arr: number[], n: number): number[] {
   const r = new Array(arr.length).fill(null);
@@ -367,6 +353,9 @@ export interface AnalysisResult {
   maState: string;
   support: number;
   resistance: number;
+  priceLevels: PriceLevelGroup; // 分层价位（结构支撑 sS / 结构压力 sP / 交易支撑 S / 交易压力 B + 箱体上下沿），与图表智能标注 100% 同源
+  mainSupport: number;   // 主支撑（最强有效支撑，箱体下沿兜底）
+  mainResistance: number; // 主压力（最强有效压力，箱体上沿兜底）
   bottomZone: number;
   topZone: number;
   distSup: number;
@@ -529,7 +518,8 @@ export function analyze(
   market?: MarketContext | null,
   // 股票代码（如 "300394"）：用于精确判定涨跌停阈值（创业板/科创板 20%、北交所 30%），
   // 避免按历史波动推断把创业板当主板、误报「炸板」。缺失时回退 K 线推断。
-  stockCode?: string
+  stockCode?: string,
+  period?: PeriodKey // K 线周期（d/w/M/m）：决定智能标注周期隔离，与图表完全一致
 ): AnalysisResult {
   // 边界条件：样本过少时任何指标都无意义，直接抛清晰错误交由上层提示，
   // 避免后续 klines[len-1] 等越界访问产生 NaN/崩溃（此前空 K 线会静默崩在 Math.min 上）。
@@ -671,14 +661,43 @@ export function analyze(
   // 避免仅满足 2/3 时把「中长期仍为空头」误判为多头排列。
   const maState = upCount === 3 ? "多头排列" : downCount === 3 ? "空头排列" : "均线纠缠";
 
-  const pv = pivots(klines, 5, 90);
-  const below = pv.lows.filter((p) => p < price).sort((a, b) => b - a);
-  const above = pv.highs.filter((p) => p > price).sort((a, b) => a - b);
-  const support = below.length ? below[0] : Math.min(...klines.slice(-60).map((k) => k.low));
-  const resistance = above.length ? above[0] : Math.max(...klines.slice(-60).map((k) => k.high));
-  const pv120 = pivots(klines, 6, 120);
-  const bottomZone = pv120.lows.length ? Math.min(...pv120.lows) : support;
-  const topZone = pv120.highs.length ? Math.max(...pv120.highs) : resistance;
+  // 分层支撑/压力引擎（与图表 StockChart 智能标注 100% 同源：同一套 findSwings/clusterSwings/scoreCluster/detectBandType/BAND_LABELS）。
+  // 四维权重修正：量能 VMA20 / 筹码密集峰·成本重心 / DMI 趋势强度；箱体区间内统一 +4。
+  const guard = resolvePeriodGuard(period ?? "d");
+  const levelCtx: LevelCtx = {
+    vma20Last: vma20[len - 1] ?? undefined,
+    chipPeak: chipR?.peakPrice,
+    chipAvg: chipR?.avgCost,
+    adx: adx[len - 1] ?? undefined,
+    pdi: pDI[len - 1] ?? undefined,
+    mdi: mDI[len - 1] ?? undefined,
+  };
+  const priceLevels = computePriceLevels(klines, guard, levelCtx);
+
+  // 主支撑/主压力：从分层结果中挑选「最强、未破位、位于现价同侧」的价位；缺失时回退近 60 日极值 + 箱体弱兜底。
+  const supportCands = [priceLevels.structSupport, priceLevels.tradeSupportS]
+    .filter((x): x is NonNullable<typeof x> => !!x && !x.isBroken)
+    .filter((x) => x.price < price);
+  const mainSupport = supportCands.length
+    ? supportCands.slice().sort((a, b) => b.totalScore - a.totalScore || b.price - a.price)[0].price
+    : priceLevels.boxBottom != null && priceLevels.boxBottom < price
+      ? priceLevels.boxBottom
+      : Math.min(...klines.slice(-60).map((k) => k.low));
+  const resistCands = [priceLevels.structPressure, priceLevels.tradePressureB]
+    .filter((x): x is NonNullable<typeof x> => !!x && !x.isBroken)
+    .filter((x) => x.price > price);
+  const mainResistance = resistCands.length
+    ? resistCands.slice().sort((a, b) => b.totalScore - a.totalScore || a.price - b.price)[0].price
+    : priceLevels.boxTop != null && priceLevels.boxTop > price
+      ? priceLevels.boxTop
+      : Math.max(...klines.slice(-60).map((k) => k.high));
+
+  // 兼容旧字段：报告页 ReportView 仍读 a.support / a.resistance
+  const support = mainSupport;
+  const resistance = mainResistance;
+  // 阶段高低区：以主支撑/主压力为锚（箱体区间内即取箱体上下沿）
+  const bottomZone = mainSupport;
+  const topZone = mainResistance;
   const distSup = (price - support) / price;
   const distRes = (resistance - price) / price;
   // nearTop 阈值 7%（原 4%）：A 股强势股常沿 5 日线运行，距高点 2-3% 是正常状态，
@@ -924,6 +943,17 @@ export function analyze(
     if (chipR.profitRatio > 0.9) risks.push(`筹码获利盘高达 ${(chipR.profitRatio * 100).toFixed(0)}%，浮盈盘集中易引发获利回吐。`);
     if (chipR.peakPrice && price > chipR.peakPrice * 1.1) risks.push(`现价已远离筹码密集峰（${chipR.peakPrice.toFixed(2)}），上方套牢盘抛压逐步显现。`);
   }
+  // 智能标注联动风险（与图表同源）：破位支撑 / 弱势支撑 / 放量压力
+  if (priceLevels.structSupport?.isBroken || priceLevels.tradeSupportS?.isBroken) {
+    risks.push("近期关键支撑位已被有效跌破（连续实体收盘击穿），原支撑转为压力，注意下行风险。");
+  }
+  if ((priceLevels.structSupport?.level === "弱" || priceLevels.tradeSupportS?.level === "弱") && trend === "down") {
+    risks.push("当前支撑有效性偏弱且处于下跌趋势，反弹力度或有限，抄底需严格控制仓位。");
+  }
+  const volPressureDesc = (priceLevels.structPressure?.volDesc ?? "") + (priceLevels.tradePressureB?.volDesc ?? "");
+  if (volPressureDesc.includes("放量")) {
+    risks.push("上方压力位伴随放量，遇阻回落概率较高，突破需放量确认。");
+  }
   // 中期乖离率超买：BIAS24 > 20% 已经是主升浪末端、非理性追涨区间，属于高风险信号
   if (bias24 > 20) risks.push(`中期乖离率 BIAS(24) 达 ${bias24.toFixed(2)}%，价格已严重偏离中长期均线，追高风险极大。`);
   // 布林带挤压：波动率压缩到极限，「即将变盘」本身是独立的风险（方向不明朗）
@@ -973,8 +1003,17 @@ export function analyze(
   // 量能确认：A 股假突破/假跌破频发，无量突破可靠性极低。
   //   · 突破要求 VMA5/VMA20 > 1.0（近期放量，确认资金真实参与）
   //   · 跌破要求 VMA5/VMA20 > 0.9（至少接近均量，排除无量假跌破）
-  const supportFromPivot = below.length > 0;
-  const resistanceFromPivot = above.length > 0;
+  // 支撑/压力是否来自明确的 pivot 拐点（非近60日极值兜底 / 箱体兜底）。
+  // 原 below/above（pivots() 产出）已随旧算法移除，改用同源 priceLevels 判定：
+  // 仅当存在有效（未破位、同侧）的结构/交易线时，才视为来自真实拐点。
+  const supportFromPivot = !!(
+    (priceLevels.structSupport && !priceLevels.structSupport.isBroken && priceLevels.structSupport.price < price) ||
+    (priceLevels.tradeSupportS && !priceLevels.tradeSupportS.isBroken && priceLevels.tradeSupportS.price < price)
+  );
+  const resistanceFromPivot = !!(
+    (priceLevels.structPressure && !priceLevels.structPressure.isBroken && priceLevels.structPressure.price > price) ||
+    (priceLevels.tradePressureB && !priceLevels.tradePressureB.isBroken && priceLevels.tradePressureB.price > price)
+  );
   const breakdown = supportFromPivot && price < support * 0.985 && volRatio > 0.9;
   const breakout = resistanceFromPivot && price > resistance * 1.015 && volRatio > 1.0;
 
@@ -1479,6 +1518,9 @@ export function analyze(
     maState,
     support,
     resistance,
+    priceLevels,
+    mainSupport,
+    mainResistance,
     bottomZone,
     topZone,
     distSup,

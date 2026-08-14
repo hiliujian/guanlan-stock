@@ -577,7 +577,8 @@ function applyPeriod(p: PeriodKey) {
     newsSig.value,
     b.klines.d,
     marketCtx,
-    secid.value ? codeFromSecid(secid.value) : undefined
+    secid.value ? codeFromSecid(secid.value) : undefined,
+    period.value
   );
 }
 
