@@ -148,13 +148,35 @@ const unreadDm = ref(0);
 const activeThread = ref<DmMessage[]>([]); // 当前会话消息流
 const threadLoading = ref(false);
 
-// 通知「已读基线」：客户端持久化的时间戳。后端 NotificationItem 无 read 标记，
-// 故以「通知创建时间晚于该基线」判定为未读（社媒通行的「最后查看时间」模式）。
-const SEEN_KEY = "gl_last_notif_seen_at";
-const lastNotifSeenAt = ref<number>(Number(uni.getStorageSync(SEEN_KEY)) || 0);
-function persistSeen() {
+// 通知「已读基线」：按消息类型（点赞 / 评论）分别持久化的时间戳。后端 NotificationItem
+// 无 read 标记，故以「通知创建时间晚于该类型基线」判定为该类型未读（社媒通行的「最后查看
+// 时间」模式）。分类型基线让点赞、评论各自独立计未读，用户能在标签栏看到分别的红点徽标，
+// 一眼区分「被赞了」还是「被评论了」，而非混成一个总数。
+const SEEN_LIKE_KEY = "gl_last_like_seen_at";
+const SEEN_COMMENT_KEY = "gl_last_comment_seen_at";
+const OLD_SEEN_KEY = "gl_last_notif_seen_at"; // 旧版单一基线，首次加载时迁移到分类型
+const seenLikeAt = ref<number>(Number(uni.getStorageSync(SEEN_LIKE_KEY)) || 0);
+const seenCommentAt = ref<number>(Number(uni.getStorageSync(SEEN_COMMENT_KEY)) || 0);
+// 旧基线迁移：已有用户本机存过旧的合并时间戳，直接继承到两个分类型，避免历史通知瞬间全标未读
+if (seenLikeAt.value === 0 && seenCommentAt.value === 0) {
+  const old = Number(uni.getStorageSync(OLD_SEEN_KEY)) || 0;
+  if (old > 0) {
+    seenLikeAt.value = old;
+    seenCommentAt.value = old;
+    persistSeenLike();
+    persistSeenComment();
+  }
+}
+function persistSeenLike() {
   try {
-    uni.setStorageSync(SEEN_KEY, lastNotifSeenAt.value);
+    uni.setStorageSync(SEEN_LIKE_KEY, seenLikeAt.value);
+  } catch {
+    /* 持久化失败不影响内存态角标 */
+  }
+}
+function persistSeenComment() {
+  try {
+    uni.setStorageSync(SEEN_COMMENT_KEY, seenCommentAt.value);
   } catch {
     /* 持久化失败不影响内存态角标 */
   }
@@ -165,15 +187,22 @@ async function loadNotifications() {
   notifLoading.value = true;
   try {
     notifications.value = await communityRepo.myNotifications();
-    // 首次加载（基线为 0）：把基线设为「最早一条通知时间 - 1」，
-    // 使历史通知不被一次性计为未读；之后再有新通知才会触发角标。
-    if (lastNotifSeenAt.value === 0 && notifications.value.length) {
+    // 首次加载（某类型基线为 0）：把该类型基线设为「最早一条通知时间 - 1」，
+    // 使历史通知不被一次性计为未读；之后再有新通知才会触发对应类型角标。
+    if (notifications.value.length) {
       const minT = notifications.value
         .map((n) => new Date(n.createdAt).getTime())
         .filter((t) => Number.isFinite(t));
       if (minT.length) {
-        lastNotifSeenAt.value = Math.min(...minT) - 1;
-        persistSeen();
+        const base = Math.min(...minT) - 1;
+        if (seenLikeAt.value === 0) {
+          seenLikeAt.value = base;
+          persistSeenLike();
+        }
+        if (seenCommentAt.value === 0) {
+          seenCommentAt.value = base;
+          persistSeenComment();
+        }
       }
     }
   } finally {
@@ -291,24 +320,48 @@ export function useMessageCenter() {
     unreadDm.value = 0;
     activeThread.value = [];
     // 重置基线，使下次加载按「首次加载」逻辑重新校准（适配切换账号）。
-    lastNotifSeenAt.value = 0;
+    seenLikeAt.value = 0;
+    seenCommentAt.value = 0;
   }
 
-  /** 当前用户未读的活动通知数（点赞 / 评论）：createdAt 晚于已读基线。 */
-  const unreadNotif = computed(() =>
+  /** 未读点赞数：kind === 'like' 且创建时间晚于点赞已读基线。 */
+  const unreadLike = computed(() =>
     notifications.value.filter((n) => {
+      if (n.kind !== "like") return false;
       const t = new Date(n.createdAt).getTime();
-      return Number.isFinite(t) && t > lastNotifSeenAt.value;
+      return Number.isFinite(t) && t > seenLikeAt.value;
     }).length
   );
+  /** 未读评论数：kind === 'comment' 且创建时间晚于评论已读基线。 */
+  const unreadComment = computed(() =>
+    notifications.value.filter((n) => {
+      if (n.kind !== "comment") return false;
+      const t = new Date(n.createdAt).getTime();
+      return Number.isFinite(t) && t > seenCommentAt.value;
+    }).length
+  );
+  /** 当前用户未读的活动通知总数（点赞 + 评论），供铃铛聚合角标。 */
+  const unreadNotif = computed(() => unreadLike.value + unreadComment.value);
 
   /** 顶部铃铛角标：私信未读 + 活动通知未读（社媒标准聚合）。 */
   const unreadTotal = computed(() => unreadDm.value + unreadNotif.value);
 
-  /** 标记活动通知已读：把基线推到「现在」并持久化 → 清铃铛徽章。 */
-  function markNotifSeen() {
-    lastNotifSeenAt.value = Date.now();
-    persistSeen();
+  /** 标记活动通知已读：按类型把对应基线推到「现在」并持久化；不传类型则两类一并清。
+   *  分类型标记使「看过点赞」不会顺带清掉「评论」红点，用户能在标签栏区分未读类型。 */
+  function markNotifSeen(kind?: "like" | "comment") {
+    const now = Date.now();
+    if (kind === "like") {
+      seenLikeAt.value = now;
+      persistSeenLike();
+    } else if (kind === "comment") {
+      seenCommentAt.value = now;
+      persistSeenComment();
+    } else {
+      seenLikeAt.value = now;
+      seenCommentAt.value = now;
+      persistSeenLike();
+      persistSeenComment();
+    }
   }
 
   return {
@@ -317,6 +370,8 @@ export function useMessageCenter() {
     conversations,
     convLoading,
     unreadDm,
+    unreadLike,
+    unreadComment,
     unreadNotif,
     unreadTotal,
     activeThread,

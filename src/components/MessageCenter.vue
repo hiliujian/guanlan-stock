@@ -36,7 +36,10 @@
           >
             <OutlineIcon :type="t.icon" :size="30" :color="tab === t.key ? 'var(--primary)' : 'var(--text-2)'" />
             <text class="mc-tab-t">{{ t.label }}</text>
+            <!-- 分类型红色未读徽标：私信 / 点赞 / 评论各自独立计数，一眼区分消息类型 -->
             <view v-if="t.key === 'dm' && unreadDm > 0" class="mc-tab-badge">{{ unreadDm > 99 ? "99+" : unreadDm }}</view>
+            <view v-else-if="t.key === 'like' && unreadLike > 0" class="mc-tab-badge">{{ unreadLike > 99 ? "99+" : unreadLike }}</view>
+            <view v-else-if="t.key === 'comment' && unreadComment > 0" class="mc-tab-badge">{{ unreadComment > 99 ? "99+" : unreadComment }}</view>
           </view>
         </view>
 
@@ -143,6 +146,8 @@ const {
   conversations,
   convLoading,
   unreadDm,
+  unreadLike,
+  unreadComment,
   unreadTotal,
   activeThread,
   threadLoading,
@@ -219,10 +224,12 @@ async function send() {
 }
 
 // 查看点赞 / 评论标签页即视为已读活动通知 → 清顶部铃铛徽章（社媒标准行为）
+// 查看点赞 / 评论标签页即视为已读该类活动通知 → 仅清对应类型红点（分类型标记，
+// 看过点赞不会顺带清掉评论红点），铃铛聚合角标随未读总数实时回落。
 watch(
   () => tab.value,
   (k) => {
-    if (k === "like" || k === "comment") markNotifSeen();
+    if (k === "like" || k === "comment") markNotifSeen(k);
   }
 );
 </script>
