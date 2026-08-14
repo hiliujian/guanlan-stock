@@ -548,12 +548,14 @@ function buildLayout(): any[] {
   }
   if (props.mode === "intraday") candleContent.push("AVP");
   const layout: any[] = [
-    { type: "candle", content: candleContent, options: { id: "candle_pane", height: priceH, minHeight: Math.round(priceH * 0.6) } },
+    { type: "candle", content: candleContent, options: { id: "candle_pane", height: priceH, minHeight: Math.round(priceH * 0.6), dragEnabled: false } },
   ];
   // 分时模式用 INTRADAY_VOL（图例显示「分时量」），K 线模式用内置 VOL（显示「成交量」）；成交量面板常驻。
-  layout.push({ type: "indicator", content: [props.mode === "intraday" ? "INTRADAY_VOL" : "VOL"], options: { id: "vol_pane", height: volH, minHeight: 40 } });
+  // dragEnabled:false —— 锁定面板高度，禁止用户拖拽分隔线改变主图/量图/MACD 的占比（klinecharts 源码 11515 行
+  // 以 bottomPane.getOptions().dragEnabled 决定是否响应拖拽，默认 true 即可拖）。
+  layout.push({ type: "indicator", content: [props.mode === "intraday" ? "INTRADAY_VOL" : "VOL"], options: { id: "vol_pane", height: volH, minHeight: 40, dragEnabled: false } });
   // MACD 面板常驻。
-  layout.push({ type: "indicator", content: [props.mode === "intraday" ? "MACDFS" : "MACD"], options: { id: "macd_pane", height: macdH, minHeight: 60 } });
+  layout.push({ type: "indicator", content: [props.mode === "intraday" ? "MACDFS" : "MACD"], options: { id: "macd_pane", height: macdH, minHeight: 60, dragEnabled: false } });
   return layout;
 }
 
@@ -1237,25 +1239,12 @@ const legend = reactive<{
   show: false, time: "", o: null, h: null, l: null, c: null, chgPct: null,
   main: [], vol: [], macd: [],
 });
-// 图例分组对齐到各自面板顶部：优先读取 klinecharts 真实分面顶边（getBounding().top），
-// 保证图例分组精确贴到各面板顶部；图表未就绪时回退到与 buildLayout 一致的高度算法。
-// 关键：不能只按 props.height 硬编码推算——若初始化时容器实测高度与 props.height 不一致（如绘制前量到偏小值），
-// 硬编码偏移会让图例压错面板，看起来像「主图穿到成交量」。
-const chartReady = ref(false);
+// 图例分组对齐到各自面板顶部：与 buildLayout 使用同源的精确高度算法（subPaneHeights），
+// 不再读取 klinecharts 的 getSize() 动态值——实测 getSize 返回的 vol/macd 面板 top 与
+// 真实渲染位置存在偏差，导致成交量/MACD 图例标题未贴在面板顶部（偏上或压错面板）。
+// 由于三个面板高度由 buildLayout 固定（dragEnabled:false 锁定），用同一算法算出的顶部坐标
+// 必然与渲染位置 100% 一致，图例标题精确贴在每个面板顶部。
 const legendOffsets = computed(() => {
-  if (chartReady.value && chart) {
-    try {
-      // 用图表实例真实分面包围盒的 top（相对容器），精确对齐图例分组到各面板顶部
-      const vt = (chart as any).getSize?.("vol_pane")?.top;
-      const mt = (chart as any).getSize?.("macd_pane")?.top;
-      if (typeof vt === "number" && typeof mt === "number" && vt > 0 && mt > vt) {
-        return { price: 0, vol: vt, macd: mt };
-      }
-    } catch {
-      /* noop */
-    }
-  }
-  // 回退：与 buildLayout 精确一致的算法（含分隔线扣除），确保图例偏移与面板顶边对齐
   const SEP = 2, GAP_COUNT = 2;
   const totalContent = Math.max(140, props.height - SEP * GAP_COUNT);
   const { priceH, volH } = subPaneHeights(totalContent);
@@ -1536,7 +1525,6 @@ function applySubOverrides() {
 // 完整构建图表（销毁旧实例并从头初始化）：仅在结构变化（mode/layout）或首次挂载时调用
 function buildChart() {
   if (!chartEl.value) return;
-  chartReady.value = false; // 重建期间图例偏移回退到高度算法，待真实分面就绪后再用 getBounding 对齐
   destroyChart();
   ensureAvp();
   ensureIntradayVol();
@@ -1607,7 +1595,6 @@ function buildChart() {
       drawCyq();
       restoreOverlays();
       drawAutoLevels();
-      chartReady.value = true; // 触发 legendOffsets 改用真实分面顶边
     };
     if (typeof requestAnimationFrame === "function") {
       // 双 rAF：第一帧等浏览器布局完成，第二帧等绘制完成；再挂一个 setTimeout 兜底
