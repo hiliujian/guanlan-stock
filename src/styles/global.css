@@ -300,21 +300,6 @@ textarea {
   opacity: 0.5;
 }
 
-.btn-ghost {
-  background: var(--card-2);
-  color: var(--text-2);
-  border: 1rpx solid var(--border);
-  border-radius: 999rpx;
-  font-size: var(--font-md);
-  height: 80rpx;
-  line-height: 80rpx;
-  text-align: center;
-  transition: transform 0.15s ease;
-}
-.btn-ghost:active {
-  transform: scale(0.97);
-}
-
 /* 行内标签 */
 .tag {
   display: inline-flex;
@@ -342,19 +327,6 @@ textarea {
   color: var(--text);
   line-height: 1.4;
 }
-.tag-up {
-  color: var(--up);
-  background: rgba(239, 35, 42, 0.1);
-}
-.tag-down {
-  color: var(--down);
-  background: rgba(9, 176, 122, 0.1);
-}
-.tag-info {
-  color: var(--text-2);
-  background: rgba(107, 111, 118, 0.1);
-}
-
 /* ============ 动效工具类 ============ */
 /* 卡片进场：自下而上淡入 */
 .anim-fade-up {
@@ -472,9 +444,6 @@ textarea {
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
 }
 /* 玻璃拟态半径变体：避免组件层重复书写同一套 bg/border/shadow/blur */
-.glass--pill {
-  border-radius: 999rpx;
-}
 .glass--lg {
   border-radius: 28rpx;
 }
@@ -769,15 +738,6 @@ textarea {
   padding: 16rpx 20rpx;
 }
 
-/* 轻抬升微交互（移动端点按反馈） */
-.lift {
-  transition: transform 0.18s ease, box-shadow 0.25s ease;
-}
-.lift:active {
-  transform: translateY(-2rpx) scale(0.992);
-  box-shadow: var(--shadow-up), inset 0 1rpx 0 rgba(255, 255, 255, 0.08);
-}
-
 /* 品牌头部入场辉光 */
 .anim-glow {
   animation: glowPulse 3.4s ease-in-out infinite;
@@ -796,15 +756,6 @@ textarea {
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* 装饰性细微浮动 */
-.anim-float {
-  animation: floatY 6s ease-in-out infinite;
-}
-@keyframes floatY {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10rpx); }
-}
-
 /* ============ 布局工具类 ============ */
 /* Flex 基础：最高频的布局模式，覆盖全站 80%+ 的 flex 声明 */
 .flex { display: flex; }
@@ -813,8 +764,6 @@ textarea {
 .flex-between { display: flex; align-items: center; justify-content: space-between; }
 /* flex-1 + min-width:0：允许子项收缩到内容宽度以下，防止被挤出 */
 .flex-1 { flex: 1; min-width: 0; }
-/* flex 纵向撑满：子元素依次排列，父容器至少占满视口 */
-.flex-col-stretch { display: flex; flex-direction: column; min-height: 100%; }
 .flex-none { flex: none; }
 
 /* ============ 文字工具类 ============ */
@@ -836,8 +785,7 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .anim-glow,
-  .anim-float { animation: none !important; }
+  .anim-glow { animation: none !important; }
   .anim-fade-up,
   .anim-rise,
   .anim-rise-soft { animation-duration: 0.001s !important; }
