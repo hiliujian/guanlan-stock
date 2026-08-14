@@ -4,7 +4,15 @@
 // 所有数据读写都经 communityRepo（模拟 Supabase 的 Service 层）。
 // =====================================================================
 import { ref } from "vue";
-import { communityRepo, type CommunityPost, type PostCard, type Topic } from "@/api/community";
+import {
+  communityRepo,
+  type CommunityPost,
+  type PostCard,
+  type Topic,
+  type NotificationItem,
+  type Conversation,
+  type DmMessage,
+} from "@/api/community";
 
 const posts = ref<CommunityPost[]>([]);
 const loading = ref(false);
@@ -56,4 +64,91 @@ export function useCommunity() {
   }
 
   return { posts, loading, load, publishText, publishCard, like, reply, remove };
+}
+
+// =====================================================================
+// 消息中心（模块级单例，跨组件共享：顶部栏未读角标与弹层共用同一份状态）
+// 通知（点赞 / 评论）由后端实时派生；私信走 community_dms + 会话聚合。
+// =====================================================================
+const notifications = ref<NotificationItem[]>([]);
+const notifLoading = ref(false);
+const conversations = ref<Conversation[]>([]);
+const convLoading = ref(false);
+const unreadDm = ref(0);
+const activeThread = ref<DmMessage[]>([]); // 当前会话消息流
+const threadLoading = ref(false);
+
+export function useMessageCenter() {
+  async function loadNotifications() {
+    notifLoading.value = true;
+    try {
+      notifications.value = await communityRepo.myNotifications();
+    } finally {
+      notifLoading.value = false;
+    }
+  }
+
+  async function loadConversations() {
+    convLoading.value = true;
+    try {
+      conversations.value = await communityRepo.listConversations();
+      // 会话未读之和即为私信角标数
+      unreadDm.value = conversations.value.reduce((s, c) => s + c.unreadCount, 0);
+    } finally {
+      convLoading.value = false;
+    }
+  }
+
+  /** 单独刷私信未读数（轻量，供顶部栏角标用） */
+  async function loadUnreadDm() {
+    unreadDm.value = await communityRepo.unreadDmCount();
+  }
+
+  /** 打开与某人的会话：拉取消息流并顺带标记已读 → 重新聚合未读 */
+  async function openThread(otherId: string) {
+    threadLoading.value = true;
+    try {
+      activeThread.value = await communityRepo.getDmThread(otherId);
+      await loadConversations();
+    } finally {
+      threadLoading.value = false;
+    }
+  }
+
+  async function sendDm(otherId: string, content: string): Promise<DmMessage | null> {
+    const m = await communityRepo.sendDm(otherId, content);
+    if (m) {
+      activeThread.value = [...activeThread.value, m];
+      await loadConversations(); // 更新会话列表（末条内容 / 顺序 / 未读）
+    }
+    return m;
+  }
+
+  function resetThread() {
+    activeThread.value = [];
+  }
+
+  function reset() {
+    notifications.value = [];
+    conversations.value = [];
+    unreadDm.value = 0;
+    activeThread.value = [];
+  }
+
+  return {
+    notifications,
+    notifLoading,
+    conversations,
+    convLoading,
+    unreadDm,
+    activeThread,
+    threadLoading,
+    loadNotifications,
+    loadConversations,
+    loadUnreadDm,
+    openThread,
+    sendDm,
+    resetThread,
+    reset,
+  };
 }

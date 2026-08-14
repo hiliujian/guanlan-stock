@@ -3,28 +3,20 @@
     <!-- 顶部：品牌 + 我的昵称 / 头像（可点击编辑），与自选共用 PageHeader -->
     <PageHeader brand-text="社区" brand-icon="chatbubble">
       <template #right>
-        <view class="cm-me" @click="toggleEdit">
+        <view class="cm-me">
           <UserAvatar :url="myAvatarUrl" :seed="mySeed" :size="48" :frame="myFrame" />
           <text class="cm-name truncate">{{ myName }}</text>
-          <OutlineIcon type="gear" :size="24" color="var(--text-2)" />
+          <view class="cm-dyn" @click="msgOpen = true">
+            <OutlineIcon type="chatbubble" :size="30" color="var(--text-2)" />
+            <text class="cm-dyn-t">动态</text>
+            <view v-if="unreadDm > 0" class="cm-badge">{{ unreadDm > 99 ? '99+' : unreadDm }}</view>
+          </view>
         </view>
       </template>
     </PageHeader>
 
     <!-- 可滚动内容区 -->
     <scroll-view class="cm-scroll" scroll-y>
-
-    <!-- 昵称编辑（未登录时本地编辑；已登录昵称同步到账号资料） -->
-    <view v-if="editing" class="cm-edit glass">
-      <view class="cm-edit-row">
-        <input class="cm-edit-in" v-model="nameDraft" placeholder="设置你的昵称" maxlength="12" />
-        <view class="cm-edit-save" @click="saveName">保存</view>
-      </view>
-      <text class="cm-edit-lbl">{{ userState.loggedIn ? "用户名可在「我的 → 个人资料」中修改" : "昵称仅保存在本机，换设备不互通" }}</text>
-    </view>
-
-    <!-- 发帖器 -->
-    <PostComposer @publish-text="onText" @publish-card="onCard" />
 
     <!-- 话题筛选（按股票 / 板块分类，避免所有评论汇聚一起） -->
     <scroll-view v-if="topics.length" scroll-x class="cm-topics" :show-scrollbar="false">
@@ -65,9 +57,27 @@
       <text class="empty-title">{{ activeTopic === "all" ? "还没有动态，来发第一条吧" : "该话题下还没有动态" }}</text>
     </view>
 
-    <!-- 底部留白（避免被固定 tabbar 遮挡） -->
+    <!-- 底部留白（避免被固定 tabbar 与底部发帖卡片遮挡） -->
     <view class="cm-pad" />
     </scroll-view>
+
+    <!-- 底部发帖卡片：复用自选同款 PeekSheet（与自选卡片一致），折叠态为输入框卡片，展开进入完整发帖界面 -->
+    <PeekSheet ref="postSheet">
+      <template #peek>
+        <view class="pe-peek">
+          <UserAvatar :url="myAvatarUrl" :seed="mySeed" :size="44" :frame="myFrame" />
+          <view class="pe-ph">分享你的观点、复盘或提问…</view>
+        </view>
+      </template>
+      <template #default>
+        <scroll-view scroll-y class="pe-body">
+          <PostComposer @publish-text="onText" @publish-card="onCard" />
+        </scroll-view>
+      </template>
+    </PeekSheet>
+
+    <!-- 消息中心（动态：私信 / 点赞 / 评论） -->
+    <MessageCenter v-model="msgOpen" />
   </view>
 </template>
 
@@ -81,16 +91,21 @@ import PageHeader from "./PageHeader.vue";
 import PostComposer from "./PostComposer.vue";
 import PostCard from "./PostCard.vue";
 import UserAvatar from "./UserAvatar.vue";
-import { useCommunity } from "@/store/community";
+import PeekSheet from "./PeekSheet.vue";
+import MessageCenter from "./MessageCenter.vue";
+import { useCommunity, useMessageCenter } from "@/store/community";
 import { usePageGuard } from "@/store/guard";
-import { getMyName, setMyName } from "@/store/identity";
+import { getMyName } from "@/store/identity";
 import { userState } from "@/store/user";
-import { updateProfile } from "@/api/auth";
-import { refreshProfile } from "@/store/user";
 import { avatarSeed, topicColor } from "@/utils/avatar";
 import type { CommunityPost, PostCard as PostCardData, Topic } from "@/api/community";
 
 const { posts, loading, load, publishText, publishCard, like, reply, remove } = useCommunity();
+
+// 消息中心（动态）：未读私信角标 + 进入消息中心加载会话
+const { unreadDm, loadConversations } = useMessageCenter();
+const msgOpen = ref(false);
+const postSheet = ref<any>(null);
 
 // 全局页面守卫：本页未对游客开放 + 未登录 → 跳转登录页（统一由 src/store/guard.ts 处理）
 usePageGuard("community");
@@ -123,29 +138,6 @@ function isMine(p: CommunityPost): boolean {
   }
   // 未登录：按本地昵称判定
   return p.author === myName.value;
-}
-
-const editing = ref(false);
-const nameDraft = ref("");
-function toggleEdit() {
-  editing.value = !editing.value;
-  if (editing.value) nameDraft.value = myName.value;
-}
-async function saveName() {
-  const v = nameDraft.value.trim();
-  if (!v) return;
-  if (userState.loggedIn) {
-    // 已登录：昵称同步写入账号资料（与「我的 → 个人资料」同源）
-    const r = await updateProfile({ username: v, display_name: v });
-    if (!r.ok) {
-      uni.showToast({ title: r.error || "保存失败", icon: "none" });
-      return;
-    }
-    await refreshProfile();
-  } else {
-    setMyName(v);
-  }
-  editing.value = false;
 }
 
 // ---------------- 话题筛选 ----------------
@@ -191,6 +183,7 @@ const displayPosts = computed(() => {
 async function onText(content: string, topic?: Topic, images?: string[]) {
   try {
     await publishText(content, topic, images);
+    postSheet.value?.collapse();
   } catch (e: any) {
     uni.showToast({ title: e?.message || "发布失败，请稍后再试", icon: "none" });
   }
@@ -198,6 +191,7 @@ async function onText(content: string, topic?: Topic, images?: string[]) {
 async function onCard(card: PostCardData, images?: string[]) {
   try {
     await publishCard(card, images);
+    postSheet.value?.collapse();
   } catch (e: any) {
     uni.showToast({ title: e?.message || "发布失败，请稍后再试", icon: "none" });
   }
@@ -206,6 +200,8 @@ async function onCard(card: PostCardData, images?: string[]) {
 // keep-alive 每次激活：（已登录 / 公开页）加载社区动态；未授权由全局守卫跳转登录页
 onActivated(() => {
   if (!posts.value.length) load();
+  // 刷新私信未读角标（已登录才拉）
+  if (userState.loggedIn) loadConversations();
 });
 // 登录后：空态消失，立即加载社区动态
 watch(
@@ -247,40 +243,63 @@ defineExpose({ refresh: load });
   max-width: 180rpx;
   /* 截断属性已提升至全局 .truncate */
 }
-.cm-edit {
-  /* 顶部与 header 保持 14rpx 间距，底部归零由评论框的 margin-top 接管，避免展开态出现双倍间距 */
-  margin: 14rpx 18rpx 0;
-  padding: 16rpx 18rpx;
-  border-radius: var(--radius);
-}
-.cm-edit-row {
+/* 动态入口（原昵称设置按钮位置）：消息中心入口，带未读角标 */
+.cm-dyn {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12rpx;
-}
-.cm-edit-in {
-  flex: 1;
-  height: 64rpx;
-  padding: 0 18rpx;
+  gap: 6rpx;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  background: var(--card-2);
+  box-shadow: inset 0 0 0 1rpx var(--border);
   font-size: var(--font-sm);
   color: var(--text);
-  background: var(--card-2);
-  border-radius: 14rpx;
 }
-.cm-edit-save {
-  flex: none;
-  padding: 12rpx 28rpx;
-  border-radius: 999rpx;
-  background: var(--primary);
-  color: #fff;
+.cm-dyn:active {
+  opacity: 0.65;
+}
+.cm-dyn-t {
   font-size: var(--font-sm);
-  font-weight: 700;
+  color: var(--text);
 }
-.cm-edit-lbl {
-  display: block;
-  margin: 16rpx 0 10rpx;
-  font-size: var(--font-xs);
+.cm-badge {
+  position: absolute;
+  top: -6rpx;
+  right: -6rpx;
+  min-width: 28rpx;
+  height: 28rpx;
+  padding: 0 6rpx;
+  border-radius: 999rpx;
+  background: var(--danger);
+  color: #fff;
+  font-size: 20rpx;
+  line-height: 28rpx;
+  text-align: center;
+}
+
+/* 底部发帖卡片折叠态（输入框卡片）：复用 PeekSheet 玻璃面板，这里仅定义内部行布局 */
+.pe-peek {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  height: 100%;
+  padding: 0 22rpx;
+}
+.pe-ph {
+  flex: 1;
+  height: 56rpx;
+  line-height: 56rpx;
+  padding: 0 22rpx;
+  font-size: var(--font-sm);
   color: var(--text-2);
+  background: var(--card-2);
+  border-radius: 999rpx;
+}
+.pe-body {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
 }
 
 /* 话题筛选 chips */
@@ -335,6 +354,6 @@ defineExpose({ refresh: load });
 /* 空态标题已统一为全局 .empty-title（见 global.css） */
 
 .cm-pad {
-  height: calc(140rpx + env(safe-area-inset-bottom));
+  height: calc(200rpx + env(safe-area-inset-bottom));
 }
 </style>

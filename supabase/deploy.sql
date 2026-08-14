@@ -420,6 +420,164 @@ $$;
 
 
 -- ╔══════════════════════════════════════════════════════════════╗
+-- ║ 5.1 私信表 + 消息中心后端                                     ║
+-- 私信 community_dms；点赞 / 评论通知从 community_likes /           ║
+-- community_replies 实时派生（get_my_notifications），无需独立通知表。║
+-- ╚══════════════════════════════════════════════════════════════╝
+create table if not exists public.community_dms (
+  id          uuid primary key default gen_random_uuid(),
+  sender_id   uuid not null references auth.users (id) on delete cascade,
+  receiver_id uuid not null references auth.users (id) on delete cascade,
+  content     text not null check (length(content) between 1 and 2000),
+  status      text not null default 'sent' check (status in ('sent','read','deleted')),
+  created_at  timestamptz not null default now()
+);
+create index if not exists idx_dms_inbox on public.community_dms (receiver_id, created_at);
+create index if not exists idx_dms_sent  on public.community_dms (sender_id, created_at);
+create index if not exists idx_dms_convo on public.community_dms (least(sender_id,receiver_id), greatest(sender_id,receiver_id), created_at);
+
+-- RLS：仅收发双方可见 / 仅本人可发 / 仅接收方可标记已读
+alter table public.community_dms enable row level security;
+drop policy if exists "community_dms_select" on public.community_dms;
+create policy "community_dms_select" on public.community_dms
+  for select to authenticated using (auth.uid() = sender_id or auth.uid() = receiver_id);
+drop policy if exists "community_dms_insert" on public.community_dms;
+create policy "community_dms_insert" on public.community_dms
+  for insert to authenticated with check (auth.uid() = sender_id);
+drop policy if exists "community_dms_update" on public.community_dms;
+create policy "community_dms_update" on public.community_dms
+  for update to authenticated using (auth.uid() = receiver_id)
+  with check (auth.uid() = receiver_id and status = 'read');
+
+-- 发私信
+create or replace function public.send_dm(p_receiver uuid, p_content text)
+returns table (id uuid, sender_id uuid, receiver_id uuid, content text, status text, created_at timestamptz)
+language plpgsql security definer set search_path = public as $$
+begin
+  if p_receiver = auth.uid() then raise exception '不能给自己发私信'; end if;
+  if length(trim(p_content)) < 1 then raise exception '私信内容不能为空'; end if;
+  return query
+  insert into public.community_dms (sender_id, receiver_id, content)
+  values (auth.uid(), p_receiver, trim(p_content))
+  returning community_dms.id, community_dms.sender_id, community_dms.receiver_id,
+            community_dms.content, community_dms.status, community_dms.created_at;
+end;
+$$;
+
+-- 会话列表（按对方聚合：最近一条 + 未读数）
+create or replace function public.get_my_conversations()
+returns table (
+  other_id uuid, other_name text, other_avatar text, other_frame text,
+  last_content text, last_at timestamptz, unread_count bigint, last_sender_me boolean
+)
+language sql security definer set search_path = public as $$
+  with mine as (
+    select id, sender_id, receiver_id, content, created_at, status
+    from public.community_dms
+    where sender_id = auth.uid() or receiver_id = auth.uid()
+  ),
+  paired as (
+    select case when sender_id = auth.uid() then receiver_id else sender_id end as other_id,
+           content, created_at, status, sender_id
+    from mine
+  ),
+  latest as (
+    select distinct on (other_id) other_id, content as last_content, created_at as last_at,
+           (sender_id = auth.uid()) as last_sender_me
+    from paired order by other_id, created_at desc
+  ),
+  unread as (
+    select case when sender_id = auth.uid() then receiver_id else sender_id end as other_id,
+           count(*) as uc
+    from mine
+    where receiver_id = auth.uid() and status <> 'read'
+    group by 1
+  )
+  select l.other_id,
+         coalesce(p.display_name, p.username, '用户') as other_name,
+         p.avatar_url as other_avatar,
+         p.avatar_frame as other_frame,
+         l.last_content, l.last_at, coalesce(u.uc,0)::bigint, l.last_sender_me
+  from latest l
+  left join unread u on u.other_id = l.other_id
+  left join public.profiles p on p.id = l.other_id
+  order by l.last_at desc;
+$$;
+
+-- 私信会话详情（按时间升序，顺带标记已读）
+create or replace function public.get_dm_thread(p_other uuid)
+returns table (id uuid, sender_id uuid, receiver_id uuid, content text, status text, created_at timestamptz)
+language plpgsql security definer set search_path = public as $$
+begin
+  update public.community_dms
+     set status = 'read'
+   where receiver_id = auth.uid() and sender_id = p_other and status <> 'read';
+  return query
+  select d.id, d.sender_id, d.receiver_id, d.content, d.status, d.created_at
+  from public.community_dms d
+  where (d.sender_id = auth.uid() and d.receiver_id = p_other)
+     or (d.sender_id = p_other and d.receiver_id = auth.uid())
+  order by d.created_at asc;
+end;
+$$;
+
+-- 未读私信数
+create or replace function public.unread_dm_count()
+returns integer language sql security definer set search_path = public as $$
+  select coalesce(count(*),0)::integer
+  from public.community_dms
+  where receiver_id = auth.uid() and status <> 'read';
+$$;
+
+-- 消息中心：点赞 / 评论通知（从我自己的帖子实时派生，无需独立通知表）
+create or replace function public.get_my_notifications()
+returns table (
+  id uuid, kind text, actor_id uuid, actor_name text, actor_avatar text, actor_frame text,
+  post_id uuid, post_snippet text, comment_content text, created_at timestamptz
+)
+language sql security definer set search_path = public as $$
+  with likes as (
+    select l.post_id, l.user_id as actor_id, l.created_at
+    from public.community_likes l
+    join public.community_posts p on p.id = l.post_id
+    where p.user_id = auth.uid() and l.user_id <> auth.uid()
+  ),
+  comments as (
+    select r.post_id, r.user_id as actor_id, r.content, r.created_at
+    from public.community_replies r
+    join public.community_posts p on p.id = r.post_id
+    where p.user_id = auth.uid() and r.user_id <> auth.uid()
+      and r.status = 'published'
+  ),
+  like_rows as (
+    select md5('like-' || l.post_id || '-' || l.actor_id)::uuid as id,
+           'like'::text as kind, l.actor_id, l.post_id,
+           null::text as comment_content, l.created_at
+    from likes l
+  ),
+  comment_rows as (
+    select md5('comment-' || c.post_id || '-' || c.actor_id || '-' || c.created_at)::uuid as id,
+           'comment'::text as kind, c.actor_id, c.post_id,
+           c.content as comment_content, c.created_at
+    from comments c
+  ),
+  merged as ( select * from like_rows union all select * from comment_rows )
+  select m.id, m.kind, m.actor_id,
+         coalesce(pr.display_name, pr.username, '用户') as actor_name,
+         pr.avatar_url as actor_avatar,
+         pr.avatar_frame as actor_frame,
+         m.post_id,
+         coalesce(p2.content, '分享了持仓卡片') as post_snippet,
+         m.comment_content, m.created_at
+  from merged m
+  join public.community_posts p2 on p2.id = m.post_id
+  left join public.profiles pr on pr.id = m.actor_id
+  order by m.created_at desc
+  limit 100;
+$$;
+
+
+-- ╔══════════════════════════════════════════════════════════════╗
 -- ║ 6. Realtime（可选，幂等加入；开启后发帖/点赞经 WebSocket 推送） ║
 -- ╚══════════════════════════════════════════════════════════════╝
 do $$

@@ -84,6 +84,42 @@ export interface CommunityPost {
   replies: Reply[];
 }
 
+/** 消息中心通知项（点赞 / 评论，由后端从我自己的帖子实时派生） */
+export interface NotificationItem {
+  id: string;
+  kind: "like" | "comment"; // like = 有人赞了我的帖；comment = 有人评论了我的帖
+  actorId: string; // 触发者账号 id
+  actorName: string;
+  actorAvatarUrl: string;
+  actorFrame: string;
+  postId: string; // 关联的我的帖子
+  postSnippet: string; // 帖子摘要（文字内容 / 卡片一句话）
+  commentContent?: string; // 仅 comment 类型有值
+  createdAt: number;
+}
+
+/** 私信会话（按对方聚合的列表项） */
+export interface Conversation {
+  otherId: string; // 对方账号 id
+  otherName: string;
+  otherAvatarUrl: string;
+  otherFrame: string;
+  lastContent: string; // 最近一条消息内容
+  lastAt: number;
+  unreadCount: number;
+  lastSenderMe: boolean; // 最近一条是否我发的
+}
+
+/** 单条私信 */
+export interface DmMessage {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  content: string;
+  status: string; // sent / read
+  createdAt: number;
+}
+
 // ---------------------------------------------------------------------
 // card JSONB 边界映射：DB 存 snake_case，TS/UI 用 camelCase
 // 仅 profit 卡片含驼峰字段（totalReturn / winRate），其余已是 snake。
@@ -126,6 +162,25 @@ export const communityRepo = {
 
   async remove(id: string): Promise<void> {
     return removeRemote(id);
+  },
+
+  // ---------------- 消息中心：通知（点赞 / 评论） ----------------
+  async myNotifications(): Promise<NotificationItem[]> {
+    return notificationsRemote();
+  },
+
+  // ---------------- 私信 ----------------
+  async sendDm(receiverId: string, content: string): Promise<DmMessage | null> {
+    return sendDmRemote(receiverId, content);
+  },
+  async listConversations(): Promise<Conversation[]> {
+    return listConversationsRemote();
+  },
+  async getDmThread(otherId: string): Promise<DmMessage[]> {
+    return getDmThreadRemote(otherId);
+  },
+  async unreadDmCount(): Promise<number> {
+    return unreadDmCountRemote();
   },
 };
 
@@ -378,4 +433,123 @@ async function removeRemote(id: string): Promise<void> {
   const sb = getSupabase();
   if (!sb) return;
   await sb.from("community_posts").delete().eq("id", id);
+}
+
+// =====================================================================
+// 消息中心：点赞 / 评论通知（RPC: get_my_notifications）
+// 后端从我自己的帖子实时聚合 community_likes / community_replies，无需本地逻辑
+// =====================================================================
+async function notificationsRemote(): Promise<NotificationItem[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const res = (await withTimeout(
+    sb.rpc("get_my_notifications") as unknown as Promise<{ data: any; error: any }>,
+    10000
+  )) as {
+    data: any;
+    error: any;
+  };
+  if (res.error || !res.data) return [];
+  return (res.data as any[]).map((r) => ({
+    id: r.id,
+    kind: r.kind,
+    actorId: r.actor_id,
+    actorName: r.actor_name || "用户",
+    actorAvatarUrl: r.actor_avatar || "",
+    actorFrame: r.actor_frame || "",
+    postId: r.post_id,
+    postSnippet: r.post_snippet || "",
+    commentContent: r.comment_content || undefined,
+    createdAt: new Date(r.created_at).getTime(),
+  }));
+}
+
+// =====================================================================
+// 私信（RPC: send_dm / get_my_conversations / get_dm_thread / unread_dm_count）
+// =====================================================================
+async function sendDmRemote(receiverId: string, content: string): Promise<DmMessage | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const res = (await withTimeout(
+    sb.rpc("send_dm", { p_receiver: receiverId, p_content: content }) as unknown as Promise<{
+      data: any;
+      error: any;
+    }>,
+    10000
+  )) as { data: any; error: any };
+  if (res.error || !res.data) return null;
+  const d = (res.data as any[])[0];
+  if (!d) return null;
+  return {
+    id: d.id,
+    senderId: d.sender_id,
+    receiverId: d.receiver_id,
+    content: d.content,
+    status: d.status,
+    createdAt: new Date(d.created_at).getTime(),
+  };
+}
+
+async function listConversationsRemote(): Promise<Conversation[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const res = (await withTimeout(
+    sb.rpc("get_my_conversations") as unknown as Promise<{ data: any; error: any }>,
+    10000
+  )) as {
+    data: any;
+    error: any;
+  };
+  if (res.error || !res.data) return [];
+  return (res.data as any[]).map((r) => ({
+    otherId: r.other_id,
+    otherName: r.other_name || "用户",
+    otherAvatarUrl: r.other_avatar || "",
+    otherFrame: r.other_frame || "",
+    lastContent: r.last_content || "",
+    lastAt: new Date(r.last_at).getTime(),
+    unreadCount: Number(r.unread_count) || 0,
+    lastSenderMe: !!r.last_sender_me,
+  }));
+}
+
+async function getDmThreadRemote(otherId: string): Promise<DmMessage[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const res = (await withTimeout(
+    sb.rpc("get_dm_thread", { p_other: otherId }) as unknown as Promise<{ data: any; error: any }>,
+    10000
+  )) as {
+    data: any;
+    error: any;
+  };
+  if (res.error || !res.data) return [];
+  return (res.data as any[]).map((r) => ({
+    id: r.id,
+    senderId: r.sender_id,
+    receiverId: r.receiver_id,
+    content: r.content,
+    status: r.status,
+    createdAt: new Date(r.created_at).getTime(),
+  }));
+}
+
+async function unreadDmCountRemote(): Promise<number> {
+  const sb = getSupabase();
+  if (!sb) return 0;
+  const res = (await withTimeout(
+    sb.rpc("unread_dm_count") as unknown as Promise<{ data: any; error: any }>,
+    10000
+  )) as {
+    data: any;
+    error: any;
+  };
+  if (res.error || !res.data) return 0;
+  // 标量函数可能返回 [{ unread_dm_count: n }] 或 [n] 或标量，统一兜底
+  const raw = res.data as any;
+  if (Array.isArray(raw)) {
+    if (raw.length && typeof raw[0] === "object") return Number(raw[0].unread_dm_count) || 0;
+    return Number(raw[0]) || 0;
+  }
+  return Number(raw) || 0;
 }
