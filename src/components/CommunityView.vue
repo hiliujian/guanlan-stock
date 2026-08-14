@@ -6,10 +6,9 @@
         <view class="cm-me">
           <UserAvatar :url="myAvatarUrl" :seed="mySeed" :size="48" :frame="myFrame" />
           <text class="cm-name truncate">{{ myName }}</text>
-          <view class="cm-dyn" @click="msgOpen = true">
-            <OutlineIcon type="chatbubble" :size="30" color="var(--text-2)" />
-            <text class="cm-dyn-t">动态</text>
-            <view v-if="unreadDm > 0" class="cm-badge">{{ unreadDm > 99 ? '99+' : unreadDm }}</view>
+          <view class="cm-bell" @click="msgOpen = true">
+            <OutlineIcon type="bell" :size="30" color="var(--text-2)" />
+            <view v-if="unreadTotal > 0" class="cm-badge">{{ unreadTotal > 99 ? '99+' : unreadTotal }}</view>
           </view>
         </view>
       </template>
@@ -119,8 +118,8 @@ import type { CommunityPost, PostCard as PostCardData, Topic } from "@/api/commu
 
 const { posts, loading, searchResults, load, publishText, publishCard, like, reply, remove, search } = useCommunity();
 
-// 消息中心（动态）：未读私信角标 + 进入消息中心加载会话
-const { unreadDm, loadConversations } = useMessageCenter();
+// 消息中心（通知铃铛）：未读总数角标（私信 + 活动通知）+ 进入消息中心加载会话
+const { unreadTotal, unreadDm, loadConversations, loadNotifications } = useMessageCenter();
 const msgOpen = ref(false);
 const postSheet = ref<any>(null);
 
@@ -252,14 +251,21 @@ async function onCard(card: PostCardData, images?: string[]) {
 // keep-alive 每次激活：（已登录 / 公开页）加载社区动态；未授权由全局守卫跳转登录页
 onActivated(() => {
   if (!posts.value.length) load();
-  // 刷新私信未读角标（已登录才拉）
-  if (userState.loggedIn) loadConversations();
+  // 刷新未读角标（私信 + 活动通知，已登录才拉）
+  if (userState.loggedIn) {
+    loadConversations();
+    loadNotifications();
+  }
 });
-// 登录后：空态消失，立即加载社区动态
+// 登录后：空态消失，立即加载社区动态与未读角标
 watch(
   () => userState.loggedIn,
   (li) => {
-    if (li && !posts.value.length) load();
+    if (li) {
+      if (!posts.value.length) load();
+      loadConversations();
+      loadNotifications();
+    }
   }
 );
 
@@ -295,25 +301,21 @@ defineExpose({ refresh: load });
   max-width: 180rpx;
   /* 截断属性已提升至全局 .truncate */
 }
-/* 动态入口（原昵称设置按钮位置）：消息中心入口，带未读角标 */
-.cm-dyn {
+/* 通知铃铛入口（复用原设置按钮胶囊样式）：消息中心入口，带未读角标 */
+.cm-bell {
   position: relative;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6rpx;
   padding: 8rpx 18rpx;
   border-radius: 999rpx;
   background: var(--card-2);
   box-shadow: inset 0 0 0 1rpx var(--border);
-  font-size: var(--font-sm);
   color: var(--text);
 }
-.cm-dyn:active {
+.cm-bell:active {
   opacity: 0.65;
-}
-.cm-dyn-t {
-  font-size: var(--font-sm);
-  color: var(--text);
 }
 .cm-badge {
   position: absolute;

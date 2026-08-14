@@ -139,6 +139,7 @@ const {
   loadConversations,
   openThread,
   sendDm,
+  markNotifSeen,
 } = useMessageCenter();
 
 type TabKey = "dm" | "like" | "comment";
@@ -184,6 +185,14 @@ watch(
     } else {
       selectedOther.value = null;
     }
+  }
+);
+
+// 查看点赞 / 评论标签页即视为已读活动通知 → 清顶部铃铛徽章（社媒标准行为）
+watch(
+  () => tab.value,
+  (k) => {
+    if (k === "like" || k === "comment") markNotifSeen();
   }
 );
 </script>

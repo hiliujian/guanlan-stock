@@ -3,7 +3,7 @@
 // UI 组件通过 useCommunity() 拿到 posts / loading 与一组 actions，
 // 所有数据读写都经 communityRepo（模拟 Supabase 的 Service 层）。
 // =====================================================================
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import {
   communityRepo,
   type CommunityPost,
@@ -97,11 +97,34 @@ const unreadDm = ref(0);
 const activeThread = ref<DmMessage[]>([]); // 当前会话消息流
 const threadLoading = ref(false);
 
+// 通知「已读基线」：客户端持久化的时间戳。后端 NotificationItem 无 read 标记，
+// 故以「通知创建时间晚于该基线」判定为未读（社媒通行的「最后查看时间」模式）。
+const SEEN_KEY = "gl_last_notif_seen_at";
+const lastNotifSeenAt = ref<number>(Number(uni.getStorageSync(SEEN_KEY)) || 0);
+function persistSeen() {
+  try {
+    uni.setStorageSync(SEEN_KEY, lastNotifSeenAt.value);
+  } catch {
+    /* 持久化失败不影响内存态角标 */
+  }
+}
+
 export function useMessageCenter() {
   async function loadNotifications() {
     notifLoading.value = true;
     try {
       notifications.value = await communityRepo.myNotifications();
+      // 首次加载（基线为 0）：把基线设为「最早一条通知时间 - 1」，
+      // 使历史通知不被一次性计为未读；之后再有新通知才会触发角标。
+      if (lastNotifSeenAt.value === 0 && notifications.value.length) {
+        const minT = notifications.value
+          .map((n) => new Date(n.createdAt).getTime())
+          .filter((t) => Number.isFinite(t));
+        if (minT.length) {
+          lastNotifSeenAt.value = Math.min(...minT) - 1;
+          persistSeen();
+        }
+      }
     } finally {
       notifLoading.value = false;
     }
@@ -152,6 +175,25 @@ export function useMessageCenter() {
     conversations.value = [];
     unreadDm.value = 0;
     activeThread.value = [];
+    // 重置基线，使下次加载按「首次加载」逻辑重新校准（适配切换账号）。
+    lastNotifSeenAt.value = 0;
+  }
+
+  /** 当前用户未读的活动通知数（点赞 / 评论）：createdAt 晚于已读基线。 */
+  const unreadNotif = computed(() =>
+    notifications.value.filter((n) => {
+      const t = new Date(n.createdAt).getTime();
+      return Number.isFinite(t) && t > lastNotifSeenAt.value;
+    }).length
+  );
+
+  /** 顶部铃铛角标：私信未读 + 活动通知未读（社媒标准聚合）。 */
+  const unreadTotal = computed(() => unreadDm.value + unreadNotif.value);
+
+  /** 标记活动通知已读：把基线推到「现在」并持久化 → 清铃铛徽章。 */
+  function markNotifSeen() {
+    lastNotifSeenAt.value = Date.now();
+    persistSeen();
   }
 
   return {
@@ -160,6 +202,8 @@ export function useMessageCenter() {
     conversations,
     convLoading,
     unreadDm,
+    unreadNotif,
+    unreadTotal,
     activeThread,
     threadLoading,
     loadNotifications,
@@ -167,6 +211,7 @@ export function useMessageCenter() {
     loadUnreadDm,
     openThread,
     sendDm,
+    markNotifSeen,
     resetThread,
     reset,
   };
