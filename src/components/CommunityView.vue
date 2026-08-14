@@ -15,11 +15,28 @@
       </template>
     </PageHeader>
 
+    <!-- 搜索栏：关键字 / 股票代码 / 股票名称 -->
+    <view class="cm-search">
+      <OutlineIcon type="search" :size="30" color="var(--text-2)" />
+      <input
+        class="cm-search-input"
+        :value="searchQuery"
+        @input="onSearchInput"
+        @confirm="onSearchConfirm"
+        placeholder="搜索帖子、股票代码或名称"
+        placeholder-class="cm-search-ph"
+        confirm-type="search"
+      />
+      <view v-if="searchQuery" class="cm-search-clear" @click="clearSearch">
+        <OutlineIcon type="close" :size="26" color="var(--text-2)" />
+      </view>
+    </view>
+
     <!-- 可滚动内容区 -->
     <scroll-view class="cm-scroll" scroll-y>
 
     <!-- 话题筛选（按股票 / 板块分类，避免所有评论汇聚一起） -->
-    <scroll-view v-if="topics.length" scroll-x class="cm-topics" :show-scrollbar="false">
+    <scroll-view v-if="topics.length && !searching" scroll-x class="cm-topics" :show-scrollbar="false">
       <view
         v-for="t in topics"
         :key="t.key"
@@ -31,8 +48,8 @@
 
     <!-- 动态栏目标题 + 刷新 -->
     <view class="cm-bar flex-between">
-      <text class="cm-bar-t">{{ activeTopic === "all" ? "最新动态" : "# " + activeLabel }}</text>
-      <view class="cm-refresh" :class="{ 'anim-spin': loading }" @click="load">
+      <text class="cm-bar-t">{{ searching ? ('搜索结果 · ' + displayPosts.length) : (activeTopic === 'all' ? '最新动态' : '# ' + activeLabel) }}</text>
+      <view class="cm-refresh" :class="{ 'anim-spin': loading }" @click="searching ? search(searchQuery) : load">
         <OutlineIcon type="refresh" :size="30" color="var(--text-2)" />
       </view>
     </view>
@@ -54,7 +71,7 @@
     <!-- 空态 -->
     <view v-if="!loading && !displayPosts.length" class="cm-empty">
       <OutlineIcon type="chatbubble" :size="84" color="var(--border)" />
-      <text class="empty-title">{{ activeTopic === "all" ? "还没有动态，来发第一条吧" : "该话题下还没有动态" }}</text>
+      <text class="empty-title">{{ searching ? "未找到相关帖子" : (activeTopic === "all" ? "还没有动态，来发第一条吧" : "该话题下还没有动态") }}</text>
     </view>
 
     <!-- 底部留白（避免被固定 tabbar 与底部发帖卡片遮挡） -->
@@ -100,7 +117,7 @@ import { userState } from "@/store/user";
 import { avatarSeed, topicColor } from "@/utils/avatar";
 import type { CommunityPost, PostCard as PostCardData, Topic } from "@/api/community";
 
-const { posts, loading, load, publishText, publishCard, like, reply, remove } = useCommunity();
+const { posts, loading, searchResults, load, publishText, publishCard, like, reply, remove, search } = useCommunity();
 
 // 消息中心（动态）：未读私信角标 + 进入消息中心加载会话
 const { unreadDm, loadConversations } = useMessageCenter();
@@ -175,9 +192,44 @@ function activeChipStyle(t: TopicChip): Record<string, string> {
 }
 
 const displayPosts = computed(() => {
+  if (searching.value) return searchResults.value;
   if (activeTopic.value === ALL) return posts.value;
   return posts.value.filter((p) => topicKeyOf(p) === activeTopic.value);
 });
+
+// ---------------- 搜索栏逻辑（关键字 / 股票代码 / 股票名称） ----------------
+const searchQuery = ref("");
+const searching = computed(() => searchQuery.value.trim().length > 0);
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+function runSearch() {
+  if (searchTimer) {
+    clearTimeout(searchTimer);
+    searchTimer = null;
+  }
+  if (searchQuery.value.trim()) {
+    search(searchQuery.value);
+  } else {
+    searchResults.value = [];
+  }
+}
+function onSearchInput(e: any) {
+  const v = e?.detail?.value ?? e?.target?.value ?? "";
+  searchQuery.value = v;
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(runSearch, 300);
+}
+function onSearchConfirm() {
+  runSearch();
+}
+function clearSearch() {
+  searchQuery.value = "";
+  if (searchTimer) {
+    clearTimeout(searchTimer);
+    searchTimer = null;
+  }
+  searchResults.value = [];
+}
 
 // ---------------- 发布 ----------------
 async function onText(content: string, topic?: Topic, images?: string[]) {
@@ -355,5 +407,39 @@ defineExpose({ refresh: load });
 
 .cm-pad {
   height: calc(200rpx + env(safe-area-inset-bottom));
+}
+
+/* 搜索栏：吸顶，置于话题筛选之上 */
+.cm-search {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  margin: 10rpx 18rpx 4rpx;
+  padding: 0 20rpx;
+  height: 64rpx;
+  background: var(--card-2);
+  border: 1rpx solid var(--border);
+  border-radius: 999rpx;
+}
+.cm-search-input {
+  flex: 1;
+  height: 64rpx;
+  font-size: var(--font-sm);
+  color: var(--text);
+  background: transparent;
+}
+.cm-search-ph {
+  color: var(--text-2);
+}
+.cm-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 999rpx;
+}
+.cm-search-clear:active {
+  opacity: 0.6;
 }
 </style>

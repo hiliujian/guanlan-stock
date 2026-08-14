@@ -182,6 +182,11 @@ export const communityRepo = {
   async unreadDmCount(): Promise<number> {
     return unreadDmCountRemote();
   },
+
+  // ---------------- 帖子搜索（关键字 / 股票代码 / 股票名称） ----------------
+  async searchPosts(query: string): Promise<CommunityPost[]> {
+    return searchRemote(query);
+  },
 };
 
 // ---------------------------------------------------------------------
@@ -233,27 +238,61 @@ async function listRemote(): Promise<CommunityPost[]> {
   const profileMap = await loadProfilesForPosts(sb, data as any[]);
   return (data as any[]).map((r) => {
     const ai = profileMap.get(r.user_id) || { avatar_url: "", avatar_frame: "" };
-    return {
-      id: r.id,
-      type: r.type,
-      author: r.author,
-      userId: r.user_id || null,
-      authorAvatarUrl: ai.avatar_url,
-      authorFrame: ai.avatar_frame,
-      topic: r.topic || undefined,
-      createdAt: new Date(r.created_at).getTime(),
-      content: r.content ?? undefined,
-      card: r.card ? toClientCard(r.card) : undefined,
-      images: (r.images as string[] | undefined) || [],
-      likes: r.likes ?? 0,
-      likedByMe: liked.has(r.id),
-      replies: (r.replies || []).map((x: any) => ({
-        id: x.id,
-        author: x.author,
-        content: x.content,
-        createdAt: new Date(x.created_at).getTime(),
-      })),
-    };
+    return mapRowToPost(r, ai, liked);
+  });
+}
+
+/**
+ * 将 community_posts 单行（含可选嵌套 replies）映射为 CommunityPost（UI 侧 camelCase）。
+ * 被 listRemote 与 searchRemote 共用，避免重复映射逻辑；replies 缺省为空数组。
+ */
+function mapRowToPost(
+  r: any,
+  ai: { avatar_url: string; avatar_frame: string },
+  liked: Set<string>
+): CommunityPost {
+  return {
+    id: r.id,
+    type: r.type,
+    author: r.author,
+    userId: r.user_id || null,
+    authorAvatarUrl: ai.avatar_url,
+    authorFrame: ai.avatar_frame,
+    topic: r.topic || undefined,
+    createdAt: new Date(r.created_at).getTime(),
+    content: r.content ?? undefined,
+    card: r.card ? toClientCard(r.card) : undefined,
+    images: (r.images as string[] | undefined) || [],
+    likes: r.likes ?? 0,
+    likedByMe: liked.has(r.id),
+    replies: (r.replies || []).map((x: any) => ({
+      id: x.id,
+      author: x.author,
+      content: x.content,
+      createdAt: new Date(x.created_at).getTime(),
+    })),
+  };
+}
+
+// =====================================================================
+// 帖子搜索（RPC: search_posts）：关键字 / 股票代码 / 股票名称
+// 后端直接 ILIKE 匹配 content、topic(name/code)、card(stock/code)，
+// 返回与 feed 同构的行（嵌套 replies 以 JSON 数组呈现），复用 mapRowToPost。
+// =====================================================================
+async function searchRemote(query: string): Promise<CommunityPost[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const { data, error } = await withTimeout(
+    sb.rpc("search_posts", { p_query: query }) as unknown as Promise<{ data: any; error: any }>,
+    10000
+  );
+  if (error || !data) return [];
+  // 点赞态 / 作者资料与列表一致（复用同一套服务端权威逻辑）
+  const liked = await loadLikedFromServer(sb);
+  const profileMap = await loadProfilesForPosts(sb, data as any[]);
+  return (data as any[]).map((r) => {
+    const ai = profileMap.get(r.user_id) || { avatar_url: "", avatar_frame: "" };
+    return mapRowToPost(r, ai, liked);
   });
 }
 

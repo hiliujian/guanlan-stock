@@ -16,10 +16,14 @@ import {
 
 const posts = ref<CommunityPost[]>([]);
 const loading = ref(false);
+const searchResults = ref<CommunityPost[]>([]);
 
 function replace(p: CommunityPost) {
   const i = posts.value.findIndex((x) => x.id === p.id);
   if (i >= 0) posts.value[i] = p;
+  // 搜索结果缓存中的同一帖也一并就地更新，保证点赞/回复在搜索态下即时反映
+  const j = searchResults.value.findIndex((x) => x.id === p.id);
+  if (j >= 0) searchResults.value[j] = p;
 }
 
 export function useCommunity() {
@@ -63,7 +67,22 @@ export function useCommunity() {
     posts.value = posts.value.filter((x) => x.id !== id);
   }
 
-  return { posts, loading, load, publishText, publishCard, like, reply, remove };
+  /** 搜索帖子（关键字 / 股票代码 / 股票名称）；空查询清空结果。结果写入 searchResults。 */
+  async function search(query: string): Promise<void> {
+    const q = query.trim();
+    if (!q) {
+      searchResults.value = [];
+      return;
+    }
+    loading.value = true;
+    try {
+      searchResults.value = await communityRepo.searchPosts(q);
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  return { posts, loading, searchResults, load, publishText, publishCard, like, reply, remove, search };
 }
 
 // =====================================================================

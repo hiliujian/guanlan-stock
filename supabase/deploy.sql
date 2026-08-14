@@ -578,6 +578,45 @@ $$;
 
 
 -- ╔══════════════════════════════════════════════════════════════╗
+-- ║ 5.x 帖子搜索（关键字 / 股票代码 / 股票名称）                   ║
+-- ║ 社区页顶部搜索栏调用；SECURITY DEFINER 直接读 community_posts。║
+-- ║ 匹配：content 正文、topic->name / ->code、card->stock / ->code ║
+-- ║ 返回与 feed 同构行（含嵌套 replies JSON），前端复用同一映射。   ║
+-- ╚══════════════════════════════════════════════════════════════╝
+create or replace function public.search_posts(p_query text)
+returns table (
+  id uuid, type text, author text, user_id uuid, topic jsonb,
+  content text, card jsonb, images text[], likes integer, created_at timestamptz,
+  replies json
+)
+language sql security definer set search_path = public as $$
+  select
+    p.id, p.type, p.author, p.user_id, p.topic, p.content, p.card, p.images, p.likes, p.created_at,
+    coalesce(
+      (
+        select json_agg(
+                 json_build_object('id', r.id, 'author', r.author, 'content', r.content, 'created_at', r.created_at)
+                 order by r.created_at
+               )
+        from public.community_replies r
+        where r.post_id = p.id and r.status = 'published'
+      ),
+      '[]'::json
+    ) as replies
+  from public.community_posts p
+  where (
+    p.content ilike '%' || p_query || '%'
+    or p.topic->>'name' ilike '%' || p_query || '%'
+    or p.topic->>'code' ilike '%' || p_query || '%'
+    or p.card->>'stock' ilike '%' || p_query || '%'
+    or p.card->>'code' ilike '%' || p_query || '%'
+  )
+  order by p.created_at desc
+  limit 50;
+$$;
+
+
+-- ╔══════════════════════════════════════════════════════════════╗
 -- ║ 6. Realtime（可选，幂等加入；开启后发帖/点赞经 WebSocket 推送） ║
 -- ╚══════════════════════════════════════════════════════════════╝
 do $$
