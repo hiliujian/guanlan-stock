@@ -65,6 +65,9 @@ import { fmtPrice, fmtAmount } from "@/utils/format";
 const UP = cssColor("--up", UP_FALLBACK);
 const DOWN = cssColor("--down", DOWN_FALLBACK);
 
+// 图内文字标签统一的方形实底内边距（彩色实底白字标签），多处复用避免重复字面量
+const TEXT_PAD = { paddingLeft: 4, paddingRight: 4, paddingTop: 4, paddingBottom: 4 };
+
 // 量柱/MACD 柱取涨跌色（兜底 UP/DOWN/中性色）：自定义指标拿不到 klinecharts 内置量柱默认样式，
 // 故用项目统一涨跌色兜底，确保量柱可见——否则量面板会退化成无柱的平直线。
 function readBarColors(defaultStyles: any): { up: string; down: string; noChange: string } {
@@ -416,9 +419,6 @@ function buildStyles(): Record<string, unknown> {
   const grid = dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)";
   const axisText = dark ? "#9aa3b2" : "#5a6472";
   const axisLine = dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.10)";
-  const cross = dark ? "#cfd6e0" : "#5a6472";
-  const crossTextBg = dark ? "rgba(255,255,255,0.88)" : "rgba(20,30,50,0.85)";
-  const crossText = dark ? "#1a1a1a" : "#ffffff";
   const sep = dark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)";
   return {
     grid: {
@@ -447,7 +447,7 @@ function buildStyles(): Record<string, unknown> {
           downColor: DOWN,
           noChangeColor: NO_CHANGE,
           line: { show: false, style: "dashed", size: 1, dashedValue: [4, 3] },
-          text: { show: true, color: "#ffffff", backgroundColor: UP, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 10 },
+          text: { show: true, color: "#ffffff", backgroundColor: UP, ...TEXT_PAD, size: 10 },
         },
       },
       // 关闭内置 tooltip/图例（指标名+数值默认常显并覆盖在图内，改为图表上方自定义图例）
@@ -494,8 +494,14 @@ function buildStyles(): Record<string, unknown> {
       tickText: { color: axisText, size: 10 },
     },
     crosshair: {
-      horizontal: { lineColor: cross, lineStyle: "dashed", lineSize: 1, textColor: crossText, textBackgroundColor: crossTextBg, textBorderColor: crossTextBg, textBorderSize: 1 },
-      vertical: { lineColor: cross, lineStyle: "dashed", lineSize: 1, textColor: crossText, textBackgroundColor: crossTextBg, textBorderColor: crossTextBg, textBorderSize: 1 },
+      horizontal: {
+        line: { style: "dashed", size: 1 },
+        text: { size: 10 },
+      },
+      vertical: {
+        line: { style: "dashed", size: 1 },
+        text: { size: 10 },
+      },
     },
     // 分面分隔线加粗到 2px 并略加深，使主图/成交量/MACD 三块清晰分界，避免「主图穿到成交量」的粘连观感
     separator: { color: sep, size: 2 },
@@ -1111,11 +1117,10 @@ const BAND_LABELS: Record<BandType, {
 // 由 drawAutoLevels 提前 return 处理；此守卫只负责 kline 模式下的 d/w/M 周期隔离。
 function resolvePeriodGuard(period: string = props.period ?? "d"): {
   bandWin: number; tradeWin: number;
-  disableStruct: boolean; disableTrade: boolean; disableTrend: boolean;
+  disableTrade: boolean; disableTrend: boolean;
 } {
   let bandWin = BAND_WIN;
   let tradeWin = TRADE_WIN;
-  let disableStruct = false;
   let disableTrade = false;
   let disableTrend = false;
   if (period === "w") {
@@ -1127,7 +1132,7 @@ function resolvePeriodGuard(period: string = props.period ?? "d"): {
     disableTrend = true; // 月 K：仅长期结构线
   }
   // 日 K（默认）保持 bandWin=30 / tradeWin=20，全开
-  return { bandWin, tradeWin, disableStruct, disableTrade, disableTrend };
+  return { bandWin, tradeWin, disableTrade, disableTrend };
 }
 
 // 计算系统画线（智能标注）：每条 K 线图固定输出 4 根水平线（结构支撑/交易参考支撑/结构压力/交易参考压力）
@@ -1226,8 +1231,7 @@ function drawAutoLevels() {
   const series = dataList as Kline[];
   const levels = computeAutoLevelsFromSeries(series, guard);
   for (const lv of levels) {
-    // 多周期隔离：对应周期禁用的线种直接跳过（分时禁结构/趋势；周禁 T；月禁 T/趋势）
-    if (guard.disableStruct && (lv.role === "structSupport" || lv.role === "structPressure")) continue;
+    // 多周期隔离：对应周期禁用的线种直接跳过（周禁 T；月禁 T/趋势）
     if (guard.disableTrade && (lv.role === "tradeSupport" || lv.role === "tradePressure")) continue;
     if (guard.disableTrend && lv.kind === "trend") continue;
     // 结构线开关 → 结构支撑 + 结构压力（与交易参考线同色：绿/红）
@@ -1327,7 +1331,7 @@ function ensureTrendOverlay() {
           attrs: { x: 0, y, text: main, align: "left", baseline: "middle" },
           styles: {
             color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
-            paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 10,
+            ...TEXT_PAD, size: 10,
           },
           ignoreEvent: true,
         }];
@@ -1337,7 +1341,7 @@ function ensureTrendOverlay() {
             attrs: { x: 0, y: y + 13, text: sub, align: "left", baseline: "middle" },
             styles: {
               color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
-              paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 8,
+              ...TEXT_PAD, size: 8,
             },
             ignoreEvent: true,
           });
@@ -1434,7 +1438,7 @@ function ensureDrawOverlays() {
           attrs: { x: 0, y, text, align: "left", baseline: "middle" },
           styles: {
             color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
-            paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 12,
+            ...TEXT_PAD, size: 10,
           },
           ignoreEvent: true,
         }];
@@ -1483,7 +1487,7 @@ function ensureDrawOverlays() {
             attrs: { x: 0, y: c.y, text: Number(price).toFixed(2), align: "left", baseline: "middle" },
             styles: {
               color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
-              paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, size: 12,
+              ...TEXT_PAD, size: 10,
             },
             ignoreEvent: true,
           });
@@ -1527,7 +1531,7 @@ function ensureDrawOverlays() {
               x: 0, y, text: `${value} (${(percent * 100).toFixed(1)}%)`, baseline: "bottom",
               // 分割线标签也跟随线色生成彩色实底白字，避免与横线一样出现「都绿」
               color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
-              paddingLeft: 4, paddingRight: 4, paddingTop: 1, paddingBottom: 1, size: 11,
+              ...TEXT_PAD, size: 10,
             });
           });
         }
@@ -2070,11 +2074,9 @@ onBeforeUnmount(() => {
 /* 分组标题：标明该组数据属于哪个图（主图/成交量/MACD），使「每个图的数据」一目了然 */
 .lg-sec {
   color: var(--text-3);
-  font-weight: 500;
   margin-right: 2rpx;
 }
 .lg-time {
-  font-weight: 500;
   color: var(--text);
   margin-right: 4rpx;
 }
@@ -2087,7 +2089,6 @@ onBeforeUnmount(() => {
 }
 .lg-chg {
   margin-left: 8rpx;
-  font-weight: 500;
 }
 /* 价格 + 涨跌幅 作为一组紧排（替代原先与开/高/低 等同的间距），使「现价 + 涨跌」读感成一体；
    组与组之间仍由 .lg-row 的 flex gap 拉开，区分于后续开/高/低 */

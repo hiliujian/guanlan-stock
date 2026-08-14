@@ -388,6 +388,10 @@ function toggleAcc(key: string) {
   border-radius: 20rpx;
   box-shadow: var(--shadow-sheet);
 }
+/* 图表设置弹层标题：覆盖全局 .sheet-title 的 font-weight:500，行情图卡片内标题不加重 */
+.aux-pop-title {
+  font-weight: 400;
+}
 .aux-pop-head {
   position: sticky;
   top: 0;

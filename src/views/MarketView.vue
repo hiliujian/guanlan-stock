@@ -107,9 +107,9 @@
             </view>
           </view>
           <view class="qh-right">
-            <PriceText :value="dispPrice" :prev="preClose" :size="44" :weight="700" />
+            <PriceText :value="dispPrice" :prev="preClose" :size="44" :weight="400" />
             <view class="qh-sub">
-              <PriceText :value="chg" :size="24" :prefix="true" />
+              <PriceText :value="chg" :size="24" :prefix="true" :weight="400" />
               <text class="qh-pct" :style="{ color: pctColor }">{{ pctText }}</text>
             </view>
           </view>
@@ -123,6 +123,7 @@
           :title="cardTitle(c)"
           :icon="c.icon"
           :delay="idx * 60"
+          :class="{ 'chart-card': c.id === 'kline' }"
         >
           <component
             :is="CARD_RENDERERS[c.id].comp"
@@ -900,6 +901,10 @@ defineExpose({ refresh: () => refreshFull() });
 .mk-body {
   padding: 18rpx 18rpx 0;
 }
+/* 行情图卡片（kline）标题不加重：覆盖 AnalysisCard 全局 .ac-title 的 font-weight:600 */
+.chart-card :deep(.ac-title) {
+  font-weight: 400;
+}
 /* 行情主体滚动容器：.tab-host 为固定视口高+overflow:hidden，各 Tab 必须自滚。
    品牌栏/搜索栏(.mk-sticky) 固定顶部不随滚动，命中卡片/报告等在下方独立滚动。 */
 .mk-scroll {
@@ -1230,7 +1235,6 @@ defineExpose({ refresh: () => refreshFull() });
 }
 .qh-name {
   font-size: var(--font-lg);
-  font-weight: 700;
 }
 .qh-code-row {
   display: flex;
@@ -1279,7 +1283,6 @@ defineExpose({ refresh: () => refreshFull() });
 }
 .qh-pct {
   font-size: var(--font-sm);
-  font-weight: 600;
 }
 
 .bottom-pad {
