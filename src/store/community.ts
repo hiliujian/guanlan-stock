@@ -110,6 +110,33 @@ export function useCommunityPreset() {
 }
 
 // =====================================================================
+// 私信深链目标（模块级单例，跨页信号）
+// 公开资料页「发私信」→ setDmTarget（带对方身份摘要）→ 切到社区 tab 并打开消息中心；
+// MessageCenter 挂载时 consumeDmTarget() 读取并直接打开与该用户的会话（已有则载入历史，
+// 无则空会话待发）。读后清空，避免重复打开。
+// =====================================================================
+export interface DmTarget {
+  otherId: string;
+  otherName: string;
+  otherAvatarUrl: string;
+  otherFrame: string;
+}
+
+const dmTarget = ref<DmTarget | null>(null);
+export function useDmTarget() {
+  function setDmTarget(t: DmTarget) {
+    dmTarget.value = t;
+  }
+  /** 读取并消费私信深链目标（读后清空），无目标返回 null。 */
+  function consumeDmTarget(): DmTarget | null {
+    const v = dmTarget.value;
+    dmTarget.value = null;
+    return v;
+  }
+  return { dmTarget, setDmTarget, consumeDmTarget };
+}
+
+// =====================================================================
 // 消息中心（模块级单例，跨组件共享：顶部栏未读角标与弹层共用同一份状态）
 // 通知（点赞 / 评论）由后端实时派生；私信走 community_dms + 会话聚合。
 // =====================================================================

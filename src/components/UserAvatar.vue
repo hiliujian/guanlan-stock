@@ -9,11 +9,12 @@
        光环向外延展 8rpx，因此父容器请勿设置 overflow:hidden 以免裁掉边框。 -->
   <view class="ua-root" :class="frameCls" :style="{ width: sizeCss, height: sizeCss }">
     <image
-      v-if="url"
+      v-if="url && !failed"
       :src="url"
       class="ua-img"
       :style="{ borderRadius: radiusCss }"
       mode="aspectFill"
+      @error="onImgError"
     />
     <view
       v-else
@@ -25,7 +26,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import { avatarGradient, avatarChar } from "@/utils/avatar";
 import { frameClass } from "@/utils/avatarFrame";
 
@@ -58,6 +59,19 @@ const fontCss = computed(() => `${Math.round(props.size * 0.46)}rpx`);
 const bg = computed(() => avatarGradient(props.seed || "?"));
 const ch = computed(() => avatarChar(props.seed || "?"));
 const frameCls = computed(() => frameClass(props.frame));
+
+// 头像加载失败兜底：断图 / 404 / 跨域失败时回退到「字」头像，避免空白。
+// url 变化（如切换用户）时重置，避免沿用上一张图的失败态。
+const failed = ref(false);
+function onImgError() {
+  failed.value = true;
+}
+watch(
+  () => props.url,
+  () => {
+    failed.value = false;
+  }
+);
 </script>
 
 <style scoped>

@@ -220,8 +220,8 @@ interface ProfilePatch {
   avatar_url?: string;
   avatar_frame?: string;
   last_login?: LoginInfo | null;
+  signature?: string; // 个人简介（公开可读）；见 #536：改为持久化到 profiles.signature
 }
-// 注：个人简介（原「个性签名」）不持久化到数据库，故不在 ProfilePatch 中；见 src/store/bio.ts。
 
 /** 最近一次登录信息（供「账号安全」页展示）：地点 / 时间 / 设备 */
 export interface LoginInfo {

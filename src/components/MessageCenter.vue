@@ -131,7 +131,7 @@ import OutlineIcon from "./OutlineIcon.vue";
 import UserAvatar from "./UserAvatar.vue";
 import PeekSheet from "./PeekSheet.vue";
 import { formatRelative, type Conversation, type NotificationItem } from "@/api/community";
-import { useMessageCenter } from "@/store/community";
+import { useMessageCenter, useDmTarget } from "@/store/community";
 import { userState } from "@/store/user";
 
 const props = withDefaults(defineProps<{ modelValue: boolean }>(), { modelValue: false });
@@ -152,6 +152,8 @@ const {
   sendDm,
   markNotifSeen,
 } = useMessageCenter();
+// 私信深链：公开资料页「发私信」写入目标，消息中心挂载时按对方 id 直接打开会话
+const { consumeDmTarget } = useDmTarget();
 
 const sheet = ref<any>(null);
 
@@ -173,10 +175,27 @@ const filteredNotifs = computed(() =>
 );
 
 // 挂载即展开（铃铛已控制 v-if 按需挂载），并拉取数据（每次打开都是全新挂载）
-onMounted(() => {
+onMounted(async () => {
   sheet.value?.expand();
   loadConversations();
   loadNotifications();
+  // 私信深链：来自公开资料页「发私信」——直接打开与该用户的会话
+  // （已有会话则载入历史，否则空会话待发，发送后由 loadConversations 聚合）
+  const t = consumeDmTarget();
+  if (t) {
+    const conv: Conversation = {
+      otherId: t.otherId,
+      otherName: t.otherName,
+      otherAvatarUrl: t.otherAvatarUrl,
+      otherFrame: t.otherFrame,
+      lastContent: "",
+      lastAt: 0,
+      unreadCount: 0,
+      lastSenderMe: false,
+    };
+    selectedOther.value = conv;
+    await openThread(t.otherId);
+  }
 });
 
 // 拖拽收起到底 → 卸载自身，露出底部发帖卡片

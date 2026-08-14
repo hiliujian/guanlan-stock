@@ -53,8 +53,8 @@
           <text class="sec-field-value">{{ username }}</text>
         </view>
 
-        <!-- 个人简介：本机存储、不写数据库；多行输入框，最多 50 字；
-             空值保存即清空简介（与「我的」页空态引导一致）。占位用 BIO_PLACEHOLDER。 -->
+        <!-- 个人简介：持久化到 profiles.signature（公开可读，供他人「公开资料页」展示）。
+             最多 50 字；空值保存即清空简介（与「我的」页空态引导一致）。占位用 BIO_PLACEHOLDER。 -->
         <view class="sec-row sec-row-col">
           <view class="sec-row-left">
             <view class="sec-row-text">
@@ -62,13 +62,13 @@
             </view>
           </view>
           <textarea
-            v-model="bioDraft"
+            v-model="signatureDraft"
             class="sec-field-ta"
             :placeholder="BIO_PLACEHOLDER"
             placeholder-class="ep-ph"
             :maxlength="BIO_MAX"
           />
-          <text class="ep-count">{{ bioDraft.length }}/{{ BIO_MAX }}</text>
+          <text class="ep-count">{{ signatureDraft.length }}/{{ BIO_MAX }}</text>
         </view>
 
         <!-- 保存资料：组内最后一行，铺满白卡；形态与账号安全页「注销账号」按钮完全一致（仅主色绿 vs 危险红） -->
@@ -134,7 +134,7 @@ import AvatarCropper from "@/components/AvatarCropper.vue";
 import UserAvatar from "@/components/UserAvatar.vue";
 import BottomSheet from "@/components/BottomSheet.vue";
 import { useUser, refreshProfile } from "@/store/user";
-import { useBio, setBio, BIO_MAX, BIO_PLACEHOLDER } from "@/store/bio";
+import { BIO_MAX, BIO_PLACEHOLDER } from "@/store/bio";
 import { updateProfile, uploadAvatar } from "@/api/auth";
 import { avatarSeed } from "@/utils/avatar";
 import { AVATAR_FRAMES, type AvatarFrameDef } from "@/utils/avatarFrame";
@@ -145,9 +145,8 @@ const user = useUser();
 usePageGuard("/pages/profile/edit");
 
 const displayName = ref("");
-// 个人简介：本机存储、不写数据库；用 bioDraft 承接编辑态，保存时 setBio 落本机
-const bio = useBio();
-const bioDraft = ref(bio.value);
+// 个人简介：编辑态承接自 profiles.signature（数据库持久化、公开可读），保存时随资料一并写库
+const signatureDraft = ref("");
 const username = ref("");
 const saving = ref(false);
 const avatarUrl = ref("");
@@ -204,7 +203,7 @@ watch(
     if (user.loggedIn && user.profile) {
       displayName.value = user.profile.display_name || "";
       username.value = user.profile.username || "";
-      bioDraft.value = bio.value;
+      signatureDraft.value = user.profile.signature || "";
       avatarUrl.value = user.profile.avatar_url || "";
       frame.value = user.profile.avatar_frame || "";
     } else {
@@ -273,11 +272,10 @@ async function save() {
       uni.showToast({ title: "昵称不能为空", icon: "none" });
       return;
     }
-    // 个人简介不写数据库，仅落本机存储（与「我的」页空态引导一致）
-    setBio(bioDraft.value);
     const r = await updateProfile({
       display_name: dn,
       avatar_frame: frame.value,
+      signature: signatureDraft.value.trim(),
     });
     if (!r.ok) {
       uni.showToast({ title: r.error || "保存失败", icon: "none" });

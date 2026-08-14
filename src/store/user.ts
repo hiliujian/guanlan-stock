@@ -15,8 +15,8 @@ interface Profile {
   level?: number; // 用户等级序号（0=新手散户）；由后端维护，前端只读
   exp?: number; // 用户经验值；由后端维护，缺省 0
   last_login?: LoginInfo | null; // 最近一次登录的地点/时间/设备（账号安全页展示）
+  signature?: string; // 个人简介（公开可读，供「公开资料页」展示给他人；详见 #536）
 }
-// 注：个人简介（原「个性签名」）不持久化到数据库，改为本机存储，见 src/store/bio.ts。
 
 interface UserState {
   ready: boolean;
@@ -50,6 +50,7 @@ async function loadProfile(userId: string) {
       level: typeof data.level === "number" ? data.level : 0,
       exp: typeof data.exp === "number" ? data.exp : 0,
       last_login: (data.last_login as LoginInfo) ?? null,
+      signature: typeof data.signature === "string" ? data.signature : "",
     };
     // 注意：username 由用户在注册时自填、唯一（见 deploy.sql 部分唯一索引）。
     // 历史空 username 不再由前端自动补随机值；

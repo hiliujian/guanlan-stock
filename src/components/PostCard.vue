@@ -2,7 +2,15 @@
   <view class="post glass anim-fade-up">
     <!-- 头部：头像 + 昵称 + 时间 + 话题 + 删除 -->
     <view class="p-head">
-      <UserAvatar :url="post.authorAvatarUrl || ''" :seed="post.authorUsername || post.author" :size="60" :frame="post.authorFrame" />
+      <view
+        class="p-avatar"
+        hover-class="p-avatar-hover"
+        @click.stop="onAvatarClick"
+        role="button"
+        :aria-label="isSelf ? '查看我的资料' : '查看用户资料'"
+      >
+        <UserAvatar :url="post.authorAvatarUrl || ''" :seed="post.authorUsername || post.author" :size="60" :frame="post.authorFrame" />
+      </view>
       <view class="p-meta">
         <text class="p-name">{{ post.author }}</text>
         <text class="p-time">{{ timeText }}</text>
@@ -120,6 +128,7 @@ import UserAvatar from "./UserAvatar.vue";
 import { formatRelative, type CommunityPost } from "@/api/community";
 import { topicColor } from "@/utils/avatar";
 import { useFollow } from "@/store/follow";
+import { useUser, userState } from "@/store/user";
 
 const props = defineProps<{ post: CommunityPost; mine: boolean }>();
 const emit = defineEmits<{
@@ -128,10 +137,28 @@ const emit = defineEmits<{
   (e: "remove", id: string): void;
 }>();
 
+const user = useUser();
+
 // 关注 / 取消关注：仅对非本人帖子展示（mine 由社区页按身份判定）。
 // follows 为响应式 Set，computed 读取 follows.value 即可随切换实时重渲染。
 const { follows, toggleFollow } = useFollow();
 const following = computed(() => follows.value.has(props.post.author));
+
+// 是否本人帖子（按账号 id 判定）：点击头像时决定跳「个人资料」还是「公开资料」
+const isSelf = computed(
+  () => !!userState.loggedIn && !!props.post.userId && props.post.userId === userState.userId
+);
+
+/** 头像点击：本人→个人资料页；他人有账号 id→公开资料页；旧帖无 userId→不跳转。 */
+function onAvatarClick() {
+  const id = props.post.userId;
+  if (!id) return; // 旧帖作者无账号 id，无法定位，不作跳转
+  if (id === userState.userId) {
+    uni.navigateTo({ url: "/pages/profile/edit" });
+  } else {
+    uni.navigateTo({ url: `/pages/profile/detail?uid=${encodeURIComponent(id)}` });
+  }
+}
 
 const showReply = ref(false);
 const replyText = ref("");
@@ -196,6 +223,17 @@ function preview(current: string) {
   align-items: center;
   gap: 14rpx;
   margin-bottom: 14rpx;
+}
+/* 头像容器：可点击、指针光标 + 悬停缩放反馈，提示「点头像进资料页」 */
+.p-avatar {
+  flex: none;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.p-avatar-hover {
+  opacity: 0.75;
+  transform: scale(0.94);
 }
 .p-meta {
   display: flex;

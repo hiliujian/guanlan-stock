@@ -143,7 +143,7 @@ import BackgroundFX from "@/components/BackgroundFX.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import LevelTag from "@/components/LevelTag.vue";
 import { useUser, refreshProfile } from "@/store/user";
-import { useBio, BIO_PLACEHOLDER } from "@/store/bio";
+import { BIO_PLACEHOLDER } from "@/store/bio";
 import { openAuth, goTab } from "@/store/nav";
 import { usePageGuard } from "@/store/guard";
 import { canAccess } from "@/store/access";
@@ -176,11 +176,10 @@ defineEmits<{ (e: "open-market", payload: { code: string; market: string }): voi
 const nameText = computed(() =>
   user.loggedIn ? user.profile?.display_name || user.profile?.username || user.email || "我" : "点击登录 / 注册"
 );
-// 个人简介（本机存储、不写数据库）：登录后为空则展示灰色引导文案「点击添加简介，让大家认识你」
-// （.pf-sub 已用 --text-2 灰色字，符合系统空态配色）；未登录展示登录引导。点击头部进入资料页编辑。
-const bio = useBio();
+// 个人简介（profiles.signature，公开可读、持久化到数据库）：登录后为空则展示灰色引导文案
+// 「点击添加简介，让大家认识你」（.pf-sub 已用 --text-2 灰色字，符合系统空态配色）；未登录展示登录引导。
 const subText = computed(() =>
-  user.loggedIn ? bio.value.trim() || BIO_PLACEHOLDER : "登录后同步自选股与云端资料"
+  user.loggedIn ? (user.profile?.signature?.trim() || BIO_PLACEHOLDER) : "登录后同步自选股与云端资料"
 );
 // 「字」头像种子 = 用户名（固定唯一，昵称修改不改变默认头像）
 const avatarName = computed(() =>

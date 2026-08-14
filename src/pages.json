@@ -51,6 +51,12 @@
 			}
 		},
 		{
+			"path": "pages/profile/detail",
+			"style": {
+				"navigationStyle": "custom"
+			}
+		},
+		{
 			"path": "pages/legal/terms",
 			"style": {
 				"navigationStyle": "custom"

@@ -121,7 +121,7 @@ import UserAvatar from "./UserAvatar.vue";
 import PeekSheet from "./PeekSheet.vue";
 import MessageCenter from "./MessageCenter.vue";
 import FollowListView from "./FollowListView.vue";
-import { useCommunity, useMessageCenter, useCommunityPreset, type CommunityFilterKey } from "@/store/community";
+import { useCommunity, useMessageCenter, useCommunityPreset, useDmTarget, type CommunityFilterKey } from "@/store/community";
 import { usePageGuard } from "@/store/guard";
 import { useFollow, useFollowPanel } from "@/store/follow";
 import { getMyName } from "@/store/identity";
@@ -181,6 +181,16 @@ const filterKey = ref<FilterKey>("latest");
 const filterOpen = ref(false);
 // 跨 tab 筛选预设（ProfileView 入口设置，onActivated 消费）
 const { consumePreset } = useCommunityPreset();
+// 私信深链（公开资料页「发私信」设置，onActivated 消费 → 打开消息中心）
+const { dmTarget, consumeDmTarget } = useDmTarget();
+// 兜底：navigateTo 打开资料页再返回时 CommunityView 不会重新 onActivated，
+// 故额外 watch dmTarget，一旦被设置立即打开消息中心（挂载后由 MessageCenter 消费目标）。
+watch(
+  () => dmTarget.value,
+  (v) => {
+    if (v) msgOpen.value = true;
+  }
+);
 const filterTitle = computed(
   () => filterOptions.find((o) => o.key === filterKey.value)?.label || "最新动态"
 );
@@ -280,6 +290,10 @@ onActivated(() => {
   if (preset) {
     filterKey.value = preset;
     if (searching.value) clearSearch();
+  }
+  // 消费私信深链：公开资料页「发私信」→ 打开消息中心（挂载时按目标 id 开会话）
+  if (consumeDmTarget()) {
+    msgOpen.value = true;
   }
   if (!posts.value.length) load();
   // 刷新未读角标（私信 + 活动通知，已登录才拉）

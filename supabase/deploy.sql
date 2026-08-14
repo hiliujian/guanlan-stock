@@ -44,6 +44,7 @@ create table public.profiles (
   display_name text not null default '',
   avatar_url   text not null default '',
   avatar_frame text not null default '',                  -- 头像框 id（''=无边框；可选值见前端 src/utils/avatarFrame.ts：rainbow/member/aurora/diamond）
+  signature    text not null default '',                  -- 个人简介（公开可读，供他人「公开资料页」展示；见 #536）
   level        integer not null default 0,                -- 用户等级序号（0=新手散户，对应前端 TIERS 下标）；由后端维护，前端只读展示
   exp          integer not null default 0,                -- 用户经验值（等级体系 expMin 对应所需经验）；由后端维护，前端用于展示与升级进度
   -- 扩展预留（接入登录后按需启用，以下均为可选、带默认值，不影响现有逻辑）
@@ -988,4 +989,14 @@ begin
 end;
 $$;
 grant execute on function public.get_stock_heat(int, boolean) to anon, authenticated;
+
+-- =====================================================================
+-- 增量迁移（非破坏性，仅用于把现有库补齐到 deploy.sql 的最新 schema）
+--   · 切勿整份重跑 deploy.sql（含 DROP ... CASCADE 会清空数据）。
+--   · 下列 ALTER/CREATE 均带 if not exists，可重复执行、幂等安全。
+-- =====================================================================
+
+-- #536 个人简介列：公开可读，供「公开资料页」向他人展示。
+--   生产库已通过 Management API 单独部署该列，此处仅作仓库 schema 一致性同步。
+alter table public.profiles add column if not exists signature text not null default '';
 
