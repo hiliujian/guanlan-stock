@@ -414,14 +414,15 @@ defineExpose({ refresh: load });
   inset: 0;
   z-index: 60;
 }
-/* 下拉菜单（紧贴标题下方悬浮）：毛玻璃卡片，绝对定位覆盖下方内容 */
+/* 下拉菜单（紧贴标题下方悬浮）：绝对定位覆盖下方内容；背景用实心表面 --bg-2（深浅色均不透明），
+   不复用 --card（玻璃半透明，深色模式下近乎透明，导致菜单看不清） */
 .cm-filter-menu {
   position: absolute;
   top: 100%;
   left: 0;
   margin-top: 8rpx;
   min-width: 260rpx;
-  background: var(--card);
+  background: var(--bg-2);
   border: 1rpx solid var(--border);
   border-radius: 18rpx;
   box-shadow: var(--shadow-2);
