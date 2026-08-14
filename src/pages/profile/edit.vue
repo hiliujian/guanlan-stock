@@ -43,7 +43,7 @@
           <input v-model="displayName" class="sec-field-input" placeholder="输入昵称" placeholder-class="ep-ph" maxlength="20" />
         </view>
 
-        <!-- 个性签名：单行（区别于「个人简介」多行 200 字）；默认占位用 DEFAULT_SIGNATURE，
+        <!-- 个性签名：单行，最多 50 字；默认占位用 DEFAULT_SIGNATURE，
              留空保存即回落到默认签名（与「我的」页展示兜底一致） -->
         <view class="sec-row">
           <view class="sec-row-left">
@@ -62,23 +62,6 @@
             </view>
           </view>
           <text class="sec-field-value">{{ username }}</text>
-        </view>
-
-        <!-- 个人简介：多行 -->
-        <view class="sec-row sec-row-col">
-          <view class="sec-row-left">
-            <view class="sec-row-text">
-              <text class="sec-row-label">个人简介</text>
-            </view>
-          </view>
-          <textarea
-            v-model="bio"
-            class="sec-field-ta"
-            placeholder="选填，介绍一下自己"
-            placeholder-class="ep-ph"
-            maxlength="200"
-          />
-          <text class="ep-count">{{ bio.length }}/200</text>
         </view>
 
         <!-- 保存资料：组内最后一行，铺满白卡；形态与账号安全页「注销账号」按钮完全一致（仅主色绿 vs 危险红） -->
@@ -156,7 +139,6 @@ usePageGuard("/pages/profile/edit");
 const displayName = ref("");
 const signature = ref("");
 const username = ref("");
-const bio = ref("");
 const saving = ref(false);
 const avatarUrl = ref("");
 const uploading = ref(false);
@@ -213,7 +195,6 @@ watch(
       displayName.value = user.profile.display_name || "";
       username.value = user.profile.username || "";
       signature.value = user.profile.signature || "";
-      bio.value = user.profile.bio || "";
       avatarUrl.value = user.profile.avatar_url || "";
       frame.value = user.profile.avatar_frame || "";
     } else {
@@ -285,7 +266,6 @@ async function save() {
     const r = await updateProfile({
       display_name: dn,
       signature: signature.value.trim(),
-      bio: bio.value.trim(),
       avatar_frame: frame.value,
     });
     if (!r.ok) {

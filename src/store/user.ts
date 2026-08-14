@@ -13,8 +13,7 @@ interface Profile {
   id: string;
   display_name: string;
   username: string;
-  bio: string;
-  signature: string; // 个性签名（区别于 bio 的 200 字个人简介）；缺省时 UI 兜底 DEFAULT_SIGNATURE
+  signature: string; // 个性签名（单行，最多 50 字）；缺省时 UI 兜底 DEFAULT_SIGNATURE
   avatar_url: string;
   avatar_frame?: string; // 头像框 id（'' = 无边框）；见 src/utils/avatarFrame.ts
   level?: number; // 用户等级序号（0=新手散户）；由后端维护，前端只读
@@ -49,7 +48,6 @@ async function loadProfile(userId: string) {
       id: data.id,
       username: data.username || "",
       display_name: data.display_name || "",
-      bio: data.bio || "",
       signature: data.signature || "",
       avatar_url: data.avatar_url || "",
       avatar_frame: data.avatar_frame || "",
