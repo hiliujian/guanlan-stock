@@ -8,6 +8,11 @@
         <text class="p-time">{{ timeText }}</text>
       </view>
       <view v-if="post.topic" class="p-topic" :style="topicStyle">#{{ post.topic.name }}</view>
+      <!-- 关注 / 取消关注：非本人帖子展示；点击切换并即时反映状态（plus→关注 / check→已关注） -->
+      <view v-if="!mine" class="p-follow" :class="{ on: following }" hover-class="p-follow-hover" @click.stop="toggleFollow(post.author)">
+        <OutlineIcon :type="following ? 'check' : 'plus'" :size="26" :color="following ? 'var(--text-2)' : 'var(--primary)'" />
+        <text class="p-follow-t">{{ following ? "已关注" : "关注" }}</text>
+      </view>
       <view v-if="mine" class="p-del" @click="$emit('remove', post.id)">
         <OutlineIcon type="trash" :size="30" color="var(--text-2)" />
       </view>
@@ -114,6 +119,7 @@ import StockText from "./StockText.vue";
 import UserAvatar from "./UserAvatar.vue";
 import { formatRelative, type CommunityPost } from "@/api/community";
 import { topicColor } from "@/utils/avatar";
+import { useFollow } from "@/store/follow";
 
 const props = defineProps<{ post: CommunityPost; mine: boolean }>();
 const emit = defineEmits<{
@@ -121,6 +127,11 @@ const emit = defineEmits<{
   (e: "reply", id: string, content: string): void;
   (e: "remove", id: string): void;
 }>();
+
+// 关注 / 取消关注：仅对非本人帖子展示（mine 由社区页按身份判定）。
+// follows 为响应式 Set，computed 读取 follows.value 即可随切换实时重渲染。
+const { follows, toggleFollow } = useFollow();
+const following = computed(() => follows.value.has(props.post.author));
 
 const showReply = ref(false);
 const replyText = ref("");
@@ -203,6 +214,31 @@ function preview(current: string) {
 .p-del {
   flex: none;
   padding: 6rpx;
+}
+/* 关注 / 取消关注胶囊：非本人帖子头部右侧；未关注强调主色，已关注转中性描边 */
+.p-follow {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  background: var(--primary-soft);
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+.p-follow.on {
+  background: var(--card-2);
+  box-shadow: inset 0 0 0 1rpx var(--border);
+}
+.p-follow-hover {
+  opacity: 0.6;
+}
+.p-follow-t {
+  font-size: var(--font-sm);
+  color: var(--primary);
+}
+.p-follow.on .p-follow-t {
+  color: var(--text-2);
 }
 .p-text {
   font-size: var(--font-md);

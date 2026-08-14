@@ -43,6 +43,19 @@
           <text class="pf-stat-lab">自选股</text>
         </view>
         <view v-if="isTabEnabled('watch') && isTabEnabled('community')" class="pf-divider" />
+        <!-- 我的关注：点击跳转「我的社区」并弹出关注列表（复用消息中心 PeekSheet） -->
+        <view
+          v-if="isTabEnabled('community')"
+          class="pf-stat"
+          hover-class="pf-stat-hover"
+          role="button"
+          aria-label="我的关注"
+          @click="goMyFollow"
+        >
+          <text class="pf-stat-num">{{ followCount }}</text>
+          <text class="pf-stat-lab">我的关注</text>
+        </view>
+        <view v-if="isTabEnabled('community')" class="pf-divider" />
         <view
           v-if="isTabEnabled('community')"
           class="pf-stat"
@@ -136,6 +149,7 @@ import { usePageGuard } from "@/store/guard";
 import { canAccess } from "@/store/access";
 import { useWatchlist, initWatchlist } from "@/store/watchlist";
 import { useCommunity } from "@/store/community";
+import { useFollow, useFollowPanel } from "@/store/follow";
 import { isTabEnabled } from "@/store/appConfig";
 import { getMyName } from "@/store/identity";
 import { avatarSeed } from "@/utils/avatar";
@@ -147,6 +161,10 @@ const user = useUser();
 usePageGuard("profile");
 const watch = useWatchlist();
 const { posts: communityPosts, load: loadCommunity } = useCommunity();
+// 关注系统：复用全局关注 store（本地持久化），驱动「我的关注」计数与跨 tab 打开弹层信号。
+const { list: followList } = useFollow();
+const { followPanelOpen } = useFollowPanel();
+const followCount = computed(() => followList().length);
 
 // 声明可接收的自定义事件：父级（pages/index）在 watch 激活时向动态组件绑定 open-market，
 // KeepAlive 缓存其它视图后仍可能把该监听透传到本组件。声明为 emit 后 Vue 按自定义事件
@@ -262,6 +280,11 @@ function goWatch() {
 }
 function goCommunity() {
   goTab("community");
+}
+// 我的关注：先切到社区 tab（触发 CommunityView 挂载），再置共享信号打开「我的关注」弹层。
+function goMyFollow() {
+  goTab("community");
+  followPanelOpen.value = true;
 }
 function feedback() {
   const email = "support@guanlan.app";
