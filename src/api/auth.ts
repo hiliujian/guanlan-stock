@@ -218,6 +218,7 @@ interface ProfilePatch {
   display_name?: string;
   username?: string;
   bio?: string;
+  signature?: string;
   avatar_url?: string;
   avatar_frame?: string;
   last_login?: LoginInfo | null;

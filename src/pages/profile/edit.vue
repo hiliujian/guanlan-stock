@@ -43,6 +43,17 @@
           <input v-model="displayName" class="sec-field-input" placeholder="输入昵称" placeholder-class="ep-ph" maxlength="20" />
         </view>
 
+        <!-- 个性签名：单行（区别于「个人简介」多行 200 字）；默认占位用 DEFAULT_SIGNATURE，
+             留空保存即回落到默认签名（与「我的」页展示兜底一致） -->
+        <view class="sec-row">
+          <view class="sec-row-left">
+            <view class="sec-row-text">
+              <text class="sec-row-label">个性签名</text>
+            </view>
+          </view>
+          <input v-model="signature" class="sec-field-input" :placeholder="DEFAULT_SIGNATURE" placeholder-class="ep-ph" maxlength="50" />
+        </view>
+
         <!-- 用户名：唯一且不可修改；空则保持空白展示，不隐藏、不加占位 -->
         <view class="sec-row">
           <view class="sec-row-left">
@@ -132,7 +143,7 @@ import OutlineIcon from "@/components/OutlineIcon.vue";
 import AvatarCropper from "@/components/AvatarCropper.vue";
 import UserAvatar from "@/components/UserAvatar.vue";
 import BottomSheet from "@/components/BottomSheet.vue";
-import { useUser, refreshProfile } from "@/store/user";
+import { useUser, refreshProfile, DEFAULT_SIGNATURE } from "@/store/user";
 import { updateProfile, uploadAvatar } from "@/api/auth";
 import { avatarSeed } from "@/utils/avatar";
 import { AVATAR_FRAMES, type AvatarFrameDef } from "@/utils/avatarFrame";
@@ -143,6 +154,7 @@ const user = useUser();
 usePageGuard("/pages/profile/edit");
 
 const displayName = ref("");
+const signature = ref("");
 const username = ref("");
 const bio = ref("");
 const saving = ref(false);
@@ -200,6 +212,7 @@ watch(
     if (user.loggedIn && user.profile) {
       displayName.value = user.profile.display_name || "";
       username.value = user.profile.username || "";
+      signature.value = user.profile.signature || "";
       bio.value = user.profile.bio || "";
       avatarUrl.value = user.profile.avatar_url || "";
       frame.value = user.profile.avatar_frame || "";
@@ -271,6 +284,7 @@ async function save() {
     }
     const r = await updateProfile({
       display_name: dn,
+      signature: signature.value.trim(),
       bio: bio.value.trim(),
       avatar_frame: frame.value,
     });

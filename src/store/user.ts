@@ -6,11 +6,15 @@ import { reactive, readonly } from "vue";
 import { getSupabase, isSupabaseConfigured } from "@/api/supabase";
 import { onAuthChange, awardDailySignin, captureLoginInfo, type LoginInfo } from "@/api/auth";
 
+// 新账号（及尚无签名的老账号）统一展示的默认个性签名
+export const DEFAULT_SIGNATURE = "还没写下签名，正在观察市场";
+
 interface Profile {
   id: string;
   display_name: string;
   username: string;
   bio: string;
+  signature: string; // 个性签名（区别于 bio 的 200 字个人简介）；缺省时 UI 兜底 DEFAULT_SIGNATURE
   avatar_url: string;
   avatar_frame?: string; // 头像框 id（'' = 无边框）；见 src/utils/avatarFrame.ts
   level?: number; // 用户等级序号（0=新手散户）；由后端维护，前端只读
@@ -46,6 +50,7 @@ async function loadProfile(userId: string) {
       username: data.username || "",
       display_name: data.display_name || "",
       bio: data.bio || "",
+      signature: data.signature || "",
       avatar_url: data.avatar_url || "",
       avatar_frame: data.avatar_frame || "",
       level: typeof data.level === "number" ? data.level : 0,

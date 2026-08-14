@@ -129,7 +129,7 @@ import OutlineIcon from "@/components/OutlineIcon.vue";
 import BackgroundFX from "@/components/BackgroundFX.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import LevelTag from "@/components/LevelTag.vue";
-import { useUser, refreshProfile } from "@/store/user";
+import { useUser, refreshProfile, DEFAULT_SIGNATURE } from "@/store/user";
 import { openAuth, goTab } from "@/store/nav";
 import { usePageGuard } from "@/store/guard";
 import { canAccess } from "@/store/access";
@@ -156,7 +156,7 @@ const nameText = computed(() =>
   user.loggedIn ? user.profile?.display_name || user.profile?.username || user.email || "我" : "点击登录 / 注册"
 );
 const subText = computed(() =>
-  user.loggedIn ? user.email || "" : "登录后同步自选股与云端资料"
+  user.loggedIn ? user.profile?.signature || DEFAULT_SIGNATURE : "登录后同步自选股与云端资料"
 );
 // 「字」头像种子 = 用户名（固定唯一，昵称修改不改变默认头像）
 const avatarName = computed(() =>
