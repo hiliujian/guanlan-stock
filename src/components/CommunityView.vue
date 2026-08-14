@@ -12,6 +12,7 @@
             <view v-if="unreadTotal > 0" class="cm-badge">{{ unreadTotal > 99 ? '99+' : unreadTotal }}</view>
           </view>
           <text class="cm-msg-text">消息</text>
+          <OutlineIcon type="pulldown" :size="18" color="var(--text-2)" class="cm-msg-arrow" />
         </view>
       </template>
     </PageHeader>
