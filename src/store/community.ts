@@ -86,6 +86,28 @@ export function useCommunity() {
 }
 
 // =====================================================================
+// 社区筛选 preset（模块级单例，跨 tab 信号）
+// ProfileView「我的帖子 / 赞过」等入口跳转社区时，先 setPreset 目标筛选项，
+// 再切 tab；CommunityView 激活时用 consumePreset() 读取并立即应用，随后清空，
+// 避免重复点击时反复回到该筛选。
+// =====================================================================
+export type CommunityFilterKey = "latest" | "following" | "participated" | "mine";
+
+const communityPresetFilter = ref<CommunityFilterKey | null>(null);
+export function useCommunityPreset() {
+  function setPreset(key: CommunityFilterKey) {
+    communityPresetFilter.value = key;
+  }
+  /** 读取并消费预设（读后清空），无预设返回 null。 */
+  function consumePreset(): CommunityFilterKey | null {
+    const v = communityPresetFilter.value;
+    communityPresetFilter.value = null;
+    return v;
+  }
+  return { communityPresetFilter, setPreset, consumePreset };
+}
+
+// =====================================================================
 // 消息中心（模块级单例，跨组件共享：顶部栏未读角标与弹层共用同一份状态）
 // 通知（点赞 / 评论）由后端实时派生；私信走 community_dms + 会话聚合。
 // =====================================================================

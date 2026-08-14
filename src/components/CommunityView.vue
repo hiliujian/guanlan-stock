@@ -120,7 +120,7 @@ import UserAvatar from "./UserAvatar.vue";
 import PeekSheet from "./PeekSheet.vue";
 import MessageCenter from "./MessageCenter.vue";
 import FollowListView from "./FollowListView.vue";
-import { useCommunity, useMessageCenter } from "@/store/community";
+import { useCommunity, useMessageCenter, useCommunityPreset, type CommunityFilterKey } from "@/store/community";
 import { usePageGuard } from "@/store/guard";
 import { useFollow, useFollowPanel } from "@/store/follow";
 import { getMyName } from "@/store/identity";
@@ -169,7 +169,7 @@ function isMine(p: CommunityPost): boolean {
 }
 
 // ---------------- 信息流筛选（最新动态 / 关注的人 / 我参与的 / 我发布的） ----------------
-type FilterKey = "latest" | "following" | "participated" | "mine";
+type FilterKey = CommunityFilterKey;
 const filterOptions: { key: FilterKey; label: string }[] = [
   { key: "latest", label: "最新动态" },
   { key: "following", label: "关注的人" },
@@ -178,6 +178,8 @@ const filterOptions: { key: FilterKey; label: string }[] = [
 ];
 const filterKey = ref<FilterKey>("latest");
 const filterOpen = ref(false);
+// 跨 tab 筛选预设（ProfileView 入口设置，onActivated 消费）
+const { consumePreset } = useCommunityPreset();
 const filterTitle = computed(
   () => filterOptions.find((o) => o.key === filterKey.value)?.label || "最新动态"
 );
@@ -272,6 +274,12 @@ async function onCard(card: PostCardData, images?: string[]) {
 
 // keep-alive 每次激活：（已登录 / 公开页）加载社区动态；未授权由全局守卫跳转登录页
 onActivated(() => {
+  // 消费来自 ProfileView 的筛选预设（如「我的帖子」→「我发布的」），仅一次
+  const preset = consumePreset();
+  if (preset) {
+    filterKey.value = preset;
+    if (searching.value) clearSearch();
+  }
   if (!posts.value.length) load();
   // 刷新未读角标（私信 + 活动通知，已登录才拉）
   if (userState.loggedIn) {

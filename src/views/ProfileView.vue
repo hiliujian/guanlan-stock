@@ -62,7 +62,7 @@
           hover-class="pf-stat-hover"
           role="button"
           aria-label="我的帖子"
-          @click="goCommunity"
+          @click="goMyPosts"
         >
           <text class="pf-stat-num">{{ postCount }}</text>
           <text class="pf-stat-lab">我的帖子</text>
@@ -148,7 +148,7 @@ import { openAuth, goTab } from "@/store/nav";
 import { usePageGuard } from "@/store/guard";
 import { canAccess } from "@/store/access";
 import { useWatchlist, initWatchlist } from "@/store/watchlist";
-import { useCommunity } from "@/store/community";
+import { useCommunity, useCommunityPreset } from "@/store/community";
 import { useFollow, useFollowPanel } from "@/store/follow";
 import { isTabEnabled } from "@/store/appConfig";
 import { getMyName } from "@/store/identity";
@@ -161,6 +161,8 @@ const user = useUser();
 usePageGuard("profile");
 const watch = useWatchlist();
 const { posts: communityPosts, load: loadCommunity } = useCommunity();
+// 社区筛选预设：跳转社区前 setPreset，由 CommunityView 激活时消费（如「我的帖子」→「我发布的」）
+const { setPreset } = useCommunityPreset();
 // 关注系统：复用全局关注 store（本地持久化），驱动「我的关注」计数与跨 tab 打开弹层信号。
 const { list: followList } = useFollow();
 const { followPanelOpen } = useFollowPanel();
@@ -279,6 +281,11 @@ function goWatch() {
   goTab("watch");
 }
 function goCommunity() {
+  goTab("community");
+}
+// 我的帖子：跳转社区并预设筛选项为「我发布的」（由 CommunityView 激活时消费）
+function goMyPosts() {
+  setPreset("mine");
   goTab("community");
 }
 // 我的关注：先切到社区 tab（触发 CommunityView 挂载），再置共享信号打开「我的关注」弹层。
