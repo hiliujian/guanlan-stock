@@ -1,13 +1,12 @@
 <template>
   <view class="cm-root">
-    <!-- 顶部：品牌 + 我的昵称 / 头像（可点击编辑），与自选共用 PageHeader -->
+    <!-- 顶部：品牌 + 消息入口（邮件图标 + 文字 + 未读角标），与自选共用 PageHeader -->
     <PageHeader brand-text="社区" brand-icon="chatbubble">
       <template #right>
-        <view class="cm-me">
-          <UserAvatar :url="myAvatarUrl" :seed="mySeed" :size="48" :frame="myFrame" />
-          <text class="cm-name truncate">{{ myName }}</text>
-          <view class="cm-bell" @click="msgOpen = true">
-            <OutlineIcon type="bell" :size="30" color="var(--text-2)" />
+        <view class="cm-msg" @click="msgOpen = true">
+          <OutlineIcon type="mail" :size="30" color="var(--text)" />
+          <view class="cm-msg-label">
+            <text class="cm-msg-text">消息</text>
             <view v-if="unreadTotal > 0" class="cm-badge">{{ unreadTotal > 99 ? '99+' : unreadTotal }}</view>
           </view>
         </view>
@@ -34,11 +33,27 @@
     <!-- 可滚动内容区 -->
     <scroll-view class="cm-scroll" scroll-y>
 
-    <!-- 动态栏目标题 + 刷新 -->
+    <!-- 动态栏目标题 + 筛选下拉（下拉刷新由页面 onPullDownRefresh 触发，此处不再保留刷新按钮） -->
     <view class="cm-bar flex-between">
-      <text class="cm-bar-t">{{ searching ? ('搜索结果 · ' + displayPosts.length) : '最新动态' }}</text>
-      <view class="cm-refresh" :class="{ 'anim-spin': loading }" @click="searching ? search(searchQuery) : load">
-        <OutlineIcon type="refresh" :size="30" color="var(--text-2)" />
+      <view v-if="!searching" class="cm-filter" @click="filterOpen = !filterOpen">
+        <text class="cm-bar-t">{{ filterTitle }}</text>
+        <OutlineIcon type="pulldown" :size="22" color="var(--text-2)" class="cm-filter-arrow" :class="{ 'is-open': filterOpen }" />
+      </view>
+      <text v-else class="cm-bar-t">搜索结果 · {{ displayPosts.length }}</text>
+    </view>
+    <!-- 筛选下拉菜单 -->
+    <view v-if="filterOpen && !searching" class="cm-filter-mask" @click="filterOpen = false">
+      <view class="cm-filter-menu" @click.stop>
+        <view
+          v-for="opt in filterOptions"
+          :key="opt.key"
+          class="cm-filter-item"
+          :class="{ active: filterKey === opt.key }"
+          @click="chooseFilter(opt.key)"
+        >
+          <text class="cm-filter-item-text">{{ opt.label }}</text>
+          <OutlineIcon v-if="filterKey === opt.key" type="check" :size="26" color="var(--primary)" />
+        </view>
       </view>
     </view>
 
@@ -59,7 +74,7 @@
     <!-- 空态 -->
     <view v-if="!loading && !displayPosts.length" class="cm-empty">
       <OutlineIcon type="chatbubble" :size="84" color="var(--border)" />
-      <text class="empty-title">{{ searching ? "未找到相关帖子" : "还没有动态，来发第一条吧" }}</text>
+      <text class="empty-title">{{ emptyText }}</text>
     </view>
 
     <!-- 底部留白（避免被固定 tabbar 与底部发帖卡片遮挡） -->
@@ -107,8 +122,8 @@ import type { CommunityPost, PostCard as PostCardData, Topic } from "@/api/commu
 
 const { posts, loading, searchResults, load, publishText, publishCard, like, reply, remove, search } = useCommunity();
 
-// 消息中心（通知铃铛）：未读总数角标（私信 + 活动通知）+ 进入消息中心加载会话
-const { unreadTotal, unreadDm, loadConversations, loadNotifications } = useMessageCenter();
+// 消息中心：未读总数角标（私信 + 活动通知）+ 进入消息中心加载会话
+const { unreadTotal, loadConversations, loadNotifications } = useMessageCenter();
 const msgOpen = ref(false);
 const postSheet = ref<any>(null);
 
@@ -145,8 +160,53 @@ function isMine(p: CommunityPost): boolean {
   return p.author === myName.value;
 }
 
-// ---------------- 信息流（展示全部动态；搜索态展示结果） ----------------
-const displayPosts = computed(() => (searching.value ? searchResults.value : posts.value));
+// ---------------- 信息流筛选（最新动态 / 关注的人 / 参与的帖子 / 我发布的） ----------------
+type FilterKey = "latest" | "following" | "participated" | "mine";
+const filterOptions: { key: FilterKey; label: string }[] = [
+  { key: "latest", label: "最新动态" },
+  { key: "following", label: "关注的人" },
+  { key: "participated", label: "参与的帖子" },
+  { key: "mine", label: "我发布的" },
+];
+const filterKey = ref<FilterKey>("latest");
+const filterOpen = ref(false);
+const filterTitle = computed(
+  () => filterOptions.find((o) => o.key === filterKey.value)?.label || "最新动态"
+);
+// 关注系统尚未接入：followedAuthors 默认空，待后端提供关注列表后填充即可启用「关注的人」。
+const followedAuthors = ref<Set<string>>(new Set());
+const filteredPosts = computed(() => {
+  const base = posts.value;
+  switch (filterKey.value) {
+    case "mine":
+      return base.filter((p) => isMine(p));
+    case "participated":
+      // 我发布的或我回过的帖子都算「参与」
+      return base.filter((p) => isMine(p) || p.replies.some((r) => r.author === myName.value));
+    case "following":
+      return base.filter((p) => followedAuthors.value.has(p.author));
+    default:
+      return base;
+  }
+});
+
+// ---------------- 信息流（展示筛选结果；搜索态优先展示搜索结果） ----------------
+const displayPosts = computed(() => (searching.value ? searchResults.value : filteredPosts.value));
+
+// 空态文案：随筛选 / 搜索态变化
+const emptyText = computed(() => {
+  if (searching.value) return "未找到相关帖子";
+  if (filterKey.value === "following") return "还没有关注的人动态";
+  if (filterKey.value !== "latest") return "这里还没有相关动态";
+  return "还没有动态，来发第一条吧";
+});
+
+function chooseFilter(key: FilterKey) {
+  filterKey.value = key;
+  filterOpen.value = false;
+  // 选中筛选项时退出搜索态，让筛选结果可见（否则搜索结果会覆盖筛选）
+  if (searching.value) clearSearch();
+}
 
 // ---------------- 搜索栏逻辑（关键字 / 股票代码 / 股票名称） ----------------
 const searchQuery = ref("");
@@ -154,6 +214,7 @@ const searching = computed(() => searchQuery.value.trim().length > 0);
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
 function runSearch() {
+  filterOpen.value = false;
   if (searchTimer) {
     clearTimeout(searchTimer);
     searchTimer = null;
@@ -236,38 +297,33 @@ defineExpose({ refresh: load });
   min-height: 0;
   height: auto;
 }
-/* 「我」的胶囊：自选/社区共用，与新顶部栏高度协调：头像 48rpx + 字 26rpx */
-.cm-me {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  padding: 6rpx 18rpx 6rpx 6rpx;
-  border-radius: 999rpx;
-  background: var(--card-2);
-  box-shadow: inset 0 0 0 1rpx var(--border);
-}
-.cm-name {
-  font-size: var(--font-md);
-  font-weight: 400;
-  color: var(--text);
-  max-width: 180rpx;
-  /* 截断属性已提升至全局 .truncate */
-}
-/* 通知铃铛入口：纯图标，紧贴昵称，无背景 / 无 padding / 无边框（徽章仍绝对定位） */
-.cm-bell {
+/* 「消息」入口：邮件图标 + 文字组合，替代原头像/昵称区；点击进入消息中心 */
+.cm-msg {
   position: relative;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  color: var(--text-2);
+  gap: 6rpx;
+  padding: 6rpx;
+  color: var(--text);
 }
-.cm-bell:active {
+.cm-msg:active {
   opacity: 0.6;
 }
+.cm-msg-label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.cm-msg-text {
+  font-size: var(--font-md);
+  font-weight: 400;
+  color: var(--text);
+}
+/* 未读角标：红色圆形，置于「消息」文字右上角，数量 >99 显示 99+ */
 .cm-badge {
   position: absolute;
-  top: -6rpx;
-  right: -6rpx;
+  top: -8rpx;
+  right: -10rpx;
   min-width: 28rpx;
   height: 28rpx;
   padding: 0 6rpx;
@@ -279,21 +335,22 @@ defineExpose({ refresh: load });
   text-align: center;
 }
 
-/* 底部发帖卡片折叠态（输入框卡片）：复用 PeekSheet 玻璃面板，这里仅定义内部行布局 */
+/* 底部发帖卡片折叠态（输入框卡片）：复用 PeekSheet 玻璃面板，这里仅定义内部行布局。
+   内边距 / 间距对齐全局 .peek-row（padding:0 28rpx; gap:12rpx），与「今日最热」等底部卡片一致 */
 .pe-peek {
   display: flex;
   align-items: center;
-  gap: 14rpx;
+  gap: 12rpx;
   height: 100%;
-  padding: 0 14rpx;
+  padding: 0 28rpx;
 }
 .pe-ph {
   flex: 1;
   min-width: 0;
-  height: 60rpx;
-  line-height: 60rpx;
-  padding: 0 24rpx;
-  font-size: var(--font-sm);
+  height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 28rpx;
+  font-size: var(--font-md);
   color: var(--text-2);
   background: var(--card-2);
   border-radius: 999rpx;
@@ -312,12 +369,48 @@ defineExpose({ refresh: load });
   font-size: var(--font-sm);
   color: var(--text-2);
 }
-.cm-refresh {
-  padding: 8rpx;
-  /* 仅做点击反馈，旋转交给 .anim-spin 持续动画，彻底避免来回摇摆 */
+/* 筛选入口：标题 + 向下箭头，点击展开下拉菜单 */
+.cm-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
 }
-.cm-refresh:active {
+.cm-filter:active {
   opacity: 0.6;
+}
+.cm-filter-arrow {
+  transition: transform 0.18s ease;
+}
+.cm-filter-arrow.is-open {
+  transform: rotate(180deg);
+}
+/* 下拉菜单（紧贴标题栏下方）：毛玻璃卡片，点击遮罩空白处关闭 */
+.cm-filter-mask {
+  padding: 0 26rpx;
+}
+.cm-filter-menu {
+  background: var(--card);
+  border: 1rpx solid var(--border);
+  border-radius: 18rpx;
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+.cm-filter-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 22rpx 26rpx;
+}
+.cm-filter-item:active {
+  background: var(--card-2);
+}
+.cm-filter-item.active {
+  color: var(--primary);
+}
+.cm-filter-item-text {
+  font-size: var(--font-md);
+  color: inherit;
 }
 .cm-loading {
   display: flex;
