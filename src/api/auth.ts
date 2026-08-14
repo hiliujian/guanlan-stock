@@ -221,6 +221,8 @@ interface ProfilePatch {
   avatar_frame?: string;
   last_login?: LoginInfo | null;
   signature?: string; // 个人简介（公开可读）；见 #536：改为持久化到 profiles.signature
+  allow_dm?: boolean; // 允许私信（需求 B）；默认 true
+  public_watchlist?: boolean; // 公开自选股（需求 B）；默认 true
 }
 
 /** 最近一次登录信息（供「账号安全」页展示）：地点 / 时间 / 设备 */

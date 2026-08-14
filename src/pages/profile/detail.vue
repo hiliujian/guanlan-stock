@@ -51,10 +51,56 @@
           <text class="dp-bio">{{ registerText }}</text>
         </view>
 
-        <!-- 操作区：本人→编辑资料；他人已登录→发私信；他人未登录→引导登录 -->
+        <!-- 自选股（受 public_watchlist 权限控制；需求 B） -->
+        <view v-if="showWatchlist" class="dp-section">
+          <text class="dp-label">自选股</text>
+          <view v-if="watchlistLoading" class="dp-wl-loading"><view class="cl-spin" /></view>
+          <view v-else-if="watchError" class="dp-wl-empty">自选股加载失败</view>
+          <view v-else-if="watchlist.length === 0" class="dp-wl-empty">暂无自选股</view>
+          <view v-else class="dp-wl-list">
+            <view
+              v-for="w in watchlist"
+              :key="w.code + '|' + w.market"
+              class="dp-wl-row"
+              hover-class="dp-wl-row-hover"
+              role="button"
+              @click="openStock(w)"
+            >
+              <view class="dp-wl-info">
+                <text class="dp-wl-name truncate">{{ w.name || w.code }}</text>
+                <text class="dp-wl-code">{{ w.code }}</text>
+              </view>
+              <view v-if="typeof w.price === 'number'" class="dp-wl-q">
+                <text class="dp-wl-price">{{ formatPrice(w.price) }}</text>
+                <text class="dp-wl-pct" :class="pctClass(w.pct)">{{ formatPct(w.pct) }}</text>
+              </view>
+              <OutlineIcon type="arrow-right" :size="28" color="var(--text-3)" />
+            </view>
+          </view>
+        </view>
+        <!-- 对方未公开自选股（需求 B） -->
+        <view v-else-if="watchlistHidden" class="dp-section">
+          <text class="dp-label">自选股</text>
+          <view class="dp-wl-locked">
+            <OutlineIcon type="eye-off" :size="40" color="var(--text-3)" />
+            <text class="dp-wl-lock-text">对方未公开自选股</text>
+          </view>
+        </view>
+
+        <!-- 操作区：本人→编辑资料；他人已登录且允许私信→发私信；对方未开启私信→禁用；未登录→引导登录 -->
         <view class="dp-actions">
           <button v-if="isSelf" class="btn-primary" @click="goEdit">编辑我的资料</button>
-          <button v-else-if="user.loggedIn" class="btn-primary" @click="startDm">发私信</button>
+          <button
+            v-else-if="user.loggedIn && profile.allow_dm"
+            class="btn-primary"
+            @click="startDm"
+          >发私信</button>
+          <button
+            v-else-if="user.loggedIn && !profile.allow_dm"
+            class="btn-primary"
+            :disabled="true"
+            @click="startDm"
+          >对方未开启私信</button>
           <button v-else class="btn-primary" @click="goLogin">登录后发私信</button>
         </view>
       </template>
@@ -69,9 +115,11 @@ import OutlineIcon from "@/components/OutlineIcon.vue";
 import UserAvatar from "@/components/UserAvatar.vue";
 import LevelTag from "@/components/LevelTag.vue";
 import { getSupabase, isSupabaseConfigured } from "@/api/supabase";
+import { resolveSecid, type Market } from "@/utils/period";
+import { fetchSnapshot } from "@/api/quote";
 import { useUser, userState } from "@/store/user";
 import { useDmTarget } from "@/store/community";
-import { goTab, openAuth } from "@/store/nav";
+import { goTab, openAuth, openInMarket } from "@/store/nav";
 
 const user = useUser();
 
@@ -86,12 +134,35 @@ interface ProfileDetail {
   exp: number;
   signature: string;
   created_at: string;
+  allow_dm: boolean; // 允许私信（需求 B，默认 true）
+  public_watchlist: boolean; // 公开自选股（需求 B，默认 true）
+}
+
+/** 他人自选股行（仅 code / market / name 来自后端公开 RPC，行情为前端实时补充） */
+interface WatchRow {
+  code: string;
+  market: string;
+  name: string;
+  price?: number;
+  pct?: number;
 }
 
 const uid = ref("");
 const loading = ref(true);
 const notFound = ref(false);
 const profile = ref<ProfileDetail | null>(null);
+
+// —— 自选股（需求 B：受 public_watchlist 权限控制） ——
+const watchlist = ref<WatchRow[]>([]);
+const watchlistLoading = ref(false);
+const watchError = ref(false);
+// 本人或对方公开 → 展示自选股列表；否则（他人且未公开）显示「对方未公开自选股」
+const showWatchlist = computed(
+  () => !!profile.value && (isSelf.value || profile.value.public_watchlist === true)
+);
+const watchlistHidden = computed(
+  () => !!profile.value && !isSelf.value && profile.value.public_watchlist !== true
+);
 
 const { setDmTarget } = useDmTarget();
 
@@ -127,7 +198,7 @@ async function loadProfile() {
     }
     const { data, error } = await sb
       .from("profiles")
-      .select("id, display_name, username, avatar_url, avatar_frame, level, exp, signature, created_at")
+      .select("id, display_name, username, avatar_url, avatar_frame, level, exp, signature, created_at, allow_dm, public_watchlist")
       .eq("id", uid.value)
       .single();
     if (error || !data) {
@@ -144,12 +215,73 @@ async function loadProfile() {
       exp: typeof data.exp === "number" ? data.exp : 0,
       signature: typeof data.signature === "string" ? data.signature : "",
       created_at: typeof data.created_at === "string" ? data.created_at : "",
+      allow_dm: typeof data.allow_dm === "boolean" ? data.allow_dm : true,
+      public_watchlist: typeof data.public_watchlist === "boolean" ? data.public_watchlist : true,
     };
+    // 权限判定：本人或对方公开 → 拉取自选股（前端控制 + 后端 RPC 再校验一次）
+    if (profile.value.public_watchlist === true || isSelf.value) {
+      loadWatchlist();
+    } else {
+      watchlist.value = [];
+    }
   } catch {
     notFound.value = true;
   } finally {
     loading.value = false;
   }
+}
+
+/** 拉取对方自选股（经 get_user_watchlist RPC，后端按 public_watchlist 再次校验可见性）。
+ *  仅回传 code / market / name；基本行情（现价 / 涨跌幅）由前端并行补 fetchSnapshot，缺省不阻断列表。 */
+async function loadWatchlist() {
+  const sb = getSupabase();
+  if (!sb || !uid.value) return;
+  watchlistLoading.value = true;
+  watchError.value = false;
+  try {
+    const { data, error } = await sb.rpc("get_user_watchlist", { p_target: uid.value });
+    if (error || !data) {
+      watchError.value = true;
+      return;
+    }
+    const rows: WatchRow[] = (data as any[]).map((d: any) => ({
+      code: d.code,
+      market: d.market || "auto",
+      name: d.name || "",
+    }));
+    await Promise.all(
+      rows.map(async (r) => {
+        try {
+          const secid = resolveSecid(r.code, (r.market as Market) || "auto");
+          const snap = await fetchSnapshot(secid);
+          r.price = snap.price;
+          r.pct = snap.pct;
+        } catch {
+          /* 行情缺失时仅展示名称与代码 */
+        }
+      })
+    );
+    watchlist.value = rows;
+  } catch {
+    watchError.value = true;
+  } finally {
+    watchlistLoading.value = false;
+  }
+}
+
+function pctClass(pct?: number): string {
+  if (typeof pct !== "number" || pct === 0) return "flat";
+  return pct > 0 ? "up" : "down";
+}
+function formatPrice(p: number): string {
+  return p.toFixed(2);
+}
+function formatPct(p?: number): string {
+  if (typeof p !== "number") return "";
+  return `${p > 0 ? "+" : ""}${p.toFixed(2)}%`;
+}
+function openStock(w: WatchRow) {
+  openInMarket(w.code, w.market as Market);
 }
 
 onLoad((options: any) => {
@@ -180,6 +312,8 @@ function goLogin() {
 /** 发私信：写入深链目标 → 切到社区 tab → 返回（社区页消费目标并打开消息中心会话）。 */
 function startDm() {
   if (!profile.value) return;
+  // 二次拦截：对方关闭「允许私信」时不写入深链目标（后端 send_dm 亦会校验，双重保险）
+  if (profile.value.allow_dm === false) return;
   setDmTarget({
     otherId: profile.value.id,
     otherName: nameText.value,
@@ -288,5 +422,83 @@ function startDm() {
 .dp-error-btn {
   margin-top: 20rpx;
   width: 60%;
+}
+
+/* 自选股列表（需求 B） */
+.dp-wl-loading {
+  display: flex;
+  justify-content: center;
+  padding: 28rpx 0;
+}
+.dp-wl-empty {
+  font-size: var(--font-sm);
+  color: var(--text-2);
+  padding: 16rpx 0;
+}
+.dp-wl-list {
+  display: flex;
+  flex-direction: column;
+}
+.dp-wl-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 18rpx 0;
+  border-top: 1rpx solid var(--border);
+}
+.dp-wl-row:first-child {
+  border-top: none;
+}
+.dp-wl-row-hover {
+  background: var(--card-2);
+}
+.dp-wl-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+.dp-wl-name {
+  font-size: var(--font-md);
+  color: var(--text);
+}
+.dp-wl-code {
+  font-size: var(--font-xs);
+  color: var(--text-2);
+}
+.dp-wl-q {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4rpx;
+  flex: none;
+}
+.dp-wl-price {
+  font-size: var(--font-md);
+  color: var(--text);
+}
+.dp-wl-pct {
+  font-size: var(--font-xs);
+}
+.dp-wl-pct.up {
+  color: var(--up);
+}
+.dp-wl-pct.down {
+  color: var(--down);
+}
+.dp-wl-pct.flat {
+  color: var(--text-2);
+}
+.dp-wl-locked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+  padding: 30rpx 0;
+}
+.dp-wl-lock-text {
+  font-size: var(--font-sm);
+  color: var(--text-2);
 }
 </style>

@@ -16,6 +16,8 @@ interface Profile {
   exp?: number; // 用户经验值；由后端维护，缺省 0
   last_login?: LoginInfo | null; // 最近一次登录的地点/时间/设备（账号安全页展示）
   signature?: string; // 个人简介（公开可读，供「公开资料页」展示给他人；详见 #536）
+  allow_dm?: boolean; // 允许私信（需求 B，默认 true；false 时他人无法向其发私信）
+  public_watchlist?: boolean; // 公开自选股（需求 B，默认 true；false 时他人资料页隐藏其自选股）
 }
 
 interface UserState {
@@ -51,6 +53,8 @@ async function loadProfile(userId: string) {
       exp: typeof data.exp === "number" ? data.exp : 0,
       last_login: (data.last_login as LoginInfo) ?? null,
       signature: typeof data.signature === "string" ? data.signature : "",
+      allow_dm: typeof data.allow_dm === "boolean" ? data.allow_dm : true,
+      public_watchlist: typeof data.public_watchlist === "boolean" ? data.public_watchlist : true,
     };
     // 注意：username 由用户在注册时自填、唯一（见 deploy.sql 部分唯一索引）。
     // 历史空 username 不再由前端自动补随机值；

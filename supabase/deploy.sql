@@ -52,6 +52,9 @@ create table public.profiles (
   location     text not null default '',
   prefs        jsonb not null default '{}'::jsonb,        -- 用户偏好（主题/通知开关等），用 jsonb 避免将来每加一项就 ALTER
   last_seen_at timestamptz,                               -- 最近活跃时间（社区排序 / 在线状态）
+  -- 隐私开关（需求 B：允许私信 / 公开自选股），默认开放，用户可在「账号安全」页关闭
+  allow_dm         boolean not null default true,         -- 允许私信：false 时他人无法向其发送私信（前端禁用入口 + 后端 send_dm 校验双重拦截）
+  public_watchlist boolean not null default true,         -- 公开自选股：false 时他人资料页隐藏其自选股（前端隐藏 + 后端 get_user_watchlist 校验）
   created_at   timestamptz not null default now()
 );
 
@@ -454,9 +457,16 @@ create policy "community_dms_update" on public.community_dms
 create or replace function public.send_dm(p_receiver uuid, p_content text)
 returns table (id uuid, sender_id uuid, receiver_id uuid, content text, status text, created_at timestamptz)
 language plpgsql security definer set search_path = public as $$
+declare
+  v_allow_dm boolean;
 begin
   if p_receiver = auth.uid() then raise exception '不能给自己发私信'; end if;
   if length(trim(p_content)) < 1 then raise exception '私信内容不能为空'; end if;
+  -- 收件人关闭「允许私信」则拒绝（后端兜底，防止前端禁用入口被绕过）
+  select allow_dm into v_allow_dm from public.profiles where id = p_receiver;
+  if coalesce(v_allow_dm, true) = false then
+    raise exception '对方未开启私信';
+  end if;
   return query
   insert into public.community_dms (sender_id, receiver_id, content)
   values (auth.uid(), p_receiver, trim(p_content))
@@ -464,6 +474,40 @@ begin
             community_dms.content, community_dms.status, community_dms.created_at;
 end;
 $$;
+
+-- 他人自选股查询（受「公开自选股」权限控制）
+--   仅当「查询者是本人」或「目标用户开启 public_watchlist」时，返回其自选股（code, market, name）；
+--   否则返回空集（前端据此显示「对方未公开自选股」）。
+--   SECURITY DEFINER：绕过 watchlists 的 owner-only RLS，改由函数内部裁决可见性，避免越权读取他人自选。
+--   仅回传 code / market / name 三个公开字段，绝不下发 note / 提醒等私有配置。
+create or replace function public.get_user_watchlist(p_target uuid)
+returns table (code text, market text, name text)
+language plpgsql security definer set search_path = public as $$
+begin
+  -- 本人：始终可见自己的自选
+  if p_target = auth.uid() then
+    return query
+      select w.code, w.market, w.name
+      from public.watchlists w
+      where w.user_id = p_target
+      order by w.created_at asc;
+    return;
+  end if;
+  -- 他人：仅当对方开启「公开自选股」
+  if exists (
+    select 1 from public.profiles p
+    where p.id = p_target and coalesce(p.public_watchlist, true) = true
+  ) then
+    return query
+      select w.code, w.market, w.name
+      from public.watchlists w
+      where w.user_id = p_target
+      order by w.created_at asc;
+  end if;
+  -- 否则返回空集（不 return query）
+end;
+$$;
+grant execute on function public.get_user_watchlist(uuid) to anon, authenticated;
 
 -- 会话列表（按对方聚合：最近一条 + 未读数）
 create or replace function public.get_my_conversations()
@@ -999,4 +1043,9 @@ grant execute on function public.get_stock_heat(int, boolean) to anon, authentic
 -- #536 个人简介列：公开可读，供「公开资料页」向他人展示。
 --   生产库已通过 Management API 单独部署该列，此处仅作仓库 schema 一致性同步。
 alter table public.profiles add column if not exists signature text not null default '';
+
+-- #B 私信 / 自选股权限开关（需求 B）：与上方 CREATE TABLE 声明保持一致，幂等补齐生产库。
+--   生产库已通过 Management API 单独部署，此处仅作仓库 schema 一致性同步。
+alter table public.profiles add column if not exists allow_dm boolean not null default true;
+alter table public.profiles add column if not exists public_watchlist boolean not null default true;
 

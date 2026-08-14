@@ -156,6 +156,57 @@
         </view>
       </view>
 
+      <!-- 隐私设置分组（需求 B）：允许私信 / 公开自选股，默认开放 -->
+      <view class="sec-group">
+        <text class="sec-group-title">隐私设置</text>
+
+        <!-- 允许私信 -->
+        <view class="sec-row">
+          <view class="sec-row-left">
+            <view class="sec-row-ic"><OutlineIcon type="chatbubble" :size="28" color="var(--text-2)" /></view>
+            <view class="sec-row-text">
+              <text class="sec-row-label">允许私信</text>
+              <text class="sec-row-desc truncate">关闭后，其他用户将无法向你发送私信</text>
+            </view>
+          </view>
+          <view class="sec-row-action">
+            <view
+              class="cc-switch"
+              :class="{ on: allowDm, 'is-saving': savingPref }"
+              hover-class="cc-switch-hover"
+              role="switch"
+              :aria-checked="allowDm"
+              @click="toggleAllowDm"
+            >
+              <view class="cc-knob" />
+            </view>
+          </view>
+        </view>
+
+        <!-- 公开自选股 -->
+        <view class="sec-row">
+          <view class="sec-row-left">
+            <view class="sec-row-ic"><OutlineIcon type="eye" :size="28" color="var(--text-2)" /></view>
+            <view class="sec-row-text">
+              <text class="sec-row-label">公开自选股</text>
+              <text class="sec-row-desc truncate">关闭后，他人查看你的资料页将看不到自选股</text>
+            </view>
+          </view>
+          <view class="sec-row-action">
+            <view
+              class="cc-switch"
+              :class="{ on: publicWatchlist, 'is-saving': savingPref }"
+              hover-class="cc-switch-hover"
+              role="switch"
+              :aria-checked="publicWatchlist"
+              @click="togglePublicWatchlist"
+            >
+              <view class="cc-knob" />
+            </view>
+          </view>
+        </view>
+      </view>
+
         <!-- 危险操作区：卡片样式与其他卡片一致（分节标题 + 内衬内容），仅按钮保留危险红 -->
         <view class="sec-danger-zone">
           <text class="sec-danger-title">注销账号</text>
@@ -203,6 +254,7 @@ import {
   verifyEmailChange,
   captureLoginInfo,
   fetchLoginInfo,
+  updateProfile,
   type LoginInfo,
   EMAIL_RE,
 } from "@/api/auth";
@@ -210,6 +262,49 @@ import {
 const user = useUser();
 // 全局页面守卫：账号安全页未对游客开放 + 未登录 → 跳转登录页
 usePageGuard("/pages/profile/security");
+
+// —— 隐私开关（需求 B）：允许私信 / 公开自选股，默认开放 ——
+const allowDm = ref(true);
+const publicWatchlist = ref(true);
+const savingPref = ref(false);
+
+// 从全局 profile 同步开关初始态（每次打开本页都重读云端最新值）
+function syncPrivacy() {
+  allowDm.value = user.profile?.allow_dm ?? true;
+  publicWatchlist.value = user.profile?.public_watchlist ?? true;
+}
+
+async function savePrivacy(patch: { allow_dm?: boolean; public_watchlist?: boolean }, apply: () => void, revert: () => void) {
+  if (savingPref.value) return;
+  savingPref.value = true;
+  try {
+    const r = await updateProfile(patch);
+    if (!r.ok) {
+      revert();
+      uni.showToast({ title: r.error || "保存失败", icon: "none" });
+      return;
+    }
+    apply();
+    await refreshProfile().catch(() => {});
+  } catch {
+    revert();
+    uni.showToast({ title: "保存失败，请重试", icon: "none" });
+  } finally {
+    savingPref.value = false;
+  }
+}
+
+function toggleAllowDm() {
+  const next = !allowDm.value;
+  allowDm.value = next; // 乐观更新
+  savePrivacy({ allow_dm: next }, () => {}, () => { allowDm.value = !next; });
+}
+
+function togglePublicWatchlist() {
+  const next = !publicWatchlist.value;
+  publicWatchlist.value = next; // 乐观更新
+  savePrivacy({ public_watchlist: next }, () => {}, () => { publicWatchlist.value = !next; });
+}
 
 // —— 上次登录信息：每次打开本页都直接从云端 profiles 表查询（不依赖本地缓存 / 登录时的
 // 内存快照，避免快照为 null 时一直显示「暂无登录记录」）。仅当云端确实无记录，才以当前
@@ -225,6 +320,7 @@ onShow(async () => {
     info = await fetchLoginInfo();
   }
   lastLogin.value = info;
+  syncPrivacy();
 });
 
 // 上次登录：地点 · 时间 · 设备 合并一行展示（缺失项自动跳过，全空显「暂无登录记录」）
@@ -639,6 +735,11 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   flex: none;
+}
+
+/* 隐私开关保存中：轻微降透明，提示勿连点 */
+.cc-switch.is-saving {
+  opacity: 0.55;
 }
 
 /* 内联修改表单 */

@@ -55,3 +55,6 @@ supabase/.temp/
 
 # ---- Tool / agent working directories ----
 .workbuddy/
+
+# 部署脚本含硬编码 PAT，禁止入库
+scripts_dbquery.py

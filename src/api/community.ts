@@ -539,7 +539,12 @@ async function sendDmRemote(receiverId: string, content: string): Promise<DmMess
     }>,
     10000
   )) as { data: any; error: any };
-  if (res.error || !res.data) return null;
+  if (res.error) {
+    // 后端校验失败（如对方未开启私信 / 内容为空）：友好提示，不静默吞掉
+    uni.showToast({ title: translateSupabaseError(res.error.message || "发送失败"), icon: "none" });
+    return null;
+  }
+  if (!res.data) return null;
   const d = (res.data as any[])[0];
   if (!d) return null;
   return {
