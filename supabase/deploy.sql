@@ -42,7 +42,6 @@ create table public.profiles (
   id           uuid primary key references auth.users (id) on delete cascade,
   username     text not null default '',
   display_name text not null default '',
-  signature    text not null default '还没写下签名，正在观察市场',  -- 个性签名（单行，最多 50 字）；新账号统一默认值
   avatar_url   text not null default '',
   avatar_frame text not null default '',                  -- 头像框 id（''=无边框；可选值见前端 src/utils/avatarFrame.ts：rainbow/member/aurora/diamond）
   level        integer not null default 0,                -- 用户等级序号（0=新手散户，对应前端 TIERS 下标）；由后端维护，前端只读展示
@@ -626,7 +625,6 @@ begin
   if not new.profile_bonus_claimed and (
     new.display_name is distinct from old.display_name
     or new.avatar_url   is distinct from old.avatar_url
-    or new.signature    is distinct from old.signature
   ) then
     update public.profiles set profile_bonus_claimed = true where id = new.id;
     perform public.grant_exp(new.id, 20);
