@@ -860,7 +860,6 @@ function openNews(it: NewsItem) {
   70% { box-shadow: 0 0 0 12rpx transparent; }
   100% { box-shadow: 0 0 0 0 transparent; }
 }
-.sig-alert .sa-label { font-weight: 700; }
 .sig-alert .sa-pct { font-weight: 800; font-size: var(--font-sm); }
 .sa-spacer { flex: 1; }
 .sa-sub { font-size: var(--font-xs); opacity: 0.8; }
@@ -930,7 +929,6 @@ function openNews(it: NewsItem) {
   align-items: center;
   gap: 10rpx;
   font-size: var(--font-md);
-  font-weight: 600;
   color: var(--r-ink);
   margin-bottom: 16rpx;
 }
@@ -1111,7 +1109,7 @@ function openNews(it: NewsItem) {
 .signal-card.watch .signal { background: rgba(255, 159, 28, 0.12); }
 .signal-card.wait .signal { background: var(--card-2); }
 .sig-main { display: flex; flex-direction: column; gap: 6rpx; flex: 1; min-width: 0; }
-.sig-label { font-size: var(--font-xl); font-weight: 800; line-height: 1.1; }
+.sig-label { font-size: var(--font-xl); line-height: 1.1; }
 .signal-card.buy .sig-label { color: var(--up); }
 .signal-card.sell .sig-label { color: var(--down); }
 .signal-card.hold .sig-label { color: #2563eb; }
@@ -1158,7 +1156,6 @@ function openNews(it: NewsItem) {
   align-items: center;
   gap: 10rpx;
   font-size: var(--font-md);
-  font-weight: 600;
   color: var(--r-ink);
   margin-bottom: 10rpx;
 }
@@ -1219,7 +1216,6 @@ function openNews(it: NewsItem) {
 .ni-title {
   flex: 1;
   font-size: var(--font-sm);
-  font-weight: 600;
   color: var(--r-ink);
   line-height: 1.5;
 }
@@ -1255,7 +1251,6 @@ function openNews(it: NewsItem) {
 }
 .ni-h {
   font-size: var(--font-sm);
-  font-weight: 600;
   color: var(--r-ink);
 }
 .ni-row {
