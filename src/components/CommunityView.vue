@@ -92,8 +92,8 @@
       </template>
     </PeekSheet>
 
-    <!-- 消息中心（动态：私信 / 点赞 / 评论） -->
-    <MessageCenter v-model="msgOpen" />
+    <!-- 消息中心（通知铃铛触发）：按需挂载为 PeekSheet 卡片，关闭即卸载，避免与发帖卡片争位 -->
+    <MessageCenter v-if="msgOpen" v-model="msgOpen" />
   </view>
 </template>
 
@@ -301,21 +301,16 @@ defineExpose({ refresh: load });
   max-width: 180rpx;
   /* 截断属性已提升至全局 .truncate */
 }
-/* 通知铃铛入口（复用原设置按钮胶囊样式）：消息中心入口，带未读角标 */
+/* 通知铃铛入口：纯图标，紧贴昵称，无背景 / 无 padding / 无边框（徽章仍绝对定位） */
 .cm-bell {
   position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6rpx;
-  padding: 8rpx 18rpx;
-  border-radius: 999rpx;
-  background: var(--card-2);
-  box-shadow: inset 0 0 0 1rpx var(--border);
-  color: var(--text);
+  color: var(--text-2);
 }
 .cm-bell:active {
-  opacity: 0.65;
+  opacity: 0.6;
 }
 .cm-badge {
   position: absolute;
@@ -338,13 +333,14 @@ defineExpose({ refresh: load });
   align-items: center;
   gap: 14rpx;
   height: 100%;
-  padding: 0 22rpx;
+  padding: 0 14rpx;
 }
 .pe-ph {
   flex: 1;
-  height: 56rpx;
-  line-height: 56rpx;
-  padding: 0 22rpx;
+  min-width: 0;
+  height: 60rpx;
+  line-height: 60rpx;
+  padding: 0 24rpx;
   font-size: var(--font-sm);
   color: var(--text-2);
   background: var(--card-2);
@@ -422,6 +418,7 @@ defineExpose({ refresh: load });
   background: var(--card-2);
   border: 1rpx solid var(--border);
   border-radius: 999rpx;
+  box-shadow: var(--shadow-1);
 }
 .cm-search-input {
   flex: 1;

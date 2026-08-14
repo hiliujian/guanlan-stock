@@ -1,13 +1,22 @@
 <template>
-  <teleport to="body">
-    <!-- 背景遮罩：点击关闭；与自选卡片同款玻璃质感，但作为消息中心模态层 -->
-    <Transition name="mc-fade">
-      <view v-if="modelValue" class="mc-mask" @click="close" />
-    </Transition>
-    <Transition name="mc-slide">
-      <view v-if="modelValue" class="mc-panel" @click.stop>
-        <!-- 头部：标题 + 关闭 -->
-        <view class="mc-head panel-head">
+  <!-- 统一使用 PeekSheet 卡片框架（与自选「今日最热」/「显示列」同源）：
+       无遮罩层、玻璃质感、仅顶部圆角，底部固定卡片。铃铛触发展开，关闭即卸载，
+       避免与底部发帖卡片争抢同一固定位。 -->
+  <PeekSheet ref="sheet" @collapse="onCollapse">
+    <!-- 折叠态预览行（极少出现，因挂载即展开）：与发帖卡片一致的触发外观 -->
+    <template #peek>
+      <view class="mc-peek">
+        <OutlineIcon type="bell" :size="30" color="var(--text-2)" />
+        <text class="mc-peek-t">消息中心</text>
+        <view v-if="unreadTotal > 0" class="mc-peek-badge">{{ unreadTotal > 99 ? '99+' : unreadTotal }}</view>
+      </view>
+    </template>
+
+    <!-- 展开 / 铺满：消息中心内容（私信 / 点赞 / 评论） -->
+    <template #default>
+      <view class="mc-wrap">
+        <!-- 头部：复用全局 grp-head + panel-head + sheet-title，左右留返回 / 关闭 -->
+        <view class="grp-head panel-head mc-bar">
           <view class="mc-back" v-if="selectedOther" @click="selectedOther = null">
             <OutlineIcon type="arrow-left" :size="34" color="var(--text)" />
           </view>
@@ -31,10 +40,10 @@
           </view>
         </view>
 
-        <!-- 内容区 -->
-        <view class="mc-body">
+        <!-- 会话列表 / 通知列表（可滚动） -->
+        <scroll-view v-if="!selectedOther" scroll-y class="mc-scroll">
           <!-- 私信会话列表 -->
-          <template v-if="tab === 'dm' && !selectedOther">
+          <template v-if="tab === 'dm'">
             <view v-if="convLoading && !conversations.length" class="mc-loading"><view class="cl-spin" /></view>
             <view
               v-for="c in conversations"
@@ -55,34 +64,6 @@
             <view v-if="!convLoading && !conversations.length" class="mc-empty">
               <OutlineIcon type="mail" :size="80" color="var(--border)" />
               <text class="empty-title">还没有私信</text>
-            </view>
-          </template>
-
-          <!-- 私信会话详情（聊天） -->
-          <template v-else-if="selectedOther">
-            <scroll-view class="mc-thread" scroll-y :scroll-into-view="threadBottomId">
-              <view
-                v-for="m in activeThread"
-                :key="m.id"
-                :class="['mc-msg', m.senderId === myId ? 'mine' : '']"
-              >
-                <view class="mc-bubble">{{ m.content }}</view>
-                <text class="mc-msg-time">{{ formatRelative(m.createdAt) }}</text>
-              </view>
-              <view :id="threadBottomId" />
-            </scroll-view>
-            <view class="mc-input">
-              <input
-                class="mc-input-in"
-                v-model="dmText"
-                placeholder="发送私信…"
-                maxlength="500"
-                confirm-type="send"
-                @confirm="send"
-              />
-              <view :class="['mc-send', dmText.trim() ? '' : 'disabled']" @click="send">
-                <OutlineIcon type="send" :size="30" :color="dmText.trim() ? '#fff' : 'rgba(255,255,255,0.6)'" />
-              </view>
             </view>
           </template>
 
@@ -110,16 +91,45 @@
               <text class="empty-title">{{ tab === "like" ? "还没有点赞通知" : "还没有评论通知" }}</text>
             </view>
           </template>
-        </view>
+        </scroll-view>
+
+        <!-- 私信会话详情（聊天） -->
+        <template v-else>
+          <scroll-view class="mc-thread" scroll-y :scroll-into-view="threadBottomId">
+            <view
+              v-for="m in activeThread"
+              :key="m.id"
+              :class="['mc-msg', m.senderId === myId ? 'mine' : '']"
+            >
+              <view class="mc-bubble">{{ m.content }}</view>
+              <text class="mc-msg-time">{{ formatRelative(m.createdAt) }}</text>
+            </view>
+            <view :id="threadBottomId" />
+          </scroll-view>
+          <view class="mc-input">
+            <input
+              class="mc-input-in"
+              v-model="dmText"
+              placeholder="发送私信…"
+              maxlength="500"
+              confirm-type="send"
+              @confirm="send"
+            />
+            <view :class="['mc-send', dmText.trim() ? '' : 'disabled']" @click="send">
+              <OutlineIcon type="send" :size="30" :color="dmText.trim() ? '#fff' : 'rgba(255,255,255,0.6)'" />
+            </view>
+          </view>
+        </template>
       </view>
-    </Transition>
-  </teleport>
+    </template>
+  </PeekSheet>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import UserAvatar from "./UserAvatar.vue";
+import PeekSheet from "./PeekSheet.vue";
 import { formatRelative, type Conversation, type NotificationItem } from "@/api/community";
 import { useMessageCenter } from "@/store/community";
 import { userState } from "@/store/user";
@@ -133,6 +143,7 @@ const {
   conversations,
   convLoading,
   unreadDm,
+  unreadTotal,
   activeThread,
   threadLoading,
   loadNotifications,
@@ -141,6 +152,8 @@ const {
   sendDm,
   markNotifSeen,
 } = useMessageCenter();
+
+const sheet = ref<any>(null);
 
 type TabKey = "dm" | "like" | "comment";
 const tabs: { key: TabKey; label: string; icon: string }[] = [
@@ -159,9 +172,22 @@ const filteredNotifs = computed(() =>
   notifications.value.filter((n: NotificationItem) => n.kind === tab.value)
 );
 
+// 挂载即展开（铃铛已控制 v-if 按需挂载），并拉取数据（每次打开都是全新挂载）
+onMounted(() => {
+  sheet.value?.expand();
+  loadConversations();
+  loadNotifications();
+});
+
+// 拖拽收起到底 → 卸载自身，露出底部发帖卡片
+function onCollapse() {
+  emit("update:modelValue", false);
+}
+// 关闭按钮：直接卸载
 function close() {
   emit("update:modelValue", false);
 }
+
 async function openConv(c: Conversation) {
   selectedOther.value = c;
   await openThread(c.otherId);
@@ -173,21 +199,6 @@ async function send() {
   if (m) dmText.value = "";
 }
 
-// 打开时加载数据；关闭时复位到会话列表
-watch(
-  () => props.modelValue,
-  (open) => {
-    if (open) {
-      loadConversations();
-      loadNotifications();
-      tab.value = "dm";
-      selectedOther.value = null;
-    } else {
-      selectedOther.value = null;
-    }
-  }
-);
-
 // 查看点赞 / 评论标签页即视为已读活动通知 → 清顶部铃铛徽章（社媒标准行为）
 watch(
   () => tab.value,
@@ -198,41 +209,51 @@ watch(
 </script>
 
 <style scoped>
-.mc-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.42);
-  z-index: 94;
+/* 折叠态预览行（与发帖卡片一致的外观） */
+.mc-peek {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  height: 100%;
+  padding: 0 26rpx;
 }
-.mc-panel {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: 0;
-  z-index: 95;
-  width: 100%;
-  max-width: 480px;
-  height: 82vh;
+.mc-peek-t {
+  font-size: var(--font-md);
+  color: var(--text);
+}
+.mc-peek-badge {
+  min-width: 28rpx;
+  height: 28rpx;
+  padding: 0 6rpx;
+  border-radius: 999rpx;
+  background: var(--danger);
+  color: #fff;
+  font-size: 20rpx;
+  line-height: 28rpx;
+  text-align: center;
+}
+
+/* 展开内容容器：填满 peek-body，纵向三段（头部 / 标签 / 滚动列表） */
+.mc-wrap {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--tabbar-bg);
-  backdrop-filter: blur(20rpx) saturate(150%);
-  -webkit-backdrop-filter: blur(20rpx) saturate(150%);
-  border-top: 1rpx solid var(--border);
-  border-radius: 22rpx 22rpx 0 0;
-  box-shadow: var(--shadow-sheet);
 }
 /* 头部：复用全局 panel-head 居中标题；左右留返回 / 关闭 */
-.mc-head {
+.mc-bar {
+  position: relative;
   justify-content: center;
-  height: 84rpx;
-  flex: none;
+}
+.mc-bar .sheet-title {
+  flex: 1;
+  text-align: center;
 }
 .mc-back,
 .mc-close {
   position: absolute;
   top: 0;
-  height: 84rpx;
+  height: 100%;
   display: flex;
   align-items: center;
   padding: 0 26rpx;
@@ -292,13 +313,10 @@ watch(
   text-align: center;
 }
 
-/* 内容区 */
-.mc-body {
+/* 内容滚动区 */
+.mc-scroll {
   flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 6rpx 0 calc(20rpx + env(safe-area-inset-bottom));
 }
 .mc-loading {
   display: flex;
@@ -469,23 +487,5 @@ watch(
   flex: none;
   font-size: var(--font-xs);
   color: var(--text-3);
-}
-
-/* 动画 */
-.mc-fade-enter-active,
-.mc-fade-leave-active {
-  transition: opacity var(--dur) var(--ease-out);
-}
-.mc-fade-enter-from,
-.mc-fade-leave-to {
-  opacity: 0;
-}
-.mc-slide-enter-active,
-.mc-slide-leave-active {
-  transition: transform var(--dur) var(--ease-out);
-}
-.mc-slide-enter-from,
-.mc-slide-leave-to {
-  transform: translateX(-50%) translateY(100%);
 }
 </style>
