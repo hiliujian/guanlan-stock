@@ -34,20 +34,9 @@
     <!-- 可滚动内容区 -->
     <scroll-view class="cm-scroll" scroll-y>
 
-    <!-- 话题筛选（按股票 / 板块分类，避免所有评论汇聚一起） -->
-    <scroll-view v-if="topics.length && !searching" scroll-x class="cm-topics" :show-scrollbar="false">
-      <view
-        v-for="t in topics"
-        :key="t.key"
-        :class="['cm-chip', activeTopic === t.key ? 'on' : '']"
-        :style="activeChipStyle(t)"
-        @click="activeTopic = t.key"
-      >{{ t.label }}</view>
-    </scroll-view>
-
     <!-- 动态栏目标题 + 刷新 -->
     <view class="cm-bar flex-between">
-      <text class="cm-bar-t">{{ searching ? ('搜索结果 · ' + displayPosts.length) : (activeTopic === 'all' ? '最新动态' : '# ' + activeLabel) }}</text>
+      <text class="cm-bar-t">{{ searching ? ('搜索结果 · ' + displayPosts.length) : '最新动态' }}</text>
       <view class="cm-refresh" :class="{ 'anim-spin': loading }" @click="searching ? search(searchQuery) : load">
         <OutlineIcon type="refresh" :size="30" color="var(--text-2)" />
       </view>
@@ -70,7 +59,7 @@
     <!-- 空态 -->
     <view v-if="!loading && !displayPosts.length" class="cm-empty">
       <OutlineIcon type="chatbubble" :size="84" color="var(--border)" />
-      <text class="empty-title">{{ searching ? "未找到相关帖子" : (activeTopic === "all" ? "还没有动态，来发第一条吧" : "该话题下还没有动态") }}</text>
+      <text class="empty-title">{{ searching ? "未找到相关帖子" : "还没有动态，来发第一条吧" }}</text>
     </view>
 
     <!-- 底部留白（避免被固定 tabbar 与底部发帖卡片遮挡） -->
@@ -113,7 +102,7 @@ import { useCommunity, useMessageCenter } from "@/store/community";
 import { usePageGuard } from "@/store/guard";
 import { getMyName } from "@/store/identity";
 import { userState } from "@/store/user";
-import { avatarSeed, topicColor } from "@/utils/avatar";
+import { avatarSeed } from "@/utils/avatar";
 import type { CommunityPost, PostCard as PostCardData, Topic } from "@/api/community";
 
 const { posts, loading, searchResults, load, publishText, publishCard, like, reply, remove, search } = useCommunity();
@@ -156,45 +145,8 @@ function isMine(p: CommunityPost): boolean {
   return p.author === myName.value;
 }
 
-// ---------------- 话题筛选 ----------------
-interface TopicChip {
-  key: string;
-  label: string;
-  type?: Topic["type"];
-}
-const ALL = "all";
-const activeTopic = ref<string>(ALL);
-
-// 话题唯一键：个股 / 板块按「类型:名称」聚合
-function topicKeyOf(p: CommunityPost): string {
-  return p.topic ? `${p.topic.type}:${p.topic.name}` : "";
-}
-const topics = computed<TopicChip[]>(() => {
-  const map = new Map<string, TopicChip>();
-  for (const p of posts.value) {
-    const k = topicKeyOf(p);
-    if (!k || map.has(k)) continue;
-    const t = p.topic!;
-    map.set(k, { key: k, label: t.name, type: t.type });
-  }
-  return [{ key: ALL, label: "全部" }, ...map.values()];
-});
-const activeLabel = computed(() => topics.value.find((t) => t.key === activeTopic.value)?.label || "");
-
-function activeChipStyle(t: TopicChip): Record<string, string> {
-  if (activeTopic.value !== t.key) return {};
-  if (t.type) {
-    const c = topicColor(t.type);
-    return { color: c.fg, background: c.bg, borderColor: "transparent" };
-  }
-  return { color: "#fff", background: "var(--primary)", borderColor: "transparent" };
-}
-
-const displayPosts = computed(() => {
-  if (searching.value) return searchResults.value;
-  if (activeTopic.value === ALL) return posts.value;
-  return posts.value.filter((p) => topicKeyOf(p) === activeTopic.value);
-});
+// ---------------- 信息流（展示全部动态；搜索态展示结果） ----------------
+const displayPosts = computed(() => (searching.value ? searchResults.value : posts.value));
 
 // ---------------- 搜索栏逻辑（关键字 / 股票代码 / 股票名称） ----------------
 const searchQuery = ref("");
@@ -352,34 +304,12 @@ defineExpose({ refresh: load });
   height: 100%;
 }
 
-/* 话题筛选 chips */
-.cm-topics {
-  white-space: nowrap;
-  padding: 4rpx 18rpx 12rpx;
-}
-.cm-chip {
-  display: inline-block;
-  margin-right: 14rpx;
-  padding: 8rpx 22rpx;
-  font-size: var(--font-sm);
-  font-weight: 600;
-  color: var(--text-2);
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
-  border-radius: 999rpx;
-}
-.cm-chip.on {
-  color: #fff;
-  background: var(--primary);
-}
-
 .cm-bar {
   /* 布局属性已提升至全局 .flex-between */
   padding: 6rpx 26rpx 10rpx;
 }
 .cm-bar-t {
   font-size: var(--font-sm);
-  font-weight: 700;
   color: var(--text-2);
 }
 .cm-refresh {

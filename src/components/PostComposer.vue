@@ -238,7 +238,6 @@ function resetProfit() {
   flex: 1;
   text-align: center;
   font-size: var(--font-sm);
-  font-weight: 600;
   padding: 12rpx 0;
   border-radius: 999rpx;
   color: var(--text-2);
@@ -278,7 +277,6 @@ function resetProfit() {
 .cp-topic-btn {
   padding: 8rpx 18rpx;
   font-size: var(--font-xs);
-  font-weight: 600;
   border-radius: 999rpx;
   color: var(--text-2);
   background: var(--card-2);
@@ -334,7 +332,6 @@ function resetProfit() {
   align-items: center;
   justify-content: center;
   font-size: var(--font-sm);
-  font-weight: 600;
   border-radius: 14rpx;
   color: var(--text-2);
   background: var(--card-2);
@@ -420,7 +417,6 @@ function resetProfit() {
 }
 .cp-send-t {
   font-size: var(--font-sm);
-  font-weight: 700;
   color: #fff;
 }
 </style>

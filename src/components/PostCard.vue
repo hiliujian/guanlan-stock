@@ -194,7 +194,6 @@ function preview(current: string) {
 }
 .p-name {
   font-size: var(--font-md);
-  font-weight: 600;
   color: var(--text);
 }
 .p-time {
@@ -233,7 +232,6 @@ function preview(current: string) {
 }
 .cs-tag {
   font-size: var(--font-xs);
-  font-weight: 700;
   color: #fff;
   background: var(--primary);
   padding: 3rpx 12rpx;
@@ -241,7 +239,6 @@ function preview(current: string) {
 }
 .cs-side {
   font-size: var(--font-xs);
-  font-weight: 700;
   padding: 4rpx 14rpx;
   border-radius: 8rpx;
 }
@@ -249,7 +246,6 @@ function preview(current: string) {
 .cs-side.sell { color: var(--down); background: rgba(9, 176, 122, 0.12); }
 .cs-title {
   font-size: var(--font-md);
-  font-weight: 700;
   color: var(--text);
 }
 .cs-code {
@@ -272,7 +268,6 @@ function preview(current: string) {
 }
 .cs-v {
   font-size: var(--font-sm);
-  font-weight: 600;
   color: var(--text);
 }
 .cs-foot {
@@ -285,11 +280,9 @@ function preview(current: string) {
 }
 .cs-pnl {
   font-size: var(--font-md);
-  font-weight: 700;
 }
 .cs-big {
   font-size: var(--font-3xl);
-  font-weight: 800;
   line-height: 1.1;
   letter-spacing: 1rpx;
   margin: 4rpx 0 14rpx;
@@ -352,7 +345,6 @@ function preview(current: string) {
   padding: 6rpx 0;
 }
 .pr-name {
-  font-weight: 600;
   color: var(--primary);
   margin-right: 10rpx;
 }

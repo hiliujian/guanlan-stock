@@ -285,7 +285,6 @@ watch(
 }
 .mc-tab.on {
   color: var(--text);
-  font-weight: 700;
 }
 .mc-tab.on::after {
   content: "";
@@ -351,7 +350,6 @@ watch(
 .mc-conv-name {
   font-size: var(--font-md);
   color: var(--text);
-  font-weight: 600;
 }
 .mc-conv-last {
   font-size: var(--font-sm);
@@ -469,7 +467,6 @@ watch(
 .mc-notif-name {
   font-size: var(--font-md);
   color: var(--text);
-  font-weight: 600;
 }
 .mc-notif-act {
   font-size: var(--font-sm);
