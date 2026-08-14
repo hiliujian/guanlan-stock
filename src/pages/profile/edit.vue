@@ -43,15 +43,22 @@
           <input v-model="displayName" class="sec-field-input" placeholder="输入昵称" placeholder-class="ep-ph" maxlength="20" />
         </view>
 
-        <!-- 个性签名：单行，最多 50 字；默认占位用 DEFAULT_SIGNATURE，
-             留空保存即回落到默认签名（与「我的」页展示兜底一致） -->
-        <view class="sec-row">
+        <!-- 个性签名：沿用原「个人简介」多行输入框样式，最多 50 字；
+             默认占位用 DEFAULT_SIGNATURE，留空保存即回落到默认签名（与「我的」页展示兜底一致） -->
+        <view class="sec-row sec-row-col">
           <view class="sec-row-left">
             <view class="sec-row-text">
               <text class="sec-row-label">个性签名</text>
             </view>
           </view>
-          <input v-model="signature" class="sec-field-input" :placeholder="DEFAULT_SIGNATURE" placeholder-class="ep-ph" maxlength="50" />
+          <textarea
+            v-model="signature"
+            class="sec-field-ta"
+            :placeholder="DEFAULT_SIGNATURE"
+            placeholder-class="ep-ph"
+            maxlength="50"
+          />
+          <text class="ep-count">{{ signature.length }}/50</text>
         </view>
 
         <!-- 用户名：唯一且不可修改；空则保持空白展示，不隐藏、不加占位 -->
