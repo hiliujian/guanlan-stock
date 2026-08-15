@@ -662,8 +662,8 @@ function goUserPosts() {
 .dp-wl-list {
   display: flex;
   flex-direction: column;
-  /* 约 10 行高度，超出滚动（需求：显示 10 个股票高度，超过滚动） */
-  max-height: 880rpx;
+  /* 约 5 行高度，超出滚动（需求：自选股只显示 5 个，多了滚动） */
+  max-height: 440rpx;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
