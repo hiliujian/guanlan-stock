@@ -220,7 +220,7 @@ const canDm = computed(
 const dmLabel = computed(() => {
   if (!user.loggedIn) return "登录后私信";
   if (profile.value?.allow_dm === false) return "未开启私信";
-  return "发私信";
+  return "私信";
 });
 
 function onFollowToggle() {
@@ -463,9 +463,9 @@ function startDm() {
   gap: 6rpx;
 }
 .dp-name {
-  flex: 1;
+  flex: none;
   min-width: 0;
-  max-width: 100%;
+  max-width: calc(100% - 150rpx);
   font-size: var(--font-2xl);
   font-weight: 400;
   color: var(--text);
