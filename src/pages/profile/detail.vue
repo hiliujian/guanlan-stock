@@ -31,12 +31,14 @@
             :size="150"
             :frame="profile.avatar_frame"
           />
-          <text class="dp-name truncate">{{ nameText }}</text>
+          <view class="dp-namerow">
+            <text class="dp-name truncate">{{ nameText }}</text>
+            <view v-if="typeof profile.level === 'number' && profile.level > 0" class="dp-level-inline">
+              <LevelTag :level="profile.level" />
+            </view>
+          </view>
           <text v-if="profile.username" class="dp-username">@{{ profile.username }}</text>
           <view v-if="isSelf" class="dp-selftag">本人</view>
-          <view v-if="typeof profile.level === 'number' && profile.level > 0" class="dp-level">
-            <LevelTag :level="profile.level" />
-          </view>
         </view>
 
         <!-- 个人简介（公开可读，来自 profiles.signature） -->
@@ -66,15 +68,26 @@
               role="button"
               @click="openStock(w)"
             >
-              <view class="dp-wl-info">
-                <text class="dp-wl-name truncate">{{ w.name || w.code }}</text>
+            <view class="dp-wl-info">
+              <text class="dp-wl-name truncate">{{ w.name || w.code }}</text>
+              <view class="dp-wl-coderow">
+                <text class="mkt-label">{{ marketCharFor(w.code, w.market) }}</text>
                 <text class="dp-wl-code">{{ w.code }}</text>
               </view>
-              <view v-if="typeof w.price === 'number'" class="dp-wl-q">
-                <text class="dp-wl-price">{{ formatPrice(w.price) }}</text>
-                <text class="dp-wl-pct" :class="pctClass(w.pct)">{{ formatPct(w.pct) }}</text>
-              </view>
-              <OutlineIcon type="arrow-right" :size="28" color="var(--text-3)" />
+            </view>
+            <view v-if="typeof w.price === 'number'" class="dp-wl-q">
+              <text class="dp-wl-price" :class="pctClass(w.pct)">{{ formatPrice(w.price) }}</text>
+              <text class="dp-wl-pct" :class="pctClass(w.pct)">{{ formatPct(w.pct) }}</text>
+            </view>
+            <view
+              class="dp-wl-star flex-center"
+              :class="{ on: isWatched(w.code, w.market) }"
+              @click.stop="toggleWatch(w)"
+              role="button"
+              aria-label="加入或移除自选"
+            >
+              <OutlineIcon type="star" :size="30" :color="isWatched(w.code, w.market) ? 'var(--primary)' : 'var(--text-3)'" />
+            </view>
             </view>
           </view>
         </view>
@@ -115,8 +128,9 @@ import OutlineIcon from "@/components/OutlineIcon.vue";
 import UserAvatar from "@/components/UserAvatar.vue";
 import LevelTag from "@/components/LevelTag.vue";
 import { getSupabase, isSupabaseConfigured } from "@/api/supabase";
-import { resolveSecid, type Market } from "@/utils/period";
+import { resolveSecid, marketCharFor, type Market } from "@/utils/period";
 import { fetchSnapshot } from "@/api/quote";
+import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
 import { useUser, userState } from "@/store/user";
 import { useDmTarget } from "@/store/community";
 import { goTab, openAuth, openInMarket } from "@/store/nav";
@@ -284,6 +298,31 @@ function openStock(w: WatchRow) {
   openInMarket(w.code, w.market as Market);
 }
 
+/** 资料页自选星标：仿行情页 .qh-star 逻辑，点击加入/移除自选（不触发整卡跳转，已 @click.stop）。
+ *  未登录且后端开启时引导登录，避免「加了却看不到」。 */
+async function toggleWatch(w: WatchRow) {
+  if (!user.loggedIn && user.supabaseEnabled) {
+    openAuth("login");
+    return;
+  }
+  if (isWatched(w.code, w.market)) {
+    await removeWatch(w.code, w.market);
+    uni.showToast({ title: "已移除自选", icon: "none" });
+  } else {
+    const r = await addWatch({
+      code: w.code,
+      market: w.market,
+      name: w.name || w.code,
+      note: "",
+    });
+    if (r.ok) {
+      uni.showToast({ title: "已加入自选", icon: "success" });
+    } else {
+      uni.showToast({ title: r.error || "加入失败", icon: "none" });
+    }
+  }
+}
+
 onLoad((options: any) => {
   uid.value = (options?.uid || "").toString().trim();
   if (!uid.value) {
@@ -346,9 +385,9 @@ function startDm() {
 }
 .dp-name {
   flex: none;
-  max-width: 80%;
+  max-width: 70%;
   font-size: var(--font-2xl);
-  font-weight: 600;
+  font-weight: 400;
   color: var(--text);
 }
 .dp-username {
@@ -363,8 +402,17 @@ function startDm() {
   color: var(--primary);
   font-size: var(--font-xs);
 }
-.dp-level {
-  margin-top: 6rpx;
+/* 昵称 + 等级图标同行（需求：等级图标移到昵称旁） */
+.dp-namerow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  max-width: 100%;
+}
+.dp-level-inline {
+  flex: none;
+  transform: translateY(1rpx);
 }
 
 /* 信息区块（与设置页 sec-group 视觉一致：整块白卡 + 上行分隔带） */
@@ -438,6 +486,10 @@ function startDm() {
 .dp-wl-list {
   display: flex;
   flex-direction: column;
+  /* 约 10 行高度，超出滚动（需求：显示 10 个股票高度，超过滚动） */
+  max-height: 880rpx;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .dp-wl-row {
   display: flex;
@@ -467,6 +519,12 @@ function startDm() {
   font-size: var(--font-xs);
   color: var(--text-2);
 }
+/* 代码 + 沪深港标签同行 */
+.dp-wl-coderow {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+}
 .dp-wl-q {
   display: flex;
   flex-direction: column;
@@ -476,6 +534,16 @@ function startDm() {
 }
 .dp-wl-price {
   font-size: var(--font-md);
+  color: var(--text);
+}
+/* 股价与涨跌幅同步涨红 / 跌绿（需求） */
+.dp-wl-price.up {
+  color: var(--up);
+}
+.dp-wl-price.down {
+  color: var(--down);
+}
+.dp-wl-price.flat {
   color: var(--text);
 }
 .dp-wl-pct {
@@ -489,6 +557,22 @@ function startDm() {
 }
 .dp-wl-pct.flat {
   color: var(--text-2);
+}
+/* 自选星标（复用行情页 .qh-star 视觉：圆形底 + 描边星，加入自选底变 primary-soft；
+   此处用静态定位而非 absolute，使其内联在行尾，点击加入/移除自选，不触发整卡跳转） */
+.dp-wl-star {
+  flex: none;
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 50%;
+  background: var(--card-2);
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+.dp-wl-star:active {
+  transform: scale(0.9);
+}
+.dp-wl-star.on {
+  background: var(--primary-soft);
 }
 .dp-wl-locked {
   display: flex;

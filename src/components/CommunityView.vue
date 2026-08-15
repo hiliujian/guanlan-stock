@@ -406,10 +406,16 @@ defineExpose({ refresh: load });
 }
 
 .cm-bar {
-  /* 布局属性已提升至全局 .flex-between；提升层级使悬浮菜单覆盖下方内容 */
-  position: relative;
+  /* 布局属性已提升至全局 .flex-between；提升层级使悬浮菜单覆盖下方内容。
+     固定吸顶：滚动信息流时保持可见，用 --sticky-bg 半透明遮罩 + 毛玻璃遮挡下方内容 */
+  position: sticky;
+  top: 0;
   z-index: 61;
   padding: 6rpx 26rpx 10rpx;
+  background: var(--sticky-bg);
+  backdrop-filter: blur(16rpx) saturate(140%);
+  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
+  border-bottom: 1rpx solid var(--border);
 }
 .cm-bar-t {
   font-size: var(--font-sm);
