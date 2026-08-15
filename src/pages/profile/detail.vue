@@ -25,12 +25,15 @@
       <template v-else-if="profile">
         <!-- 头部：头像 + 昵称 + 用户名 + 等级 -->
         <view class="dp-hero">
-          <UserAvatar
-            :url="profile.avatar_url"
-            :seed="profile.display_name || profile.username"
-            :size="150"
-            :frame="profile.avatar_frame"
-          />
+          <!-- 头像点击放大预览（复用「我的」页面效果：仅已上传图片头像可预览） -->
+          <view class="dp-avatar" hover-class="dp-avatar-hover" @click="previewAvatar" role="button" aria-label="放大头像">
+            <UserAvatar
+              :url="profile.avatar_url"
+              :seed="profile.display_name || profile.username"
+              :size="150"
+              :frame="profile.avatar_frame"
+            />
+          </view>
           <view class="dp-namerow">
             <text class="dp-name truncate">{{ nameText }}</text>
             <view v-if="typeof profile.level === 'number' && profile.level > 0" class="dp-level-inline">
@@ -340,6 +343,14 @@ function back() {
   });
 }
 
+/** 头像点击放大预览（复用「我的」页面逻辑：仅已上传图片头像才有可预览资源，
+ *  "字"头像无 url 时直接返回，不弹预览）。 */
+function previewAvatar() {
+  const url = profile.value?.avatar_url;
+  if (!url) return;
+  uni.previewImage({ current: url, urls: [url] });
+}
+
 function goEdit() {
   uni.navigateTo({ url: "/pages/profile/edit" });
 }
@@ -383,6 +394,17 @@ function startDm() {
   padding: 36rpx 20rpx 30rpx;
   background: linear-gradient(135deg, rgba(7, 193, 96, 0.16), rgba(7, 193, 96, 0.04) 60%, transparent), var(--card);
 }
+/* 头像容器：可点击放大、指针光标 + 悬停缩放反馈（复用「我的」页面效果） */
+.dp-avatar {
+  display: inline-flex;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.dp-avatar-hover {
+  opacity: 0.85;
+  transform: scale(0.96);
+}
 .dp-name {
   flex: none;
   max-width: 70%;
@@ -412,7 +434,7 @@ function startDm() {
 }
 .dp-level-inline {
   flex: none;
-  transform: translateY(1rpx);
+  align-self: center;
 }
 
 /* 信息区块（与设置页 sec-group 视觉一致：整块白卡 + 上行分隔带） */

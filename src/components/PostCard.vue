@@ -128,6 +128,7 @@ import UserAvatar from "./UserAvatar.vue";
 import { formatRelative, type CommunityPost } from "@/api/community";
 import { topicColor } from "@/utils/avatar";
 import { useFollow } from "@/store/follow";
+import { useReplyExpansion } from "@/store/replyExpansion";
 import { useUser, userState } from "@/store/user";
 
 const props = defineProps<{ post: CommunityPost; mine: boolean }>();
@@ -160,7 +161,9 @@ function onAvatarClick() {
   }
 }
 
-const showReply = ref(false);
+// 评论区展开态改为全局互斥：仅当前帖子可展开，展开其它自动收起（需求：互斥展开）
+const { isReplyOpen, toggleReply: toggleReplyExp } = useReplyExpansion();
+const showReply = computed(() => isReplyOpen(props.post.id));
 const replyText = ref("");
 
 // 话题（股票 / 板块）标签配色，便于一眼区分标的归属
@@ -196,7 +199,7 @@ function signed(n: number): string {
 }
 
 function toggleReply() {
-  showReply.value = !showReply.value;
+  toggleReplyExp(props.post.id);
 }
 function sendReply() {
   const v = replyText.value.trim();

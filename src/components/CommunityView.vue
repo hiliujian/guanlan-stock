@@ -124,12 +124,15 @@ import FollowListView from "./FollowListView.vue";
 import { useCommunity, useMessageCenter, useCommunityPreset, useDmTarget, type CommunityFilterKey } from "@/store/community";
 import { usePageGuard } from "@/store/guard";
 import { useFollow, useFollowPanel } from "@/store/follow";
+import { useReplyExpansion } from "@/store/replyExpansion";
 import { getMyName } from "@/store/identity";
 import { userState } from "@/store/user";
 import { avatarSeed } from "@/utils/avatar";
 import type { CommunityPost, PostCard as PostCardData, Topic } from "@/api/community";
 
 const { posts, loading, searchResults, load, publishText, publishCard, like, reply, remove, search } = useCommunity();
+// 评论区互斥展开：提供 closeReply 用于切换筛选 / 重新激活时收起已展开的评论框
+const { closeReply } = useReplyExpansion();
 
 // 消息中心：未读总数角标（私信 + 活动通知）+ 进入消息中心加载会话
 const { unreadTotal, loadConversations, loadNotifications } = useMessageCenter();
@@ -226,6 +229,8 @@ const emptyText = computed(() => {
 function chooseFilter(key: FilterKey) {
   filterKey.value = key;
   filterOpen.value = false;
+  // 切换筛选时收起任何已展开的评论区（互斥：避免切到新列表后旧帖子仍展开）
+  closeReply();
   // 选中筛选项时退出搜索态，让筛选结果可见（否则搜索结果会覆盖筛选）
   if (searching.value) clearSearch();
 }
@@ -289,6 +294,7 @@ onActivated(() => {
   const preset = consumePreset();
   if (preset) {
     filterKey.value = preset;
+    closeReply(); // 重新激活并切换筛选时收起已展开的评论区（互斥）
     if (searching.value) clearSearch();
   }
   // 消费私信深链：公开资料页「发私信」→ 打开消息中心（挂载时按目标 id 开会话）
