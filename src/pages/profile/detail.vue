@@ -346,6 +346,8 @@ function formatPct(p?: number): string {
 }
 function openStock(w: WatchRow) {
   openInMarket(w.code, w.market as Market);
+  // 必须同步切到行情 Tab，否则 MarketView 不激活、pendingCode 无人消费（与 StockTag/index 一致）
+  goTab("market");
 }
 
 /** 资料页自选星标：仿行情页 .qh-star 逻辑，点击加入/移除自选（不触发整卡跳转，已 @click.stop）。
