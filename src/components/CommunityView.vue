@@ -35,7 +35,7 @@
     </view>
 
     <!-- 可滚动内容区 -->
-    <scroll-view class="cm-scroll" scroll-y @scrolltolower="onScrollToLower">
+    <scroll-view class="cm-scroll" scroll-y :scroll-top="scrollTop" @scrolltolower="onScrollToLower">
 
     <!-- 动态栏目标题 + 筛选下拉（下拉刷新由页面 onPullDownRefresh 触发，此处不再保留刷新按钮） -->
     <view class="cm-bar flex-between">
@@ -120,7 +120,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onActivated, watch } from "vue";
+import { ref, computed, onActivated, watch, nextTick } from "vue";
 // 声明可接收的 open-market 监听（父级 pages/index 动态 <component> + KeepAlive 可能透传），
 // 声明后 Vue 按自定义事件处理，避免 extraneous 告警。本组件自身不触发该事件。
 defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
@@ -213,6 +213,8 @@ watch(
 // 支持滚动加载；顶部吸顶栏变为「返回 + X 的动态」，隐藏筛选 / 搜索。
 const PAGE_SIZE = 20;
 const viewingUser = ref<CommunityUserTarget | null>(null);
+// 滚动视图位置（发帖成功后滚回顶部，确保用户在信息流最上方立即看到自己刚发的帖子）
+const scrollTop = ref(0);
 const userPosts = ref<CommunityPost[]>([]);
 const userPostsCursor = ref<number | null>(null); // 下一页游标：本页末条 createdAt（ms）
 const userPostsLoading = ref(false); // 首屏或续拉加载中
@@ -367,6 +369,7 @@ async function onText(content: string, topic?: Topic, images?: string[]) {
   try {
     await publishText(content, topic, images);
     postSheet.value?.collapse();
+    afterPublish();
   } catch (e: any) {
     uni.showToast({ title: e?.message || "发布失败，请稍后再试", icon: "none" });
   }
@@ -375,9 +378,18 @@ async function onCard(card: PostCardData, images?: string[]) {
   try {
     await publishCard(card, images);
     postSheet.value?.collapse();
+    afterPublish();
   } catch (e: any) {
     uni.showToast({ title: e?.message || "发布失败，请稍后再试", icon: "none" });
   }
+}
+// 发帖成功后的统一收尾：若在「某用户帖子」模式下，退出该模式回到社区信息流
+// （publishText 已将新帖 prepend 到 posts），并滚动到顶部，让用户立即看到自己刚发的帖子。
+function afterPublish() {
+  if (viewingUser.value) exitUserMode();
+  nextTick(() => {
+    scrollTop.value = 0;
+  });
 }
 
 // keep-alive 每次激活：（已登录 / 公开页）加载社区动态；未授权由全局守卫跳转登录页
@@ -543,7 +555,6 @@ defineExpose({ refresh });
 }
 .cm-usermode-t {
   font-size: var(--font-md);
-  font-weight: 600;
   color: var(--text);
 }
 /* 滚动加载到底提示 */
