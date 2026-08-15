@@ -23,7 +23,7 @@
 
       <!-- 资料主体 -->
       <template v-else-if="profile">
-        <!-- 头部：头像 + 昵称 + 用户名 + 等级 -->
+        <!-- 头部：左头像 + 中昵称/用户名（垂直居中）+ 右操作区（关注/私信两行，与头像对齐） -->
         <view class="dp-hero">
           <!-- 头像点击放大预览（复用「我的」页面效果：仅已上传图片头像可预览） -->
           <view class="dp-avatar" hover-class="dp-avatar-hover" @click="previewAvatar" role="button" aria-label="放大头像">
@@ -34,14 +34,47 @@
               :frame="profile.avatar_frame"
             />
           </view>
-          <view class="dp-namerow">
-            <text class="dp-name truncate">{{ nameText }}</text>
-            <view v-if="typeof profile.level === 'number' && profile.level > 0" class="dp-level-inline">
-              <LevelTag :level="profile.level" />
+
+          <!-- 昵称（含等级图标）/ 用户名：与头像垂直居中对齐 -->
+          <view class="dp-id">
+            <view class="dp-namerow">
+              <text class="dp-name truncate">{{ nameText }}</text>
+              <view v-if="typeof profile.level === 'number' && profile.level > 0" class="dp-level-inline">
+                <LevelTag :level="profile.level" />
+              </view>
             </view>
+            <text v-if="profile.username" class="dp-username">@{{ profile.username }}</text>
           </view>
-          <text v-if="profile.username" class="dp-username">@{{ profile.username }}</text>
-          <view v-if="isSelf" class="dp-selftag">本人</view>
+
+          <!-- 右侧操作区：本人→编辑资料；他人→关注 + 私信（两行，与头像垂直对齐） -->
+          <view class="dp-side">
+            <view v-if="isSelf" class="dp-btn dp-btn-ghost" hover-class="dp-btn-hover" role="button" @click="goEdit">
+              <OutlineIcon type="edit" :size="26" color="var(--text-2)" />
+              <text>编辑资料</text>
+            </view>
+            <template v-else>
+              <view
+                class="dp-btn"
+                :class="{ on: following }"
+                hover-class="dp-btn-hover"
+                role="button"
+                @click="onFollowToggle"
+              >
+                <OutlineIcon :type="following ? 'check' : 'plus'" :size="26" :color="following ? 'var(--text-2)' : 'var(--primary)'" />
+                <text>{{ following ? '已关注' : '关注' }}</text>
+              </view>
+              <view
+                class="dp-btn dp-btn-primary"
+                :class="{ disabled: !canDm }"
+                hover-class="dp-btn-hover"
+                role="button"
+                @click="onDmClick"
+              >
+                <OutlineIcon type="mail" :size="26" color="#fff" />
+                <text>{{ dmLabel }}</text>
+              </view>
+            </template>
+          </view>
         </view>
 
         <!-- 个人简介（公开可读，来自 profiles.signature） -->
@@ -103,22 +136,6 @@
           </view>
         </view>
 
-        <!-- 操作区：本人→编辑资料；他人已登录且允许私信→发私信；对方未开启私信→禁用；未登录→引导登录 -->
-        <view class="dp-actions">
-          <button v-if="isSelf" class="btn-primary" @click="goEdit">编辑我的资料</button>
-          <button
-            v-else-if="user.loggedIn && profile.allow_dm"
-            class="btn-primary"
-            @click="startDm"
-          >发私信</button>
-          <button
-            v-else-if="user.loggedIn && !profile.allow_dm"
-            class="btn-primary"
-            :disabled="true"
-            @click="startDm"
-          >对方未开启私信</button>
-          <button v-else class="btn-primary" @click="goLogin">登录后发私信</button>
-        </view>
       </template>
     </scroll-view>
   </view>
@@ -136,6 +153,7 @@ import { fetchSnapshot } from "@/api/quote";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
 import { useUser, userState } from "@/store/user";
 import { useDmTarget } from "@/store/community";
+import { useFollow } from "@/store/follow";
 import { goTab, openAuth, openInMarket } from "@/store/nav";
 
 const user = useUser();
@@ -189,6 +207,35 @@ const nameText = computed(() =>
 const isSelf = computed(
   () => !!user.loggedIn && !!profile.value && profile.value.id === userState.userId
 );
+// 关注态（与社区帖子关注同源：本地持久化集合，以昵称为键）
+const { follows, toggleFollow } = useFollow();
+const following = computed(() => {
+  const name = profile.value?.display_name || profile.value?.username;
+  return !!name && follows.value.has(name);
+});
+// 私信按钮可用性与文案（未登录 / 对方关闭 / 正常 三态）
+const canDm = computed(
+  () => user.loggedIn && !!profile.value && profile.value.allow_dm === true
+);
+const dmLabel = computed(() => {
+  if (!user.loggedIn) return "登录后私信";
+  if (profile.value?.allow_dm === false) return "未开启私信";
+  return "发私信";
+});
+
+function onFollowToggle() {
+  const name = profile.value?.display_name || profile.value?.username;
+  if (!name) return;
+  toggleFollow(name);
+}
+function onDmClick() {
+  if (!user.loggedIn) {
+    goLogin();
+    return;
+  }
+  if (profile.value?.allow_dm === false) return; // 对方关闭私信，按钮禁用不触发
+  startDm();
+}
 // 注册时间格式化（YYYY-MM-DD），created_at 为空则隐藏该区块
 const registerText = computed(() => {
   const raw = profile.value?.created_at;
@@ -385,17 +432,18 @@ function startDm() {
   box-sizing: border-box;
 }
 
-/* 头部 */
+/* 头部：左头像 + 中昵称/用户名 + 右操作区（横向一行，三者垂直居中） */
 .dp-hero {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 14rpx;
-  padding: 36rpx 20rpx 30rpx;
+  gap: 20rpx;
+  padding: 28rpx 20rpx;
   background: linear-gradient(135deg, rgba(7, 193, 96, 0.16), rgba(7, 193, 96, 0.04) 60%, transparent), var(--card);
 }
 /* 头像容器：可点击放大、指针光标 + 悬停缩放反馈（复用「我的」页面效果） */
 .dp-avatar {
+  flex: none;
   display: inline-flex;
   cursor: pointer;
   border-radius: 50%;
@@ -405,9 +453,19 @@ function startDm() {
   opacity: 0.85;
   transform: scale(0.96);
 }
+/* 昵称 + 用户名：占中间弹性区域，与头像垂直居中对齐 */
+.dp-id {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6rpx;
+}
 .dp-name {
-  flex: none;
-  max-width: 70%;
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
   font-size: var(--font-2xl);
   font-weight: 400;
   color: var(--text);
@@ -416,25 +474,60 @@ function startDm() {
   font-size: var(--font-sm);
   color: var(--text-2);
 }
-.dp-selftag {
-  margin-top: 4rpx;
-  padding: 4rpx 16rpx;
-  border-radius: 999rpx;
-  background: var(--primary-soft);
-  color: var(--primary);
-  font-size: var(--font-xs);
-}
-/* 昵称 + 等级图标同行（需求：等级图标移到昵称旁） */
+/* 昵称 + 等级图标同行 */
 .dp-namerow {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 10rpx;
-  max-width: 100%;
+  width: 100%;
 }
 .dp-level-inline {
   flex: none;
   align-self: center;
+}
+/* 右侧操作区：两行（关注 / 私信），与头像垂直对齐 */
+.dp-side {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 12rpx;
+}
+/* 操作胶囊按钮（图标 + 文字） */
+.dp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  padding: 12rpx 22rpx;
+  border-radius: 999rpx;
+  font-size: var(--font-sm);
+  line-height: 1;
+  background: var(--primary-soft);
+  color: var(--primary);
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+.dp-btn-hover {
+  transform: scale(0.96);
+}
+.dp-btn.on {
+  background: var(--card-2);
+  color: var(--text-2);
+  box-shadow: inset 0 0 0 1rpx var(--border);
+}
+.dp-btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+.dp-btn-ghost {
+  background: var(--card-2);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1rpx var(--border);
+}
+.dp-btn.disabled {
+  opacity: 0.5;
 }
 
 /* 信息区块（与设置页 sec-group 视觉一致：整块白卡 + 上行分隔带） */
@@ -456,15 +549,6 @@ function startDm() {
   color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-/* 操作区 */
-.dp-actions {
-  padding: 28rpx 20rpx 40rpx;
-}
-.dp-actions .btn-primary {
-  display: block;
-  width: 100%;
 }
 
 /* 加载 / 错误 */
