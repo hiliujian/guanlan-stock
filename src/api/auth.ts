@@ -398,6 +398,9 @@ export function translateSupabaseError(raw: string | undefined | null): string {
   if (/already confirmed/i.test(key)) return "该邮箱已完成验证，请直接登录";
   if (/not authenticated|auth session missing/i.test(key)) return "请先完成邮箱验证再设置密码";
   if (/different from the old/i.test(key)) return "新密码不能与旧密码相同";
+  // 已经是中文的可读提示（如 RPC 自定义异常「对方未开启私信」「不能给自己发私信」等），
+  // 直接透传，避免被中性兜底掩盖真实原因
+  if (/[一-龥]/.test(key)) return key;
   // 实在无法识别，给中性兜底，绝不把英文原文透给用户
   return "操作失败，请稍后再试";
 }

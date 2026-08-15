@@ -74,7 +74,7 @@ export interface CommunityPost {
   userId?: string | null; // 发布者账号 id（登录后写入，用于判定"我的"帖子）
   authorAvatarUrl?: string; // 作者头像 URL（发布时冗余快照 + 联表 profiles 兜底；缺省回退「字」头像）
   authorFrame?: string; // 作者头像框 id（发布时冗余快照 + 联表 profiles 兜底；'' = 无边框）
-  authorUsername?: string; // 作者用户名（冗余快照）：默认头像种子用，保证与个人资料页一致（用户名首字）
+  authorUsername?: string; // 作者用户名（冗余快照）：头像种子兜底用（主种子为昵称 author，保证与资料页统一采用昵称首字）
   topic?: Topic; // 关联标的（个股 / 板块），用于分类
   createdAt: number;
   content?: string;

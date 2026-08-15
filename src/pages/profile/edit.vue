@@ -157,8 +157,8 @@ const frame = ref(""); // 头像框 id（'' = 无边框）
 const cropperVisible = ref(false);
 const cropperSrc = ref("");
 
-// 字头像种子：用户名（不可变身份），与社区页等其他场景共用
-const seedName = computed(() => avatarSeed(username.value) || "我");
+// 字头像种子：昵称首字（与社区帖子、资料页统一采用昵称首字），编辑昵称时实时预览
+const seedName = computed(() => avatarSeed(displayName.value) || "我");
 
 // 头像框选择弹窗状态
 const frameSheetVisible = ref(false);

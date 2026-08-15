@@ -41,13 +41,12 @@ export function avatarChar(name: string): string {
 }
 
 /**
- * 「字」头像的稳定种子：唯一依赖「用户名」生成（用户名唯一、固定、不可修改，
- * 正式环境不为空），保证默认头像底色与首字在昵称可编辑时始终不变，
- * 仅当用户自行上传图片头像时才改变。不使用邮箱或用户 id 回退。
- * 仅传入用户名即可；用户名为空时返回空串，由调用方兜底（如「我」）。
+ * 「字」头像的稳定种子：传入昵称（display_name）首字即可，全局统一采用昵称首字，
+ * 与社区帖子、资料页、消息中心保持一致。仅当用户自行上传图片头像时才改变。
+ * 调用方负责传入昵称（display_name）；为空时返回空串，由上层兜底（如「我」）。
  */
-export function avatarSeed(username: string): string {
-  return (username || "").trim();
+export function avatarSeed(name: string): string {
+  return (name || "").trim();
 }
 
 /** 话题（股票 / 板块）标签配色：个股走主色系，板块走紫罗兰系，便于一眼区分 */

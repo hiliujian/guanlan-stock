@@ -181,9 +181,9 @@ const nameText = computed(() =>
 const subText = computed(() =>
   user.loggedIn ? (user.profile?.signature?.trim() || BIO_PLACEHOLDER) : "登录后同步自选股与云端资料"
 );
-// 「字」头像种子 = 用户名（固定唯一，昵称修改不改变默认头像）
+// 「字」头像种子 = 昵称首字（与社区帖子、资料页统一采用昵称首字）
 const avatarName = computed(() =>
-  user.loggedIn ? avatarSeed(user.profile?.username || "") || "我" : "我"
+  user.loggedIn ? avatarSeed(user.profile?.display_name || "") || "我" : "我"
 );
 const avatarUrl = computed(() => user.profile?.avatar_url || "");
 const userLevel = computed(() => {

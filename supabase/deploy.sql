@@ -463,7 +463,7 @@ begin
   if p_receiver = auth.uid() then raise exception '不能给自己发私信'; end if;
   if length(trim(p_content)) < 1 then raise exception '私信内容不能为空'; end if;
   -- 收件人关闭「允许私信」则拒绝（后端兜底，防止前端禁用入口被绕过）
-  select allow_dm into v_allow_dm from public.profiles where id = p_receiver;
+  select allow_dm into v_allow_dm from public.profiles where profiles.id = p_receiver;
   if coalesce(v_allow_dm, true) = false then
     raise exception '对方未开启私信';
   end if;
@@ -556,7 +556,7 @@ language plpgsql security definer set search_path = public as $$
 begin
   update public.community_dms
      set status = 'read'
-   where receiver_id = auth.uid() and sender_id = p_other and status <> 'read';
+   where community_dms.receiver_id = auth.uid() and community_dms.sender_id = p_other and community_dms.status <> 'read';
   return query
   select d.id, d.sender_id, d.receiver_id, d.content, d.status, d.created_at
   from public.community_dms d

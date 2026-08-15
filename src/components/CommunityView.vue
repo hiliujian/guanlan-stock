@@ -143,11 +143,11 @@ usePageGuard("community");
 // getMyName 已内置账号优先逻辑：登录后用账号资料，未登录回退本地。
 // 这里包一层 computed，登录态/资料变化时自动重算；头像为按昵称生成的「字」头像。
 const myName = computed(() => getMyName());
-// 「字」头像种子 = 用户名（固定唯一）：已登录时昵称修改不改变默认头像；
+// 「字」头像种子 = 昵称首字（与帖子、资料页统一采用昵称首字）；
 // 未登录沿用本地昵称（本地昵称亦即其身份）。
 const mySeed = computed(() =>
   userState.loggedIn && userState.userId
-    ? avatarSeed(userState.profile?.username || "") || "我"
+    ? avatarSeed(userState.profile?.display_name || "") || "我"
     : myName.value
 );
 // 已登录时直接读 user.profile.avatar_url（与个人资料页同源）；
