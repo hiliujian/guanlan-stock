@@ -662,12 +662,14 @@ function goUserPosts() {
 .dp-wl-list {
   display: flex;
   flex-direction: column;
-  /* 约 5 行高度，超出滚动（需求：自选股只显示 5 个，多了滚动） */
-  max-height: 440rpx;
+  /* 固定单行 112rpx × 5 = 560rpx，恰好显示 5 个，超出滚动（需求：自选股只显示 5 个，多了滚动） */
+  max-height: 560rpx;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
 .dp-wl-row {
+  box-sizing: border-box;
+  height: 112rpx;
   display: flex;
   align-items: center;
   gap: 16rpx;
