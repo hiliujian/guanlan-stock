@@ -107,7 +107,7 @@
       </template>
       <template #default>
         <scroll-view scroll-y class="pe-body">
-          <PostComposer @publish-text="onText" @publish-card="onCard" />
+          <PostComposer @publish="onPublish" />
         </scroll-view>
       </template>
     </PeekSheet>
@@ -141,7 +141,7 @@ import { userState } from "@/store/user";
 import { avatarSeed } from "@/utils/avatar";
 import { communityRepo, type CommunityPost, type PostCard as PostCardData, type Topic } from "@/api/community";
 
-const { posts, loading, searchResults, load, publishText, publishCard, like, reply, remove, search } = useCommunity();
+const { posts, loading, searchResults, load, publish, like, reply, remove, search } = useCommunity();
 // 评论区互斥展开：提供 closeReply 用于切换筛选 / 重新激活时收起已展开的评论框
 const { closeReply } = useReplyExpansion();
 
@@ -365,18 +365,10 @@ function clearSearch() {
 }
 
 // ---------------- 发布 ----------------
-async function onText(content: string, topic?: Topic, images?: string[]) {
+// 统一发布入口：正文 + 附加卡片 + 配图 + 关联标的 任意组合，由 store.publish 内部写入 Supabase。
+async function onPublish(payload: { content?: string; card?: PostCardData; topic?: Topic; images?: string[] }) {
   try {
-    await publishText(content, topic, images);
-    postSheet.value?.collapse();
-    afterPublish();
-  } catch (e: any) {
-    uni.showToast({ title: e?.message || "发布失败，请稍后再试", icon: "none" });
-  }
-}
-async function onCard(card: PostCardData, images?: string[]) {
-  try {
-    await publishCard(card, images);
+    await publish(payload);
     postSheet.value?.collapse();
     afterPublish();
   } catch (e: any) {
@@ -384,7 +376,7 @@ async function onCard(card: PostCardData, images?: string[]) {
   }
 }
 // 发帖成功后的统一收尾：若在「某用户帖子」模式下，退出该模式回到社区信息流
-// （publishText 已将新帖 prepend 到 posts），并滚动到顶部，让用户立即看到自己刚发的帖子。
+// （publish 已将新帖 prepend 到 posts），并滚动到顶部，让用户立即看到自己刚发的帖子。
 function afterPublish() {
   if (viewingUser.value) exitUserMode();
   nextTick(() => {

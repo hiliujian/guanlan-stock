@@ -38,16 +38,25 @@ export function useCommunity() {
     }
   }
 
-  async function publishText(content: string, topic?: Topic, images?: string[]): Promise<CommunityPost | null> {
-    const trimmed = content.trim();
-    if (!trimmed) return null;
-    const p = await communityRepo.create({ type: "text", content: trimmed, topic, images });
-    posts.value = [p, ...posts.value];
-    return p;
-  }
-
-  async function publishCard(card: PostCard, images?: string[]): Promise<CommunityPost | null> {
-    const p = await communityRepo.create({ type: "card", card, images });
+  /**
+   * 统一发布入口：一条帖可同时携带正文(content) + 附加卡片(card) + 配图(images) + 关联标的(topic)。
+   * 旧版的「纯文字 / 纯卡片」两类发布已合并到此；三者任意其一非空即可发布。
+   */
+  async function publish(payload: {
+    content?: string;
+    card?: PostCard;
+    topic?: Topic;
+    images?: string[];
+  }): Promise<CommunityPost | null> {
+    const hasContent = !!(payload.content && payload.content.trim());
+    const hasImages = !!(payload.images && payload.images.length);
+    if (!hasContent && !payload.card && !hasImages) return null;
+    const p = await communityRepo.create({
+      content: payload.content,
+      card: payload.card,
+      topic: payload.topic,
+      images: payload.images,
+    });
     posts.value = [p, ...posts.value];
     return p;
   }
@@ -84,7 +93,7 @@ export function useCommunity() {
     }
   }
 
-  return { posts, loading, searchResults, load, publishText, publishCard, like, reply, remove, search };
+  return { posts, loading, searchResults, load, publish, like, reply, remove, search };
 }
 
 // =====================================================================

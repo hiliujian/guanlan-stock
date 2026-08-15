@@ -379,18 +379,19 @@ async function loadRecentPosts() {
   }
 }
 
-/** 帖子内容摘要（用于动态列表一行展示）：文字帖取正文，卡片帖取一句话概述。 */
+/** 帖子内容摘要（用于动态列表一行展示）：优先取正文；无正文时取卡片一句话概述。 */
 function postSummary(p: CommunityPost): string {
   let s: string;
-  if (p.type === "text") {
-    s = p.content?.trim() || "（无文字内容）";
-  } else {
+  if (p.content && p.content.trim()) {
+    s = p.content.trim();
+  } else if (p.card) {
     const c = p.card;
-    if (!c) s = "分享了一张卡片";
-    else if (c.kind === "holding") s = `持仓 · ${c.stock || c.code || "—"}`;
+    if (c.kind === "holding") s = `持仓 · ${c.stock || c.code || "—"}`;
     else if (c.kind === "operation") s = `${c.side === "buy" ? "买入" : "卖出"} · ${c.stock || c.code || "—"}`;
     else if (c.kind === "profit") s = `${c.period || "周期"}战绩 · 收益率 ${typeof c.totalReturn === "number" ? c.totalReturn + "%" : ""}`;
     else s = "分享了一张卡片";
+  } else {
+    s = "（无内容）";
   }
   return s.length > 50 ? s.slice(0, 50) + "…" : s;
 }

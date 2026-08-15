@@ -26,11 +26,11 @@
       </view>
     </view>
 
-    <!-- 纯文字动态：# + 股票代码 自动解析为可点击标签（全局交互） -->
-    <StockText v-if="post.type === 'text'" :text="post.content || ''" class="p-text" />
+    <!-- 正文：# + 股票代码 自动解析为可点击标签（全局交互）。正文与附加卡片可共存展示 -->
+    <StockText v-if="post.content" :text="post.content || ''" class="p-text" />
 
     <!-- 持仓卡片 -->
-    <view v-else-if="post.card?.kind === 'holding'" class="card-s holding">
+    <view v-if="post.card?.kind === 'holding'" class="card-s holding">
       <view class="cs-head">
         <text class="cs-tag">持仓</text>
         <text class="cs-title">{{ c.stock }}</text>
@@ -50,7 +50,7 @@
     </view>
 
     <!-- 操作记录卡片 -->
-    <view v-else-if="post.card?.kind === 'operation'" class="card-s operation">
+    <view v-if="post.card?.kind === 'operation'" class="card-s operation">
       <view class="cs-head">
         <text :class="['cs-side', c.side]">{{ c.side === "buy" ? "买入" : "卖出" }}</text>
         <text class="cs-title">{{ c.stock }}</text>
@@ -64,7 +64,7 @@
     </view>
 
     <!-- 收益卡片 -->
-    <view v-else-if="post.card?.kind === 'profit'" class="card-s profit">
+    <view v-if="post.card?.kind === 'profit'" class="card-s profit">
       <view class="cs-head">
         <text class="cs-tag">收益</text>
         <text class="cs-title">{{ c.period }}</text>

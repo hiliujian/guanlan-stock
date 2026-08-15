@@ -145,11 +145,12 @@ export const communityRepo = {
     return listRemote();
   },
 
-  async create(
-    input:
-      | { type: "text"; content: string; topic?: Topic; images?: string[] }
-      | { type: "card"; card: PostCard; images?: string[] }
-  ): Promise<CommunityPost> {
+  async create(input: {
+    content?: string;
+    card?: PostCard;
+    topic?: Topic;
+    images?: string[];
+  }): Promise<CommunityPost> {
     return createRemote(input);
   },
 
@@ -397,11 +398,12 @@ function authorInfoOf(userId?: string | null): { avatar_url: string; avatar_fram
   return { avatar_url: "", avatar_frame: "" };
 }
 
-async function createRemote(
-  input:
-    | { type: "text"; content: string; topic?: Topic; images?: string[] }
-    | { type: "card"; card: PostCard; images?: string[] }
-): Promise<CommunityPost> {
+async function createRemote(input: {
+  content?: string;
+  card?: PostCard;
+  topic?: Topic;
+  images?: string[];
+}): Promise<CommunityPost> {
   const sb = getSupabase();
   if (!sb) throw new Error("发布失败，请稍后再试");
   const row: any = {
@@ -411,10 +413,12 @@ async function createRemote(
     author_avatar_url: userState.profile?.avatar_url || "",
     author_frame: userState.profile?.avatar_frame || "",
     author_username: userState.profile?.username || "",
-    topic: input.type === "text" ? input.topic ?? null : null,
-    type: input.type,
-    content: input.type === "text" ? input.content.trim() : null,
-    card: input.type === "card" ? toStoredCard(input.card) : null,
+    topic: input.topic ?? null,
+    // 允许一条帖同时携带正文 + 附加卡片：有 card 记为 "card" 类型，否则按纯文本 "text"。
+    // PostCard 组件按 content / card 是否存在独立渲染，故两种组合都能正确展示。
+    type: input.card ? "card" : "text",
+    content: input.content && input.content.trim() ? input.content.trim() : null,
+    card: input.card ? toStoredCard(input.card) : null,
     images: (input.images && input.images.length ? input.images : []) as any,
     likes: 0,
   };
