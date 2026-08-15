@@ -17,8 +17,8 @@
       </template>
     </PageHeader>
 
-    <!-- 搜索栏：关键字 / 股票代码 / 股票名称 -->
-    <view class="cm-search">
+    <!-- 搜索栏：关键字 / 股票代码 / 股票名称（某用户帖子模式下隐藏） -->
+    <view v-if="!viewingUser" class="cm-search">
       <OutlineIcon type="search" :size="30" color="var(--text-2)" />
       <input
         class="cm-search-input"
@@ -35,32 +35,39 @@
     </view>
 
     <!-- 可滚动内容区 -->
-    <scroll-view class="cm-scroll" scroll-y>
+    <scroll-view class="cm-scroll" scroll-y @scrolltolower="onScrollToLower">
 
     <!-- 动态栏目标题 + 筛选下拉（下拉刷新由页面 onPullDownRefresh 触发，此处不再保留刷新按钮） -->
     <view class="cm-bar flex-between">
-      <view v-if="!searching" class="cm-filter" @click="filterOpen = !filterOpen">
-        <text class="cm-bar-t">{{ filterTitle }}</text>
-        <OutlineIcon type="pulldown" :size="22" color="var(--text-2)" class="cm-filter-arrow" :class="{ 'is-open': filterOpen }" />
-        <!-- 悬浮下拉菜单：绝对定位覆盖内容，不挤占下方布局 -->
-        <view v-if="filterOpen" class="cm-filter-menu" @click.stop>
-          <view
-            v-for="opt in filterOptions"
-            :key="opt.key"
-            class="cm-filter-item"
-            :class="{ active: filterKey === opt.key }"
-            @click="chooseFilter(opt.key)"
-          >
-            <text class="cm-filter-item-text">{{ opt.label }}</text>
-            <OutlineIcon v-if="filterKey === opt.key" type="check" :size="26" color="var(--primary)" />
+      <!-- 某用户帖子模式：返回箭头 + 「X 的动态」，隐藏筛选 / 搜索 -->
+      <view v-if="viewingUser" class="cm-usermode" @click="exitUserMode">
+        <OutlineIcon type="arrow-left" :size="30" color="var(--text)" />
+        <text class="cm-usermode-t">{{ viewingUser.userName }} 的动态</text>
+      </view>
+      <template v-else>
+        <view v-if="!searching" class="cm-filter" @click="filterOpen = !filterOpen">
+          <text class="cm-bar-t">{{ filterTitle }}</text>
+          <OutlineIcon type="pulldown" :size="22" color="var(--text-2)" class="cm-filter-arrow" :class="{ 'is-open': filterOpen }" />
+          <!-- 悬浮下拉菜单：绝对定位覆盖内容，不挤占下方布局 -->
+          <view v-if="filterOpen" class="cm-filter-menu" @click.stop>
+            <view
+              v-for="opt in filterOptions"
+              :key="opt.key"
+              class="cm-filter-item"
+              :class="{ active: filterKey === opt.key }"
+              @click="chooseFilter(opt.key)"
+            >
+              <text class="cm-filter-item-text">{{ opt.label }}</text>
+              <OutlineIcon v-if="filterKey === opt.key" type="check" :size="26" color="var(--primary)" />
+            </view>
           </view>
         </view>
-      </view>
-      <text v-else class="cm-bar-t">搜索结果 · {{ displayPosts.length }}</text>
+        <text v-else class="cm-bar-t">搜索结果 · {{ displayPosts.length }}</text>
+      </template>
     </view>
 
     <!-- 加载态 -->
-    <view v-if="loading && !displayPosts.length" class="cm-loading"><view class="cl-spin" /></view>
+    <view v-if="feedLoading && !displayPosts.length" class="cm-loading"><view class="cl-spin" /></view>
 
     <!-- 信息流 -->
     <PostCard
@@ -74,10 +81,14 @@
     />
 
     <!-- 空态 -->
-    <view v-if="!loading && !displayPosts.length" class="cm-empty">
+    <view v-if="!feedLoading && !displayPosts.length" class="cm-empty">
       <OutlineIcon type="chatbubble" :size="84" color="var(--border)" />
       <text class="empty-title">{{ emptyText }}</text>
     </view>
+
+    <!-- 某用户帖子：滚动加载指示（加载中 / 到底） -->
+    <view v-if="viewingUser && userPostsLoading && userPosts.length" class="cm-loading"><view class="cl-spin" /></view>
+    <view v-if="viewingUser && userPostsDone && userPosts.length" class="cm-end">没有更多了</view>
 
     <!-- 底部留白（避免被固定 tabbar 与底部发帖卡片遮挡） -->
     <view class="cm-pad" />
@@ -121,14 +132,14 @@ import UserAvatar from "./UserAvatar.vue";
 import PeekSheet from "./PeekSheet.vue";
 import MessageCenter from "./MessageCenter.vue";
 import FollowListView from "./FollowListView.vue";
-import { useCommunity, useMessageCenter, useCommunityPreset, useDmTarget, type CommunityFilterKey } from "@/store/community";
+import { useCommunity, useMessageCenter, useCommunityPreset, useDmTarget, useCommunityUserTarget, type CommunityFilterKey, type CommunityUserTarget } from "@/store/community";
 import { usePageGuard } from "@/store/guard";
 import { useFollow, useFollowPanel } from "@/store/follow";
 import { useReplyExpansion } from "@/store/replyExpansion";
 import { getMyName } from "@/store/identity";
 import { userState } from "@/store/user";
 import { avatarSeed } from "@/utils/avatar";
-import type { CommunityPost, PostCard as PostCardData, Topic } from "@/api/community";
+import { communityRepo, type CommunityPost, type PostCard as PostCardData, type Topic } from "@/api/community";
 
 const { posts, loading, searchResults, load, publishText, publishCard, like, reply, remove, search } = useCommunity();
 // 评论区互斥展开：提供 closeReply 用于切换筛选 / 重新激活时收起已展开的评论框
@@ -186,6 +197,8 @@ const filterOpen = ref(false);
 const { consumePreset } = useCommunityPreset();
 // 私信深链（公开资料页「发私信」设置，onActivated 消费 → 打开消息中心）
 const { dmTarget, consumeDmTarget } = useDmTarget();
+// 某用户帖子深链（公开资料页「查看更多 TA 的动态」设置 → 进入该用户帖子模式）
+const { userTarget, consumeUserTarget } = useCommunityUserTarget();
 // 兜底：navigateTo 打开资料页再返回时 CommunityView 不会重新 onActivated，
 // 故额外 watch dmTarget，一旦被设置立即打开消息中心（挂载后由 MessageCenter 消费目标）。
 watch(
@@ -194,6 +207,81 @@ watch(
     if (v) msgOpen.value = true;
   }
 );
+
+// ---------------- 某用户帖子模式（资料页「查看更多 TA 的动态」跳转） ----------------
+// 进入该模式后信息流改为展示该用户的全部帖子（服务端按 user_id 过滤 + 游标翻页），
+// 支持滚动加载；顶部吸顶栏变为「返回 + X 的动态」，隐藏筛选 / 搜索。
+const PAGE_SIZE = 20;
+const viewingUser = ref<CommunityUserTarget | null>(null);
+const userPosts = ref<CommunityPost[]>([]);
+const userPostsCursor = ref<number | null>(null); // 下一页游标：本页末条 createdAt（ms）
+const userPostsLoading = ref(false); // 首屏或续拉加载中
+const userPostsDone = ref(false); // 该用户帖子已全部加载完
+
+/** 信息流 loading 态：用户模式看 userPostsLoading，否则看全局 loading。 */
+const feedLoading = computed(() => (viewingUser.value ? userPostsLoading.value : loading.value));
+
+/** 拉取该用户帖子；append=true 时续拉下一页（created_at 游标翻页）。 */
+async function loadUserPosts(append: boolean) {
+  if (!viewingUser.value) return;
+  if (append && (userPostsDone.value || userPostsLoading.value)) return;
+  userPostsLoading.value = true;
+  try {
+    const res = await communityRepo.listByUser(viewingUser.value.userId, {
+      limit: PAGE_SIZE,
+      cursor: append ? userPostsCursor.value ?? undefined : undefined,
+    });
+    // 后端多取 1 条：长度 > PAGE_SIZE 表示还有下一页，slice 掉探测条
+    const hasMore = res.length > PAGE_SIZE;
+    const page = hasMore ? res.slice(0, PAGE_SIZE) : res;
+    userPosts.value = append ? [...userPosts.value, ...page] : page;
+    userPostsDone.value = !hasMore;
+    userPostsCursor.value = page.length ? page[page.length - 1].createdAt : null;
+  } catch (e) {
+    // 拉取失败：保留已有列表，首屏空则由空态承接；不抛错打断交互
+  } finally {
+    userPostsLoading.value = false;
+  }
+}
+
+/** 进入该用户帖子模式（消费深链目标时调用）。 */
+function enterUserMode(target: CommunityUserTarget) {
+  closeReply();
+  filterOpen.value = false;
+  clearSearch();
+  viewingUser.value = target;
+  userPosts.value = [];
+  userPostsCursor.value = null;
+  userPostsDone.value = false;
+  loadUserPosts(false);
+}
+
+/** 退出该用户帖子模式，回到默认「最新动态」信息流。 */
+function exitUserMode() {
+  viewingUser.value = null;
+  userPosts.value = [];
+  userPostsCursor.value = null;
+  userPostsDone.value = false;
+  filterKey.value = "latest";
+  closeReply();
+  if (!posts.value.length) load();
+}
+
+// 兜底：navigateTo 打开资料页再返回时 CommunityView 可能不重新 onActivated，
+// 故额外 watch userTarget，一旦被设置立即进入该用户帖子模式（消费目标后清空）。
+watch(
+  () => userTarget.value,
+  (v) => {
+    if (v) enterUserMode(consumeUserTarget()!);
+  }
+);
+
+/** scroll-view 触底：用户模式下续拉该用户帖子。 */
+function onScrollToLower() {
+  if (viewingUser.value && !userPostsDone.value && !userPostsLoading.value) {
+    loadUserPosts(true);
+  }
+}
 const filterTitle = computed(
   () => filterOptions.find((o) => o.key === filterKey.value)?.label || "最新动态"
 );
@@ -215,11 +303,15 @@ const filteredPosts = computed(() => {
   }
 });
 
-// ---------------- 信息流（展示筛选结果；搜索态优先展示搜索结果） ----------------
-const displayPosts = computed(() => (searching.value ? searchResults.value : filteredPosts.value));
+// ---------------- 信息流（展示筛选结果；搜索态优先展示搜索结果；用户模式展示该用户帖子） ----------------
+const displayPosts = computed(() => {
+  if (viewingUser.value) return userPosts.value;
+  return searching.value ? searchResults.value : filteredPosts.value;
+});
 
-// 空态文案：随筛选 / 搜索态变化
+// 空态文案：随筛选 / 搜索 / 用户模式变化
 const emptyText = computed(() => {
+  if (viewingUser.value) return "TA 还没有发布动态";
   if (searching.value) return "未找到相关帖子";
   if (filterKey.value === "following") return "还没有关注的人动态";
   if (filterKey.value !== "latest") return "这里还没有相关动态";
@@ -301,6 +393,9 @@ onActivated(() => {
   if (consumeDmTarget()) {
     msgOpen.value = true;
   }
+  // 消费「某用户帖子」深链：公开资料页「查看更多 TA 的动态」→ 进入该用户帖子模式
+  const ut = consumeUserTarget();
+  if (ut) enterUserMode(ut);
   if (!posts.value.length) load();
   // 刷新未读角标（私信 + 活动通知，已登录才拉）
   if (userState.loggedIn) {
@@ -320,8 +415,17 @@ watch(
   }
 );
 
-// 暴露给页面级下拉刷新（index.vue onPullDownRefresh 路由到此）：重载社区帖子列表
-defineExpose({ refresh: load });
+// 暴露给页面级下拉刷新（index.vue onPullDownRefresh 路由到此）：用户模式重载该用户帖子，否则重载社区信息流
+function refresh() {
+  if (viewingUser.value) {
+    userPostsCursor.value = null;
+    userPostsDone.value = false;
+    loadUserPosts(false);
+  } else {
+    load();
+  }
+}
+defineExpose({ refresh });
 </script>
 
 <style scoped>
@@ -426,6 +530,28 @@ defineExpose({ refresh: load });
 .cm-bar-t {
   font-size: var(--font-sm);
   color: var(--text-2);
+}
+/* 某用户帖子模式：返回箭头 + 「X 的动态」 */
+.cm-usermode {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  cursor: pointer;
+}
+.cm-usermode:active {
+  opacity: 0.6;
+}
+.cm-usermode-t {
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--text);
+}
+/* 滚动加载到底提示 */
+.cm-end {
+  text-align: center;
+  padding: 30rpx 0 10rpx;
+  font-size: var(--font-sm);
+  color: var(--text-3);
 }
 /* 筛选入口：标题 + 向下箭头，点击展开下拉菜单 */
 .cm-filter {

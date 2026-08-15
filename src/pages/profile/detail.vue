@@ -132,9 +132,30 @@
           <text class="dp-label">自选股</text>
           <view class="dp-wl-locked">
             <OutlineIcon type="eye-off" :size="40" color="var(--text-3)" />
-            <text class="dp-wl-lock-text">对方未公开自选股</text>
+          <text class="dp-wl-lock-text">对方未公开自选股</text>
+        </view>
+      </view>
+
+      <!-- TA 的动态（最多 5 条，含发布时间 + 内容摘要；查看更多 → 社区该用户全部帖子） -->
+      <view class="dp-section">
+        <text class="dp-label">TA 的动态</text>
+        <view v-if="recentLoading" class="dp-wl-loading"><view class="cl-spin" /></view>
+        <view v-else-if="recentPosts.length === 0" class="dp-wl-empty">暂无动态</view>
+        <view v-else class="dp-posts">
+          <view
+            v-for="p in recentPosts"
+            :key="p.id"
+            class="dp-post-row"
+          >
+            <text class="dp-post-time">{{ formatRelative(p.createdAt) }}</text>
+            <text class="dp-post-sum truncate">{{ postSummary(p) }}</text>
+          </view>
+          <view class="dp-posts-more" hover-class="dp-btn-hover" role="button" @click="goUserPosts">
+            <text>查看更多</text>
+            <OutlineIcon type="arrow-right" :size="24" color="var(--primary)" />
           </view>
         </view>
+      </view>
 
       </template>
     </scroll-view>
@@ -152,9 +173,10 @@ import { resolveSecid, marketCharFor, type Market } from "@/utils/period";
 import { fetchSnapshot } from "@/api/quote";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
 import { useUser, userState } from "@/store/user";
-import { useDmTarget } from "@/store/community";
+import { useDmTarget, useCommunityUserTarget } from "@/store/community";
 import { useFollow } from "@/store/follow";
 import { goTab, openAuth, openInMarket } from "@/store/nav";
+import { communityRepo, formatRelative, type CommunityPost } from "@/api/community";
 
 const user = useUser();
 
@@ -199,7 +221,13 @@ const watchlistHidden = computed(
   () => !!profile.value && !isSelf.value && profile.value.public_watchlist !== true
 );
 
+// —— TA 的最新动态（最多 5 条，含发布时间 + 内容摘要） ——
+const recentPosts = ref<CommunityPost[]>([]);
+const recentLoading = ref(false);
+
 const { setDmTarget } = useDmTarget();
+// 跨页深链：资料页「查看更多 TA 的动态」→ 切社区并定位该用户帖子（复用 useCommunityUserTarget）
+const { setUserTarget } = useCommunityUserTarget();
 
 const nameText = computed(() =>
   profile.value ? profile.value.display_name || profile.value.username || "用户" : ""
@@ -288,6 +316,8 @@ async function loadProfile() {
     } else {
       watchlist.value = [];
     }
+    // 拉取 TA 的最新动态（最多 5 条），与自选股相互独立
+    loadRecentPosts();
   } catch {
     notFound.value = true;
   } finally {
@@ -331,6 +361,38 @@ async function loadWatchlist() {
   } finally {
     watchlistLoading.value = false;
   }
+}
+
+/** 拉取 TA 的最新动态（最多 5 条）：走社区 listByUser 服务端按 user_id 过滤，
+ *  与社区页「该用户帖子模式」同源，保证点赞 / 头像权威一致。 */
+async function loadRecentPosts() {
+  if (!uid.value) return;
+  recentLoading.value = true;
+  try {
+    const res = await communityRepo.listByUser(uid.value, { limit: 5 });
+    // 后端多取 1 条探测下一页，这里只需前 5 条作为内联预览
+    recentPosts.value = res.slice(0, 5);
+  } catch {
+    recentPosts.value = [];
+  } finally {
+    recentLoading.value = false;
+  }
+}
+
+/** 帖子内容摘要（用于动态列表一行展示）：文字帖取正文，卡片帖取一句话概述。 */
+function postSummary(p: CommunityPost): string {
+  let s: string;
+  if (p.type === "text") {
+    s = p.content?.trim() || "（无文字内容）";
+  } else {
+    const c = p.card;
+    if (!c) s = "分享了一张卡片";
+    else if (c.kind === "holding") s = `持仓 · ${c.stock || c.code || "—"}`;
+    else if (c.kind === "operation") s = `${c.side === "buy" ? "买入" : "卖出"} · ${c.stock || c.code || "—"}`;
+    else if (c.kind === "profit") s = `${c.period || "周期"}战绩 · 收益率 ${typeof c.totalReturn === "number" ? c.totalReturn + "%" : ""}`;
+    else s = "分享了一张卡片";
+  }
+  return s.length > 50 ? s.slice(0, 50) + "…" : s;
 }
 
 function pctClass(pct?: number): string {
@@ -419,6 +481,18 @@ function startDm() {
     otherAvatarUrl: profile.value.avatar_url || "",
     otherFrame: profile.value.avatar_frame || "",
   });
+  goTab("community");
+  uni.navigateBack({
+    delta: 1,
+    fail: () => uni.reLaunch({ url: "/pages/index/index" }),
+  });
+}
+
+/** 查看更多 TA 的动态：写入「某用户帖子」深链目标 → 切社区 tab → 返回，
+ *  社区页消费目标后进入该用户帖子模式并展示全部帖子（支持滚动加载）。 */
+function goUserPosts() {
+  if (!profile.value) return;
+  setUserTarget({ userId: profile.value.id, userName: nameText.value });
   goTab("community");
   uni.navigateBack({
     delta: 1,
@@ -680,5 +754,46 @@ function startDm() {
 .dp-wl-lock-text {
   font-size: var(--font-sm);
   color: var(--text-2);
+}
+
+/* TA 的动态（最多 5 条：发布时间 + 内容摘要；底部「查看更多」） */
+.dp-posts {
+  display: flex;
+  flex-direction: column;
+}
+.dp-post-row {
+  display: flex;
+  align-items: baseline;
+  gap: 16rpx;
+  padding: 14rpx 0;
+  border-top: 1rpx solid var(--border);
+}
+.dp-post-row:first-child {
+  border-top: none;
+}
+.dp-post-time {
+  flex: none;
+  width: 118rpx;
+  font-size: var(--font-xs);
+  color: var(--text-3);
+}
+.dp-post-sum {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-md);
+  color: var(--text);
+}
+/* 「查看更多」入口：整行可点，与主色呼应 */
+.dp-posts-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  margin-top: 12rpx;
+  padding: 14rpx 0;
+  font-size: var(--font-sm);
+  color: var(--primary);
+  cursor: pointer;
+  border-top: 1rpx solid var(--border);
 }
 </style>

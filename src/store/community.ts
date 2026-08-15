@@ -137,6 +137,31 @@ export function useDmTarget() {
 }
 
 // =====================================================================
+// 社区「某用户帖子」深链目标（模块级单例，跨页信号）
+// 公开资料页「查看更多 TA 的动态」→ setUserTarget（带 userId + 昵称）→ 切到社区 tab；
+// CommunityView 激活时 consumeUserTarget() 读取并进入「该用户帖子模式」，随后清空，
+// 避免重复点击时反复回到该用户列表。与 useDmTarget 同款跨页深链范式。
+// =====================================================================
+export interface CommunityUserTarget {
+  userId: string;
+  userName: string;
+}
+
+const userTarget = ref<CommunityUserTarget | null>(null);
+export function useCommunityUserTarget() {
+  function setUserTarget(t: CommunityUserTarget) {
+    userTarget.value = t;
+  }
+  /** 读取并消费该用户帖子深链目标（读后清空），无目标返回 null。 */
+  function consumeUserTarget(): CommunityUserTarget | null {
+    const v = userTarget.value;
+    userTarget.value = null;
+    return v;
+  }
+  return { userTarget, setUserTarget, consumeUserTarget };
+}
+
+// =====================================================================
 // 消息中心（模块级单例，跨组件共享：顶部栏未读角标与弹层共用同一份状态）
 // 通知（点赞 / 评论）由后端实时派生；私信走 community_dms + 会话聚合。
 // =====================================================================

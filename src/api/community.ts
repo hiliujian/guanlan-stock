@@ -188,6 +188,17 @@ export const communityRepo = {
   async searchPosts(query: string): Promise<CommunityPost[]> {
     return searchRemote(query);
   },
+
+  // ---------------- 某用户的全部帖子（资料页「查看更多」跳转社区用） ----------------
+  // 服务端按 user_id 过滤 + created_at 游标翻页，复用 listRemote 同款字段映射与
+  // 点赞 / 作者资料权威逻辑。opts.limit 为期望每页条数；内部多取 1 条用于判断是否有下一页，
+  // 调用方据返回长度是否 > limit 决定是否 slice 并继续翻页（cursor 取本页末条 createdAt）。
+  async listByUser(
+    userId: string,
+    opts?: { limit?: number; cursor?: number }
+  ): Promise<CommunityPost[]> {
+    return listByUserRemote(userId, opts);
+  },
 };
 
 // ---------------------------------------------------------------------
@@ -292,6 +303,45 @@ async function searchRemote(query: string): Promise<CommunityPost[]> {
   );
   if (error || !data) return [];
   // 点赞态 / 作者资料与列表一致（复用同一套服务端权威逻辑）
+  const liked = await loadLikedFromServer(sb);
+  const profileMap = await loadProfilesForPosts(sb, data as any[]);
+  return (data as any[]).map((r) => {
+    const ai = profileMap.get(r.user_id) || { avatar_url: "", avatar_frame: "" };
+    return mapRowToPost(r, ai, liked);
+  });
+}
+
+/**
+ * 取某用户的全部帖子（按 created_at 倒序 + 游标翻页），供资料页「查看更多 TA 的动态」跳转社区。
+ * 复用 listRemote 同款 select 字段、replies 嵌套与 mapRowToPost 映射；点赞态 / 作者资料
+ * 同样以服务端 community_likes / profiles 为唯一权威。
+ * cursor 传上一页最后一条的 created_at 时间戳（ms），做 .lt 游标；limit 内部 +1 多取一条，
+ * 供调用方判定「是否还有下一页」（返回长度 > limit 即还有，需 slice 到 limit 并续传 cursor）。
+ */
+async function listByUserRemote(
+  userId: string,
+  opts?: { limit?: number; cursor?: number }
+): Promise<CommunityPost[]> {
+  const sb = getSupabase();
+  if (!sb || !userId) return [];
+  const fetchLimit = (opts?.limit ?? 20) + 1; // 多取一条，调用方据长度判定 hasMore
+  let q = sb
+    .from("community_posts")
+    .select(
+      "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, content, created_at)"
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(fetchLimit);
+  if (opts?.cursor) {
+    // 游标用上一页末条 created_at（ms）→ ISO 字符串；.lt 严格小于，避免与本页末条重复
+    q = q.lt("created_at", new Date(opts.cursor).toISOString());
+  }
+  const { data, error } = await withTimeout(
+    q as unknown as Promise<{ data: any; error: any }>,
+    10000
+  );
+  if (error || !data) return [];
   const liked = await loadLikedFromServer(sb);
   const profileMap = await loadProfilesForPosts(sb, data as any[]);
   return (data as any[]).map((r) => {
