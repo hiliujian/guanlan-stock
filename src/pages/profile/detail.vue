@@ -48,8 +48,8 @@
 
           <!-- 右侧操作区：本人→编辑资料；他人→关注 + 私信（两行，与头像垂直对齐） -->
           <view class="dp-side">
-            <view v-if="isSelf" class="dp-btn dp-btn-ghost" hover-class="dp-btn-hover" role="button" @click="goEdit">
-              <OutlineIcon type="edit" :size="26" color="var(--text-2)" />
+            <view v-if="isSelf" class="dp-btn" hover-class="dp-btn-hover" role="button" @click="goEdit">
+              <OutlineIcon type="edit" :size="26" color="var(--text)" />
               <text>编辑资料</text>
             </view>
             <template v-else>
@@ -64,13 +64,13 @@
                 <text>{{ following ? '已关注' : '关注' }}</text>
               </view>
               <view
-                class="dp-btn dp-btn-primary"
+                class="dp-btn"
                 :class="{ disabled: !canDm }"
                 hover-class="dp-btn-hover"
                 role="button"
                 @click="onDmClick"
               >
-                <OutlineIcon type="mail" :size="26" color="#fff" />
+                <OutlineIcon type="mail" :size="26" color="var(--primary)" />
                 <text>{{ dmLabel }}</text>
               </view>
             </template>
@@ -491,11 +491,11 @@ function startDm() {
   flex: none;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
+  align-items: flex-end;
   justify-content: center;
   gap: 12rpx;
 }
-/* 操作胶囊按钮（图标 + 文字） */
+/* 操作按钮（图标 + 文字，无底色，仅颜色区分状态） */
 .dp-btn {
   display: inline-flex;
   align-items: center;
@@ -505,7 +505,6 @@ function startDm() {
   border-radius: 999rpx;
   font-size: var(--font-sm);
   line-height: 1;
-  background: var(--primary-soft);
   color: var(--primary);
   transition: transform 0.12s ease, opacity 0.12s ease;
 }
@@ -513,18 +512,7 @@ function startDm() {
   transform: scale(0.96);
 }
 .dp-btn.on {
-  background: var(--card-2);
   color: var(--text-2);
-  box-shadow: inset 0 0 0 1rpx var(--border);
-}
-.dp-btn-primary {
-  background: var(--primary);
-  color: #fff;
-}
-.dp-btn-ghost {
-  background: var(--card-2);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1rpx var(--border);
 }
 .dp-btn.disabled {
   opacity: 0.5;
