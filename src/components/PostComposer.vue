@@ -1,39 +1,35 @@
 <template>
   <view class="composer glass anim-fade-up">
-    <!-- 关联标的（选填）：用于社区按个股 / 板块分类。新设计下与正文 / 附加卡片共存 -->
-    <view class="cp-topic">
-      <text class="cp-topic-lbl">关联标的（选填）</text>
-      <view class="cp-topic-sel">
-        <text :class="['cp-topic-btn', topicType === 'stock' ? 'on' : '']" @click="topicType = 'stock'">个股</text>
-        <text :class="['cp-topic-btn', topicType === 'sector' ? 'on' : '']" @click="topicType = 'sector'">板块</text>
-      </view>
-      <input class="cp-topic-in" v-model="topicName" placeholder="如 贵州茅台 / 白酒" maxlength="12" />
-    </view>
-
     <view class="cp-input-wrap">
-      <!-- 纯文本输入框：auto-height 自动撑高，最多 500 字 -->
-      <textarea
-        class="cp-area"
-        :value="text"
-        @input="onInput"
-        @keydown="onKeydown"
-        placeholder="分享你的看法、复盘或提问… 输入 # 可关联股票"
-        maxlength="500"
-        :auto-height="true"
-      />
+      <!-- 文本框 + 联想浮层共用定位容器：浮层 absolute 锚定 # 所在行下方，不挤占下方布局 -->
+      <view class="cp-area-wrap" ref="wrapRef">
+        <!-- 纯文本输入框：auto-height 自动撑高，最多 500 字 -->
+        <textarea
+          class="cp-area"
+          :value="text"
+          @input="onInput"
+          @keydown="onKeydown"
+          placeholder="分享你的看法、复盘或提问… 输入 # 可关联股票"
+          maxlength="500"
+          :auto-height="true"
+        />
 
-      <!-- # 股票联想浮层（下拉）：支持 #+代码 / #+名称，模糊匹配 + 防抖 + 键盘上下 / 回车 -->
-      <view v-if="showSuggest" class="cp-suggest">
-        <view v-if="!suggestions.length" class="cp-suggest-empty">无匹配股票</view>
-        <view
-          v-for="(s, i) in suggestions"
-          :key="s.code"
-          :class="['cp-suggest-item', i === activeIndex ? 'active' : '']"
-          @click="choose(s)"
-          @mouseenter="activeIndex = i"
-        >
-          <text class="cp-suggest-name">{{ s.name }}</text>
-          <text class="cp-suggest-code">{{ s.code }}</text>
+        <!-- # 股票联想浮层（下拉）：锚定到 # 输入位置正下方悬浮显示 -->
+        <view v-if="showSuggest" class="cp-suggest" :style="suggestStyle">
+          <view v-if="!suggestions.length" class="cp-suggest-empty">无匹配股票</view>
+          <view
+            v-for="(s, i) in suggestions"
+            :key="s.code"
+            :class="['cp-suggest-item', i === activeIndex ? 'active' : '']"
+            @click="choose(s)"
+            @mouseenter="activeIndex = i"
+          >
+            <text class="cp-suggest-name">{{ s.name }}</text>
+            <view class="cp-suggest-coderow">
+              <text class="mkt-label">{{ marketCharFor(s.code) }}</text>
+              <text class="cp-suggest-code">{{ s.code }}</text>
+            </view>
+          </view>
         </view>
       </view>
 
@@ -84,36 +80,14 @@
           <view class="cp-card-ok" @click="confirmCard">添加</view>
         </view>
       </view>
-
-      <!-- 配图（与正文通用）：上传前显示本地缩略图，可删除 -->
-      <view class="cp-imgs">
-        <view v-for="(p, i) in imagePaths" :key="i" class="cp-thumb">
-          <image class="cp-thumb-img" :src="p" mode="aspectFill" />
-          <view class="cp-thumb-x" @click="removeImage(i)">
-            <OutlineIcon type="close" :size="24" color="#fff" />
-          </view>
-        </view>
-        <view v-if="imagePaths.length < MAX_IMAGES" class="cp-thumb cp-add" @click="pickImages">
-          <OutlineIcon type="camera" :size="40" color="var(--text-2)" />
-        </view>
-      </view>
     </view>
 
-    <!-- 底部工具栏：+ 菜单 / 字数计数 / 发布 -->
-    <view class="cp-foot">
-      <view class="cp-plus" @click="toggleMenu" role="button" aria-label="添加附件">
-        <OutlineIcon type="plus" :size="40" :color="menuOpen ? 'var(--primary)' : 'var(--text)'" />
-      </view>
-      <text class="cp-count">{{ charCount }}/500</text>
-      <view :class="['cp-send', canSend ? '' : 'disabled']" @click="send">
-        <OutlineIcon type="send" :size="26" :color="canSend ? '#fff' : 'rgba(255,255,255,0.6)'" />
-        <text class="cp-send-t">发布</text>
-      </view>
-    </view>
-
-    <!-- + 操作菜单：添加图片 / 持仓 / 操作 / 收益 -->
-    <view v-if="menuOpen" class="cp-menu-mask" @click="menuOpen = false">
-      <view class="cp-menu" @click.stop>
+    <!-- + 操作菜单：添加图片 / 持仓 / 操作 / 收益。
+         弹出于 + 号右侧（紧贴、近距离），无遮罩无蒙版。Teleport 到 body + fixed 定位：
+         PeekSheet 卡片带 transform（fixed 会被钉死在其上）且 overflow:hidden 会裁剪浮层，
+         组件内 absolute/fixed 均不可用；传送到 body 后以「+」按钮实测坐标锚定。 -->
+    <Teleport to="body">
+      <view v-if="menuOpen" class="cp-menu" :style="menuStyle" @click.stop>
         <view class="cp-menu-item" @click="onAddImage">
           <OutlineIcon type="camera" :size="34" color="var(--text)" />
           <text class="cp-menu-t">添加图片</text>
@@ -131,15 +105,29 @@
           <text class="cp-menu-t">收益</text>
         </view>
       </view>
+    </Teleport>
+
+    <!-- 底部工具栏：+ 菜单 / 字数计数 / 发布 -->
+    <view class="cp-foot">
+      <view ref="plusRef" class="cp-plus" @click="toggleMenu" role="button" aria-label="添加附件">
+        <!-- stroke-width 由默认 2 降为 1.5：去掉加粗观感，与同排发布按钮视觉重量一致 -->
+        <OutlineIcon type="plus" :size="40" :stroke-width="1.5" :color="menuOpen ? 'var(--primary)' : 'var(--text)'" />
+      </view>
+      <text class="cp-count">{{ charCount }}/500</text>
+      <view :class="['cp-send', canSend ? '' : 'disabled']" @click="send">
+        <OutlineIcon type="send" :size="26" :color="canSend ? '#fff' : 'rgba(255,255,255,0.6)'" />
+        <text class="cp-send-t">发布</text>
+      </view>
     </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from "vue";
+import { ref, reactive, computed, onUnmounted } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import type { HoldingCard, OperationCard, ProfitCard, PostCard, Topic } from "@/api/community";
 import { localSuggest, searchStocks, LOCAL_STOCKS, type SearchHit } from "@/api/quote";
+import { marketCharFor } from "@/utils/period";
 import { useUser } from "@/store/user";
 import { openAuth } from "@/store/nav";
 import { uploadPostImage } from "@/api/auth";
@@ -150,9 +138,6 @@ const emit = defineEmits<{
 
 // 正文（单一纯文本框，不再有 Tab 切换）
 const text = ref("");
-// 关联标的（选填）
-const topicType = ref<"stock" | "sector">("stock");
-const topicName = ref("");
 
 // 附加卡片（持仓 / 操作 / 收益）：作为正文帖的附件，三者至多一个
 const attach = ref<PostCard | null>(null);
@@ -185,13 +170,75 @@ function detectHashTag(value: string): string | null {
   return after;
 }
 
+// 联想浮层定位容器（文本框 wrapper），用于测量 # 的纵向像素坐标
+const wrapRef = ref<any>(null);
+// 浮层锚定坐标（px，相对 wrapper）；null 时回退到 CSS 的 top:100%（文本框底部）
+const suggestPos = ref<{ top: number; left: number } | null>(null);
+const suggestStyle = computed(() => {
+  if (suggestPos.value) {
+    return { top: suggestPos.value.top + "px", left: "0px", right: "0px" };
+  }
+  return {};
+});
+
+/**
+ * 用镜像 div 复刻 textarea 排版，测量 # 字符所在行的纵向坐标，
+ * 使联想浮层锚定在「# 输入位置」正下方，而非文本框整体底部。
+ * 非 H5 环境或测量失败时回退到 CSS 默认（top:100%）。
+ */
+function caretCoordinates(ta: HTMLTextAreaElement, position: number, textVal: string, wrap: HTMLElement) {
+  const div = document.createElement("div");
+  const dstyle = div.style as any;
+  const cs = window.getComputedStyle(ta);
+  const props = [
+    "boxSizing", "width", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+    "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
+    "fontStyle", "fontVariant", "fontWeight", "fontStretch", "fontSize", "fontFamily",
+    "letterSpacing", "textTransform", "wordSpacing", "textIndent",
+  ];
+  for (const p of props) dstyle[p] = (cs as any)[p];
+  dstyle.position = "absolute";
+  dstyle.visibility = "hidden";
+  dstyle.whiteSpace = "pre-wrap";
+  dstyle.wordWrap = "break-word";
+  dstyle.top = "0px";
+  dstyle.left = "0px";
+  div.textContent = textVal.substring(0, position);
+  const span = document.createElement("span");
+  span.textContent = textVal.substring(position) || ".";
+  div.appendChild(span);
+  wrap.appendChild(div);
+  const top = span.offsetTop; // 相对 wrapper（position:relative），div 在 wrapper 内且 top/left=0
+  const height = parseInt(cs.lineHeight) || span.offsetHeight;
+  wrap.removeChild(div);
+  return { top, height };
+}
+
+function positionSuggest() {
+  const val = text.value;
+  const lastHash = val.lastIndexOf("#");
+  if (lastHash === -1) return;
+  const wrapEl = (wrapRef.value as any)?.$el as HTMLElement | undefined;
+  if (!wrapEl) return;
+  const taEl = wrapEl.querySelector("textarea") as HTMLTextAreaElement | null;
+  if (!taEl) return;
+  try {
+    const c = caretCoordinates(taEl, lastHash, val, wrapEl);
+    suggestPos.value = { top: c.top + c.height + 4, left: 0 };
+  } catch {
+    suggestPos.value = null; // 回退到 CSS 默认（top:100%）
+  }
+}
+
 function updateHash(val: string) {
   const q = detectHashTag(val);
   activeQuery.value = q;
   if (q === null) {
     suggestions.value = [];
+    suggestPos.value = null;
     return;
   }
+  positionSuggest();
   refreshSuggest(q);
 }
 
@@ -224,6 +271,7 @@ function choose(s: SearchHit) {
   text.value = newVal;
   activeQuery.value = null;
   suggestions.value = [];
+  suggestPos.value = null;
   activeIndex.value = 0;
 }
 
@@ -258,6 +306,7 @@ function onKeydown(e: any) {
   } else if (key === "Escape") {
     activeQuery.value = null;
     suggestions.value = [];
+    suggestPos.value = null;
   }
 }
 
@@ -276,9 +325,6 @@ function pickImages() {
     },
   });
 }
-function removeImage(i: number) {
-  imagePaths.value.splice(i, 1);
-}
 async function uploadImages(): Promise<string[] | null> {
   if (!imagePaths.value.length) return [];
   const urls: string[] = [];
@@ -295,9 +341,66 @@ async function uploadImages(): Promise<string[] | null> {
 }
 
 // ---------------- + 菜单 / 卡片编辑 ----------------
-function toggleMenu() {
-  menuOpen.value = !menuOpen.value;
+// 「+」按钮元素引用：菜单锚定坐标来源
+const plusRef = ref<any>(null);
+// 菜单锚定坐标（px，视口系；Teleport 到 body 后用 fixed 定位）；null=回退 CSS 默认位置
+const menuPos = ref<{ left: number; top: number } | null>(null);
+const menuStyle = computed(() => {
+  if (menuPos.value) {
+    return { left: menuPos.value.left + "px", top: menuPos.value.top + "px" };
+  }
+  return {};
+});
+
+/** 测量「+」按钮位置，让菜单悬浮弹出于其右侧（紧贴、近距离；H5 专属；失败回退 CSS 默认）。 */
+function positionMenu() {
+  try {
+    const el = (plusRef.value as any)?.$el as HTMLElement | undefined;
+    if (el && typeof document !== "undefined") {
+      const r = el.getBoundingClientRect();
+      // 紧贴 + 右侧（仅 8px 间距），顶部与按钮对齐，避免「距太远」
+      menuPos.value = { left: r.right + 8, top: r.top };
+      return;
+    }
+  } catch {
+    /* 测量失败走回退 */
+  }
+  menuPos.value = null;
 }
+
+// 点击菜单/「+」以外区域自动隐藏（无遮罩场景）：document 捕获阶段监听
+let outsideHandler: ((e: Event) => void) | null = null;
+function addOutside() {
+  if (outsideHandler || typeof document === "undefined") return;
+  outsideHandler = (e: Event) => {
+    const t = e.target as HTMLElement | null;
+    if (!t) return;
+    const menuEl = document.querySelector(".cp-menu") as HTMLElement | null;
+    const plusEl = (plusRef.value as any)?.$el as HTMLElement | undefined;
+    if ((menuEl && menuEl.contains(t)) || (plusEl && plusEl.contains(t))) return;
+    menuOpen.value = false;
+    removeOutside();
+  };
+  document.addEventListener("pointerdown", outsideHandler, true);
+}
+function removeOutside() {
+  if (outsideHandler) {
+    document.removeEventListener("pointerdown", outsideHandler, true);
+    outsideHandler = null;
+  }
+}
+
+function toggleMenu() {
+  if (menuOpen.value) {
+    menuOpen.value = false;
+    removeOutside();
+    return;
+  }
+  positionMenu();
+  menuOpen.value = true;
+  addOutside();
+}
+onUnmounted(removeOutside);
 function onAddImage() {
   menuOpen.value = false;
   pickImages();
@@ -374,17 +477,13 @@ async function send() {
   if (!canSend.value) return;
   const uploaded = await uploadImages();
   if (uploaded === null) return;
-  const name = topicName.value.trim();
-  const topic: Topic | undefined = name ? { type: topicType.value, name } : undefined;
   emit("publish", {
     content: text.value.trim() || undefined,
     card: attach.value || undefined,
-    topic,
     images: uploaded.length ? uploaded : undefined,
   });
   // 复位
   text.value = "";
-  topicName.value = "";
   imagePaths.value = [];
   attach.value = null;
   editKind.value = null;
@@ -432,51 +531,6 @@ function fmt(n: number): string {
   border-radius: var(--radius);
   position: relative;
 }
-.cp-topic {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 14rpx;
-  padding-bottom: 14rpx;
-  border-bottom: 1rpx solid var(--border);
-}
-.cp-topic-lbl {
-  font-size: var(--font-xs);
-  color: var(--text-2);
-  flex: none;
-}
-.cp-topic-sel {
-  display: flex;
-  gap: 8rpx;
-  flex: none;
-}
-.cp-topic-btn {
-  padding: 8rpx 18rpx;
-  font-size: var(--font-xs);
-  border-radius: 999rpx;
-  color: var(--text-2);
-  background: var(--card-2);
-  border: 2rpx solid transparent;
-  transition: all 0.18s ease;
-}
-.cp-topic-btn.on {
-  color: var(--primary);
-  border-color: var(--primary);
-  background: rgba(7, 193, 96, 0.1);
-}
-.cp-topic-in {
-  flex: 1;
-  height: 60rpx;
-  min-width: 0;
-  padding: 0 18rpx;
-  font-size: var(--font-sm);
-  color: var(--text);
-  background: var(--card-2);
-  border-radius: 14rpx;
-}
-.cp-topic-in::placeholder {
-  color: var(--text-2);
-}
 .cp-input-wrap {
   position: relative;
 }
@@ -490,12 +544,22 @@ function fmt(n: number): string {
   padding: 4rpx 2rpx;
 }
 
-/* # 联想浮层 */
+/* 文本框定位容器：联想浮层据此 absolute 锚定，不挤占下方布局 */
+.cp-area-wrap {
+  position: relative;
+}
+
+/* # 联想浮层：悬浮在文本框下方，覆盖下方卡片 / 工具栏，不撑高布局 */
 .cp-suggest {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
   margin-top: 8rpx;
   max-height: 360rpx;
   overflow-y: auto;
-  background: var(--card);
+  background: var(--bg-2);
   border: 1rpx solid var(--border);
   border-radius: 16rpx;
   box-shadow: var(--shadow-pop);
@@ -524,6 +588,13 @@ function fmt(n: number): string {
 .cp-suggest-name {
   font-size: var(--font-md);
   color: var(--text);
+}
+/* 代码行：沪深港徽标（复用全局 .mkt-label）+ 代码，同行右对齐 */
+.cp-suggest-coderow {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  flex: none;
 }
 .cp-suggest-code {
   font-size: var(--font-xs);
@@ -669,48 +740,6 @@ function fmt(n: number): string {
   background: rgba(9, 176, 122, 0.1);
 }
 
-/* 配图托盘 */
-.cp-imgs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  margin-top: 16rpx;
-}
-.cp-thumb {
-  position: relative;
-  width: 150rpx;
-  height: 150rpx;
-  border-radius: 14rpx;
-  overflow: hidden;
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
-}
-.cp-thumb-img {
-  width: 100%;
-  height: 100%;
-}
-.cp-thumb-x {
-  position: absolute;
-  top: 4rpx;
-  right: 4rpx;
-  width: 40rpx;
-  height: 40rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.5);
-}
-.cp-thumb-x:active {
-  background: rgba(0, 0, 0, 0.7);
-}
-.cp-add {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1rpx dashed var(--border);
-}
-
 /* 底部工具栏 */
 .cp-foot {
   display: flex;
@@ -759,22 +788,21 @@ function fmt(n: number): string {
   color: #fff;
 }
 
-/* + 操作菜单 */
-.cp-menu-mask {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.04);
-  z-index: 40;
-}
+/* + 操作菜单：Teleport 到 body 的悬浮弹层（fixed 视口定位，无遮罩无蒙版）。
+   不用组件内 absolute/fixed——PeekSheet 卡片 transform 会把 fixed 钉死在卡片内、
+   overflow:hidden 会裁掉浮出的部分。锚定坐标由 positionMenu() 实测注入（弹出于 + 正下方），
+   下方 left/top 仅为测量失败时的回退默认值。 */
 .cp-menu {
-  position: absolute;
-  left: 18rpx;
-  bottom: 96rpx;
+  position: fixed;
+  left: 40rpx;
+  top: 120rpx;
+  z-index: 121;
   display: flex;
   flex-direction: column;
   gap: 4rpx;
+  min-width: 260rpx;
   padding: 10rpx;
-  background: var(--card);
+  background: var(--bg-2);
   border: 1rpx solid var(--border);
   border-radius: 18rpx;
   box-shadow: var(--shadow-pop);

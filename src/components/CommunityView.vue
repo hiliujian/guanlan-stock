@@ -34,11 +34,10 @@
       </view>
     </view>
 
-    <!-- 可滚动内容区 -->
-    <scroll-view class="cm-scroll" scroll-y :scroll-top="scrollTop" @scrolltolower="onScrollToLower">
-
     <!-- 动态栏目标题 + 筛选下拉（下拉刷新由页面 onPullDownRefresh 触发，此处不再保留刷新按钮） -->
-    <view class="cm-bar flex-between">
+    <!-- 注意：原在 scroll-view 内用 position:sticky 吸顶，uni-app H5 中 scroll-view 内的 sticky
+         会在向下滚动时被错误隐藏、向上滚动才恢复；现改为 scroll-view 外的常驻 flex 头部，始终可见 -->
+    <view class="cm-bar flex-between" :class="{ 'filter-open': filterOpen }">
       <!-- 某用户帖子模式：返回箭头 + 「X 的动态」，隐藏筛选 / 搜索 -->
       <view v-if="viewingUser" class="cm-usermode" @click="exitUserMode">
         <OutlineIcon type="arrow-left" :size="30" color="var(--text)" />
@@ -65,6 +64,9 @@
         <text v-else class="cm-bar-t">搜索结果 · {{ displayPosts.length }}</text>
       </template>
     </view>
+
+    <!-- 可滚动内容区 -->
+    <scroll-view class="cm-scroll" scroll-y :scroll-top="scrollTop" @scrolltolower="onScrollToLower">
 
     <!-- 加载态 -->
     <view v-if="feedLoading && !displayPosts.length" class="cm-loading"><view class="cl-spin" /></view>
@@ -442,6 +444,9 @@ defineExpose({ refresh });
   flex: 1;
   min-height: 0;
   height: auto;
+  /* 顶部留白：对齐首页行情页 .mk-body 的 padding-top:18rpx，
+     使首条帖子卡片与「最新动态」筛选栏保持一致的呼吸间距（卡片自身 margin-top 为 0） */
+  padding-top: 18rpx;
 }
 /* 「消息」入口：铃铛图标 + 文字的胶囊按钮，与自选「分组切换」(cm-me) 视觉统一 */
 .cm-msg {
@@ -520,16 +525,22 @@ defineExpose({ refresh });
 }
 
 .cm-bar {
-  /* 布局属性已提升至全局 .flex-between；提升层级使悬浮菜单覆盖下方内容。
-     固定吸顶：滚动信息流时保持可见，用 --sticky-bg 半透明遮罩 + 毛玻璃遮挡下方内容 */
-  position: sticky;
-  top: 0;
-  z-index: 61;
+  flex: none;
+  position: relative;
+  /* 原为 scroll-view 内 sticky 吸顶；uni-app H5 中 scroll-view 内的 sticky 会在向下滚动时
+     被错误隐藏、向上滚动才恢复。改为 scroll-view 外的常驻 flex 头部，始终可见。
+     常驻头部 z-index 仅 30，低于底部 PeekSheet 卡片(40)，避免展开底部卡片时筛选栏浮于其上；
+     筛选下拉打开时(.filter-open)才升到 61，浮于遮罩(.cm-filter-scrim z-index:60)之上。 */
+  z-index: 30;
   padding: 6rpx 26rpx 10rpx;
   background: var(--sticky-bg);
   backdrop-filter: blur(16rpx) saturate(140%);
   -webkit-backdrop-filter: blur(16rpx) saturate(140%);
   border-bottom: 1rpx solid var(--border);
+}
+.cm-bar.filter-open {
+  /* 仅下拉打开时升到遮罩之上，保证筛选菜单可点击；此时底部卡片不会同时展开，无层级冲突 */
+  z-index: 61;
 }
 .cm-bar-t {
   font-size: var(--font-sm);

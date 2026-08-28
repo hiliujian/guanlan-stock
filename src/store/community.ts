@@ -216,6 +216,33 @@ function persistSeenComment() {
   }
 }
 
+// 通知（点赞 / 评论）由后端实时派生，无独立通知表，故「删除」只能在本机隐藏：
+// 记录被忽略的通知 id，列表过滤时不展示。切换账号 / 登出时清空（reset 中处理）。
+const DISMISSED_KEY = "gl_dismissed_notif_ids";
+const dismissedNotifIds = ref<string[]>(
+  (() => {
+    try {
+      const arr = JSON.parse(uni.getStorageSync(DISMISSED_KEY) || "[]");
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  })()
+);
+function persistDismissed() {
+  try {
+    uni.setStorageSync(DISMISSED_KEY, JSON.stringify(dismissedNotifIds.value));
+  } catch {
+    /* 持久化失败不影响内存态 */
+  }
+}
+function dismissNotification(id: string) {
+  if (!dismissedNotifIds.value.includes(id)) {
+    dismissedNotifIds.value = [...dismissedNotifIds.value, id];
+    persistDismissed();
+  }
+}
+
 /** 拉取我的活动通知（点赞 / 评论），并校准「已读基线」。 */
 async function loadNotifications() {
   notifLoading.value = true;
@@ -342,6 +369,13 @@ export function useMessageCenter() {
     return m;
   }
 
+  /** 删除与某人的私信会话（双向，真实删除）：成功后重拉会话列表聚合未读。 */
+  async function deleteConversation(otherId: string): Promise<boolean> {
+    const ok = await communityRepo.deleteDmThread(otherId);
+    if (ok) await loadConversations();
+    return ok;
+  }
+
   function resetThread() {
     activeThread.value = [];
   }
@@ -353,6 +387,7 @@ export function useMessageCenter() {
     conversations.value = [];
     unreadDm.value = 0;
     activeThread.value = [];
+    dismissedNotifIds.value = [];
     // 重置基线，使下次加载按「首次加载」逻辑重新校准（适配切换账号）。
     seenLikeAt.value = 0;
     seenCommentAt.value = 0;
@@ -415,7 +450,10 @@ export function useMessageCenter() {
     loadUnreadDm,
     openThread,
     sendDm,
+    deleteConversation,
     markNotifSeen,
+    dismissNotification,
+    dismissedNotifIds,
     resetThread,
     reset,
   };

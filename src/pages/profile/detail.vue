@@ -55,13 +55,13 @@
             <template v-else>
               <view
                 class="dp-btn"
-                :class="{ on: following }"
+                :class="{ on: following, disabled: !user.loggedIn }"
                 hover-class="dp-btn-hover"
                 role="button"
                 @click="onFollowToggle"
               >
                 <OutlineIcon :type="following ? 'check' : 'plus'" :size="26" :color="following ? 'var(--text-2)' : 'var(--primary)'" />
-                <text>{{ following ? '已关注' : '关注' }}</text>
+                <text>{{ followLabel }}</text>
               </view>
               <view
                 class="dp-btn"
@@ -241,6 +241,11 @@ const following = computed(() => {
   const name = profile.value?.display_name || profile.value?.username;
   return !!name && follows.value.has(name);
 });
+// 关注按钮文案（未登录 → 登录后关注，与私信「登录后私信」同源）
+const followLabel = computed(() => {
+  if (!user.loggedIn) return "登录后关注";
+  return following.value ? "已关注" : "关注";
+});
 // 私信按钮可用性与文案（未登录 / 对方关闭 / 正常 三态）
 const canDm = computed(
   () => user.loggedIn && !!profile.value && profile.value.allow_dm === true
@@ -252,6 +257,7 @@ const dmLabel = computed(() => {
 });
 
 function onFollowToggle() {
+  if (!user.loggedIn) return; // 未登录：关注按钮为「登录后关注」禁用态，点击无效
   const name = profile.value?.display_name || profile.value?.username;
   if (!name) return;
   toggleFollow(name);

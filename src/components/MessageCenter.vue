@@ -63,6 +63,9 @@
                 <text class="mc-conv-time">{{ c.lastAt ? formatRelative(c.lastAt) : "" }}</text>
                 <view v-if="c.unreadCount > 0" class="mc-dot">{{ c.unreadCount > 99 ? "99+" : c.unreadCount }}</view>
               </view>
+              <view class="mc-del" @click.stop="onDeleteConv(c)" role="button" aria-label="删除会话">
+                <OutlineIcon type="trash" :size="32" color="var(--text-3)" />
+              </view>
             </view>
             <view v-if="!convLoading && !conversations.length" class="mc-empty">
               <OutlineIcon type="mail" :size="80" color="var(--border)" />
@@ -88,6 +91,9 @@
                 <text class="mc-notif-snip truncate">「{{ n.postSnippet }}」</text>
               </view>
               <text class="mc-notif-time">{{ formatRelative(n.createdAt) }}</text>
+              <view class="mc-del" @click.stop="onDeleteNotif(n)" role="button" aria-label="删除通知">
+                <OutlineIcon type="trash" :size="28" color="var(--text-3)" />
+              </view>
             </view>
             <view v-if="!notifLoading && !filteredNotifs.length" class="mc-empty">
               <OutlineIcon :type="tab === 'like' ? 'heart' : 'chatbubble'" :size="80" color="var(--border)" />
@@ -122,7 +128,7 @@
               <OutlineIcon type="send" :size="30" :color="dmText.trim() ? '#fff' : 'rgba(255,255,255,0.6)'" />
             </view>
           </view>
-        </template>
+          </template>
       </view>
     </template>
   </PeekSheet>
@@ -155,6 +161,9 @@ const {
   loadConversations,
   openThread,
   sendDm,
+  deleteConversation,
+  dismissNotification,
+  dismissedNotifIds,
   markNotifSeen,
 } = useMessageCenter();
 // 私信深链：公开资料页「发私信」写入目标，消息中心挂载时按对方 id 直接打开会话
@@ -176,8 +185,26 @@ const myId = computed(() => userState.userId || "");
 const selectedOtherName = computed(() => selectedOther.value?.otherName || "");
 const threadBottomId = computed(() => `t-${activeThread.value.length}`);
 const filteredNotifs = computed(() =>
-  notifications.value.filter((n: NotificationItem) => n.kind === tab.value)
+  notifications.value.filter(
+    (n: NotificationItem) => !dismissedNotifIds.value.includes(n.id) && n.kind === tab.value
+  )
 );
+
+// ── 删除（会话 / 通知）──────────────────────────────────────────────
+// 私信会话：真实删除（后端 delete_dm_thread）；通知：本机隐藏（派生数据无独立表）。
+// 点击垃圾桶即直接删除，不再弹窗二次确认（2026-08-15 调整）。
+async function onDeleteConv(c: Conversation) {
+  const ok = await deleteConversation(c.otherId);
+  if (!ok) {
+    uni.showToast({ title: "删除失败", icon: "none" });
+  } else if (selectedOther.value && selectedOther.value.otherId === c.otherId) {
+    // 正在查看的会话被删 → 退回会话列表
+    selectedOther.value = null;
+  }
+}
+function onDeleteNotif(n: NotificationItem) {
+  dismissNotification(n.id);
+}
 
 // 挂载即展开（铃铛已控制 v-if 按需挂载），并拉取数据（每次打开都是全新挂载）
 onMounted(async () => {
@@ -510,5 +537,26 @@ watch(
   flex: none;
   font-size: var(--font-xs);
   color: var(--text-3);
+}
+
+/* 删除按钮（会话 / 通知行尾）：低调灰色图标，点击变红，阻止冒泡避免触发打开 */
+.mc-del {
+  flex: none;
+  width: 56rpx;
+  height: 56rpx;
+  margin-left: 6rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.mc-del:active {
+  opacity: 1;
+  background: rgba(255, 59, 48, 0.12);
+}
+.mc-del:active :deep(.outline-icon) {
+  color: var(--danger) !important;
 }
 </style>

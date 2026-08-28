@@ -1546,9 +1546,18 @@ function applySubOverrides() {
   }
 }
 
-// 完整构建图表（销毁旧实例并从头初始化）：仅在结构变化（mode/layout）或首次挂载时调用
+// 完整构建图表（销毁旧 实例并从头初始化）：仅在结构变化（mode/layout）或首次挂载时调用
+// 容器未布局（隐藏 tab / 父级未回流 / 0 尺寸）时，klinecharts 在 0 尺寸下初始化会触发
+// 内部「Cannot set properties of undefined (setting 'width')」崩溃；故尺寸就绪前延后到下一帧重试。
+let buildRetry = 0;
 function buildChart() {
   if (!chartEl.value) return;
+  const el = chartEl.value;
+  if (el.clientWidth <= 0 || el.clientHeight <= 0) {
+    if (buildRetry++ < 30) requestAnimationFrame(buildChart);
+    return;
+  }
+  buildRetry = 0;
   destroyChart();
   ensureAvp();
   ensureIntradayVol();
@@ -1560,27 +1569,34 @@ function buildChart() {
   if (dataList.length) lastTs = dataList[dataList.length - 1].timestamp;
   chipData = props.klines && props.klines.length ? computeChip(props.klines) : null;
 
-  chart = init(chartEl.value, {
-    layout: buildLayout(),
-    styles: buildStyles(),
-    customApi: {
-      formatDate: (_dt: Intl.DateTimeFormat, timestamp: number, format: string) => {
-        const d = new Date(timestamp);
-        const p = (n: number) => String(n).padStart(2, "0");
-        const y = String(d.getFullYear()).slice(-2); // 两位年份
-        // 分时：仅显示时分
-        if (props.mode === "intraday") return `${p(d.getHours())}:${p(d.getMinutes())}`;
-        // 按 klinecharts 传入的 format 精确格式化，确保年份/时间正确带出：
-        if (format === "YYYY") return String(d.getFullYear());
-        if (format === "YYYY-MM") return `${d.getFullYear()}-${p(d.getMonth() + 1)}`;
-        if (format === "YYYY-MM-DD HH:mm")
-          return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-        // 其余（如轴标签 MM-DD）：补两位年份，避免跨年仅显示月日
-        return `${y}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  try {
+    chart = init(chartEl.value, {
+      layout: buildLayout(),
+      styles: buildStyles(),
+      customApi: {
+        formatDate: (_dt: Intl.DateTimeFormat, timestamp: number, format: string) => {
+          const d = new Date(timestamp);
+          const p = (n: number) => String(n).padStart(2, "0");
+          const y = String(d.getFullYear()).slice(-2); // 两位年份
+          // 分时：仅显示时分
+          if (props.mode === "intraday") return `${p(d.getHours())}:${p(d.getMinutes())}`;
+          // 按 klinecharts 传入的 format 精确格式化，确保年份/时间正确带出：
+          if (format === "YYYY") return String(d.getFullYear());
+          if (format === "YYYY-MM") return `${d.getFullYear()}-${p(d.getMonth() + 1)}`;
+          if (format === "YYYY-MM-DD HH:mm")
+            return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+          // 其余（如轴标签 MM-DD）：补两位年份，避免跨年仅显示月日
+          return `${y}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+        },
+        formatBigNumber: (v: string | number) => String(v),
       },
-      formatBigNumber: (v: string | number) => String(v),
-    },
-  } as never);
+    } as never);
+  } catch {
+    // klinecharts 在容器尚未完全准备好时偶尔初始化失败（Canvas 上下文异常）：延后重试，
+    // 避免「Cannot set properties of undefined (setting 'width')」类崩溃冒泡到全局。
+    if (buildRetry++ < 30) requestAnimationFrame(buildChart);
+    return;
+  }
   if (!chart) return;
 
   // 显式开启主图拖拽（横向滚动）与捏合/滚轮缩放——klinecharts 默认开启，但保险起见强制开启，
@@ -1594,12 +1610,24 @@ function buildChart() {
 
   // 十字光标订阅（驱动智能标注悬浮提示）；单实例，销毁时已解除订阅
   crosshairCb = onCrosshair;
-  chart.subscribeAction(ActionType.OnCrosshairChange, crosshairCb as never);
+  try {
+    chart.subscribeAction(ActionType.OnCrosshairChange, crosshairCb as never);
+  } catch {
+    /* noop */
+  }
   // 数据就绪订阅：分时模式首载/刷新/实时末根后保持「整日全貌」铺满视图
   dataReadyCb = onDataReady;
-  chart.subscribeAction(ActionType.OnDataReady, dataReadyCb as never);
+  try {
+    chart.subscribeAction(ActionType.OnDataReady, dataReadyCb as never);
+  } catch {
+    /* noop */
+  }
 
-  chart.applyNewData(dataList);
+  try {
+    chart.applyNewData(dataList);
+  } catch {
+    /* applyNewData 失败极少发生，回退已无更优策略，静默忽略避免崩溃 */
+  }
   // 副图内部辅助线（量均线 / DIF·DEA）开关：在指标实例已随 layout 创建后覆盖 figures
   applySubOverrides();
   nextTick(() => {
@@ -1680,7 +1708,11 @@ onMounted(async () => {
   await nextTick();
   buildChart();
   if (typeof window !== "undefined" && window.ResizeObserver) {
-    ro = new ResizeObserver(() => resizeAll());
+    ro = new ResizeObserver(() => {
+      // 实例未创建（此前容器 0 尺寸被延后）时，尺寸就绪后重建；否则正常重排
+      if (!chart) buildChart();
+      else resizeAll();
+    });
     if (chartEl.value) ro.observe(chartEl.value);
   }
 });

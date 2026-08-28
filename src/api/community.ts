@@ -184,6 +184,9 @@ export const communityRepo = {
   async unreadDmCount(): Promise<number> {
     return unreadDmCountRemote();
   },
+  async deleteDmThread(otherId: string): Promise<boolean> {
+    return deleteDmThreadRemote(otherId);
+  },
 
   // ---------------- 帖子搜索（关键字 / 股票代码 / 股票名称） ----------------
   async searchPosts(query: string): Promise<CommunityPost[]> {
@@ -673,4 +676,25 @@ async function unreadDmCountRemote(): Promise<number> {
     return Number(raw[0]) || 0;
   }
   return Number(raw) || 0;
+}
+
+// 删除与某人的私信会话（双向）：RPC delete_dm_thread（security definer）。
+// 失败不影响前端（会话列表会在失败后用 toast 提示，不静默吞掉）。
+async function deleteDmThreadRemote(otherId: string): Promise<boolean> {
+  const sb = getSupabase();
+  if (!sb || !otherId) return false;
+  try {
+    const res = (await withTimeout(
+      sb.rpc("delete_dm_thread", { p_other: otherId }) as unknown as Promise<{ error: any }>,
+      10000
+    )) as { error: any };
+    if (res.error) {
+      console.error("[community] deleteDmThread failed", res.error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("[community] deleteDmThread error", e);
+    return false;
+  }
 }

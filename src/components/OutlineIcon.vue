@@ -6,7 +6,7 @@
     :style="{ color, display: 'inline-block', verticalAlign: 'middle', flex: 'none', width: (size||24)+'rpx', height: (size||24)+'rpx' }"
     fill="none"
     stroke="currentColor"
-    stroke-width="2"
+    :stroke-width="strokeWidth ?? 2"
     stroke-linecap="round"
     stroke-linejoin="round"
     class="outline-icon"
@@ -37,6 +37,8 @@ const props = defineProps<{
   type: string;
   size?: number;
   color?: string;
+  /** 描边粗细，默认 2；需要「不加粗」的细体图标（如发帖 + 按钮）传 1.5 */
+  strokeWidth?: number;
 }>();
 defineEmits<{ (e: "click"): void }>();
 
