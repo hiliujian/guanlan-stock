@@ -110,21 +110,24 @@
         </template>
         <StockText :text="d.body" class="pr-text" />
       </view>
-      <!-- 回复目标引用条：明确「正在回复谁」，可一键取消，避免误回复 -->
-      <view v-if="replyTo" class="pr-quote" @click.stop>
-        <view class="pr-quote-bar"></view>
-        <view class="pr-quote-main">
-          <text class="pr-quote-to">回复 {{ replyTo }}</text>
-          <text v-if="replyQuote" class="pr-quote-txt">{{ replyQuote }}</text>
+      <!-- 输入区（一体式）：引用行与输入行共处同一张卡片，微信风格，
+           引用不再是悬浮在输入框外的独立条，视觉上与输入区连成一体 -->
+      <view class="pr-input-wrap" @click.stop>
+        <view v-if="replyTo" class="pr-quote">
+          <view class="pr-quote-bar"></view>
+          <view class="pr-quote-main">
+            <text class="pr-quote-to">回复 {{ replyTo }}</text>
+            <text v-if="replyQuote" class="pr-quote-txt">{{ replyQuote }}</text>
+          </view>
+          <view class="pr-quote-x" role="button" aria-label="取消回复" @click.stop="clearReplyTo">
+            <OutlineIcon type="close" :size="22" color="var(--text-3)" />
+          </view>
         </view>
-        <view class="pr-quote-x" role="button" aria-label="取消回复" @click.stop="clearReplyTo">
-          <OutlineIcon type="close" :size="22" color="var(--text-3)" />
-        </view>
-      </view>
-      <view class="p-reply-input" @click.stop>
-        <input class="pri-in" v-model="replyText" :placeholder="replyPlaceholder" :maxlength="200" @confirm="sendReply" />
-        <view class="pri-send" @click="sendReply">
-          <OutlineIcon type="send" :size="24" color="#fff" />
+        <view class="pr-input-row">
+          <input class="pri-in" v-model="replyText" :placeholder="replyPlaceholder" :maxlength="200" @confirm="sendReply" />
+          <view class="pri-send" @click="sendReply">
+            <OutlineIcon type="send" :size="24" color="#fff" />
+          </view>
         </view>
       </view>
     </view>
@@ -648,20 +651,27 @@ function previewImage(current: string) {
   color: var(--text-2);
   word-break: break-word;
 }
-/* 回复目标引用条：明确「正在回复谁」，避免只看到占位文案却分不清回复对象 */
+/* 输入区（一体式卡片）：引用行与输入行共处同一张卡片内，微信风格，
+   引用不再是悬浮在输入框外的独立条，视觉上与输入区连成一体 */
+.pr-input-wrap {
+  margin-top: 12rpx;
+  padding: 8rpx 12rpx;
+  background: var(--card-2);
+  border-radius: 20rpx;
+}
+/* 引用行：卡片内首行，主色竖条 + 底部细线，与下方输入行同属一张卡片 */
 .pr-quote {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  margin-top: 12rpx;
-  padding: 10rpx 14rpx;
-  background: var(--card-2);
-  border-radius: 14rpx;
+  gap: 10rpx;
+  padding: 4rpx 6rpx 10rpx;
+  margin-bottom: 6rpx;
+  border-bottom: 1rpx solid var(--border);
 }
 .pr-quote-bar {
   flex: none;
   width: 6rpx;
-  height: 44rpx;
+  height: 32rpx;
   border-radius: 999rpx;
   background: var(--primary);
 }
@@ -676,7 +686,7 @@ function previewImage(current: string) {
   font-size: var(--font-sm);
   color: var(--primary);
 }
-/* 被回复评论摘要：单行省略，避免长评论把输入框挤出可视区 */
+/* 被回复评论摘要：单行省略，避免长评论把整个输入区撑高 */
 .pr-quote-txt {
   font-size: var(--font-xs);
   color: var(--text-3);
@@ -695,19 +705,19 @@ function previewImage(current: string) {
 .pr-quote-x:active {
   opacity: 0.5;
 }
-.p-reply-input {
+.pr-input-row {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  margin-top: 12rpx;
+  gap: 10rpx;
 }
+/* 融合关键：输入框不再自带独立背景，背景统一由外层 .pr-input-wrap 提供 */
 .pri-in {
   flex: 1;
   height: 64rpx;
-  padding: 0 18rpx;
+  padding: 0 8rpx;
   font-size: var(--font-sm);
   color: var(--text);
-  background: var(--card-2);
+  background: transparent;
   border-radius: 999rpx;
 }
 .pri-in::placeholder {
