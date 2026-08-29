@@ -55,6 +55,14 @@ const ICONS: Record<string, { body: string; filled?: boolean }> = {
     body: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>',
   },
   plus: { body: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>' },
+  // 笑脸（发帖框表情面板入口）
+  smile: {
+    body: '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2.5 4 2.5S16 14 16 14"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>',
+  },
+  // 退格（表情面板「删除」键）
+  backspace: {
+    body: '<path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/><line x1="12" y1="9" x2="17" y2="14"/><line x1="17" y1="9" x2="12" y2="14"/>',
+  },
   minus: { body: '<line x1="5" y1="12" x2="19" y2="12"/>' },
   user: {
     body:

@@ -44,7 +44,7 @@
         <text class="cm-usermode-t">{{ viewingUser.userName }} 的动态</text>
       </view>
       <template v-else>
-        <view v-if="!searching" class="cm-filter" @click="filterOpen = !filterOpen">
+        <view v-if="!searching" ref="filterRef" class="cm-filter" @click="filterOpen = !filterOpen">
           <text class="cm-bar-t">{{ filterTitle }}</text>
           <OutlineIcon type="pulldown" :size="22" color="var(--text-2)" class="cm-filter-arrow" :class="{ 'is-open': filterOpen }" />
           <!-- 悬浮下拉菜单：绝对定位覆盖内容，不挤占下方布局 -->
@@ -96,15 +96,15 @@
     <view class="cm-pad" />
     </scroll-view>
 
-    <!-- 筛选悬浮遮罩：点击空白关闭下拉，不挤占布局 -->
-    <view v-if="filterOpen && !searching" class="cm-filter-scrim" @click="filterOpen = false" />
-
     <!-- 底部发帖卡片：复用自选同款 PeekSheet（与自选卡片一致），折叠态为输入框卡片，展开进入完整发帖界面 -->
     <PeekSheet ref="postSheet">
       <template #peek>
         <view class="pe-peek">
+          <!-- 头像融入输入行：与行情/自选折叠行同语言 —— 扁平一行不加嵌套底色框，
+               头像居左 + 占位文案 + 右侧展开箭头，整行可点展开发帖器 -->
           <UserAvatar :url="myAvatarUrl" :seed="mySeed" :size="44" :frame="myFrame" />
           <view class="pe-ph">分享你的观点、复盘或提问…</view>
+          <OutlineIcon class="pe-caret" type="chevron-up" :size="20" color="var(--text-2)" />
         </view>
       </template>
       <template #default>
@@ -122,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onActivated, watch, nextTick } from "vue";
+import { ref, computed, onActivated, onUnmounted, watch, nextTick } from "vue";
 // 声明可接收的 open-market 监听（父级 pages/index 动态 <component> + KeepAlive 可能透传），
 // 声明后 Vue 按自定义事件处理，避免 extraneous 告警。本组件自身不触发该事件。
 defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
@@ -195,6 +195,34 @@ const filterOptions: { key: FilterKey; label: string }[] = [
 ];
 const filterKey = ref<FilterKey>("latest");
 const filterOpen = ref(false);
+// 点击筛选栏以外区域自动隐藏（与 PostComposer「+」菜单同一逻辑：无遮罩，document 捕获阶段监听）。
+// 用 watch 驱动监听挂载/移除：任何路径置 filterOpen=false（选筛选项/搜索/进入用户模式）都会自动清理。
+const filterRef = ref<any>(null);
+let filterOutside: ((e: Event) => void) | null = null;
+function removeFilterOutside() {
+  if (filterOutside && typeof document !== "undefined") {
+    document.removeEventListener("pointerdown", filterOutside, true);
+  }
+  filterOutside = null;
+}
+watch(filterOpen, (open) => {
+  if (typeof document === "undefined") return;
+  if (open) {
+    if (filterOutside) return;
+    filterOutside = (e: Event) => {
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      const el = (filterRef.value as any)?.$el as HTMLElement | undefined;
+      // 命中筛选入口/菜单内部不关闭（入口自身的开关交给 @click toggle 处理）
+      if (el && el.contains(t)) return;
+      filterOpen.value = false;
+    };
+    document.addEventListener("pointerdown", filterOutside, true);
+  } else {
+    removeFilterOutside();
+  }
+});
+onUnmounted(removeFilterOutside);
 // 跨 tab 筛选预设（ProfileView 入口设置，onActivated 消费）
 const { consumePreset } = useCommunityPreset();
 // 私信深链（公开资料页「发私信」设置，onActivated 消费 → 打开消息中心）
@@ -498,9 +526,12 @@ defineExpose({ refresh });
   text-align: center;
 }
 
-/* 底部发帖卡片折叠态（输入框卡片）：复用 PeekSheet 玻璃面板，这里仅定义内部行布局。
-   内边距 / 间距对齐全局 .peek-row（padding:0 28rpx; gap:12rpx），与「今日最热」等底部卡片一致 */
+/* 底部发帖卡片折叠态：.peek-peek 为 flex 容器，这里 flex:1 铺满整行（与 .peek-row 同款长度）。
+   与行情/自选折叠行同语言：扁平一行，不加嵌套底色框 —— 玻璃卡本身就是容器，
+   头像居左、占位文案同行、右侧展开箭头（chevron-up 同款），三张底部卡片视觉统一 */
 .pe-peek {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 12rpx;
@@ -510,13 +541,16 @@ defineExpose({ refresh });
 .pe-ph {
   flex: 1;
   min-width: 0;
-  height: 60rpx;
-  line-height: 60rpx;
-  padding: 0 28rpx;
+  line-height: 44rpx;
   font-size: var(--font-sm);
   color: var(--text-3);
-  background: var(--card-2);
-  border-radius: 999rpx;
+  /* 固定单行：文字过长省略号收尾，不换行（折叠行只有一行高度） */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pe-caret {
+  flex: none;
 }
 .pe-body {
   flex: 1;
@@ -530,7 +564,7 @@ defineExpose({ refresh });
   /* 原为 scroll-view 内 sticky 吸顶；uni-app H5 中 scroll-view 内的 sticky 会在向下滚动时
      被错误隐藏、向上滚动才恢复。改为 scroll-view 外的常驻 flex 头部，始终可见。
      常驻头部 z-index 仅 30，低于底部 PeekSheet 卡片(40)，避免展开底部卡片时筛选栏浮于其上；
-     筛选下拉打开时(.filter-open)才升到 61，浮于遮罩(.cm-filter-scrim z-index:60)之上。 */
+     筛选下拉打开时(.filter-open)才升到 61，保证下拉菜单可点击。 */
   z-index: 30;
   padding: 6rpx 26rpx 10rpx;
   background: var(--sticky-bg);
@@ -539,7 +573,7 @@ defineExpose({ refresh });
   border-bottom: 1rpx solid var(--border);
 }
 .cm-bar.filter-open {
-  /* 仅下拉打开时升到遮罩之上，保证筛选菜单可点击；此时底部卡片不会同时展开，无层级冲突 */
+  /* 仅下拉打开时抬高，保证筛选菜单可点击；此时底部卡片不会同时展开，无层级冲突 */
   z-index: 61;
 }
 .cm-bar-t {
@@ -582,12 +616,6 @@ defineExpose({ refresh });
 }
 .cm-filter-arrow.is-open {
   transform: rotate(180deg);
-}
-/* 悬浮遮罩：覆盖视口，点击空白关闭下拉，不挤占布局 */
-.cm-filter-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
 }
 /* 下拉菜单（紧贴标题下方悬浮）：绝对定位覆盖下方内容；背景用实心表面 --bg-2（深浅色均不透明），
    不复用 --card（玻璃半透明，深色模式下近乎透明，导致菜单看不清） */

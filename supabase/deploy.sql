@@ -292,10 +292,12 @@ create table public.community_posts (
   tags       text[] not null default '{}',               -- 话题标签（#大盘），便于 @> 包含查询 + GIN 索引
   meta       jsonb not null default '{}'::jsonb,         -- 兜底扩展位：任何未来结构化字段先放这里，避免频繁 ALTER
   created_at timestamptz not null default now(),
-  -- 数据完整性：text 帖必须有 content 且无 card；card 帖必须有 card 且无 content
+  -- 数据完整性：text 帖必须有 content 且无 card；card 帖必须有 card。
+  -- 2026-08-29 放宽：card 帖允许同时携带正文（正文与附加卡片可共存，PostCard 按
+  -- content / card 是否存在独立渲染，前端发布链路即按此组合提交）。
   constraint posts_shape check (
     (type = 'text' and content is not null and card is null)
-    or (type = 'card' and card is not null and content is null)
+    or (type = 'card' and card is not null)
   )
 );
 -- 信息流排序 + 游标分页（keyset）：(created_at desc, id desc)

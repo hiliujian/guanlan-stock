@@ -6,7 +6,22 @@
 import { onMounted, onUnmounted, onActivated, onDeactivated, ref, watch } from "vue";
 import { isDark } from "@/utils/theme";
 
-const cv = ref<HTMLCanvasElement | null>(null);
+// uni-app H5 下 <canvas> 是内置组件（渲染为 <uni-canvas><canvas class="uni-canvas-canvas"/>），
+// ref 拿到的是组件实例而非原生元素，需经 resolveCanvas() 取内层原生 canvas 才能设 style/getContext。
+const cv = ref<any>(null);
+
+/** 解析真实原生 canvas：兼容「已是原生元素 / 组件实例（$el 内查）/ 宿主元素」三种形态 */
+function resolveCanvas(): HTMLCanvasElement | null {
+  const r: any = cv.value;
+  if (!r) return null;
+  const isCanvas = (v: any): v is HTMLCanvasElement =>
+    typeof HTMLCanvasElement !== "undefined" && v instanceof HTMLCanvasElement;
+  if (isCanvas(r)) return r;
+  const host: any = r.$el || r;
+  if (isCanvas(host)) return host;
+  const inner = host?.querySelector ? host.querySelector("canvas") : null;
+  return isCanvas(inner) ? inner : null;
+}
 let ctx: CanvasRenderingContext2D | null = null;
 let raf = 0;
 let w = 0;
@@ -46,7 +61,7 @@ function spawn(initial: boolean): Bar {
 }
 
 function setup() {
-  const canvas = cv.value;
+  const canvas = resolveCanvas();
   if (!canvas) return;
   w = window.innerWidth;
   h = window.innerHeight;

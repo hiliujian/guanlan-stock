@@ -7,8 +7,8 @@
 // 列表返回空，由页面「未登录 / 暂无数据」空态承接，符合无冗余的设计目标。
 //
 // JSONB 字段命名：数据库内一律 snake_case；TS 接口与 UI 沿用 JS camelCase
-// 惯例，入库前 toStoredCard() 转 snake、出库后 toClientCard() 转回 camel，
-// 边界单点映射，UI 无需改动。
+// 惯例。附加卡片为持仓（字段本身全为 snake），无驼峰映射需求；
+// 2026-08-29 起一条帖可携带多张持仓（packCard / unpackCards 负责打包与归一）。
 // =====================================================================
 import { getSupabase } from "@/api/supabase";
 import { withTimeout } from "@/api/transport";
@@ -20,38 +20,45 @@ import { userState } from "@/store/user";
 // 类型定义（TS / UI 侧 camelCase）
 // ---------------------------------------------------------------------
 
-/** 持仓卡片：展示某只股票的持仓成本 / 数量 / 现价与浮动盈亏 */
+/** 持仓卡片：展示某只股票的持仓成本 / 数量与收益（发帖时随正文附带） */
 export interface HoldingCard {
   kind: "holding";
   stock: string;
   code?: string;
-  cost: number; // 持仓成本价
+  cost: number; // 持仓成本价（按「收益率」录入时为 0）
   shares: number; // 持仓股数
-  price: number; // 现价
+  price: number; // 发布时点现价（0 = 未取得，展示端隐藏盈亏行）
+  rate?: number; // 收益率 %（成本 / 收益率 二选一录入；仅收益率时无盈亏金额）
 }
 
-/** 操作记录卡片：一次买入 / 卖出 */
-export interface OperationCard {
-  kind: "operation";
-  stock: string;
-  code?: string;
-  side: "buy" | "sell";
-  price: number; // 成交价
-  shares: number; // 成交股数
-  note?: string; // 操作理由
+/**
+ * 多持仓卡片：一条帖可附带多张持仓（2026-08-29 支持）。
+ * 单张仍按 HoldingCard 原结构存储（存量数据 & 旧客户端完全兼容）；
+ * 多张时包一层 { kind: "holdings", items }，展示端统一按 unpackCards() 归一化。
+ */
+export interface HoldingsCard {
+  kind: "holdings";
+  items: HoldingCard[];
 }
 
-/** 收益卡片：一段周期的战绩 */
-export interface ProfitCard {
-  kind: "profit";
-  period: string; // 例如 "本月" "今年" "累计"
-  totalReturn: number; // 总收益率 %（DB: total_return）
-  realized: number; // 已实现盈亏（元）
-  unrealized: number; // 未实现盈亏（元）
-  winRate?: number; // 胜率 %（DB: win_rate）
+export type PostCard = HoldingCard | HoldingsCard;
+
+/** 打包：0 张 → undefined；1 张 → 单卡原结构（向前兼容）；多张 → holdings 包 */
+export function packCard(items: HoldingCard[]): PostCard | undefined {
+  const list = (items || []).filter(Boolean);
+  if (!list.length) return undefined;
+  if (list.length === 1) return list[0];
+  return { kind: "holdings", items: list };
 }
 
-export type PostCard = HoldingCard | OperationCard | ProfitCard;
+/** 解包：把单卡 / holdings 包统一还原为持仓数组，供展示与编辑复用 */
+export function unpackCards(card?: PostCard | null): HoldingCard[] {
+  if (!card) return [];
+  if ((card as HoldingsCard).kind === "holdings") {
+    return ((card as HoldingsCard).items || []).filter(Boolean);
+  }
+  return [(card as HoldingCard)];
+}
 
 /** 话题：动态归属的标的（个股或板块），用于社区首页分类筛选 */
 export interface Topic {
@@ -119,22 +126,6 @@ export interface DmMessage {
   content: string;
   status: string; // sent / read
   createdAt: number;
-}
-
-// ---------------------------------------------------------------------
-// card JSONB 边界映射：DB 存 snake_case，TS/UI 用 camelCase
-// 仅 profit 卡片含驼峰字段（totalReturn / winRate），其余已是 snake。
-// ---------------------------------------------------------------------
-function toStoredCard(card: PostCard): any {
-  if (!card || card.kind !== "profit") return card;
-  const { totalReturn, winRate, ...rest } = card;
-  return { ...rest, total_return: totalReturn, win_rate: winRate };
-}
-
-function toClientCard(card: any): PostCard {
-  if (!card || card.kind !== "profit") return card;
-  const { total_return, win_rate, ...rest } = card;
-  return { ...rest, totalReturn: total_return, winRate: win_rate } as ProfitCard;
 }
 
 // ---------------------------------------------------------------------
@@ -280,7 +271,7 @@ function mapRowToPost(
     topic: r.topic || undefined,
     createdAt: new Date(r.created_at).getTime(),
     content: r.content ?? undefined,
-    card: r.card ? toClientCard(r.card) : undefined,
+    card: r.card || undefined,
     images: (r.images as string[] | undefined) || [],
     likes: r.likes ?? 0,
     likedByMe: liked.has(r.id),
@@ -421,7 +412,7 @@ async function createRemote(input: {
     // PostCard 组件按 content / card 是否存在独立渲染，故两种组合都能正确展示。
     type: input.card ? "card" : "text",
     content: input.content && input.content.trim() ? input.content.trim() : null,
-    card: input.card ? toStoredCard(input.card) : null,
+    card: input.card || null,
     images: (input.images && input.images.length ? input.images : []) as any,
     likes: 0,
   };
@@ -440,7 +431,7 @@ async function createRemote(input: {
     topic: d.topic || undefined,
     createdAt: new Date(d.created_at).getTime(),
     content: d.content ?? undefined,
-    card: d.card ? toClientCard(d.card) : undefined,
+    card: d.card || undefined,
     images: (d.images as string[] | undefined) || [],
     likes: 0,
     likedByMe: false,
@@ -485,7 +476,7 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
     topic: f.topic || undefined,
     createdAt: new Date(f.created_at).getTime(),
     content: f.content ?? undefined,
-    card: f.card ? toClientCard(f.card) : undefined,
+    card: f.card || undefined,
     images: (f.images as string[] | undefined) || [],
     likes: f.likes ?? 0,
     likedByMe: likedCache ? likedCache.ids.has(id) : liked,
@@ -535,7 +526,7 @@ async function addReplyRemote(id: string, content: string): Promise<CommunityPos
     topic: d.topic || undefined,
     createdAt: new Date(d.created_at).getTime(),
     content: d.content ?? undefined,
-    card: d.card ? toClientCard(d.card) : undefined,
+    card: d.card || undefined,
     images: (d.images as string[] | undefined) || [],
     likes: d.likes ?? 0,
     likedByMe: liked,

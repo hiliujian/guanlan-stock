@@ -349,7 +349,9 @@ type KC = ReturnType<typeof init>;
 
 // ---- 容器 / 实例 ----
 const chartEl = ref<HTMLElement | null>(null);
-const cyqEl = ref<HTMLCanvasElement | null>(null);
+// uni-app H5 下 <canvas> 是内置组件（渲染为 <uni-canvas><canvas class="uni-canvas-canvas"/>），
+// 模板 ref 拿到的是组件实例而非原生元素，取元素必须走 cyqCanvas() 解析。
+const cyqEl = ref<any>(null);
 let chart: KC | null = null;
 let ro: ResizeObserver | null = null;
 
@@ -562,23 +564,44 @@ function buildLayout(): any[] {
 }
 
 // ---- 叠加层：筹码分布 ----
-function sizeCanvas(c: HTMLCanvasElement, w: number, h: number): CanvasRenderingContext2D {
+/**
+ * 解析出真实的原生 canvas 元素。
+ * uni-app H5 的 <canvas> 是内置组件：ref 得到组件实例（没有 style/getContext，
+ * 直接用会抛 "Cannot set properties of undefined"），真实 DOM 在其 $el 内的原生 canvas 上。
+ * 这里兼容三种形态：已是原生元素 / 组件实例（取 $el 再向内查）/ 宿主元素。
+ */
+function cyqCanvas(): HTMLCanvasElement | null {
+  const r: any = cyqEl.value;
+  if (!r) return null;
+  const isCanvas = (v: any): v is HTMLCanvasElement =>
+    typeof HTMLCanvasElement !== "undefined" && v instanceof HTMLCanvasElement;
+  if (isCanvas(r)) return r;
+  const host: any = r.$el || r;
+  if (isCanvas(host)) return host;
+  const inner = host?.querySelector ? host.querySelector("canvas") : null;
+  return isCanvas(inner) ? inner : null;
+}
+function sizeCanvas(c: HTMLCanvasElement, w: number, h: number): CanvasRenderingContext2D | null {
+  if (w <= 0 || h <= 0) return null;
   const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
   c.width = Math.max(1, Math.round(w * dpr));
   c.height = Math.max(1, Math.round(h * dpr));
   c.style.width = w + "px";
   c.style.height = h + "px";
-  const ctx = c.getContext("2d")!;
+  const ctx = c.getContext("2d");
+  if (!ctx) return null; // 极端场景（上下文创建失败）返回 null，由调用方跳过绘制
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   return ctx;
 }
 function drawCyq() {
-  const c = cyqEl.value;
+  // 用解析后的原生 canvas：直接拿组件实例会在设置 style 时崩溃
+  const c = cyqCanvas();
   if (!c || !chart || !chartEl.value) return;
   const chip = chipData;
   const w = chartEl.value.clientWidth;
   const h = chartEl.value.clientHeight;
   const ctx = sizeCanvas(c, w, h);
+  if (!ctx) return;
   ctx.clearRect(0, 0, w, h);
   if (!chip || !chip.cats || !chip.cats.length) return;
   const prices = chip.cats.map(Number);
@@ -1743,9 +1766,11 @@ onBeforeUnmount(() => {
     ro.disconnect();
     ro = null;
   }
-  if (cyqEl.value) {
-    const ctx = cyqEl.value.getContext("2d");
-    if (ctx) ctx.clearRect(0, 0, cyqEl.value.width, cyqEl.value.height);
+  // 同样走 cyqCanvas() 解析原生元素（组件实例上没有 getContext/width）
+  const c = cyqCanvas();
+  if (c) {
+    const ctx = c.getContext("2d");
+    if (ctx) ctx.clearRect(0, 0, c.width, c.height);
   }
   destroyChart();
 });

@@ -135,7 +135,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import UserAvatar from "./UserAvatar.vue";
 import PeekSheet from "./PeekSheet.vue";
@@ -230,14 +230,25 @@ onMounted(async () => {
   }
 });
 
-// 拖拽收起到底 → 卸载自身，露出底部发帖卡片
+// 拖拽收起到底 → 播放收起过渡后再卸载（本组件 v-if 按需挂载，立即 emit 会让卡片瞬间消失、
+// 没有任何动效；先 collapse() 让 PeekSheet 的 height 过渡播完，再通知父组件卸载）
+const CLOSE_ANIM_MS = 340; // 略大于 PeekSheet --dur(0.32s)
+let closeTimer: any = null;
+function animateClose() {
+  sheet.value?.collapse();
+  if (closeTimer) clearTimeout(closeTimer);
+  closeTimer = setTimeout(() => emit("update:modelValue", false), CLOSE_ANIM_MS);
+}
 function onCollapse() {
-  emit("update:modelValue", false);
+  animateClose();
 }
-// 关闭按钮：直接卸载
+// 关闭按钮：同样先收起（含动效）再卸载
 function close() {
-  emit("update:modelValue", false);
+  animateClose();
 }
+onUnmounted(() => {
+  if (closeTimer) clearTimeout(closeTimer);
+});
 
 async function openConv(c: Conversation) {
   selectedOther.value = c;

@@ -1,5 +1,5 @@
 <template>
-  <view class="post glass anim-fade-up">
+  <view :class="['post', 'glass', 'anim-fade-up', preview ? 'as-preview' : '']">
     <!-- 头部：头像 + 昵称 + 时间 + 话题 + 删除 -->
     <view class="p-head">
       <view
@@ -16,12 +16,13 @@
         <text class="p-time">{{ timeText }}</text>
       </view>
       <view v-if="post.topic" class="p-topic" :style="topicStyle">#{{ post.topic.name }}</view>
-      <!-- 关注 / 取消关注：非本人帖子展示；点击切换并即时反映状态（plus→关注 / check→已关注） -->
-      <view v-if="!mine" class="p-follow" :class="{ on: following }" hover-class="p-follow-hover" @click.stop="toggleFollow(post.author)">
+      <!-- 关注 / 取消关注：非本人帖子展示；点击切换并即时反映状态（plus→关注 / check→已关注）；
+           预览态不展示任何交互件 -->
+      <view v-if="!mine && !preview" class="p-follow" :class="{ on: following }" hover-class="p-follow-hover" @click.stop="toggleFollow(post.author)">
         <OutlineIcon :type="following ? 'check' : 'plus'" :size="26" :color="following ? 'var(--text-2)' : 'var(--primary)'" />
         <text class="p-follow-t">{{ following ? "已关注" : "关注" }}</text>
       </view>
-      <view v-if="mine" class="p-del" @click="$emit('remove', post.id)">
+      <view v-if="mine && !preview" class="p-del" @click="$emit('remove', post.id)">
         <OutlineIcon type="trash" :size="30" color="var(--text-2)" />
       </view>
     </view>
@@ -29,53 +30,39 @@
     <!-- 正文：# + 股票代码 自动解析为可点击标签（全局交互）。正文与附加卡片可共存展示 -->
     <StockText v-if="post.content" :text="post.content || ''" class="p-text" />
 
-    <!-- 持仓卡片 -->
-    <view v-if="post.card?.kind === 'holding'" class="card-s holding">
+    <!-- 持仓卡片（支持一张帖多张持仓）：左收益率主视觉 + 右指标列，底部浮动盈亏。
+         单卡与 holdings 包均由 unpackCards 归一化为数组后逐张渲染，视觉完全一致。 -->
+    <view v-for="(v, i) in cardViews" :key="(v.card.code || v.card.stock) + '-' + i" class="card-s">
       <view class="cs-head">
         <text class="cs-tag">持仓</text>
-        <text class="cs-title">{{ c.stock }}</text>
-        <text class="cs-code">{{ c.code }}</text>
+        <text class="cs-title">{{ v.card.stock }}</text>
+        <template v-if="v.card.code">
+          <text class="mkt-label">{{ marketCharFor(v.card.code) }}</text>
+          <text class="cs-code">{{ v.card.code }}</text>
+        </template>
       </view>
-      <view class="cs-grid">
-        <view class="cs-cell"><text class="cs-k">持仓成本</text><text class="cs-v">{{ fmt(c.cost) }}</text></view>
-        <view class="cs-cell"><text class="cs-k">持仓数量</text><text class="cs-v">{{ fmt(c.shares) }}</text></view>
-        <view class="cs-cell"><text class="cs-k">现价</text><text class="cs-v">{{ fmt(c.price) }}</text></view>
+      <view class="cs-body">
+        <!-- 四列等宽：收益率 / 成本 / 现价 / 数量，每列 flex:1 均分、细线分隔 -->
+        <view class="cs-cell cs-cell-rate">
+          <text class="cs-k">收益率</text>
+          <text class="cs-rate-v" :style="{ color: v.rateColor }">{{ v.rateText }}</text>
+        </view>
+        <view v-if="v.card.cost" class="cs-cell">
+          <text class="cs-k">成本</text>
+          <text class="cs-v">{{ fmt(v.card.cost) }}</text>
+        </view>
+        <view v-if="v.price" class="cs-cell">
+          <text class="cs-k">现价</text>
+          <text class="cs-v">{{ fmt(v.price) }}</text>
+        </view>
+        <view class="cs-cell">
+          <text class="cs-k">数量</text>
+          <text class="cs-v">{{ fmt(v.card.shares) }} 股</text>
+        </view>
       </view>
-      <view class="cs-foot">
+      <view v-if="v.pnl != null" class="cs-foot">
         <text class="cs-k">浮动盈亏</text>
-        <text class="cs-pnl" :style="{ color: pnl >= 0 ? 'var(--up)' : 'var(--down)' }">
-          {{ pnl >= 0 ? "+" : "" }}{{ fmt(pnl) }} ({{ pct >= 0 ? "+" : "" }}{{ pct.toFixed(2) }}%)
-        </text>
-      </view>
-    </view>
-
-    <!-- 操作记录卡片 -->
-    <view v-if="post.card?.kind === 'operation'" class="card-s operation">
-      <view class="cs-head">
-        <text :class="['cs-side', c.side]">{{ c.side === "buy" ? "买入" : "卖出" }}</text>
-        <text class="cs-title">{{ c.stock }}</text>
-        <text class="cs-code">{{ c.code }}</text>
-      </view>
-      <view class="cs-grid">
-        <view class="cs-cell"><text class="cs-k">成交价</text><text class="cs-v">{{ fmt(c.price) }}</text></view>
-        <view class="cs-cell"><text class="cs-k">成交股数</text><text class="cs-v">{{ fmt(c.shares) }}</text></view>
-      </view>
-      <text v-if="c.note" class="cs-note">{{ c.note }}</text>
-    </view>
-
-    <!-- 收益卡片 -->
-    <view v-if="post.card?.kind === 'profit'" class="card-s profit">
-      <view class="cs-head">
-        <text class="cs-tag">收益</text>
-        <text class="cs-title">{{ c.period }}</text>
-      </view>
-      <view class="cs-big" :style="{ color: c.totalReturn >= 0 ? 'var(--up)' : 'var(--down)' }">
-        {{ c.totalReturn >= 0 ? "+" : "" }}{{ c.totalReturn }}%
-      </view>
-      <view class="cs-grid">
-        <view class="cs-cell"><text class="cs-k">已实现</text><text class="cs-v" :style="{ color: c.realized >= 0 ? 'var(--up)' : 'var(--down)' }">{{ signed(c.realized) }}</text></view>
-        <view class="cs-cell"><text class="cs-k">未实现</text><text class="cs-v" :style="{ color: c.unrealized >= 0 ? 'var(--up)' : 'var(--down)' }">{{ signed(c.unrealized) }}</text></view>
-        <view v-if="c.winRate != null" class="cs-cell"><text class="cs-k">胜率</text><text class="cs-v">{{ c.winRate }}%</text></view>
+        <text class="cs-pnl" :style="{ color: (v.pnl ?? 0) >= 0 ? 'var(--up)' : 'var(--down)' }">{{ signed(v.pnl ?? 0) }} 元</text>
       </view>
     </view>
 
@@ -88,12 +75,12 @@
         :class="{ single: post.images!.length === 1 }"
         :src="img"
         mode="aspectFill"
-        @click="preview(img)"
+        @click="previewImage(img)"
       />
     </view>
 
-    <!-- 操作栏：点赞 / 回复 -->
-    <view class="p-actions">
+    <!-- 操作栏：点赞 / 回复（预览态隐藏） -->
+    <view v-if="!preview" class="p-actions">
       <view :class="['p-act', post.likedByMe ? 'liked' : '']" @click="$emit('like', post.id)">
         <OutlineIcon :type="post.likedByMe ? 'heart-filled' : 'heart'" :size="32" :color="post.likedByMe ? 'var(--up)' : 'var(--text-2)'" />
         <text class="p-act-t" :style="{ color: post.likedByMe ? 'var(--up)' : 'var(--text-2)' }">{{ post.likes || "" }}</text>
@@ -104,8 +91,8 @@
       </view>
     </view>
 
-    <!-- 回复区 -->
-    <view v-if="showReply" class="p-replies">
+    <!-- 回复区（预览态隐藏） -->
+    <view v-if="!preview && showReply" class="p-replies">
       <view v-for="r in post.replies" :key="r.id" class="p-reply">
         <text class="pr-name">{{ r.author }}</text>
         <StockText :text="r.content || ''" class="pr-text" />
@@ -121,17 +108,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import StockText from "./StockText.vue";
 import UserAvatar from "./UserAvatar.vue";
-import { formatRelative, type CommunityPost } from "@/api/community";
+import { formatRelative, unpackCards, type CommunityPost, type HoldingCard } from "@/api/community";
+import { fetchSnapshot } from "@/api/quote";
 import { topicColor } from "@/utils/avatar";
+import { marketCharFor, resolveSecid } from "@/utils/period";
 import { useFollow } from "@/store/follow";
 import { useReplyExpansion } from "@/store/replyExpansion";
 import { useUser, userState } from "@/store/user";
 
-const props = defineProps<{ post: CommunityPost; mine: boolean }>();
+const props = defineProps<{ post: CommunityPost; mine: boolean; preview?: boolean }>();
 const emit = defineEmits<{
   (e: "like", id: string): void;
   (e: "reply", id: string, content: string): void;
@@ -150,8 +139,9 @@ const isSelf = computed(
   () => !!userState.loggedIn && !!props.post.userId && props.post.userId === userState.userId
 );
 
-/** 头像点击：本人→个人资料页；他人有账号 id→公开资料页；旧帖无 userId→不跳转。 */
+/** 头像点击：本人→个人资料页；他人有账号 id→公开资料页；旧帖无 userId→不跳转。预览态不可点。 */
 function onAvatarClick() {
+  if (props.preview) return;
   const id = props.post.userId;
   if (!id) return; // 旧帖作者无账号 id，无法定位，不作跳转
   if (id === userState.userId) {
@@ -175,19 +165,71 @@ const topicStyle = computed(() => {
 });
 
 const timeText = computed(() => formatRelative(props.post.createdAt));
-const c = computed(() => props.post.card as any);
 
-// 持仓浮动盈亏 / 收益率
-const pnl = computed(() => {
-  const card = props.post.card;
-  if (!card || card.kind !== "holding") return 0;
-  return (card.price - card.cost) * card.shares;
-});
-const pct = computed(() => {
-  const card = props.post.card;
-  if (!card || card.kind !== "holding" || !card.cost) return 0;
-  return ((card.price - card.cost) / card.cost) * 100;
-});
+// 持仓卡统一归一化：单卡（存量数据）与 holdings 包（多持仓）都还原为数组
+const cards = computed<HoldingCard[]>(() => unpackCards(props.post.card));
+
+// ---------- 持仓卡现价实时刷新 ----------
+// 按「代码」维度维护实时行情：一张帖可含多张持仓，各自独立刷新；30s 轮询
+// （快照接口自带 20s 缓存）。无代码旧数据或行情失败时回退发布时点值，展示不中断。
+const livePrices = ref<Record<string, number>>({});
+let priceTimer: any = null;
+async function refreshPrices() {
+  const list = cards.value.filter((x) => x.code);
+  if (!list.length) return;
+  await Promise.all(
+    list.map(async (x) => {
+      try {
+        const snap = await fetchSnapshot(resolveSecid(x.code!, "auto"));
+        if (snap.price) livePrices.value = { ...livePrices.value, [x.code!]: snap.price };
+      } catch {
+        /* 行情不可得 → 该卡回退发布时点值 */
+      }
+    })
+  );
+}
+function stopPricePoll() {
+  if (priceTimer) {
+    clearInterval(priceTimer);
+    priceTimer = null;
+  }
+}
+function startPricePoll() {
+  stopPricePoll();
+  livePrices.value = {};
+  if (!cards.value.some((x) => x.code)) return;
+  refreshPrices();
+  priceTimer = setInterval(refreshPrices, 30000);
+}
+watch(
+  () => props.post.card,
+  () => startPricePoll()
+);
+onMounted(startPricePoll);
+onUnmounted(stopPricePoll);
+
+/** 单张持仓的展示视图：现价（实时优先）→ 收益率 → 浮动盈亏，逐卡独立计算 */
+interface HoldingView {
+  card: HoldingCard;
+  price: number;
+  rateText: string;
+  rateColor: string;
+  pnl: number | null;
+}
+const cardViews = computed<HoldingView[]>(() =>
+  cards.value.map((card) => {
+    const price = (card.code && livePrices.value[card.code]) || card.price || 0;
+    const rate = card.cost && price ? ((price - card.cost) / card.cost) * 100 : card.rate ?? null;
+    const pnl = card.cost && price && card.shares ? (price - card.cost) * card.shares : null;
+    return {
+      card,
+      price,
+      rateText: rate == null ? "—" : (rate >= 0 ? "+" : "") + rate.toFixed(2) + "%",
+      rateColor: rate == null ? "var(--text-2)" : rate >= 0 ? "var(--up)" : "var(--down)",
+      pnl,
+    };
+  })
+);
 
 function fmt(n: number): string {
   if (n == null || isNaN(n)) return "-";
@@ -208,7 +250,7 @@ function sendReply() {
   replyText.value = "";
 }
 
-function preview(current: string) {
+function previewImage(current: string) {
   const urls = (props.post.images || []).filter(Boolean);
   if (!urls.length) return;
   uni.previewImage({ current, urls });
@@ -220,6 +262,10 @@ function preview(current: string) {
   margin: 0 18rpx 14rpx;
   padding: 20rpx;
   border-radius: var(--radius);
+}
+/* 预览态：与正式帖同卡同款，仅去掉外边距（由预览容器控制间距） */
+.post.as-preview {
+  margin: 0;
 }
 .p-head {
   display: flex;
@@ -288,88 +334,91 @@ function preview(current: string) {
   word-break: break-word;
 }
 
-/* ---------- 特殊卡片（持仓 / 操作 / 收益） ---------- */
+/* ---------- 附加持仓卡片（市场数据票风格：纯色底 + 描边幽灵标签，
+   去掉品牌绿，红/绿只留给涨跌数字，一张帖多张时也不占屏） ---------- */
 .card-s {
-  margin-top: 6rpx;
-  padding: 18rpx;
-  border-radius: 18rpx;
-  background: var(--card-2);
+  margin-top: 8rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 20rpx;
+  background: var(--bg-2);
   border: 1rpx solid var(--border);
-  border-left: 6rpx solid var(--primary);
+  box-shadow: var(--shadow-1);
 }
-.card-s.holding { border-left-color: var(--primary); }
-.card-s.operation { border-left-color: var(--text-2); }
-.card-s.profit { border-left-color: var(--up); }
-
 .cs-head {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  margin-bottom: 14rpx;
+  gap: 10rpx;
+  margin-bottom: 12rpx;
+  min-width: 0;
 }
 .cs-tag {
   font-size: var(--font-xs);
   color: #fff;
   background: var(--primary);
-  padding: 3rpx 12rpx;
-  border-radius: 8rpx;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  line-height: 1.5;
+  flex: none;
 }
-.cs-side {
-  font-size: var(--font-xs);
-  padding: 4rpx 14rpx;
-  border-radius: 8rpx;
-}
-.cs-side.buy { color: var(--up); background: rgba(239, 35, 42, 0.12); }
-.cs-side.sell { color: var(--down); background: rgba(9, 176, 122, 0.12); }
 .cs-title {
   font-size: var(--font-md);
   color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cs-code {
   font-size: var(--font-xs);
-  color: var(--text-2);
+  color: var(--text-3);
+  flex: none;
 }
-.cs-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10rpx;
+/* 主体：收益率 / 成本 / 现价 / 数量 四列等宽（每列 flex:1，细线分隔），
+   标签在上、数值在下（与发帖框预览区同构），纵向紧凑 */
+.cs-body {
+  display: flex;
 }
 .cs-cell {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4rpx;
+  align-items: center;
+  gap: 6rpx;
+  padding: 8rpx 4rpx;
+  border-right: 1rpx solid var(--border);
+}
+.cs-cell:last-child {
+  border-right: none;
+}
+.cs-cell-rate .cs-rate-v {
+  font-size: var(--font-md);
+  line-height: 1.1;
+  letter-spacing: 1rpx;
 }
 .cs-k {
   font-size: var(--font-xs);
-  color: var(--text-2);
+  color: var(--text-3);
+  flex: none;
 }
 .cs-v {
   font-size: var(--font-sm);
   color: var(--text);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cs-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 14rpx;
+  margin-top: 12rpx;
   padding-top: 12rpx;
   border-top: 1rpx solid var(--border);
 }
 .cs-pnl {
   font-size: var(--font-md);
-}
-.cs-big {
-  font-size: var(--font-3xl);
-  line-height: 1.1;
-  letter-spacing: 1rpx;
-  margin: 4rpx 0 14rpx;
-}
-.cs-note {
-  display: block;
-  margin-top: 12rpx;
-  font-size: var(--font-sm);
-  color: var(--text-2);
-  font-style: italic;
 }
 
 /* ---------- 配图网格 ---------- */

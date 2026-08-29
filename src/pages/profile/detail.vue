@@ -176,7 +176,7 @@ import { useUser, userState } from "@/store/user";
 import { useDmTarget, useCommunityUserTarget } from "@/store/community";
 import { useFollow } from "@/store/follow";
 import { goTab, openAuth, openInMarket } from "@/store/nav";
-import { communityRepo, formatRelative, type CommunityPost } from "@/api/community";
+import { communityRepo, formatRelative, unpackCards, type CommunityPost } from "@/api/community";
 
 const user = useUser();
 
@@ -391,10 +391,10 @@ function postSummary(p: CommunityPost): string {
   if (p.content && p.content.trim()) {
     s = p.content.trim();
   } else if (p.card) {
-    const c = p.card;
-    if (c.kind === "holding") s = `持仓 · ${c.stock || c.code || "—"}`;
-    else if (c.kind === "operation") s = `${c.side === "buy" ? "买入" : "卖出"} · ${c.stock || c.code || "—"}`;
-    else if (c.kind === "profit") s = `${c.period || "周期"}战绩 · 收益率 ${typeof c.totalReturn === "number" ? c.totalReturn + "%" : ""}`;
+    // 附加卡片为持仓（单张 / 多张包）；旧数据的其他卡片类型统一兜底为一句概述
+    const list = unpackCards(p.card);
+    if (list.length === 1) s = `持仓 · ${list[0].stock || list[0].code || "—"}`;
+    else if (list.length > 1) s = `持仓 · ${list[0].stock || list[0].code || "—"} 等 ${list.length} 只`;
     else s = "分享了一张卡片";
   } else {
     s = "（无内容）";

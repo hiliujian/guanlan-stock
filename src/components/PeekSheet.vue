@@ -13,10 +13,12 @@
       @mouseup.stop="onUp"
       @mouseleave.stop="onUp"
     >
-      <!-- 拖拽手柄：展开/铺满态显示；折叠态由 peek 卡片本体作为点击区（整个卡片均可拖拽） -->
+      <!-- 拖拽手柄：展开/铺满态显示；折叠态由 peek 卡片本体作为点击区（整个卡片均可拖拽）。
+           点击手柄任意处同样收起（与下滑手势等效），点一下即可收。 -->
       <view
         v-if="mode !== 'collapsed'"
         class="peek-grip"
+        @click.stop="onGripClick"
       ><view class="peek-handle" /></view>
 
       <!-- 折叠态：常驻露出卡片 -->
@@ -195,6 +197,19 @@ function onUp() {
       mode.value = "collapsed";
       emit("collapse");
     }
+  }
+}
+/**
+ * 点击手柄收起：与「下滑手势」同语义（max → 半屏；半屏 → 折叠露出并通知父组件复位）。
+ * 拖拽手势中位移 <10px 的纯点击原本按误触忽略，此入口让手柄点击成为显式收起方式。
+ */
+function onGripClick() {
+  if (mode.value === "collapsed") return;
+  if (mode.value === "max") {
+    mode.value = "expanded";
+  } else {
+    mode.value = "collapsed";
+    emit("collapse");
   }
 }
 function expand() {
