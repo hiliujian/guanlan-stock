@@ -44,8 +44,6 @@
               </view>
             </view>
             <text v-if="profile.username" class="dp-username">@{{ profile.username }}</text>
-            <!-- 注册时间：profiles.created_at 已随资料一并拉取，缺失 / 解析失败时不展示 -->
-            <text v-if="joinedText" class="dp-joined">{{ joinedText }}</text>
           </view>
 
           <!-- 右侧操作区：本人→编辑资料；他人→关注 + 私信（两行，与头像垂直对齐） -->
@@ -234,14 +232,6 @@ const { setUserTarget } = useCommunityUserTarget();
 const nameText = computed(() =>
   profile.value ? profile.value.display_name || profile.value.username || "用户" : ""
 );
-/** 注册时间文案：「注册于 2026年8月」。数据缺失或无法解析时返回空串（模板据此不渲染，避免出现 Invalid Date）。 */
-const joinedText = computed(() => {
-  const raw = profile.value?.created_at;
-  if (!raw) return "";
-  const d = new Date(raw);
-  if (isNaN(d.getTime())) return "";
-  return `注册于 ${d.getFullYear()}年${d.getMonth() + 1}月`;
-});
 const isSelf = computed(
   () => !!user.loggedIn && !!profile.value && profile.value.id === userState.userId
 );
@@ -572,12 +562,6 @@ function goUserPosts() {
 .dp-username {
   font-size: var(--font-sm);
   color: var(--text-2);
-}
-/* 注册时间：比用户名更弱一级的辅助信息 */
-.dp-joined {
-  margin-top: 4rpx;
-  font-size: var(--font-xs);
-  color: var(--text-3);
 }
 /* 昵称 + 等级图标同行 */
 .dp-namerow {

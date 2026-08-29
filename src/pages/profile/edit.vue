@@ -53,6 +53,16 @@
           <text class="sec-field-value">{{ username }}</text>
         </view>
 
+        <!-- 注册时间：只读（账号创建时间，profiles.created_at），紧随用户名 -->
+        <view class="sec-row">
+          <view class="sec-row-left">
+            <view class="sec-row-text">
+              <text class="sec-row-label">注册时间</text>
+            </view>
+          </view>
+          <text class="sec-field-value">{{ joinedAt }}</text>
+        </view>
+
         <!-- 个人简介：持久化到 profiles.signature（公开可读，供他人「公开资料页」展示）。
              最多 50 字；空值保存即清空简介（与「我的」页空态引导一致）。占位用 BIO_PLACEHOLDER。 -->
         <view class="sec-row sec-row-col">
@@ -148,6 +158,16 @@ const displayName = ref("");
 // 个人简介：编辑态承接自 profiles.signature（数据库持久化、公开可读），保存时随资料一并写库
 const signatureDraft = ref("");
 const username = ref("");
+// 注册时间：只读展示。profiles.created_at 已由 store/user 的 select("*") 一并取回，
+// 无需额外查询；格式 YYYY-MM-DD（与公开资料页一致）。无数据 / 解析失败时留空不展示。
+const joinedAt = computed(() => {
+  const raw = (user.profile as any)?.created_at;
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+});
 const saving = ref(false);
 const avatarUrl = ref("");
 const uploading = ref(false);
