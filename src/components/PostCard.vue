@@ -99,7 +99,14 @@
         <text class="pr-name" hover-class="pr-name-hover" @click.stop="onNameClick(d)">{{ d.author }}</text>
         <template v-if="d.target">
           <text class="pr-reply-word">回复</text>
-          <text class="pr-name" hover-class="pr-name-hover" @click.stop="onReplyToClick(d.target)">{{ d.target.name }}</text>
+          <!-- 仅当目标用户有账号 id 时可点击跳转；旧 @前缀回复没有 userId，降级为普通文本避免「看着能点却跳不了」 -->
+          <text
+            v-if="d.target.userId"
+            class="pr-name"
+            hover-class="pr-name-hover"
+            @click.stop="onReplyToClick(d.target)"
+          >{{ d.target.name }}</text>
+          <text v-else class="pr-reply-target">{{ d.target.name }}</text>
         </template>
         <StockText :text="d.body" class="pr-text" />
       </view>
@@ -602,6 +609,11 @@ function previewImage(current: string) {
 .pr-reply-word {
   color: var(--text-2);
   font-size: var(--font-sm);
+  margin-right: 6rpx;
+}
+/* 旧 @前缀回复无 userId：显示为普通文本，不做成可点链接，避免「看着能点却跳不了」 */
+.pr-reply-target {
+  color: var(--text-2);
   margin-right: 6rpx;
 }
 .pr-text {
