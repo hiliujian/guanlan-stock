@@ -19,6 +19,10 @@ import { userState } from "@/store/user";
 const posts = ref<CommunityPost[]>([]);
 const loading = ref(false);
 const searchResults = ref<CommunityPost[]>([]);
+// 主信息流分页（无限滚动）：游标 = 本页末条 createdAt(ms)；feedDone=true 表示已全部加载
+const FEED_PAGE_SIZE = 10;
+const feedCursor = ref<number | null>(null);
+const feedDone = ref(false);
 
 function replace(p: CommunityPost) {
   const i = posts.value.findIndex((x) => x.id === p.id);
@@ -29,10 +33,35 @@ function replace(p: CommunityPost) {
 }
 
 export function useCommunity() {
+  /**
+   * 首屏 / 刷新：重置游标从头加载第一页（默认 10 条）。
+   * 服务端多取 1 条判定「是否还有下一页」，slice 掉探测条后写入 posts。
+   */
   async function load() {
     loading.value = true;
     try {
-      posts.value = await communityRepo.list();
+      const res = await communityRepo.list({ limit: FEED_PAGE_SIZE });
+      const hasMore = res.length > FEED_PAGE_SIZE;
+      const page = hasMore ? res.slice(0, FEED_PAGE_SIZE) : res;
+      posts.value = page;
+      feedDone.value = !hasMore;
+      feedCursor.value = page.length ? page[page.length - 1].createdAt : null;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  /** 触底续拉下一页（无限滚动）；已到底或在途中则忽略。 */
+  async function loadMore() {
+    if (feedDone.value || loading.value) return;
+    loading.value = true;
+    try {
+      const res = await communityRepo.list({ limit: FEED_PAGE_SIZE, cursor: feedCursor.value ?? undefined });
+      const hasMore = res.length > FEED_PAGE_SIZE;
+      const page = hasMore ? res.slice(0, FEED_PAGE_SIZE) : res;
+      posts.value = [...posts.value, ...page];
+      feedDone.value = !hasMore;
+      if (page.length) feedCursor.value = page[page.length - 1].createdAt;
     } finally {
       loading.value = false;
     }
@@ -66,10 +95,10 @@ export function useCommunity() {
     if (p) replace(p);
   }
 
-  async function reply(id: string, content: string) {
+  async function reply(id: string, content: string, replyTo?: { name: string; userId?: string | null }) {
     const trimmed = content.trim();
     if (!trimmed) return;
-    const p = await communityRepo.addReply(id, trimmed);
+    const p = await communityRepo.addReply(id, trimmed, replyTo ?? null);
     if (p) replace(p);
   }
 
@@ -93,7 +122,7 @@ export function useCommunity() {
     }
   }
 
-  return { posts, loading, searchResults, load, publish, like, reply, remove, search };
+  return { posts, loading, searchResults, load, loadMore, feedDone, publish, like, reply, remove, search };
 }
 
 // =====================================================================
@@ -102,7 +131,7 @@ export function useCommunity() {
 // 再切 tab；CommunityView 激活时用 consumePreset() 读取并立即应用，随后清空，
 // 避免重复点击时反复回到该筛选。
 // =====================================================================
-export type CommunityFilterKey = "latest" | "following" | "participated" | "mine";
+export type CommunityFilterKey = "latest" | "following" | "participated" | "mine" | "liked";
 
 const communityPresetFilter = ref<CommunityFilterKey | null>(null);
 export function useCommunityPreset() {

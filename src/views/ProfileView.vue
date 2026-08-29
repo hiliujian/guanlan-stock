@@ -74,7 +74,7 @@
           hover-class="pf-stat-hover"
           role="button"
           aria-label="我赞过的"
-          @click="goCommunity"
+          @click="goLiked"
         >
           <text class="pf-stat-num">{{ likedCount }}</text>
           <text class="pf-stat-lab">赞过</text>
@@ -279,7 +279,9 @@ function goLevel() {
 function goWatch() {
   goTab("watch");
 }
-function goCommunity() {
+// 赞过：跳转社区并预设筛选项为「我赞过的」（由 CommunityView 激活时消费）
+function goLiked() {
+  setPreset("liked");
   goTab("community");
 }
 // 我的帖子：跳转社区并预设筛选项为「我发布的」（由 CommunityView 激活时消费）

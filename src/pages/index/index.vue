@@ -36,6 +36,7 @@ import { showInMenu } from "@/store/access";
 import { useUser, userState } from "@/store/user";
 import { initWatchlist } from "@/store/watchlist";
 import { initMessageRealtime } from "@/store/community";
+import { initPresence, stopPresence } from "@/store/presence";
 import { openInMarket, navTab, goTab } from "@/store/nav";
 import { handleCallback } from "@/store/authFlow";
 
@@ -90,6 +91,8 @@ watch(
 initWatchlist();
 // 消息中心实时订阅：启动即尝试建立（未登录时内部自动退订，登录态恢复后由下方 watch 补建）
 initMessageRealtime();
+// 社区在线人数（Realtime Presence）：同生命周期接入，登录态变化时同步建/退订
+initPresence();
 
 // 关键修复：登录态恢复 / 切换（含冷启动时 Supabase 从 storage 异步恢复会话、以及登出）
 // 后，自选数据源会随之切换 cloud/local。setup 里那次 initWatchlist() 只能覆盖首帧，
@@ -100,6 +103,7 @@ watch(
   () => {
     initWatchlist();
     initMessageRealtime(); // 登录态变化（含登出）时同步建/退订实时频道
+    initPresence(); // 在线人数统计同步建/退订
   }
 );
 

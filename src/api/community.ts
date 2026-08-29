@@ -67,11 +67,21 @@ export interface Topic {
   code?: string; // 个股代码（可选）
 }
 
-interface Reply {
+export interface ReplyTarget {
+  /** 被回复者昵称（展示用「回复 X」） */
+  name: string;
+  /** 被回复者账号 id（用于点击跳转资料页；旧数据 / 兼容态可能为 null） */
+  userId?: string | null;
+}
+
+export interface Reply {
   id: string;
   author: string;
+  userId?: string | null; // 评论者账号 id（用于点击昵称跳转资料页；旧数据可能为 null）
   content: string;
   createdAt: number;
+  /** 回复目标（评论中的「回复 X」）；旧数据或顶层评论为 null。来源：community_replies.meta.reply_to */
+  replyTo?: ReplyTarget | null;
 }
 
 export interface CommunityPost {
@@ -132,8 +142,8 @@ export interface DmMessage {
 // Public API（Supabase Service 层；UI 只依赖这些方法，无本地分支）
 // ---------------------------------------------------------------------
 export const communityRepo = {
-  async list(): Promise<CommunityPost[]> {
-    return listRemote();
+  async list(opts?: { limit?: number; cursor?: number }): Promise<CommunityPost[]> {
+    return listRemote(opts);
   },
 
   async create(input: {
@@ -149,8 +159,12 @@ export const communityRepo = {
     return toggleLikeRemote(id);
   },
 
-  async addReply(id: string, content: string): Promise<CommunityPost | null> {
-    return addReplyRemote(id, content);
+  async addReply(
+    id: string,
+    content: string,
+    replyTo?: ReplyTarget | null
+  ): Promise<CommunityPost | null> {
+    return addReplyRemote(id, content, replyTo);
   },
 
   async remove(id: string): Promise<void> {
@@ -224,18 +238,25 @@ export function formatRelative(ts: number): string {
 //   —— 点赞计数由 trg_sync_likes 触发器从 community_likes 聚合，客户端无法伪造
 //   —— 点赞切换走 RPC：public.toggle_post_like(p_post_id uuid)，返回 liked_by_me
 // =====================================================================
-async function listRemote(): Promise<CommunityPost[]> {
+async function listRemote(opts?: { limit?: number; cursor?: number }): Promise<CommunityPost[]> {
   const sb = getSupabase();
   if (!sb) return [];
+  // 分页：默认每页 10 条，内部多取 1 条判断是否有下一页；cursor 传上一页末条 createdAt（ms）。
+  const fetchLimit = (opts?.limit ?? 10) + 1;
+  let q = sb
+    .from("community_posts")
+    .select(
+      "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, user_id, content, created_at, meta)"
+    )
+    .order("created_at", { ascending: false })
+    .limit(fetchLimit);
+  if (opts?.cursor) {
+    // 游标用上一页末条 created_at（ms）→ ISO 字符串；.lt 严格小于，避免与本页末条重复
+    q = q.lt("created_at", new Date(opts.cursor).toISOString());
+  }
   // 网络异常时 Supabase 查询可能挂起，用 withTimeout 兜底（10s），避免下拉刷新 loading 卡死
   const { data, error } = await withTimeout(
-    sb
-      .from("community_posts")
-      .select(
-        "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, content, created_at)"
-      )
-      .order("created_at", { ascending: false })
-      .limit(50) as unknown as Promise<{ data: any; error: any }>,
+    q as unknown as Promise<{ data: any; error: any }>,
     10000
   );
   if (error || !data) return [];
@@ -278,8 +299,10 @@ function mapRowToPost(
     replies: (r.replies || []).map((x: any) => ({
       id: x.id,
       author: x.author,
+      userId: x.user_id || null,
       content: x.content,
       createdAt: new Date(x.created_at).getTime(),
+      replyTo: (x.meta && (x.meta as any).reply_to) || null,
     })),
   };
 }
@@ -323,7 +346,7 @@ async function listByUserRemote(
   let q = sb
     .from("community_posts")
     .select(
-      "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, content, created_at)"
+      "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, user_id, content, created_at, meta)"
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
@@ -458,7 +481,7 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
   const { data: fresh, error: ferr } = await sb
     .from("community_posts")
     .select(
-      "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, content, created_at)"
+      "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, user_id, content, created_at, meta)"
     )
     .eq("id", id)
     .single();
@@ -483,13 +506,19 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
     replies: (f.replies || []).map((x: any) => ({
       id: x.id,
       author: x.author,
+      userId: x.user_id || null,
       content: x.content,
       createdAt: new Date(x.created_at).getTime(),
+      replyTo: (x.meta && (x.meta as any).reply_to) || null,
     })),
   };
 }
 
-async function addReplyRemote(id: string, content: string): Promise<CommunityPost | null> {
+async function addReplyRemote(
+  id: string,
+  content: string,
+  replyTo?: ReplyTarget | null
+): Promise<CommunityPost | null> {
   const sb = getSupabase();
   if (!sb) return null;
   await sb
@@ -502,12 +531,15 @@ async function addReplyRemote(id: string, content: string): Promise<CommunityPos
       user_id: userState.userId || null,
       author: getMyName(),
       content: content.trim(),
+      // 回复目标存入 meta.reply_to（无需新增列）：结构 { name, userId }，
+      // 前端渲染「回复 X」并支持点击跳转资料页；顶层评论则为 null。
+      meta: replyTo ? { reply_to: { name: replyTo.name, userId: replyTo.userId ?? null } } : null,
     });
   // 仅重查该帖（含最新回复数与点赞态），避免 listRemote 整表 + liked 集合二次拉取
   const { data, error } = await sb
     .from("community_posts")
     .select(
-      "id, type, author, user_id, author_avatar_url, author_frame, author_username, topic, content, card, images, likes, created_at, replies:community_replies(id, author, content, created_at)"
+      "id, type, author, user_id, author_avatar_url, author_frame, author_username, topic, content, card, images, likes, created_at, replies:community_replies(id, author, user_id, content, created_at, meta)"
     )
     .eq("id", id)
     .single();
@@ -533,8 +565,10 @@ async function addReplyRemote(id: string, content: string): Promise<CommunityPos
     replies: (d.replies || []).map((x: any) => ({
       id: x.id,
       author: x.author,
+      userId: x.user_id || null,
       content: x.content,
       createdAt: new Date(x.created_at).getTime(),
+      replyTo: (x.meta && (x.meta as any).reply_to) || null,
     })),
   };
 }

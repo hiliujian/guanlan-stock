@@ -3,7 +3,7 @@
     <!-- 顶部：品牌 + 消息入口（邮件图标 + 文字 + 未读角标），与自选共用 PageHeader -->
     <PageHeader brand-text="社区" brand-icon="chatbubble">
       <template #right>
-        <view class="cm-msg" @click="msgOpen = true">
+        <view class="cm-msg" :class="{ 'is-open': msgArrowOpen }" @click="toggleMsg">
           <!-- 图标容器与自选「分组切换」(cm-me) 内的 .cm-avatar 完全一致：48rpx 主色渐变圆 + 白色居中图标 -->
           <view class="cm-msg-ic">
             <view class="cm-msg-circle flex-center" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
@@ -90,20 +90,30 @@
 
     <!-- 某用户帖子：滚动加载指示（加载中 / 到底） -->
     <view v-if="viewingUser && userPostsLoading && userPosts.length" class="cm-loading"><view class="cl-spin" /></view>
-    <view v-if="viewingUser && userPostsDone && userPosts.length" class="cm-end">没有更多了</view>
+    <view v-if="viewingUser && userPostsDone && userPosts.length" class="foot-note">没有更多了</view>
+
+    <!-- 主信息流：无限滚动续拉指示 / 到底提示 -->
+    <view v-if="!viewingUser && !searching && loading && displayPosts.length" class="cm-loading"><view class="cl-spin" /></view>
+    <view v-if="!viewingUser && !searching && feedDone && displayPosts.length" class="foot-note">已经到底了</view>
 
     <!-- 底部留白（避免被固定 tabbar 与底部发帖卡片遮挡） -->
     <view class="cm-pad" />
     </scroll-view>
 
-    <!-- 底部发帖卡片：复用自选同款 PeekSheet（与自选卡片一致），折叠态为输入框卡片，展开进入完整发帖界面 -->
+    <!-- 底部发帖卡片：复用自选同款 PeekSheet（与自选卡片一致），折叠态为输入框卡片，展开进入完整发帖界面。
+         折叠态一并将「在线人数」并入此卡片（复用 Realtime Presence 实时统计），不再单独建卡片。 -->
     <PeekSheet ref="postSheet">
       <template #peek>
         <view class="pe-peek">
           <!-- 头像融入输入行：与行情/自选折叠行同语言 —— 扁平一行不加嵌套底色框，
-               头像居左 + 占位文案 + 右侧展开箭头，整行可点展开发帖器 -->
+               头像居左 + 占位文案 + 在线人数 + 右侧展开箭头，整行可点展开发帖器 -->
           <UserAvatar :url="myAvatarUrl" :seed="mySeed" :size="44" :frame="myFrame" />
           <view class="pe-ph">分享你的观点、复盘或提问…</view>
+          <view class="pe-online" :class="{ live: presenceReady }">
+            <view class="pe-online-dot" :class="{ live: presenceReady }" />
+            <text class="pe-online-t" v-if="!presenceReady">在线人数加载中…</text>
+            <text class="pe-online-t" v-else>{{ onlineCount }} 人在线</text>
+          </view>
           <OutlineIcon class="pe-caret" type="chevron-up" :size="20" color="var(--text-2)" />
         </view>
       </template>
@@ -114,10 +124,10 @@
       </template>
     </PeekSheet>
 
-    <!-- 消息中心（通知铃铛触发）：按需挂载为 PeekSheet 卡片，关闭即卸载，避免与发帖卡片争位 -->
-    <MessageCenter v-if="msgOpen" v-model="msgOpen" />
+    <!-- 消息中心（通知铃铛触发）：按需挂载为 PeekSheet 卡片，关闭即卸载；与「我的关注」互斥，激活者置顶 -->
+    <MessageCenter ref="msgRef" v-if="msgOpen" v-model="msgOpen" :z-index="activePanel === 'msg' ? 42 : 40" />
     <!-- 我的关注列表（ProfileView 跳转社区后弹出，复用 PeekSheet 卡片，关闭即卸载） -->
-    <FollowListView v-if="followPanelOpen" v-model="followPanelOpen" />
+    <FollowListView ref="followRef" v-if="followPanelOpen" v-model="followPanelOpen" :z-index="activePanel === 'follow' ? 42 : 40" />
   </view>
 </template>
 
@@ -135,6 +145,7 @@ import PeekSheet from "./PeekSheet.vue";
 import MessageCenter from "./MessageCenter.vue";
 import FollowListView from "./FollowListView.vue";
 import { useCommunity, useMessageCenter, useCommunityPreset, useDmTarget, useCommunityUserTarget, type CommunityFilterKey, type CommunityUserTarget } from "@/store/community";
+import { onlineCount, presenceReady } from "@/store/presence";
 import { usePageGuard } from "@/store/guard";
 import { useFollow, useFollowPanel } from "@/store/follow";
 import { useReplyExpansion } from "@/store/replyExpansion";
@@ -143,14 +154,63 @@ import { userState } from "@/store/user";
 import { avatarSeed } from "@/utils/avatar";
 import { communityRepo, type CommunityPost, type PostCard as PostCardData, type Topic } from "@/api/community";
 
-const { posts, loading, searchResults, load, publish, like, reply, remove, search } = useCommunity();
+const { posts, loading, searchResults, load, loadMore, feedDone, publish, like, reply, remove, search } = useCommunity();
 // 评论区互斥展开：提供 closeReply 用于切换筛选 / 重新激活时收起已展开的评论框
 const { closeReply } = useReplyExpansion();
 
 // 消息中心：未读总数角标（私信 + 活动通知）+ 进入消息中心加载会话
 const { unreadTotal, loadConversations, loadNotifications } = useMessageCenter();
 const msgOpen = ref(false);
+const msgArrowOpen = ref(false);
+const msgRef = ref<any>(null);
+const followRef = ref<any>(null);
 const postSheet = ref<any>(null);
+// 跨组件打开「我的关注」弹层的共享信号（ProfileView 置 true，CommunityView 监听并挂载 FollowListView）
+const { followPanelOpen } = useFollowPanel();
+
+// 当前激活的底部面板（消息中心 / 我的关注）。同类卡片互斥，仅其一展开；
+// 切换时先收起前一个再挂载下一个，激活者始终置顶（z-index 提高），杜绝两卡同屏 / 层级错乱。
+const activePanel = ref<"msg" | "follow" | null>(null);
+
+// 收起「其它」同类卡片（消息中心 / 我的关注 / 发帖卡片），保持互斥。
+// except 为当前即将激活的面板，不参与收起。
+function closeOtherPanels(except: "msg" | "follow") {
+  if (except !== "msg" && msgOpen.value) {
+    msgArrowOpen.value = false;
+    msgRef.value?.animateClose();
+  }
+  if (except !== "follow" && followPanelOpen.value) {
+    followRef.value?.animateClose();
+  }
+  // 发帖卡片折叠（同样属于底部同类卡片，同一时间只显示一个）
+  if (postSheet.value) postSheet.value.collapse();
+}
+
+// 消息入口：点击切换展开/收起。展开时再点 → 触发卡片带过渡的收起（与其他底部卡片一致）；
+// 收起后再点 → 重新挂载并展开。箭头「是否展开」用独立状态 msgArrowOpen，点击瞬间即翻转
+// （不等待卡片收起动画），避免视觉延迟、不跟手。
+function toggleMsg() {
+  if (msgOpen.value) {
+    msgArrowOpen.value = false;
+    msgRef.value?.animateClose();
+  } else {
+    msgOpen.value = true;
+    msgArrowOpen.value = true;
+    activePanel.value = "msg";
+    // 互斥：打开消息中心时收起其它同类卡片（我的关注 / 发帖）
+    closeOtherPanels("msg");
+  }
+}
+// 卡片自身关闭（关闭按钮 / 拖拽收起）走 emit 改 msgOpen → 同步箭头态
+watch(msgOpen, (v) => { msgArrowOpen.value = v; });
+
+// 「我的关注」由 ProfileView 经 store 跨 tab 打开：挂载前先收起消息中心 / 发帖卡片，保证互斥与置顶
+watch(followPanelOpen, (v) => {
+  if (v) {
+    activePanel.value = "follow";
+    closeOtherPanels("follow");
+  }
+});
 
 // 全局页面守卫：本页未对游客开放 + 未登录 → 跳转登录页（统一由 src/store/guard.ts 处理）
 usePageGuard("community");
@@ -191,6 +251,7 @@ const filterOptions: { key: FilterKey; label: string }[] = [
   { key: "latest", label: "最新动态" },
   { key: "following", label: "关注的人" },
   { key: "participated", label: "我参与的" },
+  { key: "liked", label: "我赞过的" },
   { key: "mine", label: "我发布的" },
 ];
 const filterKey = ref<FilterKey>("latest");
@@ -241,7 +302,7 @@ watch(
 // ---------------- 某用户帖子模式（资料页「查看更多 TA 的动态」跳转） ----------------
 // 进入该模式后信息流改为展示该用户的全部帖子（服务端按 user_id 过滤 + 游标翻页），
 // 支持滚动加载；顶部吸顶栏变为「返回 + X 的动态」，隐藏筛选 / 搜索。
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10; // 每次续拉条数（与「某用户帖子」分页保持一致：默认每页 10）
 const viewingUser = ref<CommunityUserTarget | null>(null);
 // 滚动视图位置（发帖成功后滚回顶部，确保用户在信息流最上方立即看到自己刚发的帖子）
 const scrollTop = ref(0);
@@ -308,10 +369,12 @@ watch(
   }
 );
 
-/** scroll-view 触底：用户模式下续拉该用户帖子。 */
+/** scroll-view 触底：用户模式下续拉该用户帖子；否则主信息流无限滚动续拉。 */
 function onScrollToLower() {
-  if (viewingUser.value && !userPostsDone.value && !userPostsLoading.value) {
-    loadUserPosts(true);
+  if (viewingUser.value) {
+    if (!userPostsDone.value && !userPostsLoading.value) loadUserPosts(true);
+  } else if (!searching.value) {
+    loadMore();
   }
 }
 const filterTitle = computed(
@@ -319,7 +382,6 @@ const filterTitle = computed(
 );
 // 关注系统：复用全局关注 store（本地持久化），驱动「关注的人」筛选与关注列表弹层。
 const { follows } = useFollow();
-const { followPanelOpen } = useFollowPanel();
 const filteredPosts = computed(() => {
   const base = posts.value;
   switch (filterKey.value) {
@@ -330,6 +392,9 @@ const filteredPosts = computed(() => {
       return base.filter((p) => isMine(p) || p.replies.some((r) => r.author === myName.value));
     case "following":
       return base.filter((p) => follows.value.has(p.author));
+    case "liked":
+      // 我赞过的：仅展示 likedByMe 为真的帖子（likedByMe 由服务端 community_likes 权威标记）
+      return base.filter((p) => p.likedByMe);
     default:
       return base;
   }
@@ -346,6 +411,7 @@ const emptyText = computed(() => {
   if (viewingUser.value) return "TA 还没有发布动态";
   if (searching.value) return "未找到相关帖子";
   if (filterKey.value === "following") return "还没有关注的人动态";
+  if (filterKey.value === "liked") return "还没有赞过的动态";
   if (filterKey.value !== "latest") return "这里还没有相关动态";
   return "还没有动态，来发第一条吧";
 });
@@ -594,13 +660,7 @@ defineExpose({ refresh });
   font-size: var(--font-md);
   color: var(--text);
 }
-/* 滚动加载到底提示 */
-.cm-end {
-  text-align: center;
-  padding: 30rpx 0 10rpx;
-  font-size: var(--font-sm);
-  color: var(--text-3);
-}
+/* 滚动加载到底提示（已经到底了 / 没有更多了）复用全局 .foot-note，不再单独定义 */
 /* 筛选入口：标题 + 向下箭头，点击展开下拉菜单 */
 .cm-filter {
   position: relative;
@@ -615,6 +675,14 @@ defineExpose({ refresh });
   transition: transform 0.18s ease;
 }
 .cm-filter-arrow.is-open {
+  transform: rotate(180deg);
+}
+/* 消息入口箭头：收起态指向下（暗示下方有面板），展开态翻转向上；与筛选箭头同源过渡 */
+.cm-msg-arrow {
+  flex: none;
+  transition: transform 0.18s ease;
+}
+.cm-msg.is-open .cm-msg-arrow {
   transform: rotate(180deg);
 }
 /* 下拉菜单（紧贴标题下方悬浮）：绝对定位覆盖下方内容；背景用实心表面 --bg-2（深浅色均不透明），
@@ -662,6 +730,35 @@ defineExpose({ refresh });
 }
 /* 空态标题已统一为全局 .empty-title（见 global.css） */
 
+/* 在线人数指示：已并入底部发帖卡片的折叠态（pe-peek）内，作为一行右侧信息，
+   不再单独建卡片。视觉与折叠行语言一致（小圆点 + 低调文案）。 */
+.pe-online {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  flex: none;
+}
+.pe-online-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: var(--text-3);
+  flex: none;
+}
+.pe-online-dot.live {
+  background: var(--primary);
+  animation: pe-pulse 1.8s ease-out infinite;
+}
+@keyframes pe-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(7, 193, 96, 0.55); }
+  70% { box-shadow: 0 0 0 10rpx rgba(7, 193, 96, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(7, 193, 96, 0); }
+}
+.pe-online-t {
+  font-size: var(--font-xs);
+  color: var(--text-2);
+}
+
 .cm-pad {
   height: calc(200rpx + env(safe-area-inset-bottom));
 }
@@ -674,7 +771,7 @@ defineExpose({ refresh });
   margin: 10rpx 18rpx 4rpx;
   padding: 0 20rpx;
   height: 64rpx;
-  background: var(--card-2);
+  background: var(--bg-2);
   border: 1rpx solid var(--border);
   border-radius: 999rpx;
   box-shadow: var(--shadow-1);

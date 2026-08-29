@@ -1,5 +1,5 @@
 <template>
-  <view :class="['post', 'glass', 'anim-fade-up', preview ? 'as-preview' : '']">
+  <view :class="['post', 'glass', 'anim-fade-up', preview ? 'as-preview' : '']" @click="onRootClick">
     <!-- 头部：头像 + 昵称 + 时间 + 话题 + 删除 -->
     <view class="p-head">
       <view
@@ -32,7 +32,8 @@
 
     <!-- 持仓卡片（支持一张帖多张持仓）：左收益率主视觉 + 右指标列，底部浮动盈亏。
          单卡与 holdings 包均由 unpackCards 归一化为数组后逐张渲染，视觉完全一致。 -->
-    <view v-for="(v, i) in cardViews" :key="(v.card.code || v.card.stock) + '-' + i" class="card-s">
+    <view v-for="(v, i) in cardViews" :key="(v.card.code || v.card.stock) + '-' + i" class="card-s"
+      hover-class="cs-hover" @click.stop="openStock(v.card.code)">
       <view class="cs-head">
         <text class="cs-tag">持仓</text>
         <text class="cs-title">{{ v.card.stock }}</text>
@@ -40,6 +41,7 @@
           <text class="mkt-label">{{ marketCharFor(v.card.code) }}</text>
           <text class="cs-code">{{ v.card.code }}</text>
         </template>
+        <OutlineIcon class="cs-go" type="chevron-right" :size="26" color="var(--text-3)" />
       </view>
       <view class="cs-body">
         <!-- 四列等宽：收益率 / 成本 / 现价 / 数量，每列 flex:1 均分、细线分隔 -->
@@ -93,12 +95,16 @@
 
     <!-- 回复区（预览态隐藏） -->
     <view v-if="!preview && showReply" class="p-replies">
-      <view v-for="r in post.replies" :key="r.id" class="p-reply">
-        <text class="pr-name">{{ r.author }}</text>
-        <StockText :text="r.content || ''" class="pr-text" />
+      <view v-for="d in displayReplies" :key="d.id" class="p-reply" @click.stop="onCommentClick(d)">
+        <text class="pr-name" hover-class="pr-name-hover" @click.stop="onNameClick(d)">{{ d.author }}</text>
+        <template v-if="d.target">
+          <text class="pr-reply-word">回复</text>
+          <text class="pr-name" hover-class="pr-name-hover" @click.stop="onReplyToClick(d.target)">{{ d.target.name }}</text>
+        </template>
+        <StockText :text="d.body" class="pr-text" />
       </view>
-      <view class="p-reply-input">
-        <input class="pri-in" v-model="replyText" placeholder="回复 TA…" :maxlength="200" @confirm="sendReply" />
+      <view class="p-reply-input" @click.stop>
+        <input class="pri-in" v-model="replyText" :placeholder="replyPlaceholder" :maxlength="200" @confirm="sendReply" />
         <view class="pri-send" @click="sendReply">
           <OutlineIcon type="send" :size="24" color="#fff" />
         </view>
@@ -112,10 +118,11 @@ import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import StockText from "./StockText.vue";
 import UserAvatar from "./UserAvatar.vue";
-import { formatRelative, unpackCards, type CommunityPost, type HoldingCard } from "@/api/community";
+import { formatRelative, unpackCards, type CommunityPost, type HoldingCard, type Reply } from "@/api/community";
 import { fetchSnapshot } from "@/api/quote";
 import { topicColor } from "@/utils/avatar";
 import { marketCharFor, resolveSecid } from "@/utils/period";
+import { openInMarket, goTab } from "@/store/nav";
 import { useFollow } from "@/store/follow";
 import { useReplyExpansion } from "@/store/replyExpansion";
 import { useUser, userState } from "@/store/user";
@@ -123,7 +130,7 @@ import { useUser, userState } from "@/store/user";
 const props = defineProps<{ post: CommunityPost; mine: boolean; preview?: boolean }>();
 const emit = defineEmits<{
   (e: "like", id: string): void;
-  (e: "reply", id: string, content: string): void;
+  (e: "reply", id: string, content: string, replyTo?: { name: string; userId?: string | null }): void;
   (e: "remove", id: string): void;
 }>();
 
@@ -151,10 +158,88 @@ function onAvatarClick() {
   }
 }
 
+// 持仓卡片点击：跳转到该股票的行情页并切换到行情 Tab（market=auto 自动识别沪深港）。
+// 与 StockTag 同一范式；预览态不响应（避免干扰编辑）。
+function openStock(code?: string) {
+  if (props.preview || !code) return;
+  openInMarket(code, "auto");
+  goTab("market");
+}
+
 // 评论区展开态改为全局互斥：仅当前帖子可展开，展开其它自动收起（需求：互斥展开）
-const { isReplyOpen, toggleReply: toggleReplyExp } = useReplyExpansion();
+const { isReplyOpen, toggleReply: toggleReplyExp, openReply, closeReply } = useReplyExpansion();
 const showReply = computed(() => isReplyOpen(props.post.id));
 const replyText = ref("");
+// 回复目标：点击某条评论后进入回复模式，占位文案变为「回复 昵称…」，提交时以 @提及形式关联
+const replyTo = ref<string | null>(null);
+const replyToUserId = ref<string | null>(null);
+const replyPlaceholder = computed(() =>
+  replyTo.value ? "回复 " + replyTo.value + "…" : "回复 TA…"
+);
+// 评论区被互斥收回（切换其它帖 / 折叠）时，复位回复目标，避免残留上一轮 @提及
+watch(showReply, (v) => {
+  if (!v) {
+    replyTo.value = null;
+    replyToUserId.value = null;
+  }
+});
+
+/**
+ * 回复展示视图：把每条评论归一成 { author, target, body }。
+ * - target：回复目标（「回复 X」中的 X），优先取结构化 meta.reply_to；旧回复可能仅以
+ *   "@X " 前缀形式存在于 content，做兼容解析（此时无 userId，不可点击跳转）。
+ * - body：剔除前缀后的纯正文（新回复入库即不带前缀）。
+ */
+const displayReplies = computed(() =>
+  (props.post.replies || []).map((r: Reply) => {
+    let target: { name: string; userId?: string | null } | null = null;
+    if (r.replyTo && r.replyTo.name) {
+      target = { name: r.replyTo.name, userId: r.replyTo.userId ?? null };
+    } else {
+      const m = /^@(.+?)\s/.exec(r.content || "");
+      if (m) target = { name: m[1], userId: null };
+    }
+    const body = target
+      ? (r.content || "").replace(/^@(.+?)\s/, "")
+      : (r.content || "");
+    return { ...r, target, body };
+  })
+);
+
+/** 卡片根容器点击：仅当点击落在回复区（回复行 / 输入框 / 发送）之外时，复位回复目标，
+ *  使占位文案恢复「回复 TA…」。回复区内部各交互元素均已 stop，输入框容器也 stop，不会误触发此处。 */
+function onRootClick(e: any) {
+  const t = e?.target as HTMLElement | null;
+  if (t && typeof (t as any).closest === "function" && (t as any).closest(".p-replies")) return;
+  replyTo.value = null;
+  replyToUserId.value = null;
+}
+
+/** 点击评论中的昵称 → 跳转该用户资料页（与帖子头像同一范式：本人→编辑页，他人→公开资料）。 */
+function onNameClick(r: Reply) {
+  if (props.preview) return;
+  const id = r.userId;
+  if (!id) return; // 旧评论无账号 id，无法定位
+  if (id === userState.userId) uni.navigateTo({ url: "/pages/profile/edit" });
+  else uni.navigateTo({ url: `/pages/profile/detail?uid=${encodeURIComponent(id)}` });
+}
+
+/** 点击「回复 X」里的 X（被回复者昵称）→ 跳转该用户资料页。 */
+function onReplyToClick(t: { name: string; userId?: string | null }) {
+  if (props.preview) return;
+  const id = t.userId;
+  if (!id) return; // 旧回复无对方账号 id，无法定位
+  if (id === userState.userId) uni.navigateTo({ url: "/pages/profile/edit" });
+  else uni.navigateTo({ url: `/pages/profile/detail?uid=${encodeURIComponent(id)}` });
+}
+
+/** 点击某条评论 → 打开评论区并锁定回复目标为该评论作者（支持他人继续回复任意楼层）。 */
+function onCommentClick(r: Reply) {
+  openReply(props.post.id);
+  replyTo.value = r.author;
+  replyToUserId.value = r.userId ?? null;
+}
+
 
 // 话题（股票 / 板块）标签配色，便于一眼区分标的归属
 const topicStyle = computed(() => {
@@ -241,13 +326,26 @@ function signed(n: number): string {
 }
 
 function toggleReply() {
-  toggleReplyExp(props.post.id);
+  if (isReplyOpen(props.post.id)) {
+    closeReply();
+    replyTo.value = null;
+  } else {
+    openReply(props.post.id);
+  }
 }
 function sendReply() {
   const v = replyText.value.trim();
   if (!v) return;
-  emit("reply", props.post.id, v);
+  // 回复某条评论时，结构化带上回复目标（meta.reply_to）；正文保持纯净，
+  // 展示端据此渲染「回复 X」并支持点击跳转，不再以 "@" 前缀拼进正文。
+  const target =
+    replyTo.value
+      ? { name: replyTo.value, userId: replyToUserId.value }
+      : null;
+  emit("reply", props.post.id, v, target);
   replyText.value = "";
+  replyTo.value = null;
+  replyToUserId.value = null;
 }
 
 function previewImage(current: string) {
@@ -343,6 +441,10 @@ function previewImage(current: string) {
   background: var(--bg-2);
   border: 1rpx solid var(--border);
   box-shadow: var(--shadow-1);
+  cursor: pointer;
+}
+.cs-hover {
+  background: var(--primary-soft);
 }
 .cs-head {
   display: flex;
@@ -374,6 +476,10 @@ function previewImage(current: string) {
   font-size: var(--font-xs);
   color: var(--text-3);
   flex: none;
+}
+.cs-go {
+  flex: none;
+  margin-left: auto;
 }
 /* 主体：收益率 / 成本 / 现价 / 数量 四列等宽（每列 flex:1，细线分隔），
    标签在上、数值在下（与发帖框预览区同构），纵向紧凑 */
@@ -488,6 +594,15 @@ function previewImage(current: string) {
 .pr-name {
   color: var(--primary);
   margin-right: 10rpx;
+  cursor: pointer;
+}
+.pr-name-hover {
+  opacity: 0.55;
+}
+.pr-reply-word {
+  color: var(--text-2);
+  font-size: var(--font-sm);
+  margin-right: 6rpx;
 }
 .pr-text {
   color: var(--text-2);

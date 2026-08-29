@@ -2,7 +2,7 @@
   <!-- 统一使用 PeekSheet 卡片框架（与自选「今日最热」/「显示列」同源）：
        无遮罩层、玻璃质感、仅顶部圆角，底部固定卡片。铃铛触发展开，关闭即卸载，
        避免与底部发帖卡片争抢同一固定位。 -->
-  <PeekSheet ref="sheet" @collapse="onCollapse">
+  <PeekSheet ref="sheet" :z-index="zIndex" @collapse="onCollapse">
     <!-- 折叠态预览行（极少出现，因挂载即展开）：与发帖卡片一致的触发外观 -->
     <template #peek>
       <view class="mc-peek">
@@ -15,15 +15,12 @@
     <!-- 展开 / 铺满：消息中心内容（私信 / 点赞 / 评论） -->
     <template #default>
       <view class="mc-wrap">
-        <!-- 头部：复用全局 grp-head + panel-head + sheet-title，左右留返回 / 关闭 -->
+        <!-- 头部：复用全局 grp  head + panel-head + sheet-title，左侧留返回（会话详情） -->
         <view class="grp-head panel-head mc-bar">
           <view class="mc-back" v-if="selectedOther" @click="selectedOther = null">
             <OutlineIcon type="arrow-left" :size="34" color="var(--text)" />
           </view>
           <text class="sheet-title">{{ selectedOther ? selectedOtherName : "消息中心" }}</text>
-          <view class="mc-close" @click="close">
-            <OutlineIcon type="close" :size="34" color="var(--text-2)" />
-          </view>
         </view>
 
         <!-- 标签页（私信 / 点赞 / 评论） -->
@@ -143,7 +140,7 @@ import { formatRelative, type Conversation, type NotificationItem } from "@/api/
 import { useMessageCenter, useDmTarget } from "@/store/community";
 import { userState } from "@/store/user";
 
-const props = withDefaults(defineProps<{ modelValue: boolean }>(), { modelValue: false });
+const props = withDefaults(defineProps<{ modelValue: boolean; zIndex?: number }>(), { modelValue: false, zIndex: 40 });
 const emit = defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
 
 const {
@@ -242,13 +239,11 @@ function animateClose() {
 function onCollapse() {
   animateClose();
 }
-// 关闭按钮：同样先收起（含动效）再卸载
-function close() {
-  animateClose();
-}
 onUnmounted(() => {
   if (closeTimer) clearTimeout(closeTimer);
 });
+// 暴露给父组件（CommunityView 消息入口），以便复用同一套带过渡的收起动画
+defineExpose({ animateClose });
 
 async function openConv(c: Conversation) {
   selectedOther.value = c;
@@ -304,7 +299,7 @@ watch(
   display: flex;
   flex-direction: column;
 }
-/* 头部：复用全局 panel-head 居中标题；左右留返回 / 关闭 */
+/* 头部：复用全局 panel-head 居中标题；左留返回 */
 .mc-bar {
   position: relative;
   justify-content: center;
@@ -313,20 +308,14 @@ watch(
   flex: 1;
   text-align: center;
 }
-.mc-back,
-.mc-close {
+.mc-back {
   position: absolute;
   top: 0;
+  left: 0;
   height: 100%;
   display: flex;
   align-items: center;
   padding: 0 26rpx;
-}
-.mc-back {
-  left: 0;
-}
-.mc-close {
-  right: 0;
 }
 
 /* 标签页 */

@@ -104,6 +104,7 @@ const ICONS: Record<string, { body: string; filled?: boolean }> = {
   },
   pulldown: { body: '<polyline points="6 9 12 15 18 9"/>' },
   "chevron-up": { body: '<polyline points="6 15 12 9 18 15"/>' },
+  "chevron-right": { body: '<polyline points="9 6 15 12 9 18"/>' },
   // 筹码/层级（叠加多层）
   layers: {
     body: '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',

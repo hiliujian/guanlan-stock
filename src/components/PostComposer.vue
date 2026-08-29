@@ -26,7 +26,7 @@
           role="button"
           :aria-label="emojiOpen ? '收起表情面板' : '打开表情面板'"
         >
-          <OutlineIcon type="smile" :size="28" :stroke-width="1.5" :color="emojiOpen ? 'var(--primary)' : 'var(--text-2)'" />
+          <OutlineIcon type="smile" :size="ICON_SIZE" :stroke-width="1.5" :color="emojiOpen ? 'var(--primary)' : 'var(--text-2)'" />
         </view>
 
         <!-- # 股票联想浮层（下拉）：锚定到 # 输入位置正下方悬浮显示 -->
@@ -115,18 +115,18 @@
         <!-- + 图标：始终占据按钮原位（56rpx 方位），展开 / 录入态旋转 135° 成为 ×，空间连续。
              开/关切换唯一入口挂在这里（与 svg 直接相邻，与旧版 .cp-plus 同层级，事件必定触发） -->
         <view class="cp-morph-icon" @click="toggleMenu" role="button" :aria-label="editKind ? '退出添加持仓' : menuOpen ? '收起菜单' : '添加附件'">
-          <OutlineIcon type="plus" :size="30" :stroke-width="1.5" :color="menuOpen || editKind ? 'var(--primary)' : 'var(--text)'" />
+          <OutlineIcon type="plus" :size="ICON_SIZE" :stroke-width="1.5" :color="menuOpen || editKind ? 'var(--primary)' : 'var(--text)'" />
         </view>
         <!-- 顶行提示：随状态切换「添加附件 / 添加持仓」 -->
         <text class="cp-morph-hint">{{ editKind ? "添加持仓" : "添加附件" }}</text>
         <!-- 附件菜单（持仓录入态隐藏：同一容器状态切换，非独立容器） -->
         <view v-if="!editKind" class="cp-morph-list">
           <view class="cp-morph-item" @click="onAddImage">
-            <OutlineIcon type="camera" :size="30" color="var(--text)" />
+            <OutlineIcon type="camera" :size="ICON_SIZE" color="var(--text)" />
             <text class="cp-morph-t">添加图片</text>
           </view>
           <view class="cp-morph-item" @click="openCard">
-            <OutlineIcon type="layers" :size="30" color="var(--text)" />
+            <OutlineIcon type="layers" :size="ICON_SIZE" color="var(--text)" />
             <!-- 一张帖可添加多张持仓：已添加数量直接体现在入口上 -->
             <text class="cp-morph-t">持仓{{ holdings.length ? " · 已添加 " + holdings.length : "" }}</text>
           </view>
@@ -188,7 +188,7 @@
       </view>
       <text class="cp-count">{{ charCount }}/500</text>
       <view :class="['cp-send', canSend && !sending ? '' : 'disabled']" @click="send">
-        <OutlineIcon type="send" :size="24" :color="canSend && !sending ? '#fff' : 'rgba(255,255,255,0.6)'" />
+        <OutlineIcon type="send" :size="ICON_SIZE" :color="canSend && !sending ? '#fff' : 'rgba(255,255,255,0.6)'" />
         <text class="cp-send-t">发布</text>
       </view>
     </view>
@@ -218,6 +218,9 @@ import { useUser, userState } from "@/store/user";
 import { getMyName } from "@/store/identity";
 import { openAuth } from "@/store/nav";
 import { uploadPostImage } from "@/api/auth";
+
+// 工具栏图标尺寸：线型图标视觉占比约 70%，统一放大到能与 --font-md(28rpx) 文字视觉匹配，避免看着偏小。
+const ICON_SIZE = 36;
 
 const emit = defineEmits<{
   (e: "publish", payload: { content?: string; card?: PostCard; images?: string[] }): void;
@@ -909,6 +912,7 @@ async function send() {
     stockHits.value = [];
     activeQuery.value = null;
     suggestions.value = [];
+    clearDraft(); // 发布成功即清除草稿，避免下次进入误恢复
   } finally {
     sending.value = false;
   }
@@ -922,6 +926,64 @@ function resetHolding() {
   h.price = 0;
   holdPrice.value = 0;
 }
+
+// ---------------- 草稿本地持久化（防手滑滑走 / 刷新 / 切后台丢失） ----------------
+// 仅持久化正文 + 持仓：图片为 uni 临时路径，刷新后失效，不入库草稿。
+// key 含 userId：避免同设备多账号串稿；游客以 guest 占位键区分。
+const DRAFT_BASE = "gl_composer_draft";
+function draftKey(): string {
+  return DRAFT_BASE + "_" + (userState.userId || "guest");
+}
+interface ComposerDraft {
+  text: string;
+  holdings: HoldingCard[];
+}
+let draftTimer: any = null;
+function clearDraft() {
+  try {
+    uni.removeStorageSync(draftKey());
+  } catch {
+    /* 忽略：无键或存储不可用 */
+  }
+}
+function saveDraft() {
+  if (draftTimer) clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    // 正文与持仓皆空 → 视为无草稿，清掉残留键（如刚发布完触发）
+    if (!text.value.trim() && !holdings.value.length) {
+      clearDraft();
+      return;
+    }
+    try {
+      const d: ComposerDraft = { text: text.value, holdings: holdings.value };
+      uni.setStorageSync(draftKey(), JSON.stringify(d));
+    } catch {
+      /* 草稿写入失败不干扰正常发帖 */
+    }
+  }, 400);
+}
+function loadDraft(): ComposerDraft | null {
+  try {
+    const raw = uni.getStorageSync(draftKey());
+    if (!raw) return null;
+    const d = JSON.parse(raw) as ComposerDraft;
+    if (!d || (!d.text && (!d.holdings || !d.holdings.length))) return null;
+    return d;
+  } catch {
+    return null;
+  }
+}
+
+onMounted(() => {
+  const d = loadDraft();
+  if (!d) return;
+  text.value = d.text || "";
+  holdings.value = d.holdings || [];
+  if (holdings.value.length) startHoldPoll(); // 恢复持仓后拉现价刷新收益率
+  uni.showToast({ title: "已恢复上次草稿", icon: "none" });
+});
+// 正文 / 持仓变化即落盘（deep 监听持仓 splice 等就地修改）
+watch([text, holdings], saveDraft, { deep: true });
 
 function fmt(n: number): string {
   if (n == null || isNaN(n)) return "-";
@@ -1467,7 +1529,7 @@ function fmt(n: number): string {
   left: 64rpx;
   height: 56rpx;
   line-height: 56rpx;
-  font-size: var(--font-xs);
+  font-size: var(--font-md);
   color: var(--text-2);
   white-space: nowrap;
   opacity: 0;
@@ -1514,14 +1576,14 @@ function fmt(n: number): string {
   background: var(--primary-soft);
 }
 .cp-morph-t {
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   color: var(--text);
 }
 .cp-count {
   flex: 1;
   max-width: 400rpx;
   text-align: center;
-  font-size: var(--font-xs);
+  font-size: var(--font-md);
   color: var(--text-2);
   transition: max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease;
 }
@@ -1546,7 +1608,7 @@ function fmt(n: number): string {
   opacity: 0.5;
 }
 .cp-send-t {
-  font-size: var(--font-xs);
+  font-size: var(--font-md);
   color: #fff;
 }
 
@@ -1566,7 +1628,9 @@ function fmt(n: number): string {
 .cp-preview-empty {
   padding: 44rpx 0;
   text-align: center;
-  font-size: var(--font-xs);
+  /* 与输入框正文（.cp-area）完全同号同行高，所见即统一 */
+  font-size: var(--font-md);
+  line-height: 1.6;
   color: var(--text-2);
   background: var(--card-2);
   border-radius: var(--radius);

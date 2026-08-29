@@ -40,7 +40,11 @@ import { usePreventPageScroll } from "@/composables/usePreventPageScroll";
 
 // 纯持久窗体：始终渲染，折叠露出卡片(peek)；父组件通过 expand/collapse 控制展开/收起，
 // 下拉收起 / 点击手柄收起时 emit('collapse') 供父组件复位面板状态（如 activePanel）。
-const emit = defineEmits<{ (e: "collapse"): void; (e: "expand"): void }>();
+const emit = defineEmits<{ (e: "collapse"):  void; (e: "expand"): void }>();
+
+// 可覆盖的层级：同类卡片（消息中心 / 我的关注 / 发帖）互斥时，当前激活的卡片需置顶，
+// 避免切换瞬间两个卡片短暂同屏而旧卡片盖住新卡片（DOM 顺序无法保证覆盖）。
+const props = withDefaults(defineProps<{ zIndex?: number }>(), { zIndex: 40 });
 
 type Mode = "collapsed" | "expanded" | "max";
 const mode = ref<Mode>("collapsed");
@@ -98,7 +102,7 @@ const shellStyle = computed(() => {
 });
 
 const cardStyle = computed(() => {
-  return { zIndex: 40, ...shellStyle.value };
+  return { zIndex: props.zIndex, ...shellStyle.value };
 });
 
 function ptY(e: any): number {
