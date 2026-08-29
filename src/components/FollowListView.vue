@@ -26,9 +26,12 @@
             :key="f"
             class="fl-item"
           >
-            <UserAvatar :url="avatarOf(f)" :seed="f" :size="84" :frame="frameOf(f)" />
-            <view class="fl-item-mid">
-              <text class="fl-item-name truncate">{{ f }}</text>
+            <!-- 点击头像 / 昵称 → 进入该用户资料页（关注列表仅存昵称，需按昵称反查 uid） -->
+            <view class="fl-item-info" hover-class="fl-item-info-hover" @click="openProfile(f)">
+              <UserAvatar :url="avatarOf(f)" :seed="f" :size="84" :frame="frameOf(f)" />
+              <view class="fl-item-mid">
+                <text class="fl-item-name truncate">{{ f }}</text>
+              </view>
             </view>
             <!-- 取消关注：点击即移除，列表随 follows 响应式收缩 -->
             <view class="fl-unfollow" hover-class="fl-unfollow-hover" @click="unfollow(f)">
@@ -52,6 +55,8 @@ import UserAvatar from "./UserAvatar.vue";
 import PeekSheet from "./PeekSheet.vue";
 import { useFollow } from "@/store/follow";
 import { useCommunity } from "@/store/community";
+import { communityRepo } from "@/api/community";
+import { userState } from "@/store/user";
 
 withDefaults(defineProps<{ modelValue: boolean; zIndex?: number }>(), { modelValue: false, zIndex: 40 });
 const emit = defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
@@ -77,6 +82,15 @@ function frameOf(name: string): string {
 }
 function unfollow(name: string) {
   doUnfollow(name);
+}
+
+/** 点击关注项（头像 / 昵称）→ 进入该用户资料页。
+ *  关注列表仅以昵称标识，故按昵称反查账号 id（与评论「回复 X」共用同一套兜底）。 */
+async function openProfile(name: string) {
+  const uid = await communityRepo.lookupUserIdByName(name);
+  if (!uid) return; // 该昵称无对应账号（如已注销 / 游客帖作者），不做跳转
+  if (uid === userState.userId) uni.navigateTo({ url: "/pages/profile/edit" });
+  else uni.navigateTo({ url: `/pages/profile/detail?uid=${encodeURIComponent(uid)}` });
 }
 
 const sheet = ref<any>(null);
@@ -160,7 +174,7 @@ defineExpose({ animateClose });
   padding: 90rpx 0;
 }
 
-/* 关注列表条目：头像 + 昵称 + 取消关注 */
+/* 关注列表条目：头像 + 昵称（可点进资料页） + 取消关注 */
 .fl-item {
   display: flex;
   align-items: center;
@@ -168,8 +182,16 @@ defineExpose({ animateClose });
   padding: 20rpx 26rpx;
   border-bottom: 1rpx solid var(--border);
 }
-.fl-item:active {
-  background: var(--card-2);
+/* 头像 + 昵称：点击进入资料页；点击反馈放在此区域，避免误触「取消关注」时整行高亮 */
+.fl-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+}
+.fl-item-info-hover {
+  opacity: 0.6;
 }
 .fl-item-mid {
   flex: 1;
@@ -182,14 +204,12 @@ defineExpose({ animateClose });
   font-size: var(--font-md);
   color: var(--text);
 }
+/* 取消关注：纯文字危险操作，去掉背景与描边，红字与中性信息区分 */
 .fl-unfollow {
   flex: none;
   display: inline-flex;
   align-items: center;
-  padding: 10rpx 22rpx;
-  border-radius: 999rpx;
-  background: var(--card-2);
-  box-shadow: inset 0 0 0 1rpx var(--border);
+  padding: 10rpx 8rpx;
   transition: transform 0.12s ease, opacity 0.12s ease;
 }
 .fl-unfollow-hover {
@@ -197,6 +217,6 @@ defineExpose({ animateClose });
 }
 .fl-unfollow-t {
   font-size: var(--font-sm);
-  color: var(--text-2);
+  color: var(--danger);
 }
 </style>

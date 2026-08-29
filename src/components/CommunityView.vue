@@ -18,13 +18,15 @@
     </PageHeader>
 
     <!-- 搜索栏：关键字 / 股票代码 / 股票名称（某用户帖子模式下隐藏） -->
-    <view v-if="!viewingUser" class="cm-search">
+    <view v-if="!viewingUser" class="cm-search" :class="{ focused: searchFocused }">
       <OutlineIcon type="search" :size="26" color="var(--text-2)" />
       <input
         class="cm-search-input"
         :value="searchQuery"
         @input="onSearchInput"
         @confirm="onSearchConfirm"
+        @focus="searchFocused = true"
+        @blur="searchFocused = false"
         placeholder="搜索帖子、股票代码或名称"
         placeholder-class="cm-search-ph"
         confirm-type="search"
@@ -427,6 +429,8 @@ function chooseFilter(key: FilterKey) {
 
 // ---------------- 搜索栏逻辑（关键字 / 股票代码 / 股票名称） ----------------
 const searchQuery = ref("");
+// 搜索框聚焦态：驱动与行情页 .si-field 一致的激活描边
+const searchFocused = ref(false);
 const searching = computed(() => searchQuery.value.trim().length > 0);
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -764,18 +768,24 @@ defineExpose({ refresh });
 }
 
 /* 搜索栏：吸顶，置于话题筛选之上 */
-/* 尺寸（高度 / 字号 / 内距）与 MarketView 的 .si-field 保持一致，保证两处搜索框视觉统一 */
+/* 高度 / 内距 / 激活态与 MarketView 的 .si-field 保持一致，保证两处搜索框视觉统一 */
 .cm-search {
   display: flex;
   align-items: center;
   gap: 8rpx;
-  margin: 10rpx 18rpx 4rpx;
+  /* 上下留白对称，与行情页 .search-box 的 10rpx 上下内距一致 */
+  margin: 10rpx 18rpx;
   padding: 0 16rpx;
   height: 60rpx;
   background: var(--bg-2);
   border: 1rpx solid var(--border);
   border-radius: 999rpx;
   box-shadow: var(--shadow-1);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+/* 激活态：主色描边（与行情页 .si-field 聚焦一致）；白底保持不变，避免聚焦时透出底层变灰 */
+.cm-search.focused {
+  border-color: var(--primary);
 }
 .cm-search-input {
   flex: 1;
