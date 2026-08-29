@@ -110,6 +110,17 @@
         </template>
         <StockText :text="d.body" class="pr-text" />
       </view>
+      <!-- 回复目标引用条：明确「正在回复谁」，可一键取消，避免误回复 -->
+      <view v-if="replyTo" class="pr-quote" @click.stop>
+        <view class="pr-quote-bar"></view>
+        <view class="pr-quote-main">
+          <text class="pr-quote-to">回复 {{ replyTo }}</text>
+          <text v-if="replyQuote" class="pr-quote-txt">{{ replyQuote }}</text>
+        </view>
+        <view class="pr-quote-x" role="button" aria-label="取消回复" @click.stop="clearReplyTo">
+          <OutlineIcon type="close" :size="22" color="var(--text-3)" />
+        </view>
+      </view>
       <view class="p-reply-input" @click.stop>
         <input class="pri-in" v-model="replyText" :placeholder="replyPlaceholder" :maxlength="200" @confirm="sendReply" />
         <view class="pri-send" @click="sendReply">
@@ -177,18 +188,25 @@ function openStock(code?: string) {
 const { isReplyOpen, toggleReply: toggleReplyExp, openReply, closeReply } = useReplyExpansion();
 const showReply = computed(() => isReplyOpen(props.post.id));
 const replyText = ref("");
-// 回复目标：点击某条评论后进入回复模式，占位文案变为「回复 昵称…」，提交时以 @提及形式关联
+// 回复目标：点击某条评论后进入回复模式，占位文案变为「回复 昵称…」，
+// 并在输入框上方显示引用条明确「正在回复谁」，提交时结构化写入 meta.reply_to
 const replyTo = ref<string | null>(null);
 const replyToUserId = ref<string | null>(null);
+// 被回复评论的正文摘要（引用条展示用），避免用户看不出在回复哪条
+const replyQuote = ref("");
 const replyPlaceholder = computed(() =>
   replyTo.value ? "回复 " + replyTo.value + "…" : "回复 TA…"
 );
-// 评论区被互斥收回（切换其它帖 / 折叠）时，复位回复目标，避免残留上一轮 @提及
+
+/** 清空回复目标（含引用条），回到「回复 TA…」的顶层评论态 */
+function clearReplyTo() {
+  replyTo.value = null;
+  replyToUserId.value = null;
+  replyQuote.value = "";
+}
+// 评论区被互斥收回（切换其它帖 / 折叠）时复位，避免残留上一轮回复态
 watch(showReply, (v) => {
-  if (!v) {
-    replyTo.value = null;
-    replyToUserId.value = null;
-  }
+  if (!v) clearReplyTo();
 });
 
 /**
@@ -229,8 +247,7 @@ const displayReplies = computed(() => {
 function onRootClick(e: any) {
   const t = e?.target as HTMLElement | null;
   if (t && typeof (t as any).closest === "function" && (t as any).closest(".p-replies")) return;
-  replyTo.value = null;
-  replyToUserId.value = null;
+  clearReplyTo();
 }
 
 /** 点击评论中的昵称 → 跳转该用户资料页（与帖子头像同一范式：本人→编辑页，他人→公开资料）。 */
@@ -254,10 +271,12 @@ async function onReplyToClick(t: { name: string; userId?: string | null }) {
 }
 
 /** 点击某条评论 → 打开评论区并锁定回复目标为该评论作者（支持他人继续回复任意楼层）。 */
-function onCommentClick(r: Reply) {
+function onCommentClick(r: Reply & { body?: string }) {
   openReply(props.post.id);
   replyTo.value = r.author;
   replyToUserId.value = r.userId ?? null;
+  // 引用条展示被回复评论的正文（displayReplies 已剔除 @前缀，优先取 body）
+  replyQuote.value = String(r.body ?? r.content ?? "").slice(0, 40);
 }
 
 
@@ -364,8 +383,7 @@ function sendReply() {
       : null;
   emit("reply", props.post.id, v, target);
   replyText.value = "";
-  replyTo.value = null;
-  replyToUserId.value = null;
+  clearReplyTo();
 }
 
 function previewImage(current: string) {
@@ -629,6 +647,53 @@ function previewImage(current: string) {
 .pr-text {
   color: var(--text-2);
   word-break: break-word;
+}
+/* 回复目标引用条：明确「正在回复谁」，避免只看到占位文案却分不清回复对象 */
+.pr-quote {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 12rpx;
+  padding: 10rpx 14rpx;
+  background: var(--card-2);
+  border-radius: 14rpx;
+}
+.pr-quote-bar {
+  flex: none;
+  width: 6rpx;
+  height: 44rpx;
+  border-radius: 999rpx;
+  background: var(--primary);
+}
+.pr-quote-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2rpx;
+}
+.pr-quote-to {
+  font-size: var(--font-sm);
+  color: var(--primary);
+}
+/* 被回复评论摘要：单行省略，避免长评论把输入框挤出可视区 */
+.pr-quote-txt {
+  font-size: var(--font-xs);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-quote-x {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44rpx;
+  height: 44rpx;
+}
+.pr-quote-x:active {
+  opacity: 0.5;
 }
 .p-reply-input {
   display: flex;

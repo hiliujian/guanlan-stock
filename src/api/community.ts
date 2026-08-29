@@ -537,8 +537,10 @@ async function addReplyRemote(
       author: getMyName(),
       content: content.trim(),
       // 回复目标存入 meta.reply_to（无需新增列）：结构 { name, userId }，
-      // 前端渲染「回复 X」并支持点击跳转资料页；顶层评论则为 null。
-      meta: replyTo ? { reply_to: { name: replyTo.name, userId: replyTo.userId ?? null } } : null,
+      // 前端渲染「回复 X」并支持点击跳转资料页。
+      // 注意：meta 列为 NOT NULL（默认 '{}'），顶层评论必须写 {} 而不是 null，
+      // 否则整条插入会被 NOT NULL 约束拒绝（表现为「点了发送没反应」）。
+      meta: replyTo ? { reply_to: { name: replyTo.name, userId: replyTo.userId ?? null } } : {},
     });
   // 仅重查该帖（含最新回复数与点赞态），避免 listRemote 整表 + liked 集合二次拉取
   const { data, error } = await sb
