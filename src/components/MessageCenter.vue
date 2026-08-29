@@ -292,7 +292,7 @@ watch(
   border-radius: 999rpx;
   background: var(--danger);
   color: #fff;
-  font-size: 20rpx;
+  font-size: var(--font-xs);
   line-height: 28rpx;
   text-align: center;
 }
@@ -371,7 +371,7 @@ watch(
   border-radius: 999rpx;
   background: var(--danger);
   color: #fff;
-  font-size: 20rpx;
+  font-size: var(--font-xs);
   line-height: 28rpx;
   text-align: center;
 }
@@ -437,7 +437,7 @@ watch(
   border-radius: 999rpx;
   background: var(--danger);
   color: #fff;
-  font-size: 20rpx;
+  font-size: var(--font-xs);
   line-height: 30rpx;
   text-align: center;
 }

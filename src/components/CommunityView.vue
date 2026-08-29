@@ -521,7 +521,7 @@ defineExpose({ refresh });
   border-radius: 999rpx;
   background: var(--danger);
   color: #fff;
-  font-size: 20rpx;
+  font-size: var(--font-xs);
   line-height: 28rpx;
   text-align: center;
 }

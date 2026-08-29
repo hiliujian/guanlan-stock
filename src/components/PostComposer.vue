@@ -26,7 +26,7 @@
           role="button"
           :aria-label="emojiOpen ? '收起表情面板' : '打开表情面板'"
         >
-          <OutlineIcon type="smile" :size="24" :stroke-width="1.5" :color="emojiOpen ? 'var(--primary)' : 'var(--text-2)'" />
+          <OutlineIcon type="smile" :size="28" :stroke-width="1.5" :color="emojiOpen ? 'var(--primary)' : 'var(--text-2)'" />
         </view>
 
         <!-- # 股票联想浮层（下拉）：锚定到 # 输入位置正下方悬浮显示 -->
@@ -115,7 +115,7 @@
         <!-- + 图标：始终占据按钮原位（56rpx 方位），展开 / 录入态旋转 135° 成为 ×，空间连续。
              开/关切换唯一入口挂在这里（与 svg 直接相邻，与旧版 .cp-plus 同层级，事件必定触发） -->
         <view class="cp-morph-icon" @click="toggleMenu" role="button" :aria-label="editKind ? '退出添加持仓' : menuOpen ? '收起菜单' : '添加附件'">
-          <OutlineIcon type="plus" :size="34" :stroke-width="1.5" :color="menuOpen || editKind ? 'var(--primary)' : 'var(--text)'" />
+          <OutlineIcon type="plus" :size="30" :stroke-width="1.5" :color="menuOpen || editKind ? 'var(--primary)' : 'var(--text)'" />
         </view>
         <!-- 顶行提示：随状态切换「添加附件 / 添加持仓」 -->
         <text class="cp-morph-hint">{{ editKind ? "添加持仓" : "添加附件" }}</text>
@@ -188,7 +188,7 @@
       </view>
       <text class="cp-count">{{ charCount }}/500</text>
       <view :class="['cp-send', canSend && !sending ? '' : 'disabled']" @click="send">
-        <OutlineIcon type="send" :size="22" :color="canSend && !sending ? '#fff' : 'rgba(255,255,255,0.6)'" />
+        <OutlineIcon type="send" :size="24" :color="canSend && !sending ? '#fff' : 'rgba(255,255,255,0.6)'" />
         <text class="cp-send-t">发布</text>
       </view>
     </view>
@@ -940,12 +940,17 @@ function fmt(n: number): string {
 .cp-area {
   width: 100%;
   min-height: 108rpx;
-  font-size: var(--font-sm);
-  line-height: 1.5;
+  /* 输入文字与帖子正文（PostCard .p-text）完全同号同行高：font-md / 1.6，输入即所见 */
+  font-size: var(--font-md);
+  line-height: 1.6;
   color: var(--text);
   background: transparent;
-  /* 右侧让位给悬浮的表情入口，首行文字不被图标遮挡 */
-  padding: 4rpx 52rpx 4rpx 2rpx;
+  /* 右侧让位给悬浮的表情入口（盒 48 + 8 间距），首行文字不被图标遮挡 */
+  padding: 4rpx 56rpx 4rpx 2rpx;
+}
+/* placeholder 与持仓表单输入框（.cp-hold-in::placeholder）同色，随主题切换 */
+.cp-area::placeholder {
+  color: var(--text-2);
 }
 
 /* 文本框定位容器：联想浮层据此 absolute 锚定，不挤占下方布局 */
@@ -1287,9 +1292,9 @@ function fmt(n: number): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* 按钮盒贴合第一行行高；图标 24rpx 与正文（--font-sm）完全同号，视觉统一 */
-  width: 44rpx;
-  height: 44rpx;
+  /* 按钮盒贴合第一行行高（28×1.6≈45 + 4 padding ≈ 48）；图标 28rpx 与正文（--font-md）完全同号 */
+  width: 48rpx;
+  height: 48rpx;
   border-radius: 999rpx;
   transition: background var(--dur-fast) var(--ease-out);
 }
@@ -1324,11 +1329,13 @@ function fmt(n: number): string {
   gap: 2rpx;
 }
 .cp-emoji-item {
-  height: 72rpx;
+  height: 64rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 44rpx;
+  /* 表情字号取 --font-lg（32）：与正文（--font-md 28）紧贴一档，插入正文前后视觉比例一致；
+     点选热区仍由 64rpx 格子保证 */
+  font-size: var(--font-lg);
   line-height: 1;
   border-radius: 12rpx;
   transition: background var(--dur-fast) var(--ease-out);

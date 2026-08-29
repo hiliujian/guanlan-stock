@@ -38,7 +38,7 @@ withDefaults(
   margin-bottom: 8rpx;
 }
 .ac-title {
-  font-size: 30rpx;
+  font-size: var(--font-lg);
   font-weight: 600;
   color: var(--text);
 }
@@ -46,7 +46,7 @@ withDefaults(
   margin-left: auto;
 }
 .ac-body {
-  font-size: 26rpx;
+  font-size: var(--font-md);
   color: var(--text-2);
   line-height: 1.7;
 }

@@ -114,7 +114,7 @@ async function submit() {
   background: rgba(255, 159, 64, 0.14);
   border: 1rpx solid rgba(255, 159, 64, 0.45);
   color: #b26a00;
-  font-size: 24rpx;
+  font-size: var(--font-sm);
   line-height: 1.65;
 }
 .auth-warn-code {

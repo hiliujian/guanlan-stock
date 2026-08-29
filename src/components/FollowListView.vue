@@ -117,7 +117,7 @@ function close() {
   border-radius: 999rpx;
   background: var(--primary-soft);
   color: var(--primary);
-  font-size: 20rpx;
+  font-size: var(--font-xs);
   line-height: 28rpx;
   text-align: center;
 }
