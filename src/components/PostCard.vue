@@ -363,7 +363,9 @@ function previewImage(current: string) {
 .cs-title {
   font-size: var(--font-md);
   color: var(--text);
+  flex: 1;
   min-width: 0;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -395,6 +397,12 @@ function previewImage(current: string) {
   font-size: var(--font-md);
   line-height: 1.1;
   letter-spacing: 1rpx;
+  display: block;
+  width: 100%;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cs-k {
   font-size: var(--font-xs);
@@ -404,7 +412,9 @@ function previewImage(current: string) {
 .cs-v {
   font-size: var(--font-sm);
   color: var(--text);
-  max-width: 100%;
+  display: block;
+  width: 100%;
+  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -413,12 +423,17 @@ function previewImage(current: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12rpx;
   margin-top: 12rpx;
   padding-top: 12rpx;
   border-top: 1rpx solid var(--border);
 }
 .cs-pnl {
   font-size: var(--font-md);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---------- 配图网格 ---------- */

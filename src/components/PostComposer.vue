@@ -1083,7 +1083,9 @@ function fmt(n: number): string {
 .cp-attach-name {
   font-size: var(--font-md);
   color: var(--text);
+  flex: 1;
   min-width: 0;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1127,7 +1129,9 @@ function fmt(n: number): string {
 .cp-attach-cell .v {
   font-size: var(--font-sm);
   color: var(--text);
-  max-width: 100%;
+  display: block;
+  width: 100%;
+  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
