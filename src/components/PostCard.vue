@@ -657,7 +657,8 @@ function previewImage(current: string) {
 /* 输入行：融合卡片（引用 + 输入框）与圆形发送按钮并列，发送按钮不并入卡片 */
 .p-reply-input {
   display: flex;
-  align-items: center;
+  /* 底部对齐：有引用时融合卡片变高，发送按钮应贴底，而不是垂直居中显得悬空 */
+  align-items: flex-end;
   gap: 12rpx;
   margin-top: 12rpx;
 }
@@ -738,6 +739,13 @@ function previewImage(current: string) {
 }
 .pri-in::placeholder {
   color: var(--text-2);
+}
+/* 卡片态（有引用）：输入框不再参与纵向 flex 分配——
+   否则 flex:1 的 flex-basis:0 会压缩输入框高度与内距，导致变形、文字贴边 */
+.pr-input-wrap.quoted .pri-in {
+  flex: none;
+  width: 100%;
+  padding: 0 6rpx;
 }
 .pri-send {
   width: 64rpx;
