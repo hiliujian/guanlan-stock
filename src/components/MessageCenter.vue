@@ -140,7 +140,7 @@ import { formatRelative, type Conversation, type NotificationItem } from "@/api/
 import { useMessageCenter, useDmTarget } from "@/store/community";
 import { userState } from "@/store/user";
 
-const props = withDefaults(defineProps<{ modelValue: boolean; zIndex?: number }>(), { modelValue: false, zIndex: 40 });
+withDefaults(defineProps<{ modelValue: boolean; zIndex?: number }>(), { modelValue: false, zIndex: 40 });
 const emit = defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
 
 const {

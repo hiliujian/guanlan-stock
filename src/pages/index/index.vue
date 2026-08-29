@@ -36,7 +36,7 @@ import { showInMenu } from "@/store/access";
 import { useUser, userState } from "@/store/user";
 import { initWatchlist } from "@/store/watchlist";
 import { initMessageRealtime } from "@/store/community";
-import { initPresence, stopPresence } from "@/store/presence";
+import { initPresence } from "@/store/presence";
 import { openInMarket, navTab, goTab } from "@/store/nav";
 import { handleCallback } from "@/store/authFlow";
 

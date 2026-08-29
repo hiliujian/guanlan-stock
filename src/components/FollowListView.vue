@@ -53,7 +53,7 @@ import PeekSheet from "./PeekSheet.vue";
 import { useFollow } from "@/store/follow";
 import { useCommunity } from "@/store/community";
 
-const props = withDefaults(defineProps<{ modelValue: boolean; zIndex?: number }>(), { modelValue: false, zIndex: 40 });
+withDefaults(defineProps<{ modelValue: boolean; zIndex?: number }>(), { modelValue: false, zIndex: 40 });
 const emit = defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
 
 const { list, unfollow: doUnfollow } = useFollow();

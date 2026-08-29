@@ -19,7 +19,7 @@
 
     <!-- 搜索栏：关键字 / 股票代码 / 股票名称（某用户帖子模式下隐藏） -->
     <view v-if="!viewingUser" class="cm-search">
-      <OutlineIcon type="search" :size="30" color="var(--text-2)" />
+      <OutlineIcon type="search" :size="26" color="var(--text-2)" />
       <input
         class="cm-search-input"
         :value="searchQuery"
@@ -764,13 +764,14 @@ defineExpose({ refresh });
 }
 
 /* 搜索栏：吸顶，置于话题筛选之上 */
+/* 尺寸（高度 / 字号 / 内距）与 MarketView 的 .si-field 保持一致，保证两处搜索框视觉统一 */
 .cm-search {
   display: flex;
   align-items: center;
-  gap: 14rpx;
+  gap: 8rpx;
   margin: 10rpx 18rpx 4rpx;
-  padding: 0 20rpx;
-  height: 64rpx;
+  padding: 0 16rpx;
+  height: 60rpx;
   background: var(--bg-2);
   border: 1rpx solid var(--border);
   border-radius: 999rpx;
@@ -778,8 +779,8 @@ defineExpose({ refresh });
 }
 .cm-search-input {
   flex: 1;
-  height: 64rpx;
-  font-size: var(--font-sm);
+  height: 100%;
+  font-size: var(--font-md);
   color: var(--text);
   background: transparent;
 }

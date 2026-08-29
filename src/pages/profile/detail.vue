@@ -168,7 +168,7 @@ import { onLoad } from "@dcloudio/uni-app";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import UserAvatar from "@/components/UserAvatar.vue";
 import LevelTag from "@/components/LevelTag.vue";
-import { getSupabase, isSupabaseConfigured } from "@/api/supabase";
+import { getSupabase } from "@/api/supabase";
 import { resolveSecid, marketCharFor, type Market } from "@/utils/period";
 import { fetchSnapshot } from "@/api/quote";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";

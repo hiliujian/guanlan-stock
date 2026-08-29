@@ -33,7 +33,7 @@
     <!-- 持仓卡片（支持一张帖多张持仓）：左收益率主视觉 + 右指标列，底部浮动盈亏。
          单卡与 holdings 包均由 unpackCards 归一化为数组后逐张渲染，视觉完全一致。 -->
     <view v-for="(v, i) in cardViews" :key="(v.card.code || v.card.stock) + '-' + i" class="card-s"
-      hover-class="cs-hover" @click.stop="openStock(v.card.code)">
+      @click.stop="openStock(v.card.code)">
       <view class="cs-head">
         <text class="cs-tag">持仓</text>
         <text class="cs-title">{{ v.card.stock }}</text>
@@ -125,7 +125,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import StockText from "./StockText.vue";
 import UserAvatar from "./UserAvatar.vue";
-import { formatRelative, unpackCards, type CommunityPost, type HoldingCard, type Reply } from "@/api/community";
+import { formatRelative, unpackCards, communityRepo, type CommunityPost, type HoldingCard, type Reply } from "@/api/community";
 import { fetchSnapshot } from "@/api/quote";
 import { topicColor } from "@/utils/avatar";
 import { marketCharFor, resolveSecid } from "@/utils/period";
@@ -197,8 +197,14 @@ watch(showReply, (v) => {
  *   "@X " 前缀形式存在于 content，做兼容解析（此时无 userId，不可点击跳转）。
  * - body：剔除前缀后的纯正文（新回复入库即不带前缀）。
  */
-const displayReplies = computed(() =>
-  (props.post.replies || []).map((r: Reply) => {
+const displayReplies = computed(() => {
+  // 同帖作者昵称 → userId：用于给缺失账号 id 的旧回复补全「回复 X」的跳转能力
+  const nameToId = new Map<string, string>();
+  if (props.post.userId) nameToId.set(props.post.author, props.post.userId);
+  for (const r of props.post.replies || []) {
+    if (r.userId) nameToId.set(r.author, r.userId);
+  }
+  return (props.post.replies || []).map((r: Reply) => {
     let target: { name: string; userId?: string | null } | null = null;
     if (r.replyTo && r.replyTo.name) {
       target = { name: r.replyTo.name, userId: r.replyTo.userId ?? null };
@@ -206,12 +212,17 @@ const displayReplies = computed(() =>
       const m = /^@(.+?)\s/.exec(r.content || "");
       if (m) target = { name: m[1], userId: null };
     }
+    // 本地无 userId 时，尝试用同帖作者映射兜底（覆盖绝大多数「回复帖内用户」场景）
+    if (target && !target.userId && target.name) {
+      const hit = nameToId.get(target.name);
+      if (hit) target.userId = hit;
+    }
     const body = target
       ? (r.content || "").replace(/^@(.+?)\s/, "")
       : (r.content || "");
     return { ...r, target, body };
-  })
-);
+  });
+});
 
 /** 卡片根容器点击：仅当点击落在回复区（回复行 / 输入框 / 发送）之外时，复位回复目标，
  *  使占位文案恢复「回复 TA…」。回复区内部各交互元素均已 stop，输入框容器也 stop，不会误触发此处。 */
@@ -231,11 +242,13 @@ function onNameClick(r: Reply) {
   else uni.navigateTo({ url: `/pages/profile/detail?uid=${encodeURIComponent(id)}` });
 }
 
-/** 点击「回复 X」里的 X（被回复者昵称）→ 跳转该用户资料页。 */
-function onReplyToClick(t: { name: string; userId?: string | null }) {
+/** 点击「回复 X」里的 X（被回复者昵称）→ 跳转该用户资料页。
+ *  本地 userId 缺失时（旧 @前缀 回复）按昵称反查 profiles 兜底，尽量保证可跳转。 */
+async function onReplyToClick(t: { name: string; userId?: string | null }) {
   if (props.preview) return;
-  const id = t.userId;
-  if (!id) return; // 旧回复无对方账号 id，无法定位
+  let id = t.userId || null;
+  if (!id) id = await communityRepo.lookupUserIdByName(t.name);
+  if (!id) return; // 实在无法定位（该昵称无对应账号）则不放跳转
   if (id === userState.userId) uni.navigateTo({ url: "/pages/profile/edit" });
   else uni.navigateTo({ url: `/pages/profile/detail?uid=${encodeURIComponent(id)}` });
 }
@@ -449,9 +462,6 @@ function previewImage(current: string) {
   border: 1rpx solid var(--border);
   box-shadow: var(--shadow-1);
   cursor: pointer;
-}
-.cs-hover {
-  background: var(--primary-soft);
 }
 .cs-head {
   display: flex;

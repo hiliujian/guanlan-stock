@@ -54,7 +54,7 @@ import { init, dispose, registerIndicator, registerOverlay, ActionType } from "k
 import { isDark } from "@/utils/theme";
 import { UP as UP_FALLBACK, DOWN as DOWN_FALLBACK, NO_CHANGE, TREND, INDICATOR_LINE_COLORS, cssColor } from "@/utils/colors";
 import { computeChip, type ChipResult } from "@/utils/analyzer";
-import { computeAutoLevelsFromSeries, resolvePeriodGuard, type AutoLevel, type PeriodGuard } from "@/utils/autoLevels";
+import { computeAutoLevelsFromSeries, resolvePeriodGuard, type AutoLevel } from "@/utils/autoLevels";
 import type { Kline, Trend, PeriodKey } from "@/utils/period";
 import type { ChartAuxConfig } from "@/store/chartAux";
 import { MA_PERIODS, type ChartMaConfig } from "@/store/chartMa";

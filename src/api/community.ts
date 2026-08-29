@@ -208,6 +208,11 @@ export const communityRepo = {
   ): Promise<CommunityPost[]> {
     return listByUserRemote(userId, opts);
   },
+
+  // 按昵称（display_name）反查账号 id：旧回复「回复 X」缺失 userId 时兜底跳转
+  async lookupUserIdByName(name: string): Promise<string | null> {
+    return lookupUserIdByNameRemote(name);
+  },
 };
 
 // ---------------------------------------------------------------------
@@ -579,8 +584,21 @@ async function removeRemote(id: string): Promise<void> {
   await sb.from("community_posts").delete().eq("id", id);
 }
 
+/** 按昵称（display_name）反查账号 id，用于旧回复「回复 X」缺失 userId 时的兜底跳转。
+ *  display_name 近似唯一（默认「观澜+6位随机」），命中即返回 id；无匹配返回 null。 */
+async function lookupUserIdByNameRemote(name: string): Promise<string | null> {
+  const sb = getSupabase();
+  if (!sb || !name) return null;
+  const { data } = await sb
+    .from("profiles")
+    .select("id")
+    .eq("display_name", name)
+    .limit(1);
+  return (data && data[0] && data[0].id) || null;
+}
+
 // =====================================================================
-// 消息中心：点赞 / 评论通知（RPC: get_my_notifications）
+//  essage中心：点赞 / 评论通知（RPC: get_my_notifications）
 // 后端从我自己的帖子实时聚合 community_likes / community_replies，无需本地逻辑
 // =====================================================================
 async function notificationsRemote(): Promise<NotificationItem[]> {
