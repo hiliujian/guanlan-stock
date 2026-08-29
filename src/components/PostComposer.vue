@@ -26,7 +26,7 @@
           role="button"
           :aria-label="emojiOpen ? '收起表情面板' : '打开表情面板'"
         >
-          <OutlineIcon type="smile" :size="ICON_SIZE" :stroke-width="ICON_STROKE" :color="emojiOpen ? 'var(--primary)' : 'var(--text-2)'" />
+          <OutlineIcon type="smile" :size="ICON_SIZE" :color="emojiOpen ? 'var(--primary)' : 'var(--text-2)'" />
         </view>
 
         <!-- # 股票联想浮层（下拉）：锚定到 # 输入位置正下方悬浮显示 -->
@@ -115,18 +115,18 @@
         <!-- + 图标：始终占据按钮原位（56rpx 方位），展开 / 录入态旋转 135° 成为 ×，空间连续。
              开/关切换唯一入口挂在这里（与 svg 直接相邻，与旧版 .cp-plus 同层级，事件必定触发） -->
         <view class="cp-morph-icon" @click="toggleMenu" role="button" :aria-label="editKind ? '退出添加持仓' : menuOpen ? '收起菜单' : '添加附件'">
-          <OutlineIcon type="plus" :size="ICON_SIZE" :stroke-width="ICON_STROKE" :color="menuOpen || editKind ? 'var(--primary)' : 'var(--text)'" />
+          <OutlineIcon type="plus" :size="ICON_SIZE" :color="menuOpen || editKind ? 'var(--primary)' : 'var(--text)'" />
         </view>
         <!-- 顶行提示：随状态切换「添加附件 / 添加持仓」 -->
         <text class="cp-morph-hint">{{ editKind ? "添加持仓" : "添加附件" }}</text>
         <!-- 附件菜单（持仓录入态隐藏：同一容器状态切换，非独立容器） -->
         <view v-if="!editKind" class="cp-morph-list">
           <view class="cp-morph-item" @click="onAddImage">
-            <OutlineIcon type="camera" :size="ICON_SIZE" :stroke-width="ICON_STROKE" color="var(--text)" />
+            <OutlineIcon type="camera" :size="ICON_SIZE" color="var(--text)" />
             <text class="cp-morph-t">添加图片</text>
           </view>
           <view class="cp-morph-item" @click="openCard">
-            <OutlineIcon type="layers" :size="ICON_SIZE" :stroke-width="ICON_STROKE" color="var(--text)" />
+            <OutlineIcon type="layers" :size="ICON_SIZE" color="var(--text)" />
             <!-- 一张帖可添加多张持仓：已添加数量直接体现在入口上 -->
             <text class="cp-morph-t">持仓{{ holdings.length ? " · 已添加 " + holdings.length : "" }}</text>
           </view>
@@ -188,7 +188,7 @@
       </view>
       <text class="cp-count">{{ charCount }}/500</text>
       <view :class="['cp-send', canSend && !sending ? '' : 'disabled']" @click="send">
-        <OutlineIcon type="send" :size="ICON_SIZE_FILLED" :stroke-width="ICON_STROKE" :color="canSend && !sending ? '#fff' : 'rgba(255,255,255,0.6)'" />
+        <OutlineIcon type="send" :size="ICON_SIZE_FILLED" :color="canSend && !sending ? '#fff' : 'rgba(255,255,255,0.6)'" />
         <text class="cp-send-t">发布</text>
       </view>
     </view>
@@ -220,11 +220,10 @@ import { openAuth } from "@/store/nav";
 import { uploadPostImage } from "@/api/auth";
 
 // 工具栏图标尺寸：线型图标视觉占比约 70%，统一放大到能与 --font-md(28rpx) 文字视觉匹配，避免看着偏小。
+// 线宽不在此覆写：全项目 143 处图标统一走 OutlineIcon 默认的 stroke-width(2)，保持一致。
 const ICON_SIZE = 36;
-// 统一线宽：OutlineIcon 默认 stroke-width=2，比 1.5 更粗，同尺寸下会显得大一号。
-const ICON_STROKE = 1.5;
 // send 图形几乎占满 24×24 画框（约 83%），而 smile/plus/camera/layers 仅约 75%，
-// 同样方框下视觉会大一号，按占比缩到 32 使其与其他图标视觉等大。
+// 同尺寸下视觉会大一号，故按占比缩到 32 使其与其他图标视觉等大。
 const ICON_SIZE_FILLED = 32;
 
 const emit = defineEmits<{
