@@ -918,7 +918,9 @@ function drawAutoLevels() {
   if (props.mode === "intraday") return;
   const guard = resolvePeriodGuard(props.period ?? "d");
   const series = dataList as Kline[];
-  const levels = computeAutoLevelsFromSeries(series, guard);
+  // 同方向价位去重仅在「结构线 + 交易线都开启」时生效：只开 S/B 或只开结构线时不去重，
+  // 否则交易线会被隐藏的结构线价位误伤（见 computeAutoLevelsFromSeries 的 dedupe 参数）
+  const levels = computeAutoLevelsFromSeries(series, guard, !!(cfg.structLine && cfg.tradeLine));
   for (const lv of levels) {
     // 多周期隔离：对应周期禁用的线种直接跳过（周禁 T；月禁 T/趋势）
     if (guard.disableTrade && (lv.role === "tradeSupport" || lv.role === "tradePressure")) continue;

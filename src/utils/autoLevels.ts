@@ -473,7 +473,13 @@ function ensureStructLine(
   return { price, tag: `${base.tag}·参`, sub: "参考位", label: base.name, src: `${srcBase}·参考位（簇缺失兜底）`, degraded: true };
 }
 
-export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard): AutoLevel[] {
+/**
+ * 图表智能标注映射。
+ * @param dedupe 同方向价位去重：交易 S/B 与结构支撑/压力价差 ≤TOL_PCT 时隐藏交易线只留结构线。
+ *   仅当「结构线 + 交易线开关都开启」时传入 true；只开其中一种线时传 false——此时两线本就
+ *   不会同时显示，去重反而会误伤（结构线关时交易线被隐藏的结构价位"误伤"隐藏）。
+ */
+export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard, dedupe = true): AutoLevel[] {
   const raw = buildRawLevels(series, guard);
   const L = BAND_LABELS[raw.band];
   const out: AutoLevel[] = [];
@@ -496,13 +502,15 @@ export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard): 
   // 硬性准入：①单脉冲过滤 ②总分≥30 ③未被统一失效判定(supTradeInvalid：连续2根实体破位或箱体破位)
   if (!raw.tradeSupportS.invalid && raw.tradeSupportS.price != null && raw.tradeSupportS.sc!.score >= MIN_TOTAL_SCORE) {
     const price = raw.tradeSupportS.price;
-    if (structSupPrice == null || Math.abs(price - structSupPrice) / structSupPrice > TOL_PCT)
+    const overlap = dedupe && structSupPrice != null && Math.abs(price - structSupPrice) / structSupPrice <= TOL_PCT;
+    if (!overlap)
       out.push({ kind: "support", role: "tradeSupport", price, color: TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR, size: 1, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
   }
   // 交易参考压力（绿细虚线，挂载 B 标签；硬性准入：单脉冲过滤 + 总分≥30 + 未破位）
   if (!raw.tradePressureB.invalid && raw.tradePressureB.price != null && raw.tradePressureB.sc!.score >= MIN_TOTAL_SCORE) {
     const price = raw.tradePressureB.price;
-    if (structPresPrice == null || Math.abs(price - structPresPrice) / structPresPrice > TOL_PCT)
+    const overlap = dedupe && structPresPrice != null && Math.abs(price - structPresPrice) / structPresPrice <= TOL_PCT;
+    if (!overlap)
       out.push({ kind: "pressure", role: "tradePressure", price, color: TRADE_PRESSURE_COLOR, bg: TRADE_PRESSURE_COLOR, size: 1, dashed: true, tag: L.tP.tag, sub: L.tP.sub, label: L.tP.name, src: "交易参考压力·短线高点簇 No.1" });
   }
 
