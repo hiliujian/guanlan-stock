@@ -13,17 +13,20 @@
       </view>
       <view class="p-meta">
         <view class="p-namerow">
-          <text :class="['p-name', 'truncate', { 'vip-name': post.authorVip }]">{{ post.author }}</text>
-          <!-- 会员帖子：皇冠斜戴（-45°）在昵称右上角，如给昵称加冕；点击进 VIP 会员页 -->
-          <view
-            v-if="post.authorVip"
-            class="p-crown"
-            hover-class="p-crown-hover"
-            role="button"
-            aria-label="查看 VIP 会员"
-            @click.stop="goVip"
-          >
-            <OutlineIcon type="crown" :size="24" color="var(--vip-gold)" />
+          <!-- 皇冠戴在「昵称本尊」的右上角：用 inline-flex 包裹昵称作相对定位锚点，
+               皇冠 absolute 相对它定位，昵称短时皇冠紧跟昵称而非飘到行尾 -->
+          <view class="p-name-wrap">
+            <text :class="['p-name', 'truncate', { 'vip-name': post.authorVip }]">{{ post.author }}</text>
+            <view
+              v-if="post.authorVip"
+              class="p-crown"
+              hover-class="p-crown-hover"
+              role="button"
+              aria-label="查看 VIP 会员"
+              @click.stop="goVip"
+            >
+              <OutlineIcon type="crown" :size="24" color="var(--vip-gold)" />
+            </view>
           </view>
         </view>
         <text class="p-time">{{ timeText }}</text>
@@ -447,26 +450,30 @@ function previewImage(current: string) {
   flex: 1;
   min-width: 0;
 }
-/* 作者名 + 会员皇冠：昵称占行，皇冠 absolute 斜戴（-45°）在右上角，如给昵称加冕 */
+/* 作者名 + 会员皇冠：昵称行只承载昵称，皇冠随昵称走（见 .p-name-wrap） */
 .p-namerow {
-  position: relative;
   display: flex;
   align-items: center;
   min-width: 0;
-  /* 右侧给斜戴的皇冠让位，避免盖住昵称末尾 */
-  padding-right: 34rpx;
 }
-.p-namerow .p-name {
+/* 昵称锚点：inline-flex 宽度随昵称内容，皇冠 relative 到「昵称本尊」的右上角 */
+.p-name-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+.p-name-wrap .p-name {
   flex: 0 1 auto;
   min-width: 0;
 }
-/* 皇冠：无背景无圆环，直接一枚金冠斜戴昵称右上角（transform rotate(-45deg)），
+/* 皇冠：无背景无圆环，斜戴（45°）在昵称右上角（relative 到昵称，不飘到行尾），
    金色随主题明暗（--vip-gold）；仅会员帖子作者昵称展示、可点击进 VIP 页 */
 .p-crown {
   position: absolute;
-  top: -14rpx;
-  right: 0;
-  transform: rotate(-45deg);
+  top: -18rpx;
+  right: -12rpx;
+  transform: rotate(45deg);
   flex: none;
   line-height: 1;
 }
