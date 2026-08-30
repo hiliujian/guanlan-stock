@@ -13,20 +13,17 @@
       </view>
       <view class="p-meta">
         <view class="p-namerow">
-          <!-- 皇冠戴在「昵称本尊」的右上角：用 inline-flex 包裹昵称作相对定位锚点，
-               皇冠 absolute 相对它定位，昵称短时皇冠紧跟昵称而非飘到行尾 -->
-          <view class="p-name-wrap">
-            <text :class="['p-name', 'truncate', { 'vip-name': post.authorVip }]">{{ post.author }}</text>
-            <view
-              v-if="post.authorVip"
-              class="p-crown"
-              hover-class="p-crown-hover"
-              role="button"
-              aria-label="查看 VIP 会员"
-              @click.stop="goVip"
-            >
-              <OutlineIcon type="crown" :size="24" color="var(--vip-gold)" />
-            </view>
+          <!-- 会员帖子：金色皇冠正常放在昵称右侧（垂直居中，无背景），点击进 VIP 会员页 -->
+          <text :class="['p-name', 'truncate', { 'vip-name': post.authorVip }]">{{ post.author }}</text>
+          <view
+            v-if="post.authorVip"
+            class="p-crown"
+            hover-class="p-crown-hover"
+            role="button"
+            aria-label="查看 VIP 会员"
+            @click.stop="goVip"
+          >
+            <OutlineIcon type="crown" :size="20" color="var(--vip-gold)" />
           </view>
         </view>
         <text class="p-time">{{ timeText }}</text>
@@ -450,39 +447,30 @@ function previewImage(current: string) {
   flex: 1;
   min-width: 0;
 }
-/* 作者名 + 会员皇冠：昵称行只承载昵称，皇冠随昵称走（见 .p-name-wrap） */
+/* 作者名 + 会员皇冠：皇冠正常放在昵称右侧（flex 行内跟随，垂直居中，无背景不旋转） */
 .p-namerow {
   display: flex;
   align-items: center;
+  gap: 6rpx;
   min-width: 0;
 }
-/* 昵称锚点：inline-flex 宽度随昵称内容，皇冠 relative 到「昵称本尊」的右上角 */
-.p-name-wrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-}
-.p-name-wrap .p-name {
+/* 昵称宽度随内容；预留皇冠宽度防止长昵称把它挤出，超长省略（.truncate） */
+.p-name {
   flex: 0 1 auto;
   min-width: 0;
+  max-width: calc(100% - 30rpx);
+  font-size: var(--font-md);
+  color: var(--text);
 }
-/* 皇冠：无背景无圆环，斜戴（45°）在昵称右上角（relative 到昵称，不飘到行尾），
-   金色随主题明暗（--vip-gold）；仅会员帖子作者昵称展示、可点击进 VIP 页 */
+/* 皇冠：金色随主题明暗（--vip-gold），正常并排不参与换行；仅会员帖子作者昵称展示、可点击进 VIP 页 */
 .p-crown {
-  position: absolute;
-  top: -18rpx;
-  right: -12rpx;
-  transform: rotate(45deg);
   flex: none;
+  display: flex;
+  align-items: center;
   line-height: 1;
 }
 .p-crown-hover {
   opacity: 0.7;
-}
-.p-name {
-  font-size: var(--font-md);
-  color: var(--text);
 }
 .p-time {
   font-size: var(--font-xs);
