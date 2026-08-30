@@ -158,8 +158,8 @@ const displayName = ref("");
 // 个人简介：编辑态承接自 profiles.signature（数据库持久化、公开可读），保存时随资料一并写库
 const signatureDraft = ref("");
 const username = ref("");
-// 注册时间：只读展示。profiles.created_at 已由 store/user 的 select("*") 一并取回，
-// 无需额外查询；格式 YYYY-MM-DD（与公开资料页一致）。无数据 / 解析失败时留空不展示。
+/** 注册时间（只读，格式 YYYY-MM-DD）。取自 store 的 profile 快照；
+ *  无数据 / 解析失败时留空，避免出现 Invalid Date。 */
 const joinedAt = computed(() => {
   const raw = (user.profile as any)?.created_at;
   if (!raw) return "";
@@ -168,6 +168,15 @@ const joinedAt = computed(() => {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 });
+// 兜底：在 store 补上 created_at 映射之前登录的会话，profile 快照里没有该字段，
+// 此时复用 store 现成的 refreshProfile() 重载一次，无需用户重新登录即可显示注册时间。
+watch(
+  () => user.loggedIn,
+  (ok) => {
+    if (ok && !(user.profile as any)?.created_at) refreshProfile();
+  },
+  { immediate: true }
+);
 const saving = ref(false);
 const avatarUrl = ref("");
 const uploading = ref(false);

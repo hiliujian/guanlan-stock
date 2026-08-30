@@ -18,6 +18,7 @@ interface Profile {
   signature?: string; // 个人简介（公开可读，供「公开资料页」展示给他人；详见 #536）
   allow_dm?: boolean; // 允许私信（需求 B，默认 true；false 时他人无法向其发私信）
   public_watchlist?: boolean; // 公开自选股（需求 B，默认 true；false 时他人资料页隐藏其自选股）
+  created_at?: string; // 注册时间（profiles.created_at，ISO 字符串；个人资料页展示用）
 }
 
 interface UserState {
@@ -55,6 +56,8 @@ async function loadProfile(userId: string) {
       signature: typeof data.signature === "string" ? data.signature : "",
       allow_dm: typeof data.allow_dm === "boolean" ? data.allow_dm : true,
       public_watchlist: typeof data.public_watchlist === "boolean" ? data.public_watchlist : true,
+      // 注册时间：select("*") 已取回，但本对象是手动重建的，漏掉就会让资料页拿不到值
+      created_at: typeof data.created_at === "string" ? data.created_at : "",
     };
     // 注意：username 由用户在注册时自填、唯一（见 deploy.sql 部分唯一索引）。
     // 历史空 username 不再由前端自动补随机值；
