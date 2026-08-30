@@ -28,9 +28,10 @@
       </view>
 
       <!-- VIP 会员 Banner（金色调通栏，浅色米金 / 深色黑金随主题，贴边全宽）：未开通 → 广告位（可关闭，1 天冷却后自动恢复展示）；
-           已开通 → 会员有效期展示位（永久有效 / 有效期至某日），点击均可进会员页 -->
+           已开通 → 会员有效期展示位（永久有效 / 有效期至某日），点击均可进会员页。
+           两种状态右上角都有 × 可关闭（统一进入 1 天冷却，冷却结束自动恢复展示） -->
       <view
-        v-if="user.loggedIn && (showVipAd || isVip)"
+        v-if="user.loggedIn && !vipBannerClosed"
         class="pf-vip-banner"
         hover-class="pf-vip-hover"
         role="button"
@@ -46,7 +47,6 @@
         </view>
         <view class="pf-vip-go">{{ isVip ? "查看权益" : "了解特权" }}</view>
         <view
-          v-if="!isVip"
           class="pf-vip-close flex-center"
           hover-class="pf-vip-close-hover"
           role="button"
@@ -219,20 +219,17 @@ const userLevel = computed(() => {
   const l = user.profile?.level;
   return typeof l === "number" && l >= 0 ? l : 0;
 });
-// VIP 会员：有效期用 vipActive 实时判定（过期自动退回广告位）；广告 Banner 仅对未开通会员
-// 展示（VIP 用户不弹），关闭后进入冷却期、到期自动恢复展示（见 VIP_BANNER_COOLDOWN_MS）；
+// VIP 会员：有效期用 vipActive 实时判定（过期自动退回广告位）；Banner 未开通=广告位、
+// 已开通=有效期展示位，两种状态均可用右上角 × 关闭，进入 1 天冷却后自动恢复展示；
 // 金冠配色取自 VIP_BADGE（与徽章同一金色来源）
 const isVip = computed(() => vipActive(user.profile?.vip, user.profile?.vip_expires_at));
-// 广告 Banner 关闭冷却：关闭时记录时间戳，冷却期内不再打扰，冷却结束自动恢复展示，
+// Banner 关闭冷却：关闭时记录时间戳，冷却期内不再打扰，冷却结束自动恢复展示，
 // 保证会员推广能在合适的时机再次触达。旧版本存储的 "1" 会被解析为过期时间戳，立即恢复展示
 const VIP_BANNER_CLOSED_KEY = "guanlan_vip_banner_closed";
 const VIP_BANNER_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 1 天
 const vipBannerClosedAt = ref(Number(uni.getStorageSync(VIP_BANNER_CLOSED_KEY)) || 0);
 const vipBannerClosed = computed(
   () => vipBannerClosedAt.value > 0 && Date.now() - vipBannerClosedAt.value < VIP_BANNER_COOLDOWN_MS
-);
-const showVipAd = computed(
-  () => user.loggedIn && !isVip.value && !vipBannerClosed.value
 );
 const vipCrownStyle = {
   background: `linear-gradient(135deg, ${VIP_BADGE.from}, ${VIP_BADGE.to})`,
