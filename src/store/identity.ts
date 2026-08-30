@@ -23,14 +23,3 @@ export function getMyName(): string {
     return "我";
   }
 }
-
-/** 保存用户自定义的昵称（空值忽略） */
-export function setMyName(raw: string): void {
-  const v = (raw || "").trim();
-  if (!v) return;
-  try {
-    localStorage.setItem(KEY, v.slice(0, 12));
-  } catch {
-    /* 静默降级 */
-  }
-}
