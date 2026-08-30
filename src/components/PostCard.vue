@@ -114,13 +114,10 @@
       <view class="p-reply-input" @click.stop>
         <view class="pr-input-wrap" :class="{ quoted: !!replyTo }">
           <view v-if="replyTo" class="pr-quote">
-            <view class="pr-quote-bar"></view>
             <view class="pr-quote-main">
-              <view class="pr-quote-to">
-                <!-- 「回复」二字保持中性色（复用评论列表同款样式），仅昵称用主色，避免整行都像可点击 -->
-                <text class="pr-reply-word">回复</text>
-                <text>{{ replyTo }}</text>
-              </view>
+              <!-- 单行：回复（中性灰，复用评论列表样式）+ 昵称（主色）+ 摘要（灰、省略） -->
+              <text class="pr-reply-word">回复</text>
+              <text class="pr-quote-name">{{ replyTo }}</text>
               <text v-if="replyQuote" class="pr-quote-txt">{{ replyQuote }}</text>
             </view>
             <view class="pr-quote-x" role="button" aria-label="取消回复" @click.stop="clearReplyTo">
@@ -680,38 +677,35 @@ function previewImage(current: string) {
   padding: 8rpx 12rpx;
   border-radius: 20rpx;
 }
-/* 引用行：卡片内首行，主色竖条 + 底部细线，与下方输入框同属一张卡片 */
+/* 引用行：输入卡片内的一枚轻量圆角条（单行、微信式）。
+   底色比卡片再亮一层形成层次；去掉竖条与通栏分隔线，尽量少占纵向空间 */
 .pr-quote {
   display: flex;
   align-items: center;
-  gap: 10rpx;
-  padding: 4rpx 6rpx 10rpx;
-  margin-bottom: 6rpx;
-  border-bottom: 1rpx solid var(--border);
+  gap: 8rpx;
+  padding: 8rpx 10rpx;
+  margin-bottom: 8rpx;
+  background: var(--card);
+  border-radius: 12rpx;
 }
-.pr-quote-bar {
-  flex: none;
-  width: 6rpx;
-  height: 32rpx;
-  border-radius: 999rpx;
-  background: var(--primary);
-}
+/* 单行排布：回复 + 昵称 + 摘要同行，摘要占据剩余宽度并省略 */
 .pr-quote-main {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 2rpx;
-}
-/* 仅昵称用主色；「回复」二字复用 .pr-reply-word 的中性灰，避免整行看着都像可点击 */
-.pr-quote-to {
-  display: flex;
   align-items: center;
+  gap: 8rpx;
+}
+/* 昵称用主色强调；「回复」二字为中性灰（复用 .pr-reply-word），避免整行看着都像可点击 */
+.pr-quote-name {
+  flex: none;
   font-size: var(--font-sm);
   color: var(--primary);
 }
-/* 被回复评论摘要：单行省略，避免长评论把整个输入区撑高 */
+/* 被回复评论摘要：单行省略，避免长评论撑高输入区 */
 .pr-quote-txt {
+  flex: 1;
+  min-width: 0;
   font-size: var(--font-xs);
   color: var(--text-3);
   overflow: hidden;
