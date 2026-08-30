@@ -438,27 +438,66 @@ export interface AutoLevel {
   src?: string;           // 价位来源说明，用于悬浮提示
   dir?: "up" | "down";
 }
+// hex → rgba 淡化（破位/兜底的结构线用，视觉上与有效线区分）
+function fadeColor(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+// 结构线「必须画出」：优先有效簇价；破位（实体击穿/箱体破位）→ 仍显示原价但淡化+「破」标注；
+// 无簇 → 最近摆动点，再无 → 窗口极值，淡化+「参」标注。返回 null 仅当数据不足（buildRawLevels 空态）。
+function ensureStructLine(
+  series: any[], raw: RawLevels, role: "support" | "pressure", guard: PeriodGuard
+): { price: number; tag: string; sub: string; label: string; src: string; degraded: boolean } | null {
+  const r = role === "support" ? raw.structSupport : raw.structPressure;
+  // 数据不足（buildRawLevels 空态）→ 不画，尊重原逻辑
+  if (!series || series.length < 12) return null;
+  const L = BAND_LABELS[raw.band];
+  const base = role === "support" ? L.sS : L.sP;
+  const srcBase = role === "support" ? "结构支撑" : "结构压力";
+  if (r.price != null) {
+    // 破位（连续实体击穿，或支撑遇箱体破位）→ 不隐藏，淡化 + 「破」标注
+    const broken = r.broken || (role === "support" && raw.breakDown);
+    if (broken) return { price: r.price, tag: `${base.tag}·破`, sub: "已破位", label: base.name, src: `${srcBase}·已破位（原价位 ${r.price.toFixed(2)}）`, degraded: true };
+    return { price: r.price, tag: base.tag, sub: "", label: base.name, src: `${srcBase}·波段${role === "support" ? "低点" : "高点"}簇 No.1`, degraded: false };
+  }
+  // 簇缺失 → 最近摆动点；再无 → 窗口极值
+  const pts = role === "support" ? raw.lows : raw.highs;
+  let price: number | null = pts.length ? pts[pts.length - 1].value : null;
+  if (price == null) {
+    const sl = guard.bandWin > 0 ? series.slice(-guard.bandWin) : series;
+    price = role === "support" ? Math.min(...sl.map((d: any) => d.low)) : Math.max(...sl.map((d: any) => d.high));
+  }
+  return { price, tag: `${base.tag}·参`, sub: "参考位", label: base.name, src: `${srcBase}·参考位（簇缺失兜底）`, degraded: true };
+}
+
 export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard): AutoLevel[] {
   const raw = buildRawLevels(series, guard);
   const L = BAND_LABELS[raw.band];
   const out: AutoLevel[] = [];
-  const structSupPrice = raw.structSupport.price;
-  const structPresPrice = raw.structPressure.price;
 
-  // 结构支撑（绿粗虚线，满宽，无 S/B 标签；破位失效则不渲染）
-  if (!raw.structSupport.invalid && structSupPrice != null) {
-    out.push({ kind: "support", role: "structSupport", price: structSupPrice, color: SUPPORT_COLOR, bg: SUPPORT_COLOR, size: 1, dashed: true, tag: L.sS.tag, label: L.sS.name, src: "结构支撑·波段低点簇 No.1" });
+  // 结构支撑/压力「必须画出」：破位（连续实体击穿/箱体破位）不再隐藏，淡化+「破」标注；
+  // 簇缺失（摆动点不足/分散）退化为最近摆动点或窗口极值，淡化+「参」标注。杜绝"时有时无"。
+  // 报告侧 computePriceLevels 仍用 buildRawLevels 的 invalid 原逻辑，本改动仅影响图表。
+  const sup = ensureStructLine(series, raw, "support", guard);
+  if (sup) {
+    out.push({ kind: "support", role: "structSupport", price: sup.price, color: sup.degraded ? fadeColor(SUPPORT_COLOR, 0.5) : SUPPORT_COLOR, bg: SUPPORT_COLOR, size: 1, dashed: true, tag: sup.tag, sub: sup.sub, label: sup.label, src: sup.src });
   }
+  const pres = ensureStructLine(series, raw, "pressure", guard);
+  if (pres) {
+    out.push({ kind: "pressure", role: "structPressure", price: pres.price, color: pres.degraded ? fadeColor(PRESSURE_COLOR, 0.5) : PRESSURE_COLOR, bg: PRESSURE_COLOR, size: 1, dashed: true, tag: pres.tag, sub: pres.sub, label: pres.label, src: pres.src });
+  }
+  const structSupPrice = sup?.price ?? null;
+  const structPresPrice = pres?.price ?? null;
+
   // 交易参考支撑（红细虚线，挂载 S 标签；与结构线同价则去重，避免密集平行线）
   // 硬性准入：①单脉冲过滤 ②总分≥30 ③未被统一失效判定(supTradeInvalid：连续2根实体破位或箱体破位)
   if (!raw.tradeSupportS.invalid && raw.tradeSupportS.price != null && raw.tradeSupportS.sc!.score >= MIN_TOTAL_SCORE) {
     const price = raw.tradeSupportS.price;
     if (structSupPrice == null || Math.abs(price - structSupPrice) / structSupPrice > TOL_PCT)
       out.push({ kind: "support", role: "tradeSupport", price, color: TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR, size: 1, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
-  }
-  // 结构压力（红粗虚线，满宽，无 S/B 标签；破位失效则不渲染）
-  if (!raw.structPressure.invalid && structPresPrice != null) {
-    out.push({ kind: "pressure", role: "structPressure", price: structPresPrice, color: PRESSURE_COLOR, bg: PRESSURE_COLOR, size: 1, dashed: true, tag: L.sP.tag, label: L.sP.name, src: "结构压力·波段高点簇 No.1" });
   }
   // 交易参考压力（绿细虚线，挂载 B 标签；硬性准入：单脉冲过滤 + 总分≥30 + 未破位）
   if (!raw.tradePressureB.invalid && raw.tradePressureB.price != null && raw.tradePressureB.sc!.score >= MIN_TOTAL_SCORE) {
