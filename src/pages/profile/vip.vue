@@ -75,7 +75,6 @@ import OutlineIcon from "@/components/OutlineIcon.vue";
 import LevelTag from "@/components/LevelTag.vue";
 import { useUser } from "@/store/user";
 import { usePageGuard } from "@/store/guard";
-import { isDark } from "@/utils/theme";
 import { VIP_PERKS, VIP_BADGE, vipActive, vipValidityText } from "@/store/level";
 
 const user = useUser();
@@ -89,10 +88,10 @@ const level = computed(() => {
 // VIP 有效态（过期自动退回未开通视觉与广告引导）
 const isVip = computed(() => vipActive(user.profile?.vip, user.profile?.vip_expires_at));
 
-// 权益勾图标：金色随主题切换明暗（暗金 #8a6a10 在深色底上不可读，深色换亮金）
+// 权益勾图标：金色随主题切换明暗（var(--vip-gold) 深色自动亮金）
 const perkCheckColor = computed(() => {
   if (!isVip.value) return "var(--text-3)";
-  return isDark.value ? "#f0cd6e" : "#8a6a10";
+  return "var(--vip-gold)";
 });
 
 // 金冠勋章：VIP 金渐变圆牌；已开通加发光金环
@@ -171,11 +170,7 @@ function back() {
 }
 .vip-valid {
   font-size: var(--font-xs);
-  color: #8a6a10;
-}
-/* 深色主题：暗金文字在深底上不可读，统一提亮为亮金 */
-.theme-dark .vip-valid {
-  color: #f0cd6e;
+  color: var(--vip-gold);
 }
 
 /* 徽章对比：同一枚徽章的两种形态 */
@@ -199,10 +194,7 @@ function back() {
   color: var(--text-3);
 }
 .vip-preview-lab-gold {
-  color: #8a6a10;
-}
-.theme-dark .vip-preview-lab-gold {
-  color: #f0cd6e;
+  color: var(--vip-gold);
 }
 
 /* 区块通用 */

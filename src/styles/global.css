@@ -22,6 +22,9 @@
   --text: #16202e;
   --text-2: #5b6677;
   --text-3: #97a1b0;
+  /* VIP 金（深色底上的金色文字/图标）：浅色深金 / 深色亮金（暗金在深底上不可读）。
+     来源：vip.vue / ProfileView banner 的既有金色，统一收口到这一个 token */
+  --vip-gold: #8a6a10;
   --border: rgba(20, 30, 50, 0.10);
   --radius: 20rpx;
   --radius-sm: 12rpx;
@@ -92,6 +95,7 @@
   --text: #eaf0fb;
   --text-2: #aab4c8;
   --text-3: #6b7689;
+  --vip-gold: #f0cd6e;
   --border: rgba(255, 255, 255, 0.10);
   --radius: 20rpx;
   --radius-sm: 12rpx;

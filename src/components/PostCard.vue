@@ -12,7 +12,11 @@
         <UserAvatar :url="post.authorAvatarUrl || ''" :seed="post.author || post.authorUsername" :size="60" :frame="post.authorFrame" />
       </view>
       <view class="p-meta">
-        <text :class="['p-name', { 'vip-name': post.authorVip }]">{{ post.author }}</text>
+        <view class="p-namerow">
+          <text :class="['p-name', 'truncate', { 'vip-name': post.authorVip }]">{{ post.author }}</text>
+          <!-- 会员帖子：昵称旁金冠（VIP_BADGE 金色系，随主题明暗，见 global.css --vip-gold） -->
+          <OutlineIcon v-if="post.authorVip" type="crown" :size="20" color="var(--vip-gold)" class="p-crown" />
+        </view>
         <text class="p-time">{{ timeText }}</text>
       </view>
       <view v-if="post.topic" class="p-topic" :style="topicStyle">#{{ post.topic.name }}</view>
@@ -428,6 +432,28 @@ function previewImage(current: string) {
   flex-direction: column;
   flex: 1;
   min-width: 0;
+}
+/* 作者名 + 会员皇冠同行（皇冠带圆形背景托，与 LevelTag 的 lv-ic 同一视觉语言） */
+.p-namerow {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  min-width: 0;
+}
+.p-namerow .p-name {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+/* 金冠圆形图标托：浅金底 + 金色皇冠（--vip-gold 随主题明暗），仅会员帖子作者昵称旁展示 */
+.p-crown {
+  flex: none;
+  width: 34rpx;
+  height: 34rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(192, 142, 14, 0.16);
 }
 .p-name {
   font-size: var(--font-md);

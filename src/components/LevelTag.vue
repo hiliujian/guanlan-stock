@@ -48,8 +48,33 @@ const style = computed(() => ({
   flex: none;
   background: rgba(0, 0, 0, 0.14);
 }
-/* VIP 档：金色字距，突出尊贵感 */
+/* VIP 档：金色字距，突出尊贵感；「擦亮」高光 15s 一次（一道金光从左到右扫过，其余时间静止） */
 .lv-tag.vip {
   letter-spacing: 1rpx;
+  position: relative;
+  overflow: hidden;
+}
+.lv-tag.vip::after {
+  content: "";
+  position: absolute;
+  top: -30%;
+  left: 0;
+  width: 42%;
+  height: 160%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+  transform: translateX(-300%) skewX(-18deg);
+  animation: vipShine 15s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes vipShine {
+  0%, 92% {
+    transform: translateX(-300%) skewX(-18deg);
+  }
+  96%, 100% {
+    transform: translateX(320%) skewX(-18deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lv-tag.vip::after { display: none; }
 }
 </style>

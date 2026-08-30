@@ -475,6 +475,31 @@ function onMenu(act: MenuItem["act"]) {
   padding: 22rpx 24rpx;
   background: var(--vip-bg);
   box-shadow: inset 0 0 0 1rpx var(--vip-line);
+  overflow: hidden;
+  /* 「擦亮」：一道金光 15s 一次从左到右扫过（其余时间静止），尊贵呼吸感 */
+}
+.pf-vip-banner::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 26%;
+  background: linear-gradient(100deg, transparent, rgba(255, 238, 190, 0.38), transparent);
+  transform: translateX(-320%) skewX(-18deg);
+  animation: vipBannerShine 15s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes vipBannerShine {
+  0%, 92% {
+    transform: translateX(-320%) skewX(-18deg);
+  }
+  96%, 100% {
+    transform: translateX(320%) skewX(-18deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf-vip-banner::after { display: none; }
 }
 .theme-dark .pf-vip-banner {
   /* 深色：经典黑金 */
@@ -525,11 +550,12 @@ function onMenu(act: MenuItem["act"]) {
   background: linear-gradient(135deg, #f7d27a, #c08e0e);
   color: #43300a;
 }
-/* 右上角关闭按钮：不随 Banner 点击跳转（@click.stop） */
+/* 右上角关闭按钮：不随 Banner 点击跳转（@click.stop）；z-index 保证擦亮光带扫过时不遮按钮 */
 .pf-vip-close {
   position: absolute;
   top: 6rpx;
   right: 6rpx;
+  z-index: 1;
   width: 44rpx;
   height: 44rpx;
   border-radius: 50%;
