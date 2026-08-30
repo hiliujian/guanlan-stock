@@ -14,8 +14,18 @@
       <view class="p-meta">
         <view class="p-namerow">
           <text :class="['p-name', 'truncate', { 'vip-name': post.authorVip }]">{{ post.author }}</text>
-          <!-- 会员帖子：昵称旁金冠（VIP_BADGE 金色系，随主题明暗，见 global.css --vip-gold） -->
-          <OutlineIcon v-if="post.authorVip" type="crown" :size="20" color="var(--vip-gold)" class="p-crown" />
+          <!-- 会员帖子：昵称旁金冠（金渐变圆托 + 光环，与「我的」页 banner 的 pf-vip-crown 同一视觉；点击进 VIP 会员页） -->
+          <view
+            v-if="post.authorVip"
+            class="p-crown"
+            :style="crownStyle"
+            hover-class="p-crown-hover"
+            role="button"
+            aria-label="查看 VIP 会员"
+            @click.stop="goVip"
+          >
+            <OutlineIcon type="crown" :size="20" :color="VIP_BADGE.fg" />
+          </view>
         </view>
         <text class="p-time">{{ timeText }}</text>
       </view>
@@ -151,6 +161,7 @@ import { openInMarket, goTab } from "@/store/nav";
 import { useFollow } from "@/store/follow";
 import { useReplyExpansion } from "@/store/replyExpansion";
 import { useUser, userState } from "@/store/user";
+import { VIP_BADGE } from "@/store/level";
 
 const props = defineProps<{ post: CommunityPost; mine: boolean; preview?: boolean }>();
 const emit = defineEmits<{
@@ -182,6 +193,17 @@ function onAvatarClick() {
     uni.navigateTo({ url: `/pages/profile/detail?uid=${encodeURIComponent(id)}` });
   }
 }
+
+/** 会员金冠点击：进 VIP 会员页（未登录由该页路由守卫拦截跳登录） */
+function goVip() {
+  uni.navigateTo({ url: "/pages/profile/vip" });
+}
+
+// 金冠圆托视觉：与「我的」页 banner 的 pf-vip-crown 同一金色来源（VIP_BADGE），避免散写两套渐变
+const crownStyle = {
+  background: `linear-gradient(135deg, ${VIP_BADGE.from}, ${VIP_BADGE.to})`,
+  boxShadow: "0 0 0 3rpx rgba(192, 142, 14, 0.22)",
+};
 
 // 持仓卡片点击：跳转到该股票的行情页并切换到行情 Tab（market=auto 自动识别沪深港）。
 // 与 StockTag 同一范式；预览态不响应（避免干扰编辑）。
@@ -444,16 +466,19 @@ function previewImage(current: string) {
   flex: 0 1 auto;
   min-width: 0;
 }
-/* 金冠圆形图标托：浅金底 + 金色皇冠（--vip-gold 随主题明暗），仅会员帖子作者昵称旁展示 */
+/* 金冠圆形图标托：金渐变圆底 + 金色光环（渐变/光环由 inline crownStyle 注入，金色来自 VIP_BADGE），
+   与「我的」页 banner 的 pf-vip-crown 同一视觉；仅会员帖子作者昵称旁展示、可点击进 VIP 页 */
 .p-crown {
   flex: none;
-  width: 34rpx;
-  height: 34rpx;
+  width: 36rpx;
+  height: 36rpx;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(192, 142, 14, 0.16);
+}
+.p-crown-hover {
+  opacity: 0.8;
 }
 .p-name {
   font-size: var(--font-md);

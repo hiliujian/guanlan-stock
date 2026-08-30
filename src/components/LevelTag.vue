@@ -48,7 +48,7 @@ const style = computed(() => ({
   flex: none;
   background: rgba(0, 0, 0, 0.14);
 }
-/* VIP 档：金色字距，突出尊贵感；「擦亮」高光 15s 一次（一道金光从左到右扫过，其余时间静止） */
+/* VIP 档：金色字距，突出尊贵感；「擦亮」高光 10s 一次（一道金光缓慢扫过：6s 静止 → 3s 慢扫，其余时间无动画） */
 .lv-tag.vip {
   letter-spacing: 1rpx;
   position: relative;
@@ -63,14 +63,14 @@ const style = computed(() => ({
   height: 160%;
   background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.65), transparent);
   transform: translateX(-300%) skewX(-18deg);
-  animation: vipShine 15s ease-in-out infinite;
+  animation: vipShine 10s ease-in-out infinite;
   pointer-events: none;
 }
 @keyframes vipShine {
-  0%, 92% {
+  0%, 60% {
     transform: translateX(-300%) skewX(-18deg);
   }
-  96%, 100% {
+  90%, 100% {
     transform: translateX(320%) skewX(-18deg);
   }
 }

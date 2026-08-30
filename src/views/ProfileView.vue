@@ -33,6 +33,7 @@
       <view
         v-if="user.loggedIn && !vipBannerClosed"
         class="pf-vip-banner"
+        :class="{ 'pf-vip-shine': isVip }"
         hover-class="pf-vip-hover"
         role="button"
         :aria-label="isVip ? '查看 VIP 会员权益' : '了解 VIP 会员'"
@@ -476,9 +477,9 @@ function onMenu(act: MenuItem["act"]) {
   background: var(--vip-bg);
   box-shadow: inset 0 0 0 1rpx var(--vip-line);
   overflow: hidden;
-  /* 「擦亮」：一道金光 15s 一次从左到右扫过（其余时间静止），尊贵呼吸感 */
 }
-.pf-vip-banner::after {
+/* 「擦亮」仅会员生效（普通用户看的是无动画的广告位）：一道金光 10s 一次缓慢扫过（6s 静止 → 3s 慢扫） */
+.pf-vip-shine::after {
   content: "";
   position: absolute;
   top: 0;
@@ -487,19 +488,19 @@ function onMenu(act: MenuItem["act"]) {
   width: 26%;
   background: linear-gradient(100deg, transparent, rgba(255, 238, 190, 0.38), transparent);
   transform: translateX(-320%) skewX(-18deg);
-  animation: vipBannerShine 15s ease-in-out infinite;
+  animation: vipBannerShine 10s ease-in-out infinite;
   pointer-events: none;
 }
 @keyframes vipBannerShine {
-  0%, 92% {
+  0%, 60% {
     transform: translateX(-320%) skewX(-18deg);
   }
-  96%, 100% {
+  90%, 100% {
     transform: translateX(320%) skewX(-18deg);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .pf-vip-banner::after { display: none; }
+  .pf-vip-shine::after { display: none; }
 }
 .theme-dark .pf-vip-banner {
   /* 深色：经典黑金 */
