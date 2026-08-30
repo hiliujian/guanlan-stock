@@ -14,7 +14,7 @@
       <view class="p-meta">
         <view class="p-namerow">
           <text :class="['p-name', 'truncate', { 'vip-name': post.authorVip }]">{{ post.author }}</text>
-          <!-- 会员帖子：昵称旁金冠认证标（细金环 + 透明底 + 金色皇冠，轻盈不抢黑金昵称；点击进 VIP 会员页） -->
+          <!-- 会员帖子：皇冠斜戴（-45°）在昵称右上角，如给昵称加冕；点击进 VIP 会员页 -->
           <view
             v-if="post.authorVip"
             class="p-crown"
@@ -23,7 +23,7 @@
             aria-label="查看 VIP 会员"
             @click.stop="goVip"
           >
-            <OutlineIcon type="crown" :size="16" color="var(--vip-gold)" />
+            <OutlineIcon type="crown" :size="24" color="var(--vip-gold)" />
           </view>
         </view>
         <text class="p-time">{{ timeText }}</text>
@@ -447,32 +447,31 @@ function previewImage(current: string) {
   flex: 1;
   min-width: 0;
 }
-/* 作者名 + 会员皇冠同行（皇冠带圆形背景托，与 LevelTag 的 lv-ic 同一视觉语言） */
+/* 作者名 + 会员皇冠：昵称占行，皇冠 absolute 斜戴（-45°）在右上角，如给昵称加冕 */
 .p-namerow {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8rpx;
   min-width: 0;
+  /* 右侧给斜戴的皇冠让位，避免盖住昵称末尾 */
+  padding-right: 34rpx;
 }
 .p-namerow .p-name {
   flex: 0 1 auto;
   min-width: 0;
 }
-/* 会员金冠认证标：细金环 + 透明底（轻盈不抢黑金昵称），金色皇冠随主题明暗（--vip-gold）。
-   仅会员帖子作者昵称旁展示、可点击进 VIP 页 */
+/* 皇冠：无背景无圆环，直接一枚金冠斜戴昵称右上角（transform rotate(-45deg)），
+   金色随主题明暗（--vip-gold）；仅会员帖子作者昵称展示、可点击进 VIP 页 */
 .p-crown {
+  position: absolute;
+  top: -14rpx;
+  right: 0;
+  transform: rotate(-45deg);
   flex: none;
-  width: 30rpx;
-  height: 30rpx;
-  margin-left: 2rpx;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: inset 0 0 0 1.5rpx rgba(192, 142, 14, 0.55);
+  line-height: 1;
 }
 .p-crown-hover {
-  opacity: 0.75;
+  opacity: 0.7;
 }
 .p-name {
   font-size: var(--font-md);
