@@ -23,7 +23,7 @@
             aria-label="查看 VIP 会员"
             @click.stop="goVip"
           >
-            <OutlineIcon type="crown" :size="20" color="var(--vip-gold)" />
+            <OutlineIcon type="crown" :size="24" color="var(--vip-gold)" />
           </view>
         </view>
         <text class="p-time">{{ timeText }}</text>
@@ -454,11 +454,11 @@ function previewImage(current: string) {
   gap: 6rpx;
   min-width: 0;
 }
-/* 昵称宽度随内容；预留皇冠宽度防止长昵称把它挤出，超长省略（.truncate） */
+/* 昵称宽度随内容；预留皇冠宽度（24rpx 图标 + 间距）防止长昵称把它挤出，超长省略（.truncate） */
 .p-name {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: calc(100% - 30rpx);
+  max-width: calc(100% - 34rpx);
   font-size: var(--font-md);
   color: var(--text);
 }
