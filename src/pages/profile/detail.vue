@@ -31,7 +31,7 @@
               :url="profile.avatar_url"
               :seed="profile.display_name || profile.username"
               :size="150"
-              :frame="isVip ? 'member' : profile.avatar_frame"
+              :frame="profile.avatar_frame"
             />
           </view>
 

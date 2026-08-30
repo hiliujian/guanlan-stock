@@ -9,7 +9,7 @@
         role="button"
         :aria-label="isSelf ? '查看我的资料' : '查看用户资料'"
       >
-        <UserAvatar :url="post.authorAvatarUrl || ''" :seed="post.author || post.authorUsername" :size="60" :frame="post.authorVip ? 'member' : post.authorFrame" />
+        <UserAvatar :url="post.authorAvatarUrl || ''" :seed="post.author || post.authorUsername" :size="60" :frame="post.authorFrame" />
       </view>
       <view class="p-meta">
         <text :class="['p-name', { 'vip-name': post.authorVip }]">{{ post.author }}</text>

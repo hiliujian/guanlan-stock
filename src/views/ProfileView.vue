@@ -12,7 +12,7 @@
         @click="onHeaderTap"
       >
         <view class="pf-avatar" @click.stop="previewAvatar">
-          <UserAvatar :url="avatarUrl" :seed="avatarName" :size="116" :frame="isVip ? 'member' : user.profile?.avatar_frame" />
+          <UserAvatar :url="avatarUrl" :seed="avatarName" :size="116" :frame="user.profile?.avatar_frame" />
         </view>
         <view class="pf-id">
           <view class="pf-name-row">
