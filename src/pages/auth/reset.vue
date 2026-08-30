@@ -10,6 +10,7 @@
         placeholder="邮箱"
         :error="errors.email"
         @input="onEmailInput" @blur="validateEmail"
+        @confirm="submit"
       >
         <template #suffix>
           <view
@@ -32,6 +33,7 @@
         placeholder="邮箱验证码"
         :error="errors.code"
         @input="errors.code = ''"
+        @confirm="submit"
       />
 
       <!-- 新密码 -->
@@ -43,6 +45,7 @@
         :error="errors.password"
         @input="errors.password = ''"
         @blur="validatePassword"
+        @confirm="submit"
       />
 
       <!-- 确认新密码 -->
@@ -54,6 +57,7 @@
         :error="errors.confirm"
         @input="errors.confirm = ''"
         @blur="validateConfirm"
+        @confirm="submit"
       />
 
       <!-- 后端错误：保留用户输入，仅高亮提示，绝不清空 -->
@@ -181,6 +185,7 @@ async function sendCode() {
 }
 
 async function submit() {
+  if (loading.value || done.value) return; // 回车快速提交 / 连点防抖
   // 前端基础校验：邮箱格式 / 验证码非空 / 密码长度 / 两次一致
   serverErr.value = "";
   errors.email = "";

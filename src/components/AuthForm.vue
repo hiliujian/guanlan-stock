@@ -16,6 +16,7 @@
       placeholder="用户名或邮箱"
       :error="errors.identifier"
       @input="errors.identifier = ''"
+      @confirm="submit"
     />
 
     <!-- 密码 -->
@@ -26,6 +27,7 @@
       show-toggle
       :error="errors.password"
       @input="errors.password = ''"
+      @confirm="submit"
     />
 
     <!-- 后端错误兜底（保留用户输入，仅提示） -->
@@ -62,6 +64,7 @@ const serverErr = ref("");
 const errors = reactive<{ identifier: string; password: string }>({ identifier: "", password: "" });
 
 async function submit() {
+  if (loading.value) return; // 回车快速提交 / 连点防抖：请求进行中忽略再次提交
   // 每次提交先清空上一次的错误，避免残留
   serverErr.value = "";
   errors.identifier = "";
@@ -120,5 +123,12 @@ async function submit() {
 .auth-warn-code {
   font-weight: 600;
   color: #8a5200;
+}
+/* 深色主题：暗琥珀文字在深底上对比度不足，提亮为亮金 */
+.theme-dark .auth-warn {
+  color: #f0cd6e;
+}
+.theme-dark .auth-warn-code {
+  color: #ffd98a;
 }
 </style>

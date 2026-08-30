@@ -320,6 +320,19 @@ textarea {
   line-height: 1.5;
   padding: 8rpx 0 0;
 }
+/* VIP 尊贵黑金昵称：黑金渐变文字（posts 作者名 / 评论区昵称 / 个人主页昵称共用），
+   深浅主题各一套金色（金色与 VIP 徽章同一来源 store/level VIP_BADGE）：
+   浅色底用深金起笔；深色底整体提亮为亮金——暗金起点在深色卡片上会「隐身」。 */
+.vip-name {
+  background: linear-gradient(120deg, #43300a, #a67908 55%, #b8860b);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.theme-dark .vip-name {
+  background: linear-gradient(120deg, #f7df96, #e3b341 55%, #c08e0e);
+}
 /* 空态卡片标题：自选股 / 行情 / 热榜 / 社区 / 未登录 等所有空态统一字号与字重，
    替代各页散写的 .empty-t / .rk-empty-t / .ac-empty-title / .cm-empty-t，避免字号漂移与重复样式 */
 .empty-title {

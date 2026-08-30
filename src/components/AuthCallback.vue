@@ -1,7 +1,6 @@
 <template>
   <!-- 验证中 / 仍未登录：空态页面（无遮罩、无加载圈，替代原「正在完成登录…」弹窗） -->
   <view v-if="authFlow.callback.active && authFlow.callback.status === 'verifying'" class="ac-empty">
-    <BackgroundFX />
     <view class="ac-empty-inner anim-rise-soft">
       <view class="ac-empty-ic">
         <OutlineIcon type="person" :size="58" color="var(--text-2)" />
@@ -52,7 +51,6 @@
 </template>
 
 <script setup lang="ts">
-import BackgroundFX from "./BackgroundFX.vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import { authFlow, closeCallback } from "@/store/authFlow";
 import { openAuth } from "@/store/nav";
@@ -80,8 +78,6 @@ function goRegister() {
   padding: 48rpx;
 }
 .ac-empty-inner {
-  position: relative;
-  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;

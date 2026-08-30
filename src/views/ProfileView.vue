@@ -2,8 +2,6 @@
   <view class="pf-root">
     <scroll-view class="view-scroll" scroll-y>
     <view class="pf">
-      <BackgroundFX />
-
       <!-- 顶部个人信息栏：登录态点击进「个人资料」，未登录点击去登录 -->
       <view
         class="pf-head"
@@ -14,19 +12,49 @@
         @click="onHeaderTap"
       >
         <view class="pf-avatar" @click.stop="previewAvatar">
-          <UserAvatar :url="avatarUrl" :seed="avatarName" :size="116" :frame="user.profile?.avatar_frame" />
+          <UserAvatar :url="avatarUrl" :seed="avatarName" :size="116" :frame="isVip ? 'member' : user.profile?.avatar_frame" />
         </view>
         <view class="pf-id">
           <view class="pf-name-row">
-            <text class="pf-name truncate">{{ nameText }}</text>
+            <text :class="['pf-name', 'truncate', { 'vip-name': isVip }]">{{ nameText }}</text>
             <view v-if="user.loggedIn && canAccess('pages/profile/level')" class="pf-lvtag" @click.stop="goLevel" role="button" aria-label="查看我的等级">
-              <LevelTag :level="userLevel" />
+              <LevelTag :level="userLevel" :vip="isVip" />
             </view>
           </view>
           <text class="pf-sub truncate">{{ subText }}</text>
         </view>
         <OutlineIcon v-if="user.loggedIn" type="arrow-right" :size="34" color="var(--text-2)" />
         <view v-else class="pf-login-btn">登录 / 注册</view>
+      </view>
+
+      <!-- VIP 会员 Banner（金色调通栏，浅色米金 / 深色黑金随主题，贴边全宽）：未开通 → 广告位（可关闭，1 天冷却后自动恢复展示）；
+           已开通 → 会员有效期展示位（永久有效 / 有效期至某日），点击均可进会员页 -->
+      <view
+        v-if="user.loggedIn && (showVipAd || isVip)"
+        class="pf-vip-banner"
+        hover-class="pf-vip-hover"
+        role="button"
+        :aria-label="isVip ? '查看 VIP 会员权益' : '了解 VIP 会员'"
+        @click="goVip"
+      >
+        <view class="pf-vip-crown" :style="vipCrownStyle">
+          <OutlineIcon type="crown" :size="26" :color="VIP_BADGE.fg" />
+        </view>
+        <view class="pf-vip-t">
+          <text class="pf-vip-title">{{ isVip ? "VIP 尊贵会员" : "观澜 VIP 会员" }}</text>
+          <text class="pf-vip-sub">{{ isVip ? vipValidityText(user.profile?.vip, user.profile?.vip_expires_at) : "黑金昵称 · 金冠徽章 · 专属特权" }}</text>
+        </view>
+        <view class="pf-vip-go">{{ isVip ? "查看权益" : "了解特权" }}</view>
+        <view
+          v-if="!isVip"
+          class="pf-vip-close flex-center"
+          hover-class="pf-vip-close-hover"
+          role="button"
+          aria-label="关闭会员推广"
+          @click.stop="closeVipBanner"
+        >
+          <OutlineIcon type="close" :size="22" :color="vipCloseColor" />
+        </view>
       </view>
 
       <!-- 数据概览：仅登录后展示 -->
@@ -112,7 +140,7 @@
         >
           <view class="pf-row-left">
             <view class="pf-row-ic flex-center"><OutlineIcon type="close" :size="30" color="var(--danger)" /></view>
-            <text class="pf-row-label danger">退出登录</text>
+            <text class="pf-row-label">退出登录</text>
           </view>
           <OutlineIcon type="arrow-right" :size="28" color="var(--text-2)" />
         </view>
@@ -139,7 +167,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
-import BackgroundFX from "@/components/BackgroundFX.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import LevelTag from "@/components/LevelTag.vue";
 import { useUser, refreshProfile } from "@/store/user";
@@ -153,8 +180,10 @@ import { useFollow, useFollowPanel } from "@/store/follow";
 import { isTabEnabled } from "@/store/appConfig";
 import { getMyName } from "@/store/identity";
 import { avatarSeed } from "@/utils/avatar";
+import { isDark } from "@/utils/theme";
 import UserAvatar from "@/components/UserAvatar.vue";
 import { signOut } from "@/api/auth";
+import { VIP_BADGE, vipActive, vipValidityText } from "@/store/level";
 
 const user = useUser();
 // 全局页面守卫：「我的」页未对游客开放 + 未登录 → 跳转登录页
@@ -190,6 +219,33 @@ const userLevel = computed(() => {
   const l = user.profile?.level;
   return typeof l === "number" && l >= 0 ? l : 0;
 });
+// VIP 会员：有效期用 vipActive 实时判定（过期自动退回广告位）；广告 Banner 仅对未开通会员
+// 展示（VIP 用户不弹），关闭后进入冷却期、到期自动恢复展示（见 VIP_BANNER_COOLDOWN_MS）；
+// 金冠配色取自 VIP_BADGE（与徽章同一金色来源）
+const isVip = computed(() => vipActive(user.profile?.vip, user.profile?.vip_expires_at));
+// 广告 Banner 关闭冷却：关闭时记录时间戳，冷却期内不再打扰，冷却结束自动恢复展示，
+// 保证会员推广能在合适的时机再次触达。旧版本存储的 "1" 会被解析为过期时间戳，立即恢复展示
+const VIP_BANNER_CLOSED_KEY = "guanlan_vip_banner_closed";
+const VIP_BANNER_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 1 天
+const vipBannerClosedAt = ref(Number(uni.getStorageSync(VIP_BANNER_CLOSED_KEY)) || 0);
+const vipBannerClosed = computed(
+  () => vipBannerClosedAt.value > 0 && Date.now() - vipBannerClosedAt.value < VIP_BANNER_COOLDOWN_MS
+);
+const showVipAd = computed(
+  () => user.loggedIn && !isVip.value && !vipBannerClosed.value
+);
+const vipCrownStyle = {
+  background: `linear-gradient(135deg, ${VIP_BADGE.from}, ${VIP_BADGE.to})`,
+  boxShadow: "0 0 0 4rpx rgba(192, 142, 14, 0.22)",
+};
+function closeVipBanner() {
+  vipBannerClosedAt.value = Date.now();
+  uni.setStorageSync(VIP_BANNER_CLOSED_KEY, String(vipBannerClosedAt.value));
+}
+// 关闭按钮图标色随主题：深色黑金 Banner 上用亮金，浅色米金底上用深金
+const vipCloseColor = computed(() =>
+  isDark.value ? "rgba(240, 205, 110, 0.75)" : "rgba(122, 92, 12, 0.75)"
+);
 
 const watchCount = computed(() => watch.items.length);
 const isMine = (p: { userId?: string | null; author: string }) =>
@@ -275,6 +331,9 @@ function goSecurity() {
 }
 function goLevel() {
   uni.navigateTo({ url: "/pages/profile/level" });
+}
+function goVip() {
+  uni.navigateTo({ url: "/pages/profile/vip" });
 }
 function goWatch() {
   goTab("watch");
@@ -401,6 +460,88 @@ function onMenu(act: MenuItem["act"]) {
   font-size: var(--font-sm);
 }
 
+/* VIP 会员 Banner：金色尊贵风通栏（贴边全宽），浅色米金暖底 / 深色经典黑金，随主题切换。
+   未开通=广告位（CTA，可关闭）；已开通=有效期展示位（无关闭，保持沉稳）。
+   配色统一走本组件 CSS 变量，避免每条规则重复写两套渐变 */
+.pf-vip-banner {
+  /* 浅色默认：米金暖底 + 深金字 */
+  --vip-bg: linear-gradient(120deg, #fbf3df, #f6ead0 55%, #faf1dc);
+  --vip-line: rgba(192, 142, 14, 0.3);
+  --vip-hover: linear-gradient(120deg, #f4ebcf, #eee0bd 55%, #f2e8c8);
+  --vip-title: linear-gradient(120deg, #43300a, #a67908 55%, #b8860b);
+  --vip-sub: rgba(122, 92, 12, 0.78);
+  --vip-close-hover: rgba(67, 48, 10, 0.12);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 22rpx 24rpx;
+  background: var(--vip-bg);
+  box-shadow: inset 0 0 0 1rpx var(--vip-line);
+}
+.theme-dark .pf-vip-banner {
+  /* 深色：经典黑金 */
+  --vip-bg: linear-gradient(120deg, #2b2008, #171005 55%, #241a08);
+  --vip-line: rgba(240, 205, 110, 0.35);
+  --vip-hover: linear-gradient(120deg, #35280c, #1d1507 55%, #2c2009);
+  --vip-title: linear-gradient(120deg, #f7df96, #c08e0e);
+  --vip-sub: rgba(240, 205, 110, 0.72);
+  --vip-close-hover: rgba(255, 255, 255, 0.1);
+}
+.pf-vip-hover {
+  background: var(--vip-hover);
+}
+.pf-vip-crown {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.pf-vip-t {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+/* 金渐变文字（浅色深金 / 深色亮金，见 --vip-title），与全局 .vip-name（卡片昵称用）区分场景 */
+.pf-vip-title {
+  font-size: var(--font-md);
+  background: var(--vip-title);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.pf-vip-sub {
+  font-size: var(--font-xs);
+  color: var(--vip-sub);
+}
+.pf-vip-go {
+  flex: none;
+  font-size: var(--font-xs);
+  padding: 10rpx 20rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #f7d27a, #c08e0e);
+  color: #43300a;
+}
+/* 右上角关闭按钮：不随 Banner 点击跳转（@click.stop） */
+.pf-vip-close {
+  position: absolute;
+  top: 6rpx;
+  right: 6rpx;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  flex: none;
+}
+.pf-vip-close-hover {
+  background: var(--vip-close-hover);
+}
+
 /* 数据概览 */
 .pf-stats {
   display: flex;
@@ -478,7 +619,6 @@ function onMenu(act: MenuItem["act"]) {
   font-size: var(--font-md);
   color: var(--text);
 }
-.pf-row-label.danger,
 .pf-row-danger .pf-row-label {
   color: var(--danger);
 }

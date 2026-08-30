@@ -9,10 +9,10 @@
         role="button"
         :aria-label="isSelf ? '查看我的资料' : '查看用户资料'"
       >
-        <UserAvatar :url="post.authorAvatarUrl || ''" :seed="post.author || post.authorUsername" :size="60" :frame="post.authorFrame" />
+        <UserAvatar :url="post.authorAvatarUrl || ''" :seed="post.author || post.authorUsername" :size="60" :frame="post.authorVip ? 'member' : post.authorFrame" />
       </view>
       <view class="p-meta">
-        <text class="p-name">{{ post.author }}</text>
+        <text :class="['p-name', { 'vip-name': post.authorVip }]">{{ post.author }}</text>
         <text class="p-time">{{ timeText }}</text>
       </view>
       <view v-if="post.topic" class="p-topic" :style="topicStyle">#{{ post.topic.name }}</view>
@@ -96,7 +96,7 @@
     <!-- 回复区（预览态隐藏） -->
     <view v-if="!preview && showReply" class="p-replies">
       <view v-for="d in displayReplies" :key="d.id" class="p-reply" @click.stop="onCommentClick(d)">
-        <text class="pr-name" hover-class="pr-name-hover" @click.stop="onNameClick(d)">{{ d.author }}</text>
+        <text :class="['pr-name', { 'vip-name': d.authorVip }]" hover-class="pr-name-hover" @click.stop="onNameClick(d)">{{ d.author }}</text>
         <template v-if="d.target">
           <text class="pr-reply-word">回复</text>
           <!-- 仅当目标用户有账号 id 时可点击跳转；旧 @前缀回复没有 userId，降级为普通文本避免「看着能点却跳不了」 -->
@@ -384,7 +384,7 @@ function sendReply() {
     replyTo.value
       ? { name: replyTo.value, userId: replyToUserId.value }
       : null;
-  emit("reply", props.post.id, v, target);
+  emit("reply", props.post.id, v, target ?? undefined);
   replyText.value = "";
   clearReplyTo();
 }

@@ -41,6 +41,7 @@ const BUILTIN_ACCESS: Record<string, AccessMeta> = {
   "pages/profile/edit": { path: "pages/profile/edit", open: false, showInMenu: false, sortWeight: 0, extra: {}, isTab: false },
   "pages/profile/security": { path: "pages/profile/security", open: false, showInMenu: false, sortWeight: 0, extra: {}, isTab: false },
   "pages/profile/level": { path: "pages/profile/level", open: false, showInMenu: false, sortWeight: 0, extra: {}, isTab: false },
+  "pages/profile/vip": { path: "pages/profile/vip", open: false, showInMenu: false, sortWeight: 0, extra: {}, isTab: false },
   /* 公开资料页：他人资料对游客开放（仅展示昵称/头像/简介等公开信息；发私信等需登录操作仍走拦截） */
   "pages/profile/detail": { path: "pages/profile/detail", open: true, showInMenu: false, sortWeight: 0, extra: {}, isTab: false },
   /* 协议页对游客开放：登录页脚可点击查看，未登录亦不被拦截（fail-closed 不应误拦协议） */

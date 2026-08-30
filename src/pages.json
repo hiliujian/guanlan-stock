@@ -51,6 +51,12 @@
 			}
 		},
 		{
+			"path": "pages/profile/vip",
+			"style": {
+				"navigationStyle": "custom"
+			}
+		},
+		{
 			"path": "pages/profile/detail",
 			"style": {
 				"navigationStyle": "custom"

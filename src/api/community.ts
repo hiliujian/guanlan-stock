@@ -15,6 +15,7 @@ import { withTimeout } from "@/api/transport";
 import { translateSupabaseError } from "@/api/auth";
 import { getMyName } from "@/store/identity";
 import { userState } from "@/store/user";
+import { vipActive } from "@/store/level";
 
 // ---------------------------------------------------------------------
 // 类型定义（TS / UI 侧 camelCase）
@@ -78,6 +79,7 @@ export interface Reply {
   id: string;
   author: string;
   userId?: string | null; // 评论者账号 id（用于点击昵称跳转资料页；旧数据可能为 null）
+  authorVip?: boolean; // 评论者是否为有效 VIP（黑金昵称展示）
   content: string;
   createdAt: number;
   /** 回复目标（评论中的「回复 X」）；旧数据或顶层评论为 null。来源：community_replies.meta.reply_to */
@@ -92,6 +94,7 @@ export interface CommunityPost {
   authorAvatarUrl?: string; // 作者头像 URL（发布时冗余快照 + 联表 profiles 兜底；缺省回退「字」头像）
   authorFrame?: string; // 作者头像框 id（发布时冗余快照 + 联表 profiles 兜底；'' = 无边框）
   authorUsername?: string; // 作者用户名（冗余快照）：头像种子兜底用（主种子为昵称 author，保证与资料页统一采用昵称首字）
+  authorVip?: boolean; // 作者是否为有效 VIP（黑金昵称 + 会员金框展示；profiles 联表实时判定）
   topic?: Topic; // 关联标的（个股 / 板块），用于分类
   createdAt: number;
   content?: string;
@@ -267,10 +270,10 @@ async function listRemote(opts?: { limit?: number; cursor?: number }): Promise<C
   if (error || !data) return [];
   // 点赞态以服务端 community_likes 为唯一权威（不再本地缓存）
   const liked = await loadLikedFromServer(sb);
-  // 联表批量取作者头像 / 头像框（一次查询，避免每条再发请求）
+  // 联表批量取作者头像 / 头像框 / VIP 态（一次查询，避免每条再发请求）
   const profileMap = await loadProfilesForPosts(sb, data as any[]);
   return (data as any[]).map((r) => {
-    const ai = profileMap.get(r.user_id) || { avatar_url: "", avatar_frame: "" };
+    const ai = authorInfoOf(r.user_id);
     return mapRowToPost(r, ai, liked);
   });
 }
@@ -281,7 +284,7 @@ async function listRemote(opts?: { limit?: number; cursor?: number }): Promise<C
  */
 function mapRowToPost(
   r: any,
-  ai: { avatar_url: string; avatar_frame: string },
+  ai: { avatar_url: string; avatar_frame: string; vip: boolean; vip_expires_at: string | null },
   liked: Set<string>
 ): CommunityPost {
   return {
@@ -294,6 +297,7 @@ function mapRowToPost(
     authorAvatarUrl: r.author_avatar_url || ai.avatar_url || "",
     authorFrame: r.author_frame || ai.avatar_frame || "",
     authorUsername: r.author_username || "",
+    authorVip: vipActive(ai.vip, ai.vip_expires_at),
     topic: r.topic || undefined,
     createdAt: new Date(r.created_at).getTime(),
     content: r.content ?? undefined,
@@ -301,14 +305,18 @@ function mapRowToPost(
     images: (r.images as string[] | undefined) || [],
     likes: r.likes ?? 0,
     likedByMe: liked.has(r.id),
-    replies: (r.replies || []).map((x: any) => ({
-      id: x.id,
-      author: x.author,
-      userId: x.user_id || null,
-      content: x.content,
-      createdAt: new Date(x.created_at).getTime(),
-      replyTo: (x.meta && (x.meta as any).reply_to) || null,
-    })),
+    replies: (r.replies || []).map((x: any) => {
+      const ri = authorInfoOf(x.user_id);
+      return {
+        id: x.id,
+        author: x.author,
+        userId: x.user_id || null,
+        authorVip: vipActive(ri.vip, ri.vip_expires_at),
+        content: x.content,
+        createdAt: new Date(x.created_at).getTime(),
+        replyTo: (x.meta && (x.meta as any).reply_to) || null,
+      };
+    }),
   };
 }
 
@@ -329,7 +337,7 @@ async function searchRemote(query: string): Promise<CommunityPost[]> {
   const liked = await loadLikedFromServer(sb);
   const profileMap = await loadProfilesForPosts(sb, data as any[]);
   return (data as any[]).map((r) => {
-    const ai = profileMap.get(r.user_id) || { avatar_url: "", avatar_frame: "" };
+    const ai = authorInfoOf(r.user_id);
     return mapRowToPost(r, ai, liked);
   });
 }
@@ -368,7 +376,7 @@ async function listByUserRemote(
   const liked = await loadLikedFromServer(sb);
   const profileMap = await loadProfilesForPosts(sb, data as any[]);
   return (data as any[]).map((r) => {
-    const ai = profileMap.get(r.user_id) || { avatar_url: "", avatar_frame: "" };
+    const ai = authorInfoOf(r.user_id);
     return mapRowToPost(r, ai, liked);
   });
 }
@@ -390,34 +398,49 @@ async function loadLikedFromServer(sb: any): Promise<Set<string>> {
 }
 
 // 作者资料缓存：listRemote 批量联表后写入，供 createRemote / toggleLikeRemote 即时取用，
-// 避免单帖回查或丢失头像框。键为 user_id → { 头像 URL, 头像框 id }。
-let profileCache: Map<string, { avatar_url: string; avatar_frame: string }> | null = null;
+// 避免单帖回查或丢失头像框。键为 user_id → { 头像 URL, 头像框 id, VIP 态, VIP 有效期 }。
+let profileCache: Map<
+  string,
+  { avatar_url: string; avatar_frame: string; vip: boolean; vip_expires_at: string | null }
+> | null = null;
 
 /**
- * 批量联表取作者头像 / 头像框：从帖子列表收集 user_id，一次 queries profiles，
- * 返回 user_id → { avatar_url, avatar_frame } 映射，并写入 profileCache 供后续复用。
- * 旧帖 / 游客帖 user_id 为空：对应项缺省为「字」头像（无边框），由 PostCard 回退。
+ * 批量联表取作者头像 / 头像框 / VIP 态：从帖子与评论收集 user_id，一次查询 profiles，
+ * 返回 user_id → { avatar_url, avatar_frame, vip, vip_expires_at } 映射，并写入 profileCache 供后续复用。
+ * 旧帖 / 游客帖 user_id 为空：对应项缺省为「字」头像（无边框、非 VIP），由 PostCard 回退。
  */
 async function loadProfilesForPosts(
   sb: any,
   rows: any[]
-): Promise<Map<string, { avatar_url: string; avatar_frame: string }>> {
-  const ids = Array.from(new Set(rows.map((r) => r.user_id).filter(Boolean))) as string[];
-  const map = new Map<string, { avatar_url: string; avatar_frame: string }>();
+): Promise<Map<string, { avatar_url: string; avatar_frame: string; vip: boolean; vip_expires_at: string | null }>> {
+  const ids = Array.from(
+    new Set(
+      rows.flatMap((r) => [r.user_id, ...((r.replies || []) as any[]).map((x) => x.user_id)]).filter(Boolean)
+    )
+  ) as string[];
+  const map = new Map<string, { avatar_url: string; avatar_frame: string; vip: boolean; vip_expires_at: string | null }>();
   if (ids.length) {
-    const { data } = await sb.from("profiles").select("id, avatar_url, avatar_frame").in("id", ids);
+    const { data } = await sb
+      .from("profiles")
+      .select("id, avatar_url, avatar_frame, vip, vip_expires_at")
+      .in("id", ids);
     for (const p of (data as any[]) || []) {
-      map.set(p.id, { avatar_url: p.avatar_url || "", avatar_frame: p.avatar_frame || "" });
+      map.set(p.id, {
+        avatar_url: p.avatar_url || "",
+        avatar_frame: p.avatar_frame || "",
+        vip: p.vip === true,
+        vip_expires_at: typeof p.vip_expires_at === "string" ? p.vip_expires_at : null,
+      });
     }
   }
   profileCache = map;
   return map;
 }
 
-/** 从缓存取某作者的头像 / 头像框（无缓存则回退「字」头像、无边框） */
-function authorInfoOf(userId?: string | null): { avatar_url: string; avatar_frame: string } {
+/** 从缓存取某作者的头像 / 头像框 / VIP 态（无缓存则回退「字」头像、无边框、非 VIP） */
+function authorInfoOf(userId?: string | null): { avatar_url: string; avatar_frame: string; vip: boolean; vip_expires_at: string | null } {
   if (userId && profileCache && profileCache.has(userId)) return profileCache.get(userId)!;
-  return { avatar_url: "", avatar_frame: "" };
+  return { avatar_url: "", avatar_frame: "", vip: false, vip_expires_at: null };
 }
 
 async function createRemote(input: {
@@ -456,6 +479,7 @@ async function createRemote(input: {
     authorAvatarUrl: d.author_avatar_url || userState.profile?.avatar_url || "",
     authorFrame: d.author_frame || userState.profile?.avatar_frame || "",
     authorUsername: d.author_username || userState.profile?.username || "",
+    authorVip: vipActive(userState.profile?.vip, userState.profile?.vip_expires_at),
     topic: d.topic || undefined,
     createdAt: new Date(d.created_at).getTime(),
     content: d.content ?? undefined,
@@ -501,6 +525,7 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
     authorAvatarUrl: f.author_avatar_url || ai.avatar_url || "",
     authorFrame: f.author_frame || ai.avatar_frame || "",
     authorUsername: f.author_username || "",
+    authorVip: vipActive(ai.vip, ai.vip_expires_at),
     topic: f.topic || undefined,
     createdAt: new Date(f.created_at).getTime(),
     content: f.content ?? undefined,
@@ -508,14 +533,18 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
     images: (f.images as string[] | undefined) || [],
     likes: f.likes ?? 0,
     likedByMe: likedCache ? likedCache.ids.has(id) : liked,
-    replies: (f.replies || []).map((x: any) => ({
-      id: x.id,
-      author: x.author,
-      userId: x.user_id || null,
-      content: x.content,
-      createdAt: new Date(x.created_at).getTime(),
-      replyTo: (x.meta && (x.meta as any).reply_to) || null,
-    })),
+    replies: (f.replies || []).map((x: any) => {
+      const ri = authorInfoOf(x.user_id);
+      return {
+        id: x.id,
+        author: x.author,
+        userId: x.user_id || null,
+        authorVip: vipActive(ri.vip, ri.vip_expires_at),
+        content: x.content,
+        createdAt: new Date(x.created_at).getTime(),
+        replyTo: (x.meta && (x.meta as any).reply_to) || null,
+      };
+    }),
   };
 }
 
@@ -562,6 +591,7 @@ async function addReplyRemote(
     authorAvatarUrl: d.author_avatar_url || ai.avatar_url || "",
     authorFrame: d.author_frame || ai.avatar_frame || "",
     authorUsername: d.author_username || "",
+    authorVip: vipActive(ai.vip, ai.vip_expires_at),
     topic: d.topic || undefined,
     createdAt: new Date(d.created_at).getTime(),
     content: d.content ?? undefined,
@@ -569,14 +599,18 @@ async function addReplyRemote(
     images: (d.images as string[] | undefined) || [],
     likes: d.likes ?? 0,
     likedByMe: liked,
-    replies: (d.replies || []).map((x: any) => ({
-      id: x.id,
-      author: x.author,
-      userId: x.user_id || null,
-      content: x.content,
-      createdAt: new Date(x.created_at).getTime(),
-      replyTo: (x.meta && (x.meta as any).reply_to) || null,
-    })),
+    replies: (d.replies || []).map((x: any) => {
+      const ri = authorInfoOf(x.user_id);
+      return {
+        id: x.id,
+        author: x.author,
+        userId: x.user_id || null,
+        authorVip: vipActive(ri.vip, ri.vip_expires_at),
+        content: x.content,
+        createdAt: new Date(x.created_at).getTime(),
+        replyTo: (x.meta && (x.meta as any).reply_to) || null,
+      };
+    }),
   };
 }
 

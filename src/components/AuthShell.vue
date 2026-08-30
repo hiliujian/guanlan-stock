@@ -1,6 +1,5 @@
 <template>
   <view class="auth-page">
-    <BackgroundFX />
     <view class="auth-content">
       <view class="auth-nav">
         <view class="auth-nav-back" role="button" aria-label="返回" @click="onBack">
@@ -27,7 +26,6 @@
 </template>
 
 <script setup lang="ts">
-import BackgroundFX from "./BackgroundFX.vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import AuthAgreement from "./AuthAgreement.vue";
 

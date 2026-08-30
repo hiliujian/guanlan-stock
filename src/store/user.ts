@@ -14,6 +14,8 @@ interface Profile {
   avatar_frame?: string; // 头像框 id（'' = 无边框）；见 src/utils/avatarFrame.ts
   level?: number; // 用户等级序号（0=新手散户）；由后端维护，前端只读
   exp?: number; // 用户经验值；由后端维护，缺省 0
+  vip?: boolean; // VIP 会员（官方授予，前端只读）；与等级徽标一体化的金色视觉，见 store/level badgeVisual
+  vip_expires_at?: string | null; // VIP 有效期（ISO 字符串；null = 永久）；是否生效用 store/level vipActive 判定
   last_login?: LoginInfo | null; // 最近一次登录的地点/时间/设备（账号安全页展示）
   signature?: string; // 个人简介（公开可读，供「公开资料页」展示给他人；详见 #536）
   allow_dm?: boolean; // 允许私信（需求 B，默认 true；false 时他人无法向其发私信）
@@ -52,6 +54,8 @@ async function loadProfile(userId: string) {
       avatar_frame: data.avatar_frame || "",
       level: typeof data.level === "number" ? data.level : 0,
       exp: typeof data.exp === "number" ? data.exp : 0,
+      vip: data.vip === true,
+      vip_expires_at: typeof data.vip_expires_at === "string" ? data.vip_expires_at : null,
       last_login: (data.last_login as LoginInfo) ?? null,
       signature: typeof data.signature === "string" ? data.signature : "",
       allow_dm: typeof data.allow_dm === "boolean" ? data.allow_dm : true,

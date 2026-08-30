@@ -47,6 +47,8 @@ create table public.profiles (
   signature    text not null default '',                  -- 个人简介（公开可读，供他人「公开资料页」展示；见 #536）
   level        integer not null default 0,                -- 用户等级序号（0=新手散户，对应前端 TIERS 下标）；由后端维护，前端只读展示
   exp          integer not null default 0,                -- 用户经验值（等级体系 expMin 对应所需经验）；由后端维护，前端用于展示与升级进度
+  vip          boolean not null default false,            -- VIP 会员（官方授予开通，客户端不可自改，见 100.3.1 特权列保护）；与等级徽标一体化金色视觉
+  vip_expires_at timestamptz,                             -- VIP 有效期（null = 永久）；是否生效由前端 vipActive / 后端按时间判定，客户端不可自改
   -- 扩展预留（接入登录后按需启用，以下均为可选、带默认值，不影响现有逻辑）
   website      text not null default '',
   location     text not null default '',
@@ -741,8 +743,10 @@ create policy "community_likes_delete" on public.community_likes
 -- 上方 1.1 用「DROP + CREATE」重建 profiles（含 exp 列），但会清空数据，
 -- 生产库 / 已 populated 的库不能这么跑。若某张早期旧 profiles 表缺 exp 列
 -- （等级体系会恒显默认等级），用下方语句非破坏性地补齐，绝不丢数据。
--- 全新库走 DROP + CREATE 已含 exp，本段为冗余安全网；ADD COLUMN IF NOT EXISTS 幂等。
+-- 全新库走 DROP + CREATE 已含 exp / vip，本段为冗余安全网；ADD COLUMN IF NOT EXISTS 幂等。
 alter table public.profiles add column if not exists exp integer not null default 0;
+alter table public.profiles add column if not exists vip boolean not null default false;
+alter table public.profiles add column if not exists vip_expires_at timestamptz;
 
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║ 100. 经验值 / 等级发放（修复「经验值恒为 0」）                  ║
@@ -752,8 +756,8 @@ alter table public.profiles add column if not exists exp integer not null defaul
 --   · 完善资料 +20（一次性）     · 每日登录 +5（连登每满 7 天再 +15）
 --   · 添加自选 +3 / 只           · 发帖 +10   · 评论 +5
 --   · 点赞 +2                   · 被点赞 +3（帖子作者）
--- 等级由累计经验自动推导（与前端 src/store/level.ts TIERS 阈值一致：
---   0 / 100 / 300 / 600 / 1000 / 2000 / 4000）。
+-- 等级由累计经验自动推导（与前端 src/store/level.ts TIERS 阈值一致，2026-08-30 校准：
+--   0 / 150 / 450 / 900 / 1600 / 3000 / 5500；等级只升不降，见 100.2 greatest 保底）。
 -- 幂等：重复执行安全；老库直接跑本块即生效（ADD COLUMN / DROP+CREATE 兜底）。
 -- ╚══════════════════════════════════════════════════════════════╝
 
@@ -779,17 +783,19 @@ end;
 $$;
 grant execute on function public.capture_login_info(jsonb) to anon, authenticated;
 
--- 100.2 按累计经验刷新等级（阈值与前端 TIERS 一致）
+-- 100.2 按累计经验刷新等级（阈值与前端 TIERS 一致，2026-08-30 校准）
+--   greatest 保底：等级只升不降 —— 阈值上调等校准不会把已获等级降回去。
 create or replace function public.refresh_level(p_user uuid)
 returns void language plpgsql security definer set search_path = public as $$
 begin
   if p_user is null then return; end if;
   update public.profiles p
-     set level = (
-       select max(t.lv) from (values
-         (0, 0), (1, 100), (2, 300), (3, 600), (4, 1000), (5, 2000), (6, 4000)
+     set level = greatest(
+       p.level,
+       (select max(t.lv) from (values
+         (0, 0), (1, 150), (2, 450), (3, 900), (4, 1600), (5, 3000), (6, 5500)
        ) as t(lv, mn)
-       where t.mn <= p.exp
+       where t.mn <= p.exp)
      )
    where p.id = p_user;
 end;
@@ -807,6 +813,28 @@ begin
   return coalesce((select exp from public.profiles where id = p_user), 0);
 end;
 $$;
+
+-- 100.3.1 特权列保护：exp / level / vip / vip_expires_at 仅由服务端（security definer，postgres）维护，
+--   客户端（anon / authenticated 直连 PostgREST，受 profiles_update_self RLS 放行）
+--   试图改动这些列时直接报错。注册建行 / 兜底建行走 security definer，不受影响。
+create or replace function public.protect_profiles_privileged()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if current_user in ('anon', 'authenticated') then
+    if new.exp <> coalesce(old.exp, 0)
+       or new.level <> coalesce(old.level, 0)
+       or new.vip <> coalesce(old.vip, false)
+       or new.vip_expires_at is distinct from old.vip_expires_at then
+      raise exception 'profiles.exp/level/vip/vip_expires_at 由系统维护，客户端不可修改';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists trg_protect_profiles_privileged on public.profiles;
+create trigger trg_protect_profiles_privileged
+  before insert or update on public.profiles
+  for each row execute function public.protect_profiles_privileged();
 
 -- 100.4 行为触发器：添加自选 / 发帖 / 评论 / 点赞（含被点赞）
 create or replace function public.exp_on_watch()

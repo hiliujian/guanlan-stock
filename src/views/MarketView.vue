@@ -1,6 +1,5 @@
 <template>
   <view class="market">
-    <BackgroundFX />
     <view class="mk-sticky">
       <!-- 品牌标识 + 市场状态 -->
       <view class="brand-bar anim-fade-up">
@@ -210,7 +209,6 @@ const COMMODITY_ICON: Record<string, string> = {
 };
 import PriceText from "@/components/PriceText.vue";
 import AnalysisCard from "@/components/AnalysisCard.vue";
-import BackgroundFX from "@/components/BackgroundFX.vue";
 import PeekSheet from "@/components/PeekSheet.vue";
 import RollSwap from "@/components/RollSwap.vue";
 import ReportView from "@/components/ReportView.vue";

@@ -215,6 +215,7 @@ import { listMyHoldings, saveHolding, dropHolding, type SavedHolding } from "@/a
 import { localSuggest, searchStocks, fetchSnapshot, LOCAL_STOCKS, type SearchHit } from "@/api/quote";
 import { marketCharFor, resolveSecid } from "@/utils/period";
 import { useUser, userState } from "@/store/user";
+import { vipActive } from "@/store/level";
 import { getMyName } from "@/store/identity";
 import { openAuth } from "@/store/nav";
 import { uploadPostImage } from "@/api/auth";
@@ -872,6 +873,7 @@ const previewPost = computed<CommunityPost>(() => ({
   authorAvatarUrl: userState.profile?.avatar_url || "",
   authorFrame: userState.profile?.avatar_frame || "",
   authorUsername: userState.profile?.username || "",
+  authorVip: vipActive(userState.profile?.vip, userState.profile?.vip_expires_at),
   createdAt: Date.now(),
   content: text.value.trim() || undefined,
   card: packedCard.value,

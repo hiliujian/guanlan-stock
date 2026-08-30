@@ -31,16 +31,16 @@
               :url="profile.avatar_url"
               :seed="profile.display_name || profile.username"
               :size="150"
-              :frame="profile.avatar_frame"
+              :frame="isVip ? 'member' : profile.avatar_frame"
             />
           </view>
 
           <!-- 昵称（含等级图标）/ 用户名：与头像垂直居中对齐 -->
           <view class="dp-id">
             <view class="dp-namerow">
-              <text class="dp-name truncate">{{ nameText }}</text>
+              <text :class="['dp-name', 'truncate', { 'vip-name': isVip }]">{{ nameText }}</text>
               <view v-if="typeof profile.level === 'number' && profile.level > 0" class="dp-level-inline">
-                <LevelTag :level="profile.level" />
+                <LevelTag :level="profile.level" :vip="isVip" />
               </view>
             </view>
             <text v-if="profile.username" class="dp-username">@{{ profile.username }}</text>
@@ -173,6 +173,7 @@ import { resolveSecid, marketCharFor, type Market } from "@/utils/period";
 import { fetchSnapshot } from "@/api/quote";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
 import { useUser, userState } from "@/store/user";
+import { vipActive } from "@/store/level";
 import { useDmTarget, useCommunityUserTarget } from "@/store/community";
 import { useFollow } from "@/store/follow";
 import { goTab, openAuth, openInMarket } from "@/store/nav";
@@ -189,6 +190,8 @@ interface ProfileDetail {
   avatar_frame: string;
   level: number;
   exp: number;
+  vip: boolean;
+  vip_expires_at: string | null;
   signature: string;
   created_at: string;
   allow_dm: boolean; // 允许私信（需求 B，默认 true）
@@ -235,6 +238,8 @@ const nameText = computed(() =>
 const isSelf = computed(
   () => !!user.loggedIn && !!profile.value && profile.value.id === userState.userId
 );
+// VIP 有效态（黑金昵称 / 会员金框 / 金冠徽章共用；过期自动退回普通视觉）
+const isVip = computed(() => vipActive(profile.value?.vip, profile.value?.vip_expires_at));
 // 关注态（与社区帖子关注同源：本地持久化集合，以昵称为键）
 const { follows, toggleFollow } = useFollow();
 const following = computed(() => {
@@ -296,7 +301,7 @@ async function loadProfile() {
     }
     const { data, error } = await sb
       .from("profiles")
-      .select("id, display_name, username, avatar_url, avatar_frame, level, exp, signature, created_at, allow_dm, public_watchlist")
+      .select("id, display_name, username, avatar_url, avatar_frame, level, exp, vip, vip_expires_at, signature, created_at, allow_dm, public_watchlist")
       .eq("id", uid.value)
       .single();
     if (error || !data) {
@@ -311,6 +316,8 @@ async function loadProfile() {
       avatar_frame: data.avatar_frame || "",
       level: typeof data.level === "number" ? data.level : 0,
       exp: typeof data.exp === "number" ? data.exp : 0,
+      vip: data.vip === true,
+      vip_expires_at: typeof data.vip_expires_at === "string" ? data.vip_expires_at : null,
       signature: typeof data.signature === "string" ? data.signature : "",
       created_at: typeof data.created_at === "string" ? data.created_at : "",
       allow_dm: typeof data.allow_dm === "boolean" ? data.allow_dm : true,

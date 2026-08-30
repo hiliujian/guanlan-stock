@@ -1,7 +1,5 @@
 <template>
   <view class="lv-page">
-    <BackgroundFX />
-
     <!-- 自定义导航头（navigationStyle:custom，需自带返回） -->
     <view class="lv-head sticky-head">
       <view class="lv-back nav-back" hover-class="nav-back-hover" @click="back" role="button" aria-label="返回">
@@ -12,32 +10,35 @@
     </view>
 
     <scroll-view class="lv-scroll" scroll-y>
-      <!-- 当前状态卡：等级徽章 + 当前经验 + 升级进度 -->
-      <view class="card lv-hero anim-fade-up">
-        <view class="lv-badge" :style="badgeStyle">
-          <OutlineIcon :type="meta.icon" :size="44" :color="band.icon" />
+      <!-- 当前状态卡：勋章徽标（等级/VIP 一体化视觉）+ 经验进度 -->
+      <view class="card lv-hero anim-fade-up" :class="{ 'is-vip': isVip }">
+        <view class="lv-medal" :style="medalStyle">
+          <OutlineIcon :type="hero.icon" :size="46" :color="hero.fg" />
         </view>
         <view class="lv-hero-main">
           <view class="lv-hero-top">
-            <text class="lv-hero-name">{{ meta.name }}</text>
-            <text class="lv-hero-no">Lv.{{ meta.id }}</text>
+            <text class="lv-hero-name">{{ hero.name }}</text>
+            <text class="lv-hero-no">Lv.{{ hero.id }}</text>
+            <view v-if="isVip" class="lv-vip-chip">VIP</view>
           </view>
           <view class="lv-exp-row">
             <text class="lv-exp-lab">当前经验</text>
             <text class="lv-exp-num">{{ progress.exp }}</text>
           </view>
           <view class="lv-bar">
-            <view class="lv-bar-fill" :style="{ width: (progress.ratio * 100).toFixed(1) + '%' }" />
+            <view class="lv-bar-fill" :style="barStyle" />
           </view>
           <text class="lv-bar-tip">
             <template v-if="progress.isMax">已达最高等级 · 封顶 🎉</template>
-            <template v-else>距离 Lv.{{ meta.id + 1 }} 还需 <text class="lv-need">{{ progress.toNext }}</text> 经验</template>
+            <template v-else>距离 Lv.{{ hero.id + 1 }} 还需 <text class="lv-need">{{ progress.toNext }}</text> 经验</template>
           </text>
         </view>
       </view>
 
+      <!-- VIP 会员已独立成页（pages/profile/vip），「我的」页有横幅入口；等级页聚焦等级本身 -->
+
       <!-- 升级规则总述 -->
-      <view class="card lv-note anim-fade-up">
+      <view class="card lv-block anim-fade-up">
         <view class="lv-sec-title">
           <OutlineIcon type="info" :size="26" color="var(--primary)" />
           <text>等级与升级规则</text>
@@ -51,11 +52,7 @@
           <OutlineIcon type="fire" :size="26" color="var(--primary)" />
           <text>如何获取经验</text>
         </view>
-        <view
-          v-for="s in EXP_SOURCES"
-          :key="s.key"
-          class="lv-src"
-        >
+        <view v-for="s in EXP_SOURCES" :key="s.key" class="lv-src">
           <view class="lv-src-left">
             <text class="lv-src-label">{{ s.label }}</text>
             <text class="lv-src-desc">{{ s.desc }}</text>
@@ -67,35 +64,37 @@
         </view>
       </view>
 
-      <!-- 完整等级体系（等级划分 + 各等级权益） -->
+      <!-- 完整等级体系：纵向时间线（色带节点 + 连接线），当前级高亮 -->
       <view class="card lv-block anim-fade-up">
         <view class="lv-sec-title">
           <OutlineIcon type="trophy" :size="26" color="var(--primary)" />
           <text>等级体系</text>
         </view>
         <view
-          v-for="r in rows"
+          v-for="(r, i) in rows"
           :key="r.level"
           class="lv-tier"
-          :class="{ 'lv-tier-current': r.current, 'lv-tier-locked': !r.reached }"
+          :class="{ 'is-current': r.current, 'is-locked': !r.reached }"
         >
-          <view class="lv-tier-ic" :style="iconBoxStyle(r.band)">
-            <OutlineIcon :type="r.icon" :size="30" :color="bandColor(r.band).icon" />
+          <view class="lv-rail">
+            <view class="lv-node" :style="nodeStyle(r.level)">
+              <OutlineIcon :type="r.icon" :size="24" :color="nodeFg(r.level)" />
+            </view>
+            <view v-if="i < rows.length - 1" class="lv-rail-line" :class="{ lit: rows[i + 1].reached }" :style="railStyle(i)" />
           </view>
           <view class="lv-tier-info">
             <view class="lv-tier-name">
               <text>{{ r.name }}</text>
               <text class="lv-tier-no">Lv.{{ r.id }}</text>
+              <text v-if="r.current" class="lv-flag-current">当前</text>
             </view>
             <text class="lv-tier-range">{{ r.range.label }} 经验</text>
             <view class="lv-perks">
               <text v-for="(p, pi) in r.perks" :key="pi" class="lv-perk">· {{ p }}</text>
             </view>
           </view>
-          <view class="lv-tier-flag">
-            <text v-if="r.current" class="lv-flag lv-flag-current">当前</text>
-            <OutlineIcon v-else-if="r.reached" type="check" :size="28" :color="bandColor(r.band).icon" />
-            <text v-else class="lv-flag lv-flag-lock">未达成</text>
+          <view v-if="r.reached && !r.current" class="lv-tier-flag">
+            <OutlineIcon type="check" :size="28" :color="nodeFg(r.level)" />
           </view>
         </view>
       </view>
@@ -109,18 +108,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
-import BackgroundFX from "@/components/BackgroundFX.vue";
 import { useUser } from "@/store/user";
 import { usePageGuard } from "@/store/guard";
 import {
-  levelMeta,
-  BAND_COLORS,
+  badgeVisual,
   progressOf,
   levelLadder,
   EXP_SOURCES,
   LEVEL_RULE_NOTE,
+  vipActive,
 } from "@/store/level";
-import type { Band } from "@/store/level";
 
 const user = useUser();
 // 全局页面守卫：等级页未对游客开放 + 未登录 → 跳转登录页
@@ -134,23 +131,41 @@ const exp = computed(() => {
   const e = user.profile?.exp;
   return typeof e === "number" && e > 0 ? e : 0;
 });
+const isVip = computed(() => vipActive(user.profile?.vip, user.profile?.vip_expires_at));
 
-const meta = computed(() => levelMeta(level.value));
-const band = computed(() => BAND_COLORS[meta.value.band]);
-const badgeStyle = computed(() => ({
-  background: `linear-gradient(135deg, ${band.value.from}, ${band.value.to})`,
-}));
+// hero / 节点 / 连接线全部取自 badgeVisual：VIP 与等级徽标一套视觉体系，无第二套配色
+const hero = computed(() => badgeVisual(level.value, isVip.value));
 const progress = computed(() => progressOf(level.value, exp.value));
 const rows = computed(() => levelLadder(level.value, exp.value));
 
-function bandColor(b: Band) {
-  return BAND_COLORS[b];
+// 勋章：色带渐变圆牌 + 同色柔光外环；VIP 换金环
+const medalStyle = computed(() => ({
+  background: `linear-gradient(135deg, ${hero.value.from}, ${hero.value.to})`,
+  boxShadow: isVip.value
+    ? `0 0 0 6rpx ${hero.value.ring}, 0 8rpx 24rpx ${hero.value.ring}`
+    : `0 0 0 6rpx ${hero.value.from}2e, var(--shadow-2)`,
+}));
+
+// 进度条填充与勋章同渐变（VIP 金色），强化一体化视觉
+const barStyle = computed(() => ({
+  width: (progress.value.ratio * 100).toFixed(1) + "%",
+  background: `linear-gradient(90deg, ${hero.value.from}, ${hero.value.to})`,
+}));
+
+function nodeStyle(levelIdx: number) {
+  const b = badgeVisual(levelIdx);
+  return { background: `linear-gradient(135deg, ${b.from}, ${b.to})` };
 }
-function iconBoxStyle(b: Band) {
-  const c = BAND_COLORS[b];
-  return {
-    background: `linear-gradient(135deg, ${c.from}, ${c.to})`,
-  };
+function nodeFg(levelIdx: number) {
+  return badgeVisual(levelIdx).fg;
+}
+/** 节点连接线：下一段已达成时用相邻两级的色带渐变点亮，否则默认细线 */
+function railStyle(i: number) {
+  const next = rows.value[i + 1];
+  if (!next || !next.reached) return null;
+  const a = badgeVisual(i);
+  const b = badgeVisual(i + 1);
+  return { background: `linear-gradient(180deg, ${a.from}, ${b.from})` };
 }
 
 function back() {
@@ -174,22 +189,25 @@ function back() {
   padding: 24rpx 24rpx 0;
 }
 
-/* 当前状态 hero 卡 */
+/* 当前状态 hero 卡：勋章 + 进度 */
 .lv-hero {
   display: flex;
   align-items: center;
   gap: 26rpx;
   padding: 32rpx 28rpx;
 }
-.lv-badge {
-  width: 104rpx;
-  height: 104rpx;
-  border-radius: 28rpx;
+/* VIP 态 hero 卡：金色调描边呼应徽章 */
+.lv-hero.is-vip {
+  box-shadow: inset 0 0 0 1rpx rgba(192, 142, 14, 0.4), var(--shadow-1);
+}
+.lv-medal {
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  box-shadow: var(--shadow-2);
 }
 .lv-hero-main {
   flex: 1;
@@ -197,8 +215,8 @@ function back() {
 }
 .lv-hero-top {
   display: flex;
-  align-items: baseline;
-  gap: 16rpx;
+  align-items: center;
+  gap: 14rpx;
 }
 .lv-hero-name {
   font-size: var(--font-xl);
@@ -207,6 +225,16 @@ function back() {
 .lv-hero-no {
   font-size: var(--font-sm);
   color: var(--text-2);
+}
+.lv-vip-chip {
+  flex: none;
+  font-size: var(--font-xs);
+  line-height: 1;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  color: #43300a;
+  background: linear-gradient(135deg, #f7d27a, #c08e0e);
+  box-shadow: 0 0 0 1rpx rgba(192, 142, 14, 0.55);
 }
 .lv-exp-row {
   display: flex;
@@ -232,7 +260,6 @@ function back() {
 .lv-bar-fill {
   height: 100%;
   border-radius: 999rpx;
-  background: linear-gradient(90deg, var(--primary), var(--primary-dark, #06a050));
   transition: width 0.4s ease;
 }
 .lv-bar-tip {
@@ -246,7 +273,6 @@ function back() {
 }
 
 /* 区块通用 */
-.lv-note,
 .lv-block {
   margin-top: 20rpx;
   padding: 26rpx 28rpx;
@@ -306,37 +332,62 @@ function back() {
   color: var(--text-2);
 }
 
-/* 等级体系 */
+/* 等级体系：纵向时间线（左轨节点 + 连接线） */
 .lv-tier {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 20rpx;
-  padding: 22rpx 0;
-  border-top: 1rpx solid var(--border);
 }
-.lv-tier-current {
+.lv-tier.is-current {
   border: 2rpx solid var(--primary);
   border-radius: 18rpx;
-  padding: 20rpx 18rpx;
-  margin-top: 12rpx;
   background: var(--primary-soft, rgba(7, 193, 96, 0.12));
+  padding: 18rpx 16rpx 18rpx 6rpx;
 }
-.lv-tier-locked {
-  opacity: 0.62;
+.lv-tier.is-locked .lv-tier-info {
+  opacity: 0.55;
 }
-.lv-tier-ic {
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 18rpx;
+.lv-rail {
+  flex: none;
+  width: 48rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.lv-node {
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
+  margin-top: 4rpx;
   box-shadow: var(--shadow-1);
+}
+/* 未达成的节点整体去饱和，达成后恢复彩色 */
+.lv-tier.is-locked .lv-node {
+  filter: grayscale(1);
+  opacity: 0.5;
+}
+.lv-rail-line {
+  flex: 1;
+  width: 2rpx;
+  min-height: 26rpx;
+  margin: 6rpx 0;
+  background: var(--border);
+  border-radius: 2rpx;
+}
+.lv-rail-line.lit {
+  background: var(--border);
 }
 .lv-tier-info {
   flex: 1;
   min-width: 0;
+  padding: 4rpx 0 26rpx;
+}
+.lv-tier:last-child .lv-tier-info {
+  padding-bottom: 6rpx;
 }
 .lv-tier-name {
   display: flex;
@@ -348,6 +399,14 @@ function back() {
 .lv-tier-no {
   font-size: var(--font-xs);
   color: var(--text-2);
+}
+.lv-flag-current {
+  flex: none;
+  font-size: var(--font-xs);
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  background: var(--primary);
+  color: #fff;
 }
 .lv-tier-range {
   display: block;
@@ -368,20 +427,8 @@ function back() {
 .lv-tier-flag {
   flex: none;
   display: flex;
-  align-items: center;
-}
-.lv-flag {
-  font-size: var(--font-xs);
-  padding: 6rpx 16rpx;
-  border-radius: 999rpx;
-}
-.lv-flag-current {
-  background: var(--primary);
-  color: #fff;
-}
-.lv-flag-lock {
-  background: var(--border);
-  color: var(--text-2);
+  align-items: flex-start;
+  padding-top: 10rpx;
 }
 
 .bottom-pad {

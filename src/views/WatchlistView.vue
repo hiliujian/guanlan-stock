@@ -25,7 +25,6 @@
     </PageHeader>
 
     <view class="wl">
-      <BackgroundFX />
 
         <!-- 价格预警：命中行在自选表格内闪烁红/绿提示（见 .tr.alert-up/.alert-down），
              不再使用独立横幅卡片；清除预警请在长按菜单「编辑价格预警」中操作。 -->
@@ -431,7 +430,6 @@ import OutlineIcon from "@/components/OutlineIcon.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import PeekSheet from "@/components/PeekSheet.vue";
 import RollSwap from "@/components/RollSwap.vue";
-import BackgroundFX from "@/components/BackgroundFX.vue";
 import RankView from "@/views/RankView.vue";
 import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, applyGroupOrder, type WatchItem, type PriceAlert } from "@/store/watchlist";
 import { userState } from "@/store/user";

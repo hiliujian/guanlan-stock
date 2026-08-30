@@ -1,12 +1,15 @@
 // =====================================================================
 // 用户等级元数据（纯常量模块，无响应式状态）
 // - 等级阶梯：名称、色带(band)、徽章图标、经验阈值(expMin)
-// - 等级由后端（profiles.level 字段）决定，前端只读展示
+// - 等级由后端（profiles.level 字段）决定，前端只读展示；
+//   后端 refresh_level 阈值与本文件 TIERS.expMin 必须保持一致（改一处必改另一处）
 // - 经验值(EXP)为等级体系定义（升级所需经验），前端用于展示与进度计算；
-//   用户实际 exp 由后端 profiles.exp 维护（缺省 0）。
+//   用户实际 exp 由后端 profiles.exp 维护（缺省 0）
+// - VIP 会员（profiles.vip，官方授予）：与等级徽标一体化的金色徽章视觉，
+//   见 badgeVisual() —— 徽章渐变 / 图标 / 文案的唯一来源
 // =====================================================================
 
-export type Band = "bronze" | "silver" | "gold" | "diamond";
+type Band = "bronze" | "silver" | "gold" | "diamond";
 
 interface LevelMeta {
   id: number;
@@ -19,6 +22,8 @@ interface LevelMeta {
 
 // 等级阶梯（数组下标 = 等级序号；0 = 新手散户）
 // 经验阈值门槛：每级所需累计经验值（expMin）。perks 为该等级解锁的权益。
+// 2026-08-30 校准：整体上调约 1.5 倍，让高等级更具稀缺性与成就感；
+// 后端只升不降（refresh_level greatest 保底），已获等级不受校准影响。
 const TIERS: LevelMeta[] = [
   {
     id: 1,
@@ -33,7 +38,7 @@ const TIERS: LevelMeta[] = [
     name: "进阶散户",
     band: "bronze",
     icon: "star-filled",
-    expMin: 100,
+    expMin: 150,
     perks: ["解锁深度技术指标解读（MACD / KDJ / RSI）", "自定义自选分组", "分时与 K 线增强视图"],
   },
   {
@@ -41,7 +46,7 @@ const TIERS: LevelMeta[] = [
     name: "初级交易员",
     band: "silver",
     icon: "medal",
-    expMin: 300,
+    expMin: 450,
     perks: ["解锁行业板块解读与关联资讯", "社区发帖与评论互动", "基础风险评级提示"],
   },
   {
@@ -49,7 +54,7 @@ const TIERS: LevelMeta[] = [
     name: "中级交易员",
     band: "silver",
     icon: "medal",
-    expMin: 600,
+    expMin: 900,
     perks: ["自选股异动提醒", "多维技术研判报告", "情绪面与资金流向解读"],
   },
   {
@@ -57,7 +62,7 @@ const TIERS: LevelMeta[] = [
     name: "资深操盘手",
     band: "gold",
     icon: "trophy",
-    expMin: 1000,
+    expMin: 1600,
     perks: ["专业研报摘要速读", "无广告纯净体验", "大盘环境与板块轮动分析"],
   },
   {
@@ -65,7 +70,7 @@ const TIERS: LevelMeta[] = [
     name: "私募经理",
     band: "gold",
     icon: "trophy",
-    expMin: 2000,
+    expMin: 3000,
     perks: ["多账户 / 多标的对比", "专属客服通道", "自定义分析指标模板"],
   },
   {
@@ -73,23 +78,77 @@ const TIERS: LevelMeta[] = [
     name: "股神",
     band: "diamond",
     icon: "crown",
-    expMin: 4000,
+    expMin: 5500,
     perks: ["解锁全部高级功能", "社区「认证大 V」标识", "优先体验内测新功能"],
   },
 ];
 
-// 色带配色：仅用于等级标签 / 徽章的渐变与图标色（深 / 浅主题下均清晰可读）
+// 色带配色：仅用于等级徽章的渐变与图标色（深 / 浅主题下均清晰可读）
 interface BandColor {
   from: string;
   to: string;
   icon: string; // 与渐变搭配的文字 / 图标色（深色，保证对比度）
 }
-export const BAND_COLORS: Record<Band, BandColor> = {
+const BAND_COLORS: Record<Band, BandColor> = {
   bronze: { from: "#e8b06b", to: "#a86a2c", icon: "#3a2509" },
   silver: { from: "#eef2f7", to: "#aeb7c4", icon: "#3a4350" },
   gold: { from: "#ffe27a", to: "#d39b00", icon: "#4a3500" },
   diamond: { from: "#9bf0ff", to: "#2bb6e6", icon: "#06303a" },
 };
+
+// VIP 尊贵金：比 gold 色带更深邃的金 + 金环描边，徽章层面的最高视觉档。
+// 导出为金色视觉唯一来源（VIP 徽章 / 会员页 / 「我的」横幅均从此取色）。
+export const VIP_BADGE = {
+  from: "#f7d27a",
+  to: "#c08e0e",
+  fg: "#43300a",
+  ring: "rgba(192, 142, 14, 0.55)",
+};
+
+export interface BadgeVisual {
+  id: number; // Lv 序号（1 起）
+  name: string; // 等级完整名（徽章与等级页一致展示）
+  label: string; // 徽章文案（等级名；VIP 时为「VIP·等级名」，一体化标识）
+  icon: string; // OutlineIcon 类型；VIP 恒为金冠 crown
+  from: string; // 徽章渐变起
+  to: string; // 徽章渐变止
+  fg: string; // 徽章内文字 / 图标色
+  ring: string; // 徽章外圈描边色（VIP 金环，普通为透明）
+  vip: boolean;
+}
+
+/**
+ * 等级 / VIP 徽章视觉的唯一来源（LevelTag 与等级页 hero 均从此处取值，
+ * 保证「VIP 标识与等级图标」全局一体、不出现两套配色）。
+ */
+export function badgeVisual(level: number, vip?: boolean): BadgeVisual {
+  const meta = levelMeta(level);
+  if (vip) {
+    return {
+      id: meta.id,
+      name: meta.name,
+      label: `VIP·${meta.name}`,
+      icon: "crown",
+      from: VIP_BADGE.from,
+      to: VIP_BADGE.to,
+      fg: VIP_BADGE.fg,
+      ring: VIP_BADGE.ring,
+      vip: true,
+    };
+  }
+  const c = BAND_COLORS[meta.band];
+  return {
+    id: meta.id,
+    name: meta.name,
+    label: meta.name,
+    icon: meta.icon,
+    from: c.from,
+    to: c.to,
+    fg: c.icon,
+    ring: "transparent",
+    vip: false,
+  };
+}
 
 function clampLevel(level: number): number {
   if (!Number.isFinite(level) || level < 0) return 0;
@@ -97,7 +156,7 @@ function clampLevel(level: number): number {
   return Math.floor(level);
 }
 
-export function levelMeta(level: number): LevelMeta {
+function levelMeta(level: number): LevelMeta {
   return TIERS[clampLevel(level)] ?? TIERS[0];
 }
 
@@ -189,6 +248,37 @@ export const EXP_SOURCES: ExpSource[] = [
 
 // 升级规则要点（详情页顶部说明文字）
 export const LEVEL_RULE_NOTE =
-  "等级由累计经验值（EXP）决定：经验达到某一门槛即自动升级，不会降级。" +
-  "经验通过日常使用行为获取（见下方「升级规则」），注册并完成资料完善即可从 Lv.1 起步。";
+  "等级由累计经验值（EXP）决定：经验达到某一门槛即自动升级，等级只升不降。" +
+  "经验通过日常使用行为获取（见下方「升级规则」），注册并完成资料完善即可从 Lv.1 起步。" +
+  "门槛会不定期校准，已获等级不受校准影响。";
+
+// VIP 会员权益（叠加在等级权益之上的身份层；官方授予，与等级徽标一体化展示）
+export const VIP_PERKS = [
+  "专属金色 VIP 徽章，与等级徽标一体化展示",
+  "黑金尊贵昵称 + 会员金框头像，社区与个人主页处处彰显",
+  "优先体验内测新功能与专属活动",
+  "专属客服通道，问题优先响应",
+];
+
+// =====================================================================
+// VIP 有效期（profiles.vip_expires_at，官方授予时写入；null = 永久）
+// =====================================================================
+
+/** VIP 是否在有效期内：vip=true 且未过期（vip_expires_at 为空视为永久）。 */
+export function vipActive(vip?: boolean, vipExpiresAt?: string | null): boolean {
+  if (vip !== true) return false;
+  if (!vipExpiresAt) return true;
+  const t = new Date(vipExpiresAt).getTime();
+  return Number.isFinite(t) && t > Date.now();
+}
+
+/** VIP 有效期展示文案：「永久有效」或「YYYY-MM-DD 到期」；未开通返回空串。 */
+export function vipValidityText(vip?: boolean, vipExpiresAt?: string | null): string {
+  if (!vipActive(vip, vipExpiresAt)) return "";
+  if (!vipExpiresAt) return "永久有效";
+  const d = new Date(vipExpiresAt);
+  if (!Number.isFinite(d.getTime())) return "永久有效";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `有效期至 ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 

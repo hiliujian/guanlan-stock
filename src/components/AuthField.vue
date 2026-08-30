@@ -19,6 +19,7 @@
         placeholder-class="ph"
         @input="onInput"
         @blur="onBlur"
+        @confirm="onConfirm"
       />
       <!-- 右附（发送验证码等）：内嵌在字段右侧，与输入框融为一体 -->
       <slot name="suffix" />
@@ -57,6 +58,7 @@ const emit = defineEmits<{
   (e: "update:modelValue", v: string): void;
   (e: "input"): void;
   (e: "blur"): void;
+  (e: "confirm"): void;
 }>();
 
 const revealed = ref(false);
@@ -72,5 +74,10 @@ function onInput(e: any) {
 
 function onBlur() {
   emit("blur");
+}
+
+// 键盘确认键（H5 桌面端 = Enter）：向上抛 confirm，登录/注册/找回密码页借此实现回车快速提交
+function onConfirm() {
+  emit("confirm");
 }
 </script>

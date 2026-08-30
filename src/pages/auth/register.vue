@@ -11,6 +11,7 @@
         :error="errors.username"
         @input="onUsernameInput"
         @blur="validateUsername"
+        @confirm="submit"
       />
       <text v-if="!errors.username && usernameStatus === 'checking'" class="auth-sent-tip">正在检查用户名可用性…</text>
       <text v-else-if="!errors.username && usernameStatus === 'ok'" class="auth-ok-tip">✓ 用户名可用</text>
@@ -22,6 +23,7 @@
         placeholder="邮箱"
         :error="errors.email"
         @input="onEmailInput" @blur="validateEmail"
+        @confirm="submit"
       >
         <template #suffix>
           <view
@@ -44,6 +46,7 @@
         placeholder="邮箱验证码"
         :error="errors.code"
         @input="errors.code = ''"
+        @confirm="submit"
       />
 
       <!-- 密码 + 可见性切换 -->
@@ -55,6 +58,7 @@
         :error="errors.password"
         @input="errors.password = ''"
         @blur="validatePassword"
+        @confirm="submit"
       />
 
       <!-- 后端错误兜底（保留用户输入，仅提示） -->
@@ -221,6 +225,7 @@ async function sendCode() {
 }
 
 async function submit() {
+  if (loading.value || done.value) return; // 回车快速提交 / 连点防抖
   // 前端基础校验：邮箱格式 / 用户名规则与可用性 / 验证码非空 / 密码长度
   serverErr.value = "";
   errors.email = "";
