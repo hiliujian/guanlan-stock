@@ -1788,7 +1788,10 @@ onBeforeUnmount(() => {
   border: 1rpx solid var(--border);
   border-radius: 16rpx;
   overflow: hidden;
-  touch-action: none;
+  /* 手势分流：touch-action: pan-y —— 垂直滑动交给浏览器（页面/scroll-view 滚动），
+     水平平移与双指缩放仍由 klinecharts 处理（库 9.8 的 touchmove 已不 preventDefault，
+     此前 touch-action:none 导致图表区域垂直手势被吞、页面无法下滑）。 */
+  touch-action: pan-y;
 }
 /* 干掉分隔线 / y 轴自带的 ns-resize 拉拽光标（klinecharts SeparatorWidget 容器硬编码 cursor:'ns-resize'，
    且 size:0 仍渲染该 7px 容器）：用属性选择器精确命中内联 cursor:ns-resize 的元素，覆写为 default。
