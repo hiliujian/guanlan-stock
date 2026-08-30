@@ -702,11 +702,11 @@ function previewImage(current: string) {
   font-size: var(--font-sm);
   color: var(--primary);
 }
-/* 被回复评论摘要：单行省略，避免长评论撑高输入区 */
+/* 被回复评论摘要：与「回复」/昵称同号（--font-sm，仅以更浅的 --text-3 区分层级），单行省略避免撑高输入区 */
 .pr-quote-txt {
   flex: 1;
   min-width: 0;
-  font-size: var(--font-xs);
+  font-size: var(--font-sm);
   color: var(--text-3);
   overflow: hidden;
   text-overflow: ellipsis;
