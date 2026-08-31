@@ -28,8 +28,8 @@ const COUNT_ANON = false;
 
 /** 当前在线人数（不同 userId 数，含自己）。 */
 export const onlineCount = ref(0);
-/** 自己是否处于在线统计中（已 track）。 */
-export const imOnline = ref(false);
+/** 自己是否处于在线统计中（已 track，仅内部使用）。 */
+const imOnline = ref(false);
 /** 频道是否已订阅并同步过（用于 UI 区分加载态）。 */
 export const presenceReady = ref(false);
 

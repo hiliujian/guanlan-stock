@@ -37,7 +37,7 @@ export interface HoldingCard {
  * 单张仍按 HoldingCard 原结构存储（存量数据 & 旧客户端完全兼容）；
  * 多张时包一层 { kind: "holdings", items }，展示端统一按 unpackCards() 归一化。
  */
-export interface HoldingsCard {
+interface HoldingsCard {
   kind: "holdings";
   items: HoldingCard[];
 }
@@ -68,7 +68,7 @@ export interface Topic {
   code?: string; // 个股代码（可选）
 }
 
-export interface ReplyTarget {
+interface ReplyTarget {
   /** 被回复者昵称（展示用「回复 X」） */
   name: string;
   /** 被回复者账号 id（用于点击跳转资料页；旧数据 / 兼容态可能为 null） */

@@ -1165,6 +1165,8 @@ onActivated(() => {
   loadQuotesSafe();
   startPolling();
   loadPeek(); // 回到本页即刷新「今日最热」预览，避免展示过期的空态
+  // onDeactivated 已停轮播：回页后须重启，否则异动不再更新只能等新异动到达
+  if (anomalyList.value.length > 0) startAnomRotate();
 });
 onDeactivated(stopPolling);
 onDeactivated(stopAnomRotate);

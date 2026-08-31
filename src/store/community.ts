@@ -153,7 +153,7 @@ export function useCommunityPreset() {
 // MessageCenter 挂载时 consumeDmTarget() 读取并直接打开与该用户的会话（已有则载入历史，
 // 无则空会话待发）。读后清空，避免重复打开。
 // =====================================================================
-export interface DmTarget {
+interface DmTarget {
   otherId: string;
   otherName: string;
   otherAvatarUrl: string;

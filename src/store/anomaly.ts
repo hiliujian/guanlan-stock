@@ -200,7 +200,7 @@ let timer: any = null;
 const POLL_MS = 15000;
 
 // 一轮监测：遍历自选股快照，逐只检测（单只失败不影响其余）
-export async function monitorTick() {
+async function monitorTick() {
   clearIfNewDay();
   if (!getMarketStatus().open) return; // 休市不监测
   const wl = useWatchlist();
@@ -235,10 +235,4 @@ export function startAnomalyMonitor() {
     });
   }, POLL_MS);
   monitorTick(); // 启动即跑一次
-}
-export function stopAnomalyMonitor() {
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
-  }
 }
