@@ -12,17 +12,14 @@ import { badgeVisual } from "@/store/level";
 
 // 统一等级 / VIP 徽章：视觉（渐变 / 图标 / 文案）全部来自 store/level 的 badgeVisual()，
 // 徽章文案与等级页一致（完整等级名；VIP 为「VIP·等级名」）。
-// 形态：迷你勋章章面（圆形图标托 + 高光描边），VIP 加金环。
+// 形态：迷你勋章章面（圆形图标托），无阴影扁平化；VIP 尊贵感由擦亮动效体现（.lv-tag.vip::after）。
 const props = defineProps<{ level: number; vip?: boolean }>();
 
 const v = computed(() => badgeVisual(props.level, props.vip));
 const style = computed(() => ({
   background: `linear-gradient(135deg, ${v.value.from}, ${v.value.to})`,
   color: v.value.fg,
-  // 顶部内高光模拟章面凸起；VIP 叠加金环描边 + 金色投影
-  boxShadow: v.value.vip
-    ? `inset 0 1rpx 0 rgba(255, 255, 255, 0.5), 0 0 0 1rpx ${v.value.ring}, 0 4rpx 14rpx ${v.value.ring}`
-    : `inset 0 1rpx 0 rgba(255, 255, 255, 0.4), var(--shadow-2)`,
+  // 无 box-shadow：普通与 VIP 徽章均不带阴影（含内高光/描边环/外投影），保持干净扁平
 }));
 </script>
 
