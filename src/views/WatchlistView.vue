@@ -179,11 +179,12 @@
         <PeekSheet ref="sheet" @expand="sheetExpanded = true" @collapse="onSheetCollapse">
           <template #peek>
             <view class="peek-row" role="button" aria-label="展开底部面板">
-              <text class="peek-label">今日最热</text>
-              <!-- 热股切换时整块信息向上滚动切换（与行情页大盘卡统一特效），以 code 为 key -->
-              <RollSwap class="peek-roll" :roll-key="peek?.code ?? ''">
-                <template v-if="peek">
-                  <view class="peek-info">
+              <text class="peek-label">{{ hasAnomaly ? '盘口异动' : '今日最热' }}</text>
+              <!-- 今日最热 ↔ 盘口异动 切换，以及多异动轮播，均复用 <RollSwap>（与行情页大盘指数切换完全一致） -->
+              <RollSwap class="peek-roll" :roll-key="anomKey">
+                <!-- 无异常：今日最热（原逻辑不变） -->
+                <template v-if="!hasAnomaly">
+                  <view v-if="peek" class="peek-info">
                     <view class="peek-main">
                       <text class="peek-name">{{ peek.name }}</text>
                       <text class="peek-code">{{ peek.code }}</text>
@@ -193,8 +194,22 @@
                       <text class="peek-pct" :class="peek.pct != null ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
                     </view>
                   </view>
+                  <text v-else class="peek-empty truncate">今日暂无人气新增</text>
                 </template>
-                <text v-else class="peek-empty truncate">今日暂无人气新增</text>
+                <!-- 有异常：盘口异动卡（轮播展示各异动股），点击打开异动列表 -->
+                <template v-else>
+                  <view v-if="curAnomaly" class="peek-info anom-peek" @click.stop="openAnomalySheet">
+                    <view class="peek-main">
+                      <text class="peek-name">{{ curAnomaly.name }}</text>
+                      <text class="peek-code">{{ curAnomaly.code }}</text>
+                    </view>
+                    <view class="peek-right">
+                      <text class="anom-tag" :class="ANOMALY_META[curAnomaly.type].cls">{{ ANOMALY_META[curAnomaly.type].label }}</text>
+                      <text class="peek-price" :class="curAnomaly.chg >= 0 ? 'up' : 'down'">{{ fmtPrice(curAnomaly.price) }}</text>
+                      <text class="peek-pct" :class="curAnomaly.chg >= 0 ? 'up' : 'down'">{{ fmtPct(curAnomaly.pct) }}</text>
+                    </view>
+                  </view>
+                </template>
               </RollSwap>
               <OutlineIcon class="peek-caret" type="chevron-up" :size="20" color="var(--text-2)" />
             </view>
@@ -420,6 +435,31 @@
             </template>
           </template>
         </PeekSheet>
+
+      <!-- 盘口异动列表弹层：点击首页「盘口异动」卡片打开，展示当日所有异动股；点击单项跳转行情页 -->
+      <BottomSheet v-model="anomalySheet" title="盘口异动">
+        <view class="anom-list">
+          <view
+            v-for="a in anomalies"
+            :key="a.id"
+            class="anom-item"
+            hover-class="anom-item-hover"
+            @click="openAnomalyStock(a)"
+          >
+            <view class="anom-item-head">
+              <text class="anom-item-name">{{ a.name }}</text>
+              <text class="anom-item-code">{{ a.code }}</text>
+              <text class="anom-item-time">{{ fmtAnomTime(a.time) }}</text>
+            </view>
+            <view class="anom-item-body">
+              <text class="anom-tag" :class="ANOMALY_META[a.type].cls">{{ ANOMALY_META[a.type].label }}</text>
+              <text class="anom-item-price" :class="a.chg >= 0 ? 'up' : 'down'">{{ fmtPrice(a.price) }}</text>
+              <text class="anom-item-pct" :class="a.chg >= 0 ? 'up' : 'down'">{{ fmtPct(a.pct) }}</text>
+            </view>
+          </view>
+          <view v-if="!anomalies.length" class="anom-empty">暂无盘口异动</view>
+        </view>
+      </BottomSheet>
       </view>
   </view>
 </template>
@@ -430,16 +470,18 @@ import OutlineIcon from "@/components/OutlineIcon.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import PeekSheet from "@/components/PeekSheet.vue";
 import RollSwap from "@/components/RollSwap.vue";
+import BottomSheet from "@/components/BottomSheet.vue";
 import RankView from "@/views/RankView.vue";
 import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, applyGroupOrder, type WatchItem, type PriceAlert } from "@/store/watchlist";
 import { userState } from "@/store/user";
-import { goTab } from "@/store/nav";
+import { goTab, openInMarket } from "@/store/nav";
 import { usePageGuard } from "@/store/guard";
 import { fetchSnapshot, type SnapResult } from "@/api/quote";
 import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
 import { getMarketStatus } from "@/utils/marketStatus";
 import { fmtPrice, fmtPct, fmtSigned, fmtAmount, trendCls } from "@/utils/format";
+import { anomalies, hasAnomaly, type AnomalyRecord, ANOMALY_META } from "@/store/anomaly";
 
 // 长按操作菜单目标股（统一并入 PeekSheet 面板，替代原先独立的 ActionSheet 弹层）
 const sheetExpanded = ref(false);
@@ -488,6 +530,53 @@ async function loadPeek() {
   } catch {
     peek.value = { code: top.code, name: top.name, chg: 0, pct: null, price: null };
   }
+}
+
+// ===== 盘口异动：卡片转换(今日最热 ↔ 盘口异动) + 多异动轮播 + 列表弹层 =====
+// 动画复用 <RollSwap>（与行情页大盘指数切换完全一致：垂直滚动 360ms cubic-bezier(0.22,0.61,0.36,1)）
+const anomalySheet = ref(false);
+const anomIndex = ref(0);
+const curAnomaly = computed<AnomalyRecord | null>(() => {
+  const list = anomalies.value;
+  if (!list.length) return null;
+  return list[anomIndex.value % list.length];
+});
+// RollSwap 的 key：无异常=today，有异常=anom:<id>（多异动轮播时 key 随之变化触发滚动切换）
+const anomKey = computed(() => (curAnomaly.value ? "anom:" + curAnomaly.value.id : "today"));
+let anomTimer: any = null;
+function startAnomRotate() {
+  if (anomTimer) return;
+  anomTimer = setInterval(() => {
+    const len = anomalies.value.length;
+    if (len > 1) anomIndex.value = (anomIndex.value + 1) % len;
+  }, 3500);
+}
+function stopAnomRotate() {
+  if (anomTimer) {
+    clearInterval(anomTimer);
+    anomTimer = null;
+  }
+}
+// 出现异动即开始轮播；恢复「今日最热」时停止并复位
+watch(hasAnomaly, (h) => {
+  if (h) startAnomRotate();
+  else {
+    stopAnomRotate();
+    anomIndex.value = 0;
+  }
+});
+function openAnomalySheet() {
+  anomalySheet.value = true;
+}
+function openAnomalyStock(a: AnomalyRecord) {
+  anomalySheet.value = false;
+  openInMarket(a.code, "auto");
+  goTab("market");
+}
+function fmtAnomTime(iso: string) {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
 // 分组筛选：默认展示「全部」（含所有分组），通过右上角「分组」切换；分组名从现有自选派生
@@ -1026,8 +1115,10 @@ onActivated(() => {
   loadPeek(); // 回到本页即刷新「今日最热」预览，避免展示过期的空态
 });
 onDeactivated(stopPolling);
+onDeactivated(stopAnomRotate);
 onUnmounted(() => {
   stopPolling();
+  stopAnomRotate();
 });
 watch(
   () => userState.loggedIn,
@@ -1893,5 +1984,86 @@ function removeLp() {
   font-size: var(--font-xs);
   color: var(--text-3);
   text-align: center;
+}
+
+/* ===== 盘口异动：卡片标签 + 列表弹层 ===== */
+.anom-tag {
+  font-size: 22rpx;
+  line-height: 1;
+  padding: 5rpx 14rpx;
+  border-radius: 999rpx;
+  font-weight: 600;
+  background: var(--card-2);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.anom-tag.up {
+  background: rgba(239, 35, 42, 0.12);
+  color: var(--up);
+}
+.anom-tag.down {
+  background: rgba(9, 176, 122, 0.12);
+  color: var(--down);
+}
+.anom-tag.warn {
+  background: rgba(255, 153, 0, 0.14);
+  color: #e6930a;
+}
+.anom-peek {
+  cursor: pointer;
+}
+
+.anom-list {
+  padding: 8rpx 4rpx 24rpx;
+}
+.anom-item {
+  padding: 22rpx 20rpx;
+  border-radius: 20rpx;
+  background: var(--card);
+  margin-bottom: 14rpx;
+}
+.anom-item-hover {
+  background: var(--card-2);
+}
+.anom-item-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  margin-bottom: 10rpx;
+}
+.anom-item-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--text);
+}
+.anom-item-code {
+  font-size: 22rpx;
+  color: var(--text-3);
+}
+.anom-item-time {
+  margin-left: auto;
+  font-size: 22rpx;
+  color: var(--text-3);
+}
+.anom-item-body {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+.anom-item-price {
+  font-size: 30rpx;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.anom-item-pct {
+  font-size: 26rpx;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.anom-empty {
+  padding: 60rpx 0;
+  text-align: center;
+  color: var(--text-3);
+  font-size: var(--font-sm);
 }
 </style>

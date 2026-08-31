@@ -5,6 +5,7 @@ import { isSupabaseConfigured } from "@/config/app";
 import { initAppConfig } from "@/store/appConfig";
 import { initPageAccess } from "@/store/access";
 import { installNavGuards } from "@/store/guard";
+import { startAnomalyMonitor } from "@/store/anomaly";
 onLaunch(() => {
   // 应用启动即套用用户保存的主题（深色默认）
   initTheme();
@@ -14,6 +15,8 @@ onLaunch(() => {
   // 未授权页面 + 未登录用户 一律跳转登录页（详情见 src/store/guard.ts）
   initPageAccess();
   installNavGuards();
+  // 启动盘口异动监测（应用级心跳，开市期间轮询自选股实时快照）
+  startAnomalyMonitor();
   // 诊断：后端未配置时明确告知缺哪个环境变量，方便排查 Vercel 等托管平台的注入问题
   if (!isSupabaseConfigured) {
     console.warn(
