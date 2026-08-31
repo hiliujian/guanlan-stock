@@ -220,7 +220,6 @@ export async function monitorTick() {
 export const anomalies = computed(() =>
   state.list.slice().sort((a, b) => (a.time < b.time ? 1 : a.time > b.time ? -1 : 0))
 );
-export const hasAnomaly = computed(() => state.list.length > 0);
 
 // 应用级心跳：开市期间每 15s 跑一轮（fetchSnapshot 自带 20s TTL 限流）
 export function startAnomalyMonitor() {

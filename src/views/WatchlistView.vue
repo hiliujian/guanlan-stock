@@ -185,7 +185,7 @@
           <template #peek>
             <view class="peek-row" role="button" aria-label="展开底部面板">
               <text class="peek-label">{{ peekLabel }}</text>
-              <!-- 今日最热 ↔ 盘口/盘后异动 切换与多异动轮播，均复用 <RollSwap>（与行情页大盘指数切换动画完全一致）；
+              <!-- 今日最热 ↔ 今日异动 切换与多异动轮播，均复用 <RollSwap>（与行情页大盘指数切换动画完全一致）；
                    异动轮播滚动完所有提示后回到「今日最热」slide 再循环 -->
               <RollSwap class="peek-roll" :roll-key="anomKey">
                 <!-- 今日最热 slide：点击展开榜单面板（PeekSheet 原生折叠→半屏→铺满→下拉收回） -->
@@ -233,29 +233,29 @@
               </scroll-view>
             </template>
 
-            <!-- 盘口/盘后异动列表：与榜单/分组同窗体（同一 PeekSheet），展开即半屏，上拉铺满、下拉收回，交互完全一致 -->
+            <!-- 今日异动列表：与榜单/分组同窗体（同一 PeekSheet），展开即半屏，上拉铺满、下拉收回，交互完全一致 -->
             <template v-else-if="activePanel === 'anomaly'">
               <view class="panel-head grp-head">
-                <text class="sheet-title">{{ peekLabel }}列表</text>
+                <text class="sheet-title">今日异动列表</text>
               </view>
               <scroll-view class="anom-body" scroll-y>
                 <view
                   v-for="a in anomalyList"
                   :key="a.id"
                   class="anom-item"
-                  :class="a.chg > 0 ? 'up' : a.chg < 0 ? 'down' : ''"
                   hover-class="anom-item-hover"
+                  role="button"
+                  :aria-label="a.name + ' ' + ANOMALY_META[a.type].label"
                   @click="openAnomalyStock(a)"
                 >
-                  <view class="anom-bar"></view>
-                  <text class="anom-item-name">{{ a.name }}</text>
-                  <text class="anom-item-code">{{ a.code }}</text>
                   <text class="anom-tag" :class="ANOMALY_META[a.type].cls">{{ ANOMALY_META[a.type].label }}</text>
-                  <view class="anom-item-right">
-                    <text class="anom-item-price" :class="a.chg > 0 ? 'up' : a.chg < 0 ? 'down' : ''">{{ fmtPrice(a.price) }}</text>
-                    <text class="anom-item-pct" :class="a.chg > 0 ? 'up' : a.chg < 0 ? 'down' : ''">{{ fmtPct(a.pct) }}</text>
-                    <text class="anom-item-time">{{ fmtAnomTime(a.time) }}</text>
+                  <text class="anom-name truncate">{{ a.name }}</text>
+                  <text class="anom-code">{{ a.code }}</text>
+                  <view class="anom-nums">
+                    <text class="anom-price" :class="a.chg > 0 ? 'up' : a.chg < 0 ? 'down' : ''">{{ fmtPrice(a.price) }}</text>
+                    <text class="anom-pct" :class="a.chg > 0 ? 'up' : a.chg < 0 ? 'down' : ''">{{ fmtPct(a.pct) }}</text>
                   </view>
+                  <text class="anom-time">{{ fmtAnomTime(a.time) }}</text>
                 </view>
                 <view v-if="!anomalyList.length" class="anom-empty">暂无异动</view>
               </scroll-view>
@@ -541,7 +541,7 @@ async function loadPeek() {
   }
 }
 
-// ===== 盘口/盘后异动：卡片转换(今日最热 ↔ 异动) + 多异动轮播 + 列表（同窗体面板） =====
+// ===== 今日异动：卡片转换(今日最热 ↔ 今日异动) + 多异动轮播 + 列表（同窗体面板） =====
 // 复用 PeekSheet + .peek-row 同一套底部卡片（与行情页指数卡、自选页热榜卡同源），
 // 切换/轮播动画复用 <RollSwap>（与行情页大盘指数切换完全一致：垂直滚动 360ms cubic-bezier(0.22,0.61,0.36,1)）；
 // 异动列表作为 PeekSheet 内的独立面板（activePanel='anomaly'），展开即半屏，上拉铺满、下拉收回，交互与其他卡片完全一致。
@@ -549,27 +549,27 @@ async function loadPeek() {
 type AnomSlide =
   | { kind: "today" }
   | { kind: "anom"; rec: AnomalyRecord };
-// 仅展示当前账号自选股相关异动：过滤掉自选列表已不存在的股票（避免移除自选后残留旧异动）
 const myCodes = computed(() => new Set(wl.items.map((it) => it.code)));
 const anomalyList = computed(() => anomalies.value.filter((a) => myCodes.value.has(a.code)));
 const hasAnomaly = computed(() => anomalyList.value.length > 0);
-// 轮播序列：异动在前，末尾始终补「今日最热」slide；所有异动提示滚动完即回到今日最热再循环。
-// 无异常时序列仅含今日最热 slide，卡片即恢复「今日最热」内容。
+// 使用快照避免轮播过程中异动列表更新导致 today slide 索引漂移。
+// 每次 watch 触发（列表从空→有 / 从有→空）都会重新冻结快照，保证 today slide 恒在首位：
+// 循环顺序 = 今日最热 → 异动1..N → 今日最热 → …（无异动时 len=1，轮播守卫不切走，恒显今日最热）。
+let anomSlideSnapshot: AnomalyRecord[] = [];
 const anomSlides = computed<AnomSlide[]>(() => {
-  const arr: AnomSlide[] = anomalyList.value.map((rec) => ({ kind: "anom", rec }));
-  arr.push({ kind: "today" });
+  const arr: AnomSlide[] = [{ kind: "today" }];
+  for (const rec of anomSlideSnapshot) arr.push({ kind: "anom", rec });
   return arr;
 });
 const anomIndex = ref(0);
 const curSlide = computed<AnomSlide | null>(() =>
   anomSlides.value.length ? anomSlides.value[anomIndex.value % anomSlides.value.length] : null
 );
-// 卡片标题：无异常=今日最热；交易时段=盘口异动；休市=今日异动（同一卡片、同一数据源 anomalyList，
-// 列表恒为当日盘中异动——收盘后监测停止不再产生新异动，故休市态禁用「盘后异动」以免与该盘中时间戳矛盾）
-const peekLabel = computed(() => {
-  if (!hasAnomaly.value) return "今日最热";
-  return getMarketStatus().open ? "盘口异动" : "今日异动";
-});
+// 折叠卡标题随当前 slide 切换：今日最热 ↔ 今日异动
+const ANOM_LABEL = "今日异动";
+const peekLabel = computed(() =>
+  curSlide.value && curSlide.value.kind === "anom" ? ANOM_LABEL : "今日最热"
+);
 // RollSwap 的 key：今日最热=today，异动=anom:<id>（轮播时 key 变化触发垂直滚动切换）
 const anomKey = computed(() => {
   const s = curSlide.value;
@@ -577,6 +577,8 @@ const anomKey = computed(() => {
 });
 let anomTimer: any = null;
 function startAnomRotate() {
+  // 每次启动/重启都重新冻结快照，确保 today slide 索引稳定在首位
+  anomSlideSnapshot = anomalyList.value.slice();
   if (anomTimer) return;
   anomTimer = setInterval(() => {
     const len = anomSlides.value.length;
@@ -589,18 +591,12 @@ function stopAnomRotate() {
     anomTimer = null;
   }
 }
-// 异动存在即轮播（含启动即已有异动的情况，故用 immediate 监听），确保所有提示滚动完回到今日最热；
-// 恢复「今日最热」时停止并复位
 watch(
   anomalyList,
   (list) => {
     if (list.length > 0) startAnomRotate();
-    else {
-      stopAnomRotate();
-      anomIndex.value = 0;
-    }
-  },
-  { immediate: true }
+    else { stopAnomRotate(); anomIndex.value = 0; }
+  }
 );
 function onSheetExpand() {
   // 展开即半屏（PeekSheet 原生行为）
@@ -2056,11 +2052,13 @@ function removeLp() {
   text-align: center;
 }
 
-/* ===== 盘口异动：卡片标签 + 列表弹层 ===== */
+/* ===== 今日异动：类型标签 + 扁平列表（与列设置/分组面板同一设计语言） ===== */
+/* 类型标签：统一字号胶囊，涨红/跌绿/放量橙（ANOMALY_META.cls 复用全局涨跌配色） */
 .anom-tag {
+  flex: none;
   font-size: var(--font-sm);
   line-height: 1;
-  padding: 5rpx 14rpx;
+  padding: 5rpx 12rpx;
   border-radius: 999rpx;
   background: var(--card-2);
   color: var(--text-2);
@@ -2078,86 +2076,72 @@ function removeLp() {
   background: rgba(255, 153, 0, 0.14);
   color: #e6930a;
 }
+/* 列表内标签：字号与股票名称一致（底部卡片用全局 --font-sm） */
+.anom-item .anom-tag {
+  font-size: var(--font-md);
+  padding: 6rpx 14rpx;
+}
 
 .anom-body {
   flex: 1;
   min-height: 0;
-  padding: 8rpx 4rpx 16rpx;
+  padding: 4rpx 0 16rpx;
 }
+/* 扁平行：全宽、无边框、按压泛灰（同 col-item/grp-item）。统一字号 */
 .anom-item {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: 10rpx;
-  padding: 14rpx 16rpx 14rpx 18rpx;
-  border-radius: 20rpx;
-  background: var(--card);
-  margin-bottom: 8rpx;
-  min-width: 0;
+  gap: 12rpx;
+  min-height: 88rpx;
+  padding: 0 26rpx;
+  cursor: pointer;
+  transition: background 0.12s ease;
 }
 .anom-item-hover {
   background: var(--card-2);
 }
-.anom-bar {
-  flex: none;
-  width: 6rpx;
-  height: 38rpx;
-  border-radius: 6rpx;
-  background: var(--text-3);
-}
-.anom-item.up .anom-bar { background: var(--up); }
-.anom-item.down .anom-bar { background: var(--down); }
-.anom-item-name {
-  flex: 1 1 auto;
+.anom-name {
+  flex: 0 1 auto;
   min-width: 0;
-  font-size: 30rpx;
-  font-weight: 600;
+  font-size: var(--font-md);
   color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-.anom-item-code {
+.anom-code {
   flex: none;
-  font-size: 22rpx;
+  font-size: var(--font-md);
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
-.anom-item-right {
+.anom-nums {
   flex: none;
+  margin-left: auto;
   display: flex;
   align-items: baseline;
-  gap: 12rpx;
-}
-.anom-item-price {
-  font-size: 30rpx;
-  font-weight: 600;
+  gap: 10rpx;
   font-variant-numeric: tabular-nums;
 }
-.anom-item-pct {
-  font-size: 24rpx;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  padding: 2rpx 12rpx;
-  border-radius: 999rpx;
+.anom-price {
+  font-size: var(--font-md);
 }
-.anom-item-time {
+.anom-pct {
+  font-size: var(--font-md);
+}
+.anom-time {
   flex: none;
-  font-size: 22rpx;
+  margin-left: 6rpx;
+  font-size: var(--font-md);
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
 /* 涨跌配色：涨=红(--up) / 跌=绿(--down)，平盘不着色 */
-.anom-item-price.up,
-.anom-item-pct.up { color: var(--up); }
-.anom-item-price.down,
-.anom-item-pct.down { color: var(--down); }
-.anom-item-pct.up { background: rgba(239, 35, 42, 0.12); }
-.anom-item-pct.down { background: rgba(9, 176, 122, 0.12); }
+.anom-price.up,
+.anom-pct.up { color: var(--up); }
+.anom-price.down,
+.anom-pct.down { color: var(--down); }
 .anom-empty {
   padding: 60rpx 0;
   text-align: center;
   color: var(--text-3);
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
 }
 </style>
