@@ -230,7 +230,7 @@
 
             <!-- 盘口/盘后异动列表：与榜单/分组同窗体（同一 PeekSheet），展开即半屏，上拉铺满、下拉收回，交互完全一致 -->
             <template v-else-if="activePanel === 'anomaly'">
-              <view class="panel-head">
+              <view class="panel-head grp-head">
                 <text class="sheet-title">{{ peekLabel }}列表</text>
               </view>
               <scroll-view class="anom-body" scroll-y>
@@ -243,6 +243,7 @@
                 >
                   <view class="anom-item-head">
                     <text class="anom-item-name">{{ a.name }}</text>
+                    <text class="mkt-tag">{{ marketTag(a.market) }}</text>
                     <text class="anom-item-code">{{ a.code }}</text>
                     <text class="anom-item-time">{{ fmtAnomTime(a.time) }}</text>
                   </view>
@@ -605,6 +606,17 @@ function onSheetExpand() {
 function openAnomalyStock(a: AnomalyRecord) {
   openInMarket(a.code, "auto");
   goTab("market");
+}
+// 股票市场标签：沪深港京美（与折叠卡/行情页一致）
+function marketTag(m?: string): string {
+  switch (m) {
+    case "sh": return "沪";
+    case "sz": return "深";
+    case "bj": return "京";
+    case "hk": return "港";
+    case "us": return "美";
+    default: return "";
+  }
 }
 function fmtAnomTime(iso: string) {
   const d = new Date(iso);
@@ -2057,6 +2069,15 @@ function removeLp() {
 .anom-item-hover {
   background: var(--card-2);
 }
+.mkt-tag {
+  flex: none;
+  font-size: 20rpx;
+  line-height: 1;
+  padding: 4rpx 9rpx;
+  border-radius: 6rpx;
+  background: var(--card-2);
+  color: var(--text-2);
+}
 .anom-item-head {
   display: flex;
   align-items: center;
@@ -2064,7 +2085,7 @@ function removeLp() {
   margin-bottom: 4rpx;
 }
 .anom-item-name {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   font-size: var(--font-sm);
   color: var(--text);
@@ -2077,7 +2098,6 @@ function removeLp() {
   color: var(--text-3);
 }
 .anom-item-time {
-  margin-left: auto;
   font-size: var(--font-sm);
   color: var(--text-3);
 }
