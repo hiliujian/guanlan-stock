@@ -252,7 +252,7 @@
                     <text class="anom-item-pct" :class="a.chg >= 0 ? 'up' : 'down'">{{ fmtPct(a.pct) }}</text>
                   </view>
                 </view>
-                <view v-if="!anomalyList.length" class="anom-empty">暂无盘口异动</view>
+                <view v-if="!anomalyList.length" class="anom-empty">暂无异动</view>
               </scroll-view>
             </template>
 
@@ -559,10 +559,11 @@ const anomIndex = ref(0);
 const curSlide = computed<AnomSlide | null>(() =>
   anomSlides.value.length ? anomSlides.value[anomIndex.value % anomSlides.value.length] : null
 );
-// 卡片标题：无异常=今日最热；交易时段=盘口异动；休市=盘后异动（同一卡片、同一数据源 anomalyList）
+// 卡片标题：无异常=今日最热；交易时段=盘口异动；休市=今日异动（同一卡片、同一数据源 anomalyList，
+// 列表恒为当日盘中异动——收盘后监测停止不再产生新异动，故休市态禁用「盘后异动」以免与该盘中时间戳矛盾）
 const peekLabel = computed(() => {
   if (!hasAnomaly.value) return "今日最热";
-  return getMarketStatus().open ? "盘口异动" : "盘后异动";
+  return getMarketStatus().open ? "盘口异动" : "今日异动";
 });
 // RollSwap 的 key：今日最热=today，异动=anom:<id>（轮播时 key 变化触发垂直滚动切换）
 const anomKey = computed(() => {
@@ -2020,7 +2021,7 @@ function removeLp() {
 
 /* ===== 盘口异动：卡片标签 + 列表弹层 ===== */
 .anom-tag {
-  font-size: 22rpx;
+  font-size: var(--font-sm);
   line-height: 1;
   padding: 5rpx 14rpx;
   border-radius: 999rpx;
@@ -2044,13 +2045,14 @@ function removeLp() {
 .anom-body {
   flex: 1;
   min-height: 0;
-  padding: 8rpx 4rpx 24rpx;
+  padding: 8rpx 4rpx 16rpx;
 }
 .anom-item {
-  padding: 22rpx 20rpx;
+  padding: 10rpx 14rpx;
   border-radius: 20rpx;
   background: var(--card);
-  margin-bottom: 14rpx;
+  margin-bottom: 8rpx;
+  line-height: 1.3;
 }
 .anom-item-hover {
   background: var(--card-2);
@@ -2059,11 +2061,16 @@ function removeLp() {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  margin-bottom: 10rpx;
+  margin-bottom: 4rpx;
 }
 .anom-item-name {
+  flex: 1;
+  min-width: 0;
   font-size: var(--font-sm);
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .anom-item-code {
   font-size: var(--font-sm);

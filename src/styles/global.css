@@ -960,6 +960,8 @@ html.ps-lock body {
   min-width: 0;
   display: flex;
   align-items: center;
+  /* 移除沪深港标签后名称与代码直接相邻，这里补回间距（原标签盒子提供的视觉间隔） */
+  gap: 10rpx;
   overflow: hidden;
 }
 /* 名称：超长省略号截断 */
