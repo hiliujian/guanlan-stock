@@ -603,9 +603,15 @@ watch(
   { immediate: true }
 );
 function onSheetExpand() {
-  // 展开即半屏（PeekSheet 原生行为）；有异动则默认展示异动列表面板，与今日最热卡同源同交互
+  // 展开即半屏（PeekSheet 原生行为）
   sheetExpanded.value = true;
-  activePanel.value = hasAnomaly.value ? "anomaly" : "rank";
+  // 仅当用户从折叠态手势展开（activePanel 仍为闲置的 rank）时，才套用默认面板：
+  // 有异动则默认展示异动列表面板，与今日最热卡同源同交互。
+  // 若是 openCols / openGroups 等程序化展开，调用方已先行设定 activePanel（'cols'/'group'），
+  // 此处不可覆盖，否则会出现「点设置列却弹出异动列表」的回归。
+  if (activePanel.value === "rank") {
+    activePanel.value = hasAnomaly.value ? "anomaly" : "rank";
+  }
 }
 function openAnomalyStock(a: AnomalyRecord) {
   openInMarket(a.code, "auto");
