@@ -10,16 +10,18 @@ import { computed } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import { badgeVisual } from "@/store/level";
 
-// 统一等级 / VIP 徽章：视觉（渐变 / 图标 / 文案）全部来自 store/level 的 badgeVisual()，
+// 统一等级 / VIP 徽章：视觉（渐变 / 图标 / 文案 / 投影）全部来自 store/level 的 badgeVisual()，
 // 徽章文案与等级页一致（完整等级名；VIP 为「VIP·等级名」）。
-// 形态：迷你勋章章面（圆形图标托），无阴影扁平化；VIP 尊贵感由擦亮动效体现（.lv-tag.vip::after）。
+// 形态：迷你勋章章面（圆形图标托），微微投影增加浮起感；VIP 为金色光晕投影；
+// VIP 尊贵感另由擦亮动效体现（.lv-tag.vip::after）。
 const props = defineProps<{ level: number; vip?: boolean }>();
 
 const v = computed(() => badgeVisual(props.level, props.vip));
 const style = computed(() => ({
   background: `linear-gradient(135deg, ${v.value.from}, ${v.value.to})`,
   color: v.value.fg,
-  // 无 box-shadow：普通与 VIP 徽章均不带阴影（含内高光/描边环/外投影），保持干净扁平
+  // VIP 金色光晕投影取色 badgeVisual.ring（金环色复用为光晕色）
+  "--lv-glow": v.value.ring,
 }));
 </script>
 
@@ -30,6 +32,7 @@ const style = computed(() => ({
   gap: 6rpx;
   padding: 4rpx 16rpx 4rpx 5rpx;
   border-radius: 999rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.12);
   font-size: var(--font-xs);
   line-height: 1.2;
   vertical-align: middle;
@@ -45,11 +48,13 @@ const style = computed(() => ({
   flex: none;
   background: rgba(0, 0, 0, 0.14);
 }
-/* VIP 档：金色字距，突出尊贵感；「擦亮」高光 10s 一次（一道金光缓慢扫过：6s 静止 → 3s 慢扫，其余时间无动画） */
+/* VIP 档：金色字距 + 金色光晕投影（取色 badgeVisual.ring），突出尊贵感；
+   「擦亮」高光 10s 一次（一道金光缓慢扫过：6s 静止 → 3s 慢扫，其余时间无动画） */
 .lv-tag.vip {
   letter-spacing: 1rpx;
   position: relative;
   overflow: hidden;
+  box-shadow: 0 2rpx 8rpx var(--lv-glow, rgba(192, 142, 14, 0.55));
 }
 .lv-tag.vip::after {
   content: "";
