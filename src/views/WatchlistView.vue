@@ -42,25 +42,12 @@
         </view>
 
         <!-- 自选股表格：全屏铺满 + 固定表头 + 名称列固定(横滑不丢) + 横向滚动 -->
-        <scroll-view v-if="rows.length" class="wl-grid" scroll-x scroll-y>
+        <view v-if="rows.length" class="wl-wrap">
+        <scroll-view class="wl-grid" scroll-x scroll-y>
           <view class="wl-rows">
           <view class="wl-thead">
-            <view class="th c-name">
-              <view class="th-cols" :class="{ on: reorderMode || activePanel === 'cols' }">
-                <view
-                  class="th-ic grip"
-                  :class="{ on: reorderMode }"
-                  role="button"
-                  aria-label="拖拽排序"
-                  @click="toggleReorder"
-                >
-                  <OutlineIcon type="grip" :size="28" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
-                </view>
-                <view class="th-ic" :class="{ on: activePanel === 'cols' }" role="button" aria-label="列设置" @click="openCols">
-                  <OutlineIcon type="columns" :size="28" :color="activePanel === 'cols' ? 'var(--primary)' : 'var(--text-3)'" />
-                </view>
-              </view>
-            </view>
+            <!-- 名称列表头：仅占位(固定列左上角)。排序/列设置按钮已移至滚动容器外的 .wl-cols-overlay，避免横滑 scroll-view 吞掉点击 -->
+            <view class="th c-name"></view>
             <view v-if="cols.price" class="th c-price" :class="{ active: sortKey === 'price' }" @click="toggleSort('price')">
               <text class="th-label">最新价</text>
               <view class="sort-ic">
@@ -172,6 +159,24 @@
           </view>
           </view>
         </scroll-view>
+        <!-- 排序/列设置控制按钮：移出 scroll-x 滚动容器，定位覆盖在名称列固定表头左上角，杜绝横滑吞点击 -->
+        <view class="wl-cols-overlay">
+          <view class="th-cols" :class="{ on: reorderMode || activePanel === 'cols' }">
+            <view
+              class="th-ic grip"
+              :class="{ on: reorderMode }"
+              role="button"
+              aria-label="拖拽排序"
+              @click="toggleReorder"
+            >
+              <OutlineIcon type="grip" :size="28" :color="reorderMode ? 'var(--primary)' : 'var(--text-3)'" />
+            </view>
+            <view class="th-ic" :class="{ on: activePanel === 'cols' }" role="button" aria-label="列设置" @click="openCols">
+              <OutlineIcon type="columns" :size="28" :color="activePanel === 'cols' ? 'var(--primary)' : 'var(--text-3)'" />
+            </view>
+          </view>
+        </view>
+        </view>
 
         <!-- 统一底部窗体：固定常驻于菜单栏上方(始终可见)，折叠露出「今日最热」卡片；
              展开后按 activePanel 切换 榜单 / 我的分组 / 显示列 三种内容；
@@ -241,16 +246,15 @@
                   hover-class="anom-item-hover"
                   @click="openAnomalyStock(a)"
                 >
-                  <view class="anom-item-head">
+                  <view class="anom-item-row">
                     <text class="anom-item-name">{{ a.name }}</text>
-                    <text class="mkt-tag">{{ marketTag(a.market) }}</text>
                     <text class="anom-item-code">{{ a.code }}</text>
                     <text class="anom-item-time">{{ fmtAnomTime(a.time) }}</text>
-                  </view>
-                  <view class="anom-item-body">
-                    <text class="anom-tag" :class="ANOMALY_META[a.type].cls">{{ ANOMALY_META[a.type].label }}</text>
-                    <text class="anom-item-price" :class="a.chg >= 0 ? 'up' : 'down'">{{ fmtPrice(a.price) }}</text>
-                    <text class="anom-item-pct" :class="a.chg >= 0 ? 'up' : 'down'">{{ fmtPct(a.pct) }}</text>
+                    <view class="anom-item-right">
+                      <text class="anom-tag" :class="ANOMALY_META[a.type].cls">{{ ANOMALY_META[a.type].label }}</text>
+                      <text class="anom-item-price" :class="a.chg > 0 ? 'up' : a.chg < 0 ? 'down' : ''">{{ fmtPrice(a.price) }}</text>
+                      <text class="anom-item-pct" :class="a.chg > 0 ? 'up' : a.chg < 0 ? 'down' : ''">{{ fmtPct(a.pct) }}</text>
+                    </view>
                   </view>
                 </view>
                 <view v-if="!anomalyList.length" class="anom-empty">暂无异动</view>
@@ -606,17 +610,6 @@ function onSheetExpand() {
 function openAnomalyStock(a: AnomalyRecord) {
   openInMarket(a.code, "auto");
   goTab("market");
-}
-// 股票市场标签：沪深港京美（与折叠卡/行情页一致）
-function marketTag(m?: string): string {
-  switch (m) {
-    case "sh": return "沪";
-    case "sz": return "深";
-    case "bj": return "京";
-    case "hk": return "港";
-    case "us": return "美";
-    default: return "";
-  }
 }
 function fmtAnomTime(iso: string) {
   const d = new Date(iso);
@@ -1472,6 +1465,32 @@ function removeLp() {
   width: 100%;
   background: var(--bg-2);
 }
+/* 表格外层：相对定位容器，承载滚动表格 + 列控制浮层；列控制按钮已移出 scroll-x 容器 */
+.wl-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 排序/列设置控制按钮浮层：脱离 scroll-x 滚动容器，固定在名称列固定表头左上角，
+   杜绝横滑 scroll-view 吞掉点击（openCols 与 openGroups 同机制，后者在 scroll-view 外即可正常弹出） */
+.wl-cols-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 30;
+  width: 200rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  padding: 0 16rpx 0 18rpx;
+  background: var(--bg-2);
+  pointer-events: none;
+}
+.wl-cols-overlay .th-ic {
+  pointer-events: auto;
+}
 /* scroll-view 真实内容容器：H5 下为 .uni-scroll-view-content，组件默认 height:100%。
    这里改 height:auto + min-height:100% 并设为纵向 flex：
    - 内容不足一屏：容器撑满视口高，数据行从顶部依次排列，空白自然落在末行与底部卡片之间；
@@ -2064,28 +2083,18 @@ function removeLp() {
   border-radius: 20rpx;
   background: var(--card);
   margin-bottom: 8rpx;
-  line-height: 1.3;
 }
 .anom-item-hover {
   background: var(--card-2);
 }
-.mkt-tag {
-  flex: none;
-  font-size: 20rpx;
-  line-height: 1;
-  padding: 4rpx 9rpx;
-  border-radius: 6rpx;
-  background: var(--card-2);
-  color: var(--text-2);
-}
-.anom-item-head {
+.anom-item-row {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  margin-bottom: 4rpx;
+  min-width: 0;
 }
 .anom-item-name {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
   font-size: var(--font-sm);
   color: var(--text);
@@ -2094,14 +2103,17 @@ function removeLp() {
   text-overflow: ellipsis;
 }
 .anom-item-code {
+  flex: none;
   font-size: var(--font-sm);
   color: var(--text-3);
 }
 .anom-item-time {
+  flex: none;
   font-size: var(--font-sm);
   color: var(--text-3);
 }
-.anom-item-body {
+.anom-item-right {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 14rpx;
@@ -2114,6 +2126,11 @@ function removeLp() {
   font-size: var(--font-sm);
   font-variant-numeric: tabular-nums;
 }
+/* 涨跌配色：涨=红(--up) / 跌=绿(--down)，平盘不着色 */
+.anom-item-price.up,
+.anom-item-pct.up { color: var(--up); }
+.anom-item-price.down,
+.anom-item-pct.down { color: var(--down); }
 .anom-empty {
   padding: 60rpx 0;
   text-align: center;
