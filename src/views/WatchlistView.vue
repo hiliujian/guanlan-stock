@@ -188,7 +188,6 @@
                   <view v-if="peek" class="peek-info">
                     <view class="peek-main">
                       <text class="peek-name">{{ peek.name }}</text>
-                      <text class="mkt-tag">{{ marketTag(peek.market) }}</text>
                       <text class="peek-code">{{ peek.code }}</text>
                     </view>
                     <view class="peek-right">
@@ -203,7 +202,6 @@
                   <view class="peek-info">
                     <view class="peek-main">
                       <text class="peek-name">{{ curSlide.rec.name }}</text>
-                      <text class="mkt-tag">{{ marketTag(curSlide.rec.market) }}</text>
                       <text class="peek-code">{{ curSlide.rec.code }}</text>
                     </view>
                     <view class="peek-right">
@@ -237,7 +235,7 @@
               </view>
               <scroll-view class="anom-body" scroll-y>
                 <view
-                  v-for="a in anomalies"
+                  v-for="a in anomalyList"
                   :key="a.id"
                   class="anom-item"
                   hover-class="anom-item-hover"
@@ -245,7 +243,6 @@
                 >
                   <view class="anom-item-head">
                     <text class="anom-item-name">{{ a.name }}</text>
-                    <text class="mkt-tag">{{ marketTag(a.market) }}</text>
                     <text class="anom-item-code">{{ a.code }}</text>
                     <text class="anom-item-time">{{ fmtAnomTime(a.time) }}</text>
                   </view>
@@ -255,7 +252,7 @@
                     <text class="anom-item-pct" :class="a.chg >= 0 ? 'up' : 'down'">{{ fmtPct(a.pct) }}</text>
                   </view>
                 </view>
-                <view v-if="!anomalies.length" class="anom-empty">暂无盘口异动</view>
+                <view v-if="!anomalyList.length" class="anom-empty">暂无盘口异动</view>
               </scroll-view>
             </template>
 
@@ -488,7 +485,7 @@ import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
 import { getMarketStatus } from "@/utils/marketStatus";
 import { fmtPrice, fmtPct, fmtSigned, fmtAmount, trendCls } from "@/utils/format";
-import { anomalies, hasAnomaly, type AnomalyRecord, ANOMALY_META } from "@/store/anomaly";
+import { anomalies, type AnomalyRecord, ANOMALY_META } from "@/store/anomaly";
 
 // 长按操作菜单目标股（统一并入 PeekSheet 面板，替代原先独立的 ActionSheet 弹层）
 const sheetExpanded = ref(false);
@@ -518,7 +515,6 @@ const rankTab = ref<"today" | "all">("today");
 interface PeekRow {
   code: string;
   name: string;
-  market?: string;
   chg: number;
   pct: number | null;
   price: number | null;
@@ -534,9 +530,9 @@ async function loadPeek() {
   const secid = resolveSecid(top.code, top.market as any);
   try {
     const s = await fetchSnapshot(secid);
-    peek.value = { code: top.code, name: top.name, market: top.market, chg: s.chg, pct: s.pct, price: s.price };
+    peek.value = { code: top.code, name: top.name, chg: s.chg, pct: s.pct, price: s.price };
   } catch {
-    peek.value = { code: top.code, name: top.name, market: top.market, chg: 0, pct: null, price: null };
+    peek.value = { code: top.code, name: top.name, chg: 0, pct: null, price: null };
   }
 }
 
@@ -544,13 +540,18 @@ async function loadPeek() {
 // 复用 PeekSheet + .peek-row 同一套底部卡片（与行情页指数卡、自选页热榜卡同源），
 // 切换/轮播动画复用 <RollSwap>（与行情页大盘指数切换完全一致：垂直滚动 360ms cubic-bezier(0.22,0.61,0.36,1)）；
 // 异动列表作为 PeekSheet 内的独立面板（activePanel='anomaly'），展开即半屏，上拉铺满、下拉收回，交互与其他卡片完全一致。
+// 数据严格限定为当前登录账号自选股范围内的异动（剔除已移出自选列表的股票残留记录）。
 type AnomSlide =
   | { kind: "today" }
   | { kind: "anom"; rec: AnomalyRecord };
+// 仅展示当前账号自选股相关异动：过滤掉自选列表已不存在的股票（避免移除自选后残留旧异动）
+const myCodes = computed(() => new Set(wl.items.map((it) => it.code)));
+const anomalyList = computed(() => anomalies.value.filter((a) => myCodes.value.has(a.code)));
+const hasAnomaly = computed(() => anomalyList.value.length > 0);
 // 轮播序列：异动在前，末尾始终补「今日最热」slide；所有异动提示滚动完即回到今日最热再循环。
 // 无异常时序列仅含今日最热 slide，卡片即恢复「今日最热」内容。
 const anomSlides = computed<AnomSlide[]>(() => {
-  const arr: AnomSlide[] = anomalies.value.map((rec) => ({ kind: "anom", rec }));
+  const arr: AnomSlide[] = anomalyList.value.map((rec) => ({ kind: "anom", rec }));
   arr.push({ kind: "today" });
   return arr;
 });
@@ -582,14 +583,19 @@ function stopAnomRotate() {
     anomTimer = null;
   }
 }
-// 出现异动即开始轮播；恢复「今日最热」时停止并复位
-watch(hasAnomaly, (h) => {
-  if (h) startAnomRotate();
-  else {
-    stopAnomRotate();
-    anomIndex.value = 0;
-  }
-});
+// 异动存在即轮播（含启动即已有异动的情况，故用 immediate 监听），确保所有提示滚动完回到今日最热；
+// 恢复「今日最热」时停止并复位
+watch(
+  anomalyList,
+  (list) => {
+    if (list.length > 0) startAnomRotate();
+    else {
+      stopAnomRotate();
+      anomIndex.value = 0;
+    }
+  },
+  { immediate: true }
+);
 function onSheetExpand() {
   // 展开即半屏（PeekSheet 原生行为）；有异动则默认展示异动列表面板，与今日最热卡同源同交互
   sheetExpanded.value = true;
@@ -598,17 +604,6 @@ function onSheetExpand() {
 function openAnomalyStock(a: AnomalyRecord) {
   openInMarket(a.code, "auto");
   goTab("market");
-}
-// 股票市场标签：沪深港京美
-function marketTag(m?: string): string {
-  switch (m) {
-    case "sh": return "沪";
-    case "sz": return "深";
-    case "bj": return "京";
-    case "hk": return "港";
-    case "us": return "美";
-    default: return "";
-  }
 }
 function fmtAnomTime(iso: string) {
   const d = new Date(iso);
@@ -2045,15 +2040,6 @@ function removeLp() {
   background: rgba(255, 153, 0, 0.14);
   color: #e6930a;
 }
-.mkt-tag {
-  flex: none;
-  font-size: 20rpx;
-  line-height: 1;
-  padding: 4rpx 9rpx;
-  border-radius: 6rpx;
-  background: var(--card-2);
-  color: var(--text-2);
-}
 
 .anom-body {
   flex: 1;
@@ -2076,16 +2062,16 @@ function removeLp() {
   margin-bottom: 10rpx;
 }
 .anom-item-name {
-  font-size: 30rpx;
+  font-size: var(--font-sm);
   color: var(--text);
 }
 .anom-item-code {
-  font-size: 22rpx;
+  font-size: var(--font-sm);
   color: var(--text-3);
 }
 .anom-item-time {
   margin-left: auto;
-  font-size: 22rpx;
+  font-size: var(--font-sm);
   color: var(--text-3);
 }
 .anom-item-body {
@@ -2094,11 +2080,11 @@ function removeLp() {
   gap: 14rpx;
 }
 .anom-item-price {
-  font-size: 30rpx;
+  font-size: var(--font-sm);
   font-variant-numeric: tabular-nums;
 }
 .anom-item-pct {
-  font-size: 26rpx;
+  font-size: var(--font-sm);
   font-variant-numeric: tabular-nums;
 }
 .anom-empty {

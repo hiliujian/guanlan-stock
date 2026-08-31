@@ -1346,7 +1346,7 @@ defineExpose({ refresh: () => refreshFull() });
 .idx-item-name {
   flex: 1;
   min-width: 0;
-  font-size: var(--font-xs);
+  font-size: var(--font-sm);
   color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
@@ -1358,12 +1358,12 @@ defineExpose({ refresh: () => refreshFull() });
   gap: 10rpx;
 }
 .idx-item-price {
-  font-size: var(--font-md);
+  font-size: var(--font-sm);
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 .idx-item-pct {
-  font-size: var(--font-xs);
+  font-size: var(--font-sm);
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
