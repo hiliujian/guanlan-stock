@@ -28,15 +28,12 @@ export type AnomalyType =
 export interface AnomalyRecord {
   id: string; // 同股同类型唯一（code-type-time）
   code: string;
-  market: string;
   name: string;
-  secid: string;
   type: AnomalyType;
   time: string; // ISO 时间（异动发生时刻）
   price: number;
   pct: number;
   chg: number;
-  day: string; // YYYY-MM-DD（所属交易日）
 }
 
 // 异动类型展示元数据：cls 复用全局 up(红涨)/down(绿跌)/warn 配色
@@ -52,7 +49,6 @@ export const ANOMALY_META: Record<AnomalyType, { label: string; cls: "up" | "dow
 
 // ---- 阈值（集中可调） ----
 const RAPID_PCT = 1.0; // 单轮(~20s)涨跌幅变动超 1% 视为快速
-const LIMIT_EPS = 0.15; // 距涨跌停阈值 0.15% 内且封板视为涨停/跌停
 const BIG_VOL = 5000; // 单轮成交量(手)突增超 5000 手视为大单（盘口代理）
 const BREAKOUT_MULT = 2.0; // 单轮成交额相对 EMA 放大 2 倍视为放量突破
 const BREAKOUT_MIN_AMT = 5_000_000; // 放量突破最小成交额增量（500 万，过滤噪声）
@@ -83,12 +79,18 @@ function dayOf(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-// 20% 涨跌幅板块：创业板 300/301、科创板 688/689、北交所 8/4 开头
-function isLimit20(code: string): boolean {
-  return /^30[01]/.test(code) || /^68[89]/.test(code) || /^[84]/.test(code);
+// 涨跌幅限制（%）：主板 10；创业板 300/301、科创板 688/689 为 20；
+// 北交所（43/83/87/88/920 开头，或 market=bj）为 30；主板 ST 股为 5（由调用方按名称叠加）。
+// 港美股无涨跌幅限制 → 返回 null（不参与涨跌停检测）。
+function limitPct(code: string, market: string): number | null {
+  if (market === "hk" || market === "us") return null;
+  if (/^30[01]/.test(code) || /^68[89]/.test(code)) return 20;
+  if (market === "bj" || /^[48]/.test(code) || /^92/.test(code)) return 30;
+  return 10;
 }
-function limitPct(code: string): number {
-  return isLimit20(code) ? 20 : 10;
+// 精确涨跌停价：交易所规则 = 昨收 ×(1±limit) 四舍五入到分
+function limitPrice(preClose: number, lim: number, dir: 1 | -1): number {
+  return Math.round(preClose * (1 + (dir * lim) / 100) * 100) / 100;
 }
 
 interface AnomalyState {
@@ -112,29 +114,25 @@ function clearIfNewDay() {
 
 function makeRecord(
   it: { code: string; market: string; name: string },
-  secid: string,
   type: AnomalyType,
   time: string,
-  day: string,
   s: SnapResult
 ): AnomalyRecord {
   return {
     id: `${it.code}-${type}-${time}`,
     code: it.code,
-    market: it.market,
     name: it.name,
-    secid,
     type,
     time,
     price: s.price,
     pct: s.pct,
     chg: s.chg,
-    day,
   };
 }
 
-function addAnomaly(rec: AnomalyRecord) {
-  const t = getTrack(rec.secid);
+// secid 仅作内部 track 键（同股冷却/基线），不入记录
+function addAnomaly(rec: AnomalyRecord, secid: string) {
+  const t = getTrack(secid);
   const now = Date.now();
   // 同股同类型 5 分钟内已记录则跳过（避免连续轮询重复刷屏）
   if (t.lastFired[rec.type] && now - t.lastFired[rec.type] < FIRE_COOLDOWN_MS) return;
@@ -148,41 +146,46 @@ function addAnomaly(rec: AnomalyRecord) {
 
 function detect(it: { code: string; market: string; name: string }, secid: string, s: SnapResult) {
   const t = getTrack(secid);
-  const lim = limitPct(it.code);
+  const lim0 = limitPct(it.code, it.market);
   const now = new Date();
   const time = now.toISOString();
-  const day = dayOf(now);
 
-  // 1) 封涨停 / 封跌停：涨跌幅贴近阈值且价格封在当日最高/最低
-  if (s.pct >= lim - LIMIT_EPS && s.price >= s.high * 0.999) {
-    addAnomaly(makeRecord(it, secid, "limit_up", time, day, s));
-  } else if (s.pct <= -lim + LIMIT_EPS && s.price <= s.low * 1.001) {
-    addAnomaly(makeRecord(it, secid, "limit_down", time, day, s));
+  // 1) 封涨停 / 封跌停：按交易所规则算精确涨跌停价（主板 ST ±5%），价格封在当日最高/最低
+  if (lim0 != null && s.preClose > 0) {
+    const lim = lim0 === 10 && /ST/i.test(it.name) ? 5 : lim0;
+    const upPx = limitPrice(s.preClose, lim, 1);
+    const dnPx = limitPrice(s.preClose, lim, -1);
+    if (s.price >= upPx - 0.005 && s.price >= s.high * 0.999) {
+      addAnomaly(makeRecord(it, "limit_up", time, s), secid);
+    } else if (s.price <= dnPx + 0.005 && s.price <= s.low * 1.001) {
+      addAnomaly(makeRecord(it, "limit_down", time, s), secid);
+    }
   }
 
   // 2) 快速拉升 / 下跌：与上一轮涨跌幅比较（数据含 20s TTL，实际按刷新间隔计）
   if (t.prevPct != null) {
     const dpct = s.pct - t.prevPct;
-    if (dpct >= RAPID_PCT) addAnomaly(makeRecord(it, secid, "rapid_up", time, day, s));
-    else if (dpct <= -RAPID_PCT) addAnomaly(makeRecord(it, secid, "rapid_down", time, day, s));
+    if (dpct >= RAPID_PCT) addAnomaly(makeRecord(it, "rapid_up", time, s), secid);
+    else if (dpct <= -RAPID_PCT) addAnomaly(makeRecord(it, "rapid_down", time, s), secid);
   }
 
   // 3) 大笔买入 / 卖出（盘口代理）：单轮成交量突增 + 价格方向
   if (t.prevVol != null) {
     const dvol = s.vol - t.prevVol;
     if (dvol >= BIG_VOL) {
-      if (s.price >= (t.prevPrice ?? s.price)) addAnomaly(makeRecord(it, secid, "big_buy", time, day, s));
-      else addAnomaly(makeRecord(it, secid, "big_sell", time, day, s));
+      if (s.price >= (t.prevPrice ?? s.price)) addAnomaly(makeRecord(it, "big_buy", time, s), secid);
+      else addAnomaly(makeRecord(it, "big_sell", time, s), secid);
     }
   }
 
-  // 4) 放量突破：单轮成交额相对 EMA 显著放大
+  // 4) 放量突破：单轮成交额显著超过「本轮之前」的 EMA 基线
+  //    （基线先比后更：首轮基线为 0 不打信号，避免大盘股每轮几百万成交额的常态误报）
   if (t.prevAmount != null) {
     const dAmt = s.amount - t.prevAmount;
-    t.emaDeltaAmt = t.emaDeltaAmt * 0.7 + Math.max(0, dAmt) * 0.3;
     if (t.emaDeltaAmt > 0 && dAmt > t.emaDeltaAmt * BREAKOUT_MULT && dAmt > BREAKOUT_MIN_AMT) {
-      addAnomaly(makeRecord(it, secid, "vol_breakout", time, day, s));
+      addAnomaly(makeRecord(it, "vol_breakout", time, s), secid);
     }
+    t.emaDeltaAmt = t.emaDeltaAmt * 0.7 + Math.max(0, dAmt) * 0.3;
   }
 
   // 更新基线
