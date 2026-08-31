@@ -551,14 +551,11 @@ type AnomSlide =
   | { kind: "anom"; rec: AnomalyRecord };
 const myCodes = computed(() => new Set(wl.items.map((it) => it.code)));
 const anomalyList = computed(() => anomalies.value.filter((a) => myCodes.value.has(a.code)));
-const hasAnomaly = computed(() => anomalyList.value.length > 0);
-// 使用快照避免轮播过程中异动列表更新导致 today slide 索引漂移。
-// 每次 watch 触发（列表从空→有 / 从有→空）都会重新冻结快照，保证 today slide 恒在首位：
+// slide 列表直接由响应式 anomalyList 派生（today 恒在首位，新异动实时进入轮播）：
 // 循环顺序 = 今日最热 → 异动1..N → 今日最热 → …（无异动时 len=1，轮播守卫不切走，恒显今日最热）。
-let anomSlideSnapshot: AnomalyRecord[] = [];
 const anomSlides = computed<AnomSlide[]>(() => {
   const arr: AnomSlide[] = [{ kind: "today" }];
-  for (const rec of anomSlideSnapshot) arr.push({ kind: "anom", rec });
+  for (const rec of anomalyList.value) arr.push({ kind: "anom", rec });
   return arr;
 });
 const anomIndex = ref(0);
@@ -577,8 +574,6 @@ const anomKey = computed(() => {
 });
 let anomTimer: any = null;
 function startAnomRotate() {
-  // 每次启动/重启都重新冻结快照，确保 today slide 索引稳定在首位
-  anomSlideSnapshot = anomalyList.value.slice();
   if (anomTimer) return;
   anomTimer = setInterval(() => {
     const len = anomSlides.value.length;
@@ -591,22 +586,25 @@ function stopAnomRotate() {
     anomTimer = null;
   }
 }
+// immediate：挂载时异动列表可能已从本地恢复为非空，必须立即启动轮播，
+// 否则 watch 不触发、定时器不启动，卡片会永远停在今日最热。
 watch(
   anomalyList,
   (list) => {
     if (list.length > 0) startAnomRotate();
     else { stopAnomRotate(); anomIndex.value = 0; }
-  }
+  },
+  { immediate: true }
 );
 function onSheetExpand() {
   // 展开即半屏（PeekSheet 原生行为）
   sheetExpanded.value = true;
-  // 仅当用户从折叠态手势展开（activePanel 仍为闲置的 rank）时，才套用默认面板：
-  // 有异动则默认展示异动列表面板，与今日最热卡同源同交互。
+  // 仅当用户从折叠态手势展开（activePanel 仍为闲置的 rank）时，才按当前显示的 slide 套用默认面板：
+  // 卡片显示今日最热 → 热榜面板；显示异动提醒 → 异动列表面板。
   // 若是 openCols / openGroups 等程序化展开，调用方已先行设定 activePanel（'cols'/'group'），
   // 此处不可覆盖，否则会出现「点设置列却弹出异动列表」的回归。
   if (activePanel.value === "rank") {
-    activePanel.value = hasAnomaly.value ? "anomaly" : "rank";
+    activePanel.value = curSlide.value?.kind === "anom" ? "anomaly" : "rank";
   }
 }
 function openAnomalyStock(a: AnomalyRecord) {
