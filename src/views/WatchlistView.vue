@@ -243,18 +243,18 @@
                   v-for="a in anomalyList"
                   :key="a.id"
                   class="anom-item"
+                  :class="a.chg > 0 ? 'up' : a.chg < 0 ? 'down' : ''"
                   hover-class="anom-item-hover"
                   @click="openAnomalyStock(a)"
                 >
-                  <view class="anom-item-row">
-                    <text class="anom-item-name">{{ a.name }}</text>
-                    <text class="anom-item-code">{{ a.code }}</text>
+                  <view class="anom-bar"></view>
+                  <text class="anom-item-name">{{ a.name }}</text>
+                  <text class="anom-item-code">{{ a.code }}</text>
+                  <text class="anom-tag" :class="ANOMALY_META[a.type].cls">{{ ANOMALY_META[a.type].label }}</text>
+                  <view class="anom-item-right">
+                    <text class="anom-item-price" :class="a.chg > 0 ? 'up' : a.chg < 0 ? 'down' : ''">{{ fmtPrice(a.price) }}</text>
+                    <text class="anom-item-pct" :class="a.chg > 0 ? 'up' : a.chg < 0 ? 'down' : ''">{{ fmtPct(a.pct) }}</text>
                     <text class="anom-item-time">{{ fmtAnomTime(a.time) }}</text>
-                    <view class="anom-item-right">
-                      <text class="anom-tag" :class="ANOMALY_META[a.type].cls">{{ ANOMALY_META[a.type].label }}</text>
-                      <text class="anom-item-price" :class="a.chg > 0 ? 'up' : a.chg < 0 ? 'down' : ''">{{ fmtPrice(a.price) }}</text>
-                      <text class="anom-item-pct" :class="a.chg > 0 ? 'up' : a.chg < 0 ? 'down' : ''">{{ fmtPct(a.pct) }}</text>
-                    </view>
                   </view>
                 </view>
                 <view v-if="!anomalyList.length" class="anom-empty">暂无异动</view>
@@ -2079,24 +2079,33 @@ function removeLp() {
   padding: 8rpx 4rpx 16rpx;
 }
 .anom-item {
-  padding: 10rpx 14rpx;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 14rpx 16rpx 14rpx 18rpx;
   border-radius: 20rpx;
   background: var(--card);
   margin-bottom: 8rpx;
+  min-width: 0;
 }
 .anom-item-hover {
   background: var(--card-2);
 }
-.anom-item-row {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  min-width: 0;
+.anom-bar {
+  flex: none;
+  width: 6rpx;
+  height: 38rpx;
+  border-radius: 6rpx;
+  background: var(--text-3);
 }
+.anom-item.up .anom-bar { background: var(--up); }
+.anom-item.down .anom-bar { background: var(--down); }
 .anom-item-name {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: var(--font-sm);
+  font-size: 30rpx;
+  font-weight: 600;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -2104,26 +2113,32 @@ function removeLp() {
 }
 .anom-item-code {
   flex: none;
-  font-size: var(--font-sm);
+  font-size: 22rpx;
   color: var(--text-3);
-}
-.anom-item-time {
-  flex: none;
-  font-size: var(--font-sm);
-  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
 }
 .anom-item-right {
   flex: none;
   display: flex;
-  align-items: center;
-  gap: 14rpx;
+  align-items: baseline;
+  gap: 12rpx;
 }
 .anom-item-price {
-  font-size: var(--font-sm);
+  font-size: 30rpx;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .anom-item-pct {
-  font-size: var(--font-sm);
+  font-size: 24rpx;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+}
+.anom-item-time {
+  flex: none;
+  font-size: 22rpx;
+  color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
 /* 涨跌配色：涨=红(--up) / 跌=绿(--down)，平盘不着色 */
@@ -2131,6 +2146,8 @@ function removeLp() {
 .anom-item-pct.up { color: var(--up); }
 .anom-item-price.down,
 .anom-item-pct.down { color: var(--down); }
+.anom-item-pct.up { background: rgba(239, 35, 42, 0.12); }
+.anom-item-pct.down { background: rgba(9, 176, 122, 0.12); }
 .anom-empty {
   padding: 60rpx 0;
   text-align: center;
