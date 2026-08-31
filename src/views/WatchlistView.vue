@@ -176,7 +176,7 @@
         <!-- 统一底部窗体：固定常驻于菜单栏上方(始终可见)，折叠露出「今日最热」卡片；
              展开后按 activePanel 切换 榜单 / 我的分组 / 显示列 三种内容；
              三套内容共用同一窗体、同一套折叠/展开/铺满手势与动效，避免重复样式与代码 -->
-        <PeekSheet ref="sheet" @expand="sheetExpanded = true" @collapse="onSheetCollapse">
+        <PeekSheet ref="sheet" @expand="onSheetExpand" @collapse="onSheetCollapse">
           <template #peek>
             <view class="peek-row" role="button" aria-label="展开底部面板">
               <text class="peek-label">{{ peekLabel }}</text>
@@ -188,6 +188,7 @@
                   <view v-if="peek" class="peek-info">
                     <view class="peek-main">
                       <text class="peek-name">{{ peek.name }}</text>
+                      <text class="mkt-tag">{{ marketTag(peek.market) }}</text>
                       <text class="peek-code">{{ peek.code }}</text>
                     </view>
                     <view class="peek-right">
@@ -197,11 +198,12 @@
                   </view>
                   <text v-else class="peek-empty truncate">今日暂无人气新增</text>
                 </template>
-                <!-- 异动 slide：点击打开异动列表 -->
+                <!-- 异动 slide：点击折叠卡即展开 PeekSheet 至半屏（与今日最热卡一致），异动列表在展开体内展示 -->
                 <template v-else-if="curSlide && curSlide.kind === 'anom'">
-                  <view class="peek-info" @click.stop="openAnomalySheet">
+                  <view class="peek-info">
                     <view class="peek-main">
                       <text class="peek-name">{{ curSlide.rec.name }}</text>
+                      <text class="mkt-tag">{{ marketTag(curSlide.rec.market) }}</text>
                       <text class="peek-code">{{ curSlide.rec.code }}</text>
                     </view>
                     <view class="peek-right">
@@ -225,6 +227,35 @@
               </view>
               <scroll-view class="rs-body" scroll-y>
                 <RankView :mode="rankTab" @open-market="onSheetOpenMarket" />
+              </scroll-view>
+            </template>
+
+            <!-- 盘口/盘后异动列表：与榜单/分组同窗体（同一 PeekSheet），展开即半屏，上拉铺满、下拉收回，交互完全一致 -->
+            <template v-else-if="activePanel === 'anomaly'">
+              <view class="panel-head">
+                <text class="sheet-title">{{ peekLabel }}列表</text>
+              </view>
+              <scroll-view class="anom-body" scroll-y>
+                <view
+                  v-for="a in anomalies"
+                  :key="a.id"
+                  class="anom-item"
+                  hover-class="anom-item-hover"
+                  @click="openAnomalyStock(a)"
+                >
+                  <view class="anom-item-head">
+                    <text class="anom-item-name">{{ a.name }}</text>
+                    <text class="mkt-tag">{{ marketTag(a.market) }}</text>
+                    <text class="anom-item-code">{{ a.code }}</text>
+                    <text class="anom-item-time">{{ fmtAnomTime(a.time) }}</text>
+                  </view>
+                  <view class="anom-item-body">
+                    <text class="anom-tag" :class="ANOMALY_META[a.type].cls">{{ ANOMALY_META[a.type].label }}</text>
+                    <text class="anom-item-price" :class="a.chg >= 0 ? 'up' : 'down'">{{ fmtPrice(a.price) }}</text>
+                    <text class="anom-item-pct" :class="a.chg >= 0 ? 'up' : 'down'">{{ fmtPct(a.pct) }}</text>
+                  </view>
+                </view>
+                <view v-if="!anomalies.length" class="anom-empty">暂无盘口异动</view>
               </scroll-view>
             </template>
 
@@ -437,30 +468,6 @@
           </template>
         </PeekSheet>
 
-      <!-- 盘口异动列表弹层：点击首页「盘口异动」卡片打开，展示当日所有异动股；点击单项跳转行情页 -->
-      <BottomSheet v-model="anomalySheet" title="盘口异动">
-        <view class="anom-list">
-          <view
-            v-for="a in anomalies"
-            :key="a.id"
-            class="anom-item"
-            hover-class="anom-item-hover"
-            @click="openAnomalyStock(a)"
-          >
-            <view class="anom-item-head">
-              <text class="anom-item-name">{{ a.name }}</text>
-              <text class="anom-item-code">{{ a.code }}</text>
-              <text class="anom-item-time">{{ fmtAnomTime(a.time) }}</text>
-            </view>
-            <view class="anom-item-body">
-              <text class="anom-tag" :class="ANOMALY_META[a.type].cls">{{ ANOMALY_META[a.type].label }}</text>
-              <text class="anom-item-price" :class="a.chg >= 0 ? 'up' : 'down'">{{ fmtPrice(a.price) }}</text>
-              <text class="anom-item-pct" :class="a.chg >= 0 ? 'up' : 'down'">{{ fmtPct(a.pct) }}</text>
-            </view>
-          </view>
-          <view v-if="!anomalies.length" class="anom-empty">暂无盘口异动</view>
-        </view>
-      </BottomSheet>
       </view>
   </view>
 </template>
@@ -471,7 +478,6 @@ import OutlineIcon from "@/components/OutlineIcon.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import PeekSheet from "@/components/PeekSheet.vue";
 import RollSwap from "@/components/RollSwap.vue";
-import BottomSheet from "@/components/BottomSheet.vue";
 import RankView from "@/views/RankView.vue";
 import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, applyGroupOrder, type WatchItem, type PriceAlert } from "@/store/watchlist";
 import { userState } from "@/store/user";
@@ -504,7 +510,7 @@ const list = computed(() => wl.items as WatchItem[]);
 // 统一底部窗体 PeekSheet（持久常驻）：折叠露出「今日最热」卡片，展开后按 activePanel
 // 切换 榜单 / 我的分组 / 显示列 三种内容；下拉收起时父组件通过 @collapse 复位到 rank。
 const sheet = ref<any>(null);
-const activePanel = ref<"rank" | "group" | "cols" | "actions" | "alert">("rank");
+const activePanel = ref<"rank" | "group" | "cols" | "actions" | "alert" | "anomaly">("rank");
 const rankTab = ref<"today" | "all">("today");
 
 // 露出卡片预览数据：与折叠态卡片标签「今日最热」一致，始终取「当日（北京时间）新增自选」第 1 名；
@@ -512,6 +518,7 @@ const rankTab = ref<"today" | "all">("today");
 interface PeekRow {
   code: string;
   name: string;
+  market?: string;
   chg: number;
   pct: number | null;
   price: number | null;
@@ -527,16 +534,16 @@ async function loadPeek() {
   const secid = resolveSecid(top.code, top.market as any);
   try {
     const s = await fetchSnapshot(secid);
-    peek.value = { code: top.code, name: top.name, chg: s.chg, pct: s.pct, price: s.price };
+    peek.value = { code: top.code, name: top.name, market: top.market, chg: s.chg, pct: s.pct, price: s.price };
   } catch {
-    peek.value = { code: top.code, name: top.name, chg: 0, pct: null, price: null };
+    peek.value = { code: top.code, name: top.name, market: top.market, chg: 0, pct: null, price: null };
   }
 }
 
-// ===== 盘口/盘后异动：卡片转换(今日最热 ↔ 异动) + 多异动轮播 + 列表弹层 =====
+// ===== 盘口/盘后异动：卡片转换(今日最热 ↔ 异动) + 多异动轮播 + 列表（同窗体面板） =====
 // 复用 PeekSheet + .peek-row 同一套底部卡片（与行情页指数卡、自选页热榜卡同源），
-// 切换/轮播动画复用 <RollSwap>（与行情页大盘指数切换完全一致：垂直滚动 360ms cubic-bezier(0.22,0.61,0.36,1)）。
-const anomalySheet = ref(false);
+// 切换/轮播动画复用 <RollSwap>（与行情页大盘指数切换完全一致：垂直滚动 360ms cubic-bezier(0.22,0.61,0.36,1)）；
+// 异动列表作为 PeekSheet 内的独立面板（activePanel='anomaly'），展开即半屏，上拉铺满、下拉收回，交互与其他卡片完全一致。
 type AnomSlide =
   | { kind: "today" }
   | { kind: "anom"; rec: AnomalyRecord };
@@ -583,13 +590,25 @@ watch(hasAnomaly, (h) => {
     anomIndex.value = 0;
   }
 });
-function openAnomalySheet() {
-  anomalySheet.value = true;
+function onSheetExpand() {
+  // 展开即半屏（PeekSheet 原生行为）；有异动则默认展示异动列表面板，与今日最热卡同源同交互
+  sheetExpanded.value = true;
+  activePanel.value = hasAnomaly.value ? "anomaly" : "rank";
 }
 function openAnomalyStock(a: AnomalyRecord) {
-  anomalySheet.value = false;
   openInMarket(a.code, "auto");
   goTab("market");
+}
+// 股票市场标签：沪深港京美
+function marketTag(m?: string): string {
+  switch (m) {
+    case "sh": return "沪";
+    case "sz": return "深";
+    case "bj": return "京";
+    case "hk": return "港";
+    case "us": return "美";
+    default: return "";
+  }
 }
 function fmtAnomTime(iso: string) {
   const d = new Date(iso);
@@ -2026,8 +2045,19 @@ function removeLp() {
   background: rgba(255, 153, 0, 0.14);
   color: #e6930a;
 }
+.mkt-tag {
+  flex: none;
+  font-size: 20rpx;
+  line-height: 1;
+  padding: 4rpx 9rpx;
+  border-radius: 6rpx;
+  background: var(--card-2);
+  color: var(--text-2);
+}
 
-.anom-list {
+.anom-body {
+  flex: 1;
+  min-height: 0;
   padding: 8rpx 4rpx 24rpx;
 }
 .anom-item {
@@ -2041,7 +2071,7 @@ function removeLp() {
 }
 .anom-item-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 12rpx;
   margin-bottom: 10rpx;
 }
