@@ -16,7 +16,7 @@ import { getMarketStatus } from "@/utils/marketStatus";
 import { resolveSecid } from "@/utils/period";
 import { loadConfig, watchPersist } from "@/utils/storageConfig";
 
-export type AnomalyType =
+type AnomalyType =
   | "limit_up" // 封涨停
   | "limit_down" // 封跌停
   | "rapid_up" // 快速拉升
