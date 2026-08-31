@@ -28,7 +28,7 @@ export function fmtAmount(v: number | null | undefined): string {
 // 涨跌色分类（A股约定：涨红跌绿）。全项目统一的配色规则：
 // 数值真实存在且 >0 才「涨(up)」、<0 才「跌(down)」；缺失 / 非数 / 零值一律「flat」。
 // flat 由样式映射为灰色，确保 "--" 占位符永不显示红/绿，保持灰色。
-export type Trend = "up" | "down" | "flat";
+type Trend = "up" | "down" | "flat";
 export function trendCls(v: number | null | undefined): Trend {
   if (v == null || isNaN(v)) return "flat";
   if (v > 0) return "up";

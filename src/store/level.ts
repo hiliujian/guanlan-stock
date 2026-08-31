@@ -105,7 +105,7 @@ export const VIP_BADGE = {
   ring: "rgba(192, 142, 14, 0.55)",
 };
 
-export interface BadgeVisual {
+interface BadgeVisual {
   id: number; // Lv 序号（1 起）
   name: string; // 等级完整名（徽章与等级页一致展示）
   label: string; // 徽章文案（等级名；VIP 时为「VIP·等级名」，一体化标识）
