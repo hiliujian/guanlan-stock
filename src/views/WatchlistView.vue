@@ -179,11 +179,12 @@
         <PeekSheet ref="sheet" @expand="sheetExpanded = true" @collapse="onSheetCollapse">
           <template #peek>
             <view class="peek-row" role="button" aria-label="展开底部面板">
-              <text class="peek-label">{{ hasAnomaly ? '盘口异动' : '今日最热' }}</text>
-              <!-- 今日最热 ↔ 盘口异动 切换，以及多异动轮播，均复用 <RollSwap>（与行情页大盘指数切换完全一致） -->
+              <text class="peek-label">{{ peekLabel }}</text>
+              <!-- 今日最热 ↔ 盘口/盘后异动 切换与多异动轮播，均复用 <RollSwap>（与行情页大盘指数切换动画完全一致）；
+                   异动轮播滚动完所有提示后回到「今日最热」slide 再循环 -->
               <RollSwap class="peek-roll" :roll-key="anomKey">
-                <!-- 无异常：今日最热（原逻辑不变） -->
-                <template v-if="!hasAnomaly">
+                <!-- 今日最热 slide：点击展开榜单面板（PeekSheet 原生折叠→半屏→铺满→下拉收回） -->
+                <template v-if="curSlide && curSlide.kind === 'today'">
                   <view v-if="peek" class="peek-info">
                     <view class="peek-main">
                       <text class="peek-name">{{ peek.name }}</text>
@@ -196,17 +197,17 @@
                   </view>
                   <text v-else class="peek-empty truncate">今日暂无人气新增</text>
                 </template>
-                <!-- 有异常：盘口异动卡（轮播展示各异动股），点击打开异动列表 -->
-                <template v-else>
-                  <view v-if="curAnomaly" class="peek-info anom-peek" @click.stop="openAnomalySheet">
+                <!-- 异动 slide：点击打开异动列表 -->
+                <template v-else-if="curSlide && curSlide.kind === 'anom'">
+                  <view class="peek-info" @click.stop="openAnomalySheet">
                     <view class="peek-main">
-                      <text class="peek-name">{{ curAnomaly.name }}</text>
-                      <text class="peek-code">{{ curAnomaly.code }}</text>
+                      <text class="peek-name">{{ curSlide.rec.name }}</text>
+                      <text class="peek-code">{{ curSlide.rec.code }}</text>
                     </view>
                     <view class="peek-right">
-                      <text class="anom-tag" :class="ANOMALY_META[curAnomaly.type].cls">{{ ANOMALY_META[curAnomaly.type].label }}</text>
-                      <text class="peek-price" :class="curAnomaly.chg >= 0 ? 'up' : 'down'">{{ fmtPrice(curAnomaly.price) }}</text>
-                      <text class="peek-pct" :class="curAnomaly.chg >= 0 ? 'up' : 'down'">{{ fmtPct(curAnomaly.pct) }}</text>
+                      <text class="anom-tag" :class="ANOMALY_META[curSlide.rec.type].cls">{{ ANOMALY_META[curSlide.rec.type].label }}</text>
+                      <text class="peek-price" :class="curSlide.rec.chg >= 0 ? 'up' : 'down'">{{ fmtPrice(curSlide.rec.price) }}</text>
+                      <text class="peek-pct" :class="curSlide.rec.chg >= 0 ? 'up' : 'down'">{{ fmtPct(curSlide.rec.pct) }}</text>
                     </view>
                   </view>
                 </template>
@@ -532,22 +533,39 @@ async function loadPeek() {
   }
 }
 
-// ===== 盘口异动：卡片转换(今日最热 ↔ 盘口异动) + 多异动轮播 + 列表弹层 =====
-// 动画复用 <RollSwap>（与行情页大盘指数切换完全一致：垂直滚动 360ms cubic-bezier(0.22,0.61,0.36,1)）
+// ===== 盘口/盘后异动：卡片转换(今日最热 ↔ 异动) + 多异动轮播 + 列表弹层 =====
+// 复用 PeekSheet + .peek-row 同一套底部卡片（与行情页指数卡、自选页热榜卡同源），
+// 切换/轮播动画复用 <RollSwap>（与行情页大盘指数切换完全一致：垂直滚动 360ms cubic-bezier(0.22,0.61,0.36,1)）。
 const anomalySheet = ref(false);
-const anomIndex = ref(0);
-const curAnomaly = computed<AnomalyRecord | null>(() => {
-  const list = anomalies.value;
-  if (!list.length) return null;
-  return list[anomIndex.value % list.length];
+type AnomSlide =
+  | { kind: "today" }
+  | { kind: "anom"; rec: AnomalyRecord };
+// 轮播序列：异动在前，末尾始终补「今日最热」slide；所有异动提示滚动完即回到今日最热再循环。
+// 无异常时序列仅含今日最热 slide，卡片即恢复「今日最热」内容。
+const anomSlides = computed<AnomSlide[]>(() => {
+  const arr: AnomSlide[] = anomalies.value.map((rec) => ({ kind: "anom", rec }));
+  arr.push({ kind: "today" });
+  return arr;
 });
-// RollSwap 的 key：无异常=today，有异常=anom:<id>（多异动轮播时 key 随之变化触发滚动切换）
-const anomKey = computed(() => (curAnomaly.value ? "anom:" + curAnomaly.value.id : "today"));
+const anomIndex = ref(0);
+const curSlide = computed<AnomSlide | null>(() =>
+  anomSlides.value.length ? anomSlides.value[anomIndex.value % anomSlides.value.length] : null
+);
+// 卡片标题：无异常=今日最热；交易时段=盘口异动；休市=盘后异动（同一卡片、同一数据源 anomalyList）
+const peekLabel = computed(() => {
+  if (!hasAnomaly.value) return "今日最热";
+  return getMarketStatus().open ? "盘口异动" : "盘后异动";
+});
+// RollSwap 的 key：今日最热=today，异动=anom:<id>（轮播时 key 变化触发垂直滚动切换）
+const anomKey = computed(() => {
+  const s = curSlide.value;
+  return s && s.kind === "anom" ? "anom:" + s.rec.id : "today";
+});
 let anomTimer: any = null;
 function startAnomRotate() {
   if (anomTimer) return;
   anomTimer = setInterval(() => {
-    const len = anomalies.value.length;
+    const len = anomSlides.value.length;
     if (len > 1) anomIndex.value = (anomIndex.value + 1) % len;
   }, 3500);
 }
@@ -1992,7 +2010,6 @@ function removeLp() {
   line-height: 1;
   padding: 5rpx 14rpx;
   border-radius: 999rpx;
-  font-weight: 600;
   background: var(--card-2);
   color: var(--text-2);
   white-space: nowrap;
@@ -2008,9 +2025,6 @@ function removeLp() {
 .anom-tag.warn {
   background: rgba(255, 153, 0, 0.14);
   color: #e6930a;
-}
-.anom-peek {
-  cursor: pointer;
 }
 
 .anom-list {
@@ -2033,7 +2047,6 @@ function removeLp() {
 }
 .anom-item-name {
   font-size: 30rpx;
-  font-weight: 600;
   color: var(--text);
 }
 .anom-item-code {
@@ -2052,12 +2065,10 @@ function removeLp() {
 }
 .anom-item-price {
   font-size: 30rpx;
-  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .anom-item-pct {
   font-size: 26rpx;
-  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 .anom-empty {
