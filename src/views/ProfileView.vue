@@ -466,7 +466,7 @@ function onMenu(act: MenuItem["act"]) {
   --vip-bg: linear-gradient(120deg, #fbf3df, #f6ead0 55%, #faf1dc);
   --vip-line: rgba(192, 142, 14, 0.3);
   --vip-hover: linear-gradient(120deg, #f4ebcf, #eee0bd 55%, #f2e8c8);
-  --vip-title: linear-gradient(120deg, #43300a, #a67908 55%, #b8860b);
+  --vip-title: linear-gradient(120deg, #7a5c10, #b8860b 50%, #d9a83e);
   --vip-sub: rgba(122, 92, 12, 0.78);
   --vip-close-hover: rgba(67, 48, 10, 0.12);
   position: relative;
@@ -507,7 +507,7 @@ function onMenu(act: MenuItem["act"]) {
   --vip-bg: linear-gradient(120deg, #2b2008, #171005 55%, #241a08);
   --vip-line: rgba(240, 205, 110, 0.35);
   --vip-hover: linear-gradient(120deg, #35280c, #1d1507 55%, #2c2009);
-  --vip-title: linear-gradient(120deg, #f7df96, #c08e0e);
+  --vip-title: linear-gradient(120deg, #f7e3a1, #e8c558 50%, #c08e0e);
   --vip-sub: rgba(240, 205, 110, 0.72);
   --vip-close-hover: rgba(255, 255, 255, 0.1);
 }
