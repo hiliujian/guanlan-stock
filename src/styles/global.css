@@ -325,12 +325,12 @@ textarea {
   padding: 8rpx 0 0;
 }
 /* VIP 尊贵金昵称：金色渐变文字（posts 作者名 / 评论区昵称 / 个人主页昵称共用）。
-   金色系统一：浅色主题「深金棕 → 金黄 → 亮金」（中高亮度，避免暗金起笔过黑难读）；
-   深色主题整体提亮为「亮金 → 暖金」（暗金在深色卡片上会隐身）。
+   金色系统一：浅色主题「亮金 → 金黄 → 深金棕」（先金后深，起笔亮金醒目）；
+   深色主题「亮金 → 暖金」（暗金在深色卡片上会隐身）。
    ⚠️ 深色覆盖只改 background-image，勿用 background 简写——简写会把
    background-clip 重置为 border-box，文字渐变不再裁剪到字形，导致金色文字「隐身」。 */
 .vip-name {
-  background: linear-gradient(120deg, #7a5c10, #b8860b 50%, #d9a83e);
+  background: linear-gradient(120deg, #d9a83e, #b8860b 50%, #7a5c10);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;

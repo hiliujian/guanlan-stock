@@ -466,7 +466,7 @@ function onMenu(act: MenuItem["act"]) {
   --vip-bg: linear-gradient(120deg, #fbf3df, #f6ead0 55%, #faf1dc);
   --vip-line: rgba(192, 142, 14, 0.3);
   --vip-hover: linear-gradient(120deg, #f4ebcf, #eee0bd 55%, #f2e8c8);
-  --vip-title: linear-gradient(120deg, #7a5c10, #b8860b 50%, #d9a83e);
+  --vip-title: linear-gradient(120deg, #d9a83e, #b8860b 50%, #7a5c10);
   --vip-sub: rgba(122, 92, 12, 0.78);
   --vip-close-hover: rgba(67, 48, 10, 0.12);
   position: relative;
