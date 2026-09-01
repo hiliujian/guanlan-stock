@@ -945,7 +945,7 @@ export function analyze(
   }
   // 智能标注联动风险（与图表同源）：破位支撑 / 弱势支撑 / 放量压力
   if (priceLevels.structSupport?.isBroken || priceLevels.tradeSupportS?.isBroken) {
-    risks.push("近期关键支撑位已被有效跌破（连续实体收盘击穿），原支撑转为压力，注意下行风险。");
+    risks.push("近期关键支撑位已被有效跌破，原支撑或转为压力，注意下行风险。");
   }
   if ((priceLevels.structSupport?.level === "弱" || priceLevels.tradeSupportS?.level === "弱") && trend === "down") {
     risks.push("当前支撑有效性偏弱且处于下跌趋势，反弹力度或有限，抄底需严格控制仓位。");
