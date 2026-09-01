@@ -1411,7 +1411,7 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
     // 量均线 MA5/MA10/MA20 各自独立开关（figure key: ma1/ma2/ma3）
     const volMaOn = volMaOnEnabled();
     const volMaKeys = ["ma1", "ma2", "ma3"];
-    volMaKeys.forEach((k, i) => { if (volMaOn[i] && vol[k] != null) legend.vol.push({ label: "MA" + (i + 1) * 5, value: fmtAmount(vol[k]), color: INDICATOR_LINE_COLORS[i] }); });
+    volMaKeys.forEach((k, i) => { if (volMaOn[i] && vol[k] != null) legend.vol.push({ label: "MA" + VOL_MA_PARAMS[i], value: fmtAmount(vol[k]), color: INDICATOR_LINE_COLORS[i] }); });
   }
   // MACD 图：DIF(橙)/DEA(蓝)/MACD(柱按正负红绿) —— DIF/DEA 各自独立开关
   const macdMap = paneMap("macd_pane", cross, idx);
