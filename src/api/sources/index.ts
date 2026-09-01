@@ -281,7 +281,7 @@ const FUTURES_SINA: Record<string, string> = {
 export const FUTURES_SECIDS = Object.keys(FUTURES_SINA);
 
 // 批量期货实时报价：单次网关 futures 请求（新浪）取多合约，返回与 UlistQuote 同构。
-// 免费源不提供昨收/涨跌，故用「最新价 vs 今开」算日内涨跌幅（红涨绿跌语义一致）。
+// 涨跌以「最新价 vs 昨结算价」计算（期货主流口径，昨结算缺失时由解析层回退今开）。
 export async function getFuturesQuotes(secids: string[]): Promise<UlistQuote[]> {
   const wanted = secids.filter((s) => FUTURES_SINA[s]);
   if (!wanted.length) return [];
@@ -292,12 +292,12 @@ export async function getFuturesQuotes(secids: string[]): Promise<UlistQuote[]> 
     return wanted.map((secid) => {
       const p = parsed[FUTURES_SINA[secid]];
       const price = p?.price ?? null;
-      const open = p?.open ?? null;
+      const base = p?.base ?? null;
       let pct: number | null = null;
       let chg: number | null = null;
-      if (price != null && open != null && open !== 0) {
-        chg = price - open;
-        pct = (chg / open) * 100;
+      if (price != null && base != null && base !== 0) {
+        chg = price - base;
+        pct = (chg / base) * 100;
       }
       return { secid, name: "", price, pct, chg };
     });

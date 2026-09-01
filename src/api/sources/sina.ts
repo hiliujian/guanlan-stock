@@ -32,14 +32,21 @@ export function parseSinaRealtime(text: string, sym: string): RawRealtime | null
 }
 
 // 新浪期货（商品）：var hq_str_<sym>="..." 全局变量，GBK（网关已解码为 UTF-8）。
-// 国内 nf_ 与国际 hf_ 字段布局不同：
-//   nf_（如 nf_CU0）：[名称, 类别, 今开, 最高, 最低, 最新, 买价, 卖价, ...]
-//   hf_（如 hf_GC）：[买价, 卖价, 今开, 最新, 最高, 最低, 时间, ...]
-// 统一取 最新价 / 今开，由上层据此算日内涨跌幅（免费源不提供昨收/涨跌）。
+// 字段布局（已按线上真实报文实测校准，并用「内外盘同品种涨跌方向/幅度一致」交叉验证）：
+//   nf_（国内，如 nf_AU0）：
+//     [0]名称 [1]时间 [2]今开 [3]最高 [4]最低 [5]昨收盘 [6]买价 [7]卖价 [8]最新价
+//     [9]今结算 [10]昨结算 [11]买量 [12]卖量 [13]持仓量 [14]成交量 [15]交易所 [16]品种 [17]日期
+//     ⚠️ [5]昨收盘 与 [9]今结算 在夜盘时段恒为 0.000——误取 [5] 当最新价会让价格显示 0.00。
+//        最新价必须取 [8]（可用 买[6] < 最新[8] < 卖[7] 关系自证）。
+//   hf_（国际，如 hf_GC）：
+//     [0]最新价 [1]空 [2]买价 [3]卖价 [4]最高 [5]最低 [6]时间 [7]昨结算 [8]今开 …
+//     ⚠️ 误取 [3] 当最新价、[2] 当基准价（买卖价相邻）会让涨跌幅恒≈0。
+// 统一输出 最新价 + 涨跌基准价 base：优先昨结算（期货主流口径，与文华/同花顺期货一致），
+// 昨结算缺失（如新合约首日）才回退今开。
 export function parseSinaFutures(
   text: string
-): Record<string, { price: number; open: number } | null> {
-  const out: Record<string, { price: number; open: number } | null> = {};
+): Record<string, { price: number; base: number } | null> {
+  const out: Record<string, { price: number; base: number } | null> = {};
   const re = /var hq_str_([A-Za-z0-9_]+)="([^"]*)";/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
@@ -50,12 +57,15 @@ export function parseSinaFutures(
       continue;
     }
     const a = csv.split(",");
-    const priceIdx = sym.startsWith("hf") ? 3 : 5;
-    const openIdx = 2;
-    const price = parseFloat(a[priceIdx]);
-    const open = parseFloat(a[openIdx]);
-    out[sym] =
-      Number.isFinite(price) && Number.isFinite(open) ? { price, open } : null;
+    // 期货报价字段常以 0.000 表示「该时段无值」（夜盘的昨收/今结算），故 0 一律视为无效
+    const n = (i: number) => {
+      const v = parseFloat(a[i]);
+      return Number.isFinite(v) && v > 0 ? v : null;
+    };
+    const intl = sym.startsWith("hf");
+    const price = intl ? n(0) ?? n(2) : n(8);
+    const base = intl ? n(7) ?? n(8) : n(10) ?? n(2);
+    out[sym] = price != null && base != null ? { price, base } : null;
   }
   return out;
 }

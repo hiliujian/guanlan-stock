@@ -184,6 +184,32 @@
                   </view>
                 </view>
               </view>
+              <!-- 期指持仓（中金所官方日更，最近已发布交易日）：加多/加空按当日数据动态标注。
+                   持仓变化为客观事实、非行情涨跌，故一律中性色呈现，不做多空红绿着色引导；
+                   图标也不用国旗（席位/机构非国家标的），改用语义化描边图标。 -->
+              <view class="idx-grp">
+                <text class="idx-grp-t">期指持仓</text>
+                <view class="idx-grp-list">
+                  <view class="idx-item">
+                    <view class="idx-item-head">
+                      <OutlineIcon type="person" :size="30" color="var(--text-2)" />
+                      <text class="idx-item-name">中信席位</text>
+                    </view>
+                    <view class="idx-item-right">
+                      <text class="idx-item-price" :class="cffexPos ? '' : 'na'">{{ citText }}</text>
+                    </view>
+                  </view>
+                  <view class="idx-item">
+                    <view class="idx-item-head">
+                      <OutlineIcon type="bars" :size="30" color="var(--text-2)" />
+                      <text class="idx-item-name">前20机构</text>
+                    </view>
+                    <view class="idx-item-right">
+                      <text class="idx-item-price" :class="cffexPos ? '' : 'na'">{{ top20Text }}</text>
+                    </view>
+                  </view>
+                </view>
+              </view>
               <view class="idx-scroll-pad" />
             </scroll-view>
           </view>
@@ -217,6 +243,7 @@ import StockTag from "@/components/StockTag.vue";
 import { fetchHotSearches, recordSearch, type HotStock } from "@/api/hot";
 import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, resolveIndexForStock, type SearchHit, type QuoteBundle, type NewsItem } from "@/api/quote";
 import { fetchGlobalIndices, GLOBAL_INDEX_GROUPS, type GlobalIndexQuote } from "@/api/globalIndices";
+import { fetchCffexPositions, type CffexPositions } from "@/api/cffex";
 import { getMarketStatus } from "@/utils/marketStatus";
 import { fmtPrice } from "@/utils/format";
 import {
@@ -319,6 +346,7 @@ async function refreshGlobal() {
 }
 function startGlobalTimer() {
   refreshGlobal(); // 展开即立即拉取一次（不 await，避免阻塞手势回调）
+  loadCffex(); // 期指持仓为日频数据，展开时拉取一次即可，失败留待下次展开重试
   if (globalTimer) return;
   globalTimer = setInterval(refreshGlobal, 15000); // 展开态 15s 刷新
 }
@@ -357,6 +385,24 @@ function qNa(secid: string): boolean {
   const q = qOf(secid);
   return !q || q.price == null || !Number.isFinite(q.price);
 }
+
+// ---------------- 期指持仓（中金所官方，最近已发布交易日） ----------------
+const cffexPos = ref<CffexPositions | null>(null);
+async function loadCffex() {
+  if (cffexPos.value) return;
+  try {
+    cffexPos.value = await fetchCffexPositions();
+  } catch {
+    /* 失败保留 null，下次展开重试，界面降级「暂无数据」 */
+  }
+}
+// 净多变化 → 动态文案：正=加多、负=加空（多空方向每日由数据决定，不预设口径）
+function posLabel(netLongChg: number): string {
+  if (!Number.isFinite(netLongChg) || netLongChg === 0) return "持平";
+  return netLongChg > 0 ? "加多 " + netLongChg + " 手" : "加空 " + -netLongChg + " 手";
+}
+const citText = computed(() => (cffexPos.value ? posLabel(-cffexPos.value.citNetShortChg) : "暂无数据"));
+const top20Text = computed(() => (cffexPos.value ? posLabel(cffexPos.value.top20NetLongChg) : "暂无数据"));
 
 // 卡片渲染注册表：新增分析卡只需在此加一项（comp + props 工厂），
 // MarketView 模板无需再写 v-if 分支，彻底解耦「卡片种类」与「渲染逻辑」。
@@ -899,10 +945,6 @@ defineExpose({ refresh: () => refreshFull() });
 }
 .mk-body {
   padding: 18rpx 18rpx 0;
-}
-/* 行情图卡片（kline）标题不加重：覆盖 AnalysisCard 全局 .ac-title 的 font-weight:600 */
-.chart-card :deep(.ac-title) {
-  font-weight: 400;
 }
 /* 行情主体滚动容器：.tab-host 为固定视口高+overflow:hidden，各 Tab 必须自滚。
    品牌栏/搜索栏(.mk-sticky) 固定顶部不随滚动，命中卡片/报告等在下方独立滚动。 */
