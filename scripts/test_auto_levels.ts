@@ -140,9 +140,10 @@ function runOnce(series: any[], period: "d" | "w" | "M", tag: string, dedupe = t
     }
   }
   // 报告侧方位一致性观察：isBroken=false 的支撑/压力应位于现价正确侧（当前报告无外部消费者，仅观察）
+  // status=ref（参考位·簇缺失兜底）为降级展示位，与图表淡化线同口径，允许位于任意一侧，不参与方位观察
   for (const key of ["structSupport", "tradeSupportS", "structPressure", "tradePressureB"] as const) {
     const it = pl[key];
-    if (!it || it.isBroken) continue;
+    if (!it || it.isBroken || it.status === "ref") continue;
     const isSup = key.includes("Support");
     if (isSup && it.price > cur * 1.001)
       caution(`${tag} 报告·${key} 有效支撑高于现价`, `${it.price.toFixed(2)} > 现价 ${cur.toFixed(2)}`);

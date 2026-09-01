@@ -184,15 +184,15 @@
                   </view>
                 </view>
               </view>
-              <!-- 期指持仓（中金所官方日更，最近已发布交易日）：加多/加空按当日数据动态标注。
-                   持仓变化为客观事实、非行情涨跌，故一律中性色呈现，不做多空红绿着色引导；
-                   图标也不用国旗（席位/机构非国家标的），改用语义化描边图标。 -->
+              <!-- 期指持仓（中金所官方日更，最近已发布交易日）：中信席位 / 前20机构 的加多/加空。
+                   持仓变化为客观事实、非行情涨跌，故数据一律中性色呈现，不做多空红绿着色引导；
+                   图标沿用国旗（期指即中国股指期货）。 -->
               <view class="idx-grp">
-                <text class="idx-grp-t">期指持仓</text>
+                <text class="idx-grp-t">期指持仓{{ cffexDateText }}</text>
                 <view class="idx-grp-list">
                   <view class="idx-item">
                     <view class="idx-item-head">
-                      <OutlineIcon type="person" :size="30" color="var(--text-2)" />
+                      <image class="peek-flag" :src="'https://flagcdn.com/w40/cn.png'" mode="aspectFit" />
                       <text class="idx-item-name">中信席位</text>
                     </view>
                     <view class="idx-item-right">
@@ -201,7 +201,7 @@
                   </view>
                   <view class="idx-item">
                     <view class="idx-item-head">
-                      <OutlineIcon type="bars" :size="30" color="var(--text-2)" />
+                      <image class="peek-flag" :src="'https://flagcdn.com/w40/cn.png'" mode="aspectFit" />
                       <text class="idx-item-name">前20机构</text>
                     </view>
                     <view class="idx-item-right">
@@ -396,6 +396,12 @@ async function loadCffex() {
     /* 失败保留 null，下次展开重试，界面降级「暂无数据」 */
   }
 }
+// 数据日期后缀：期指持仓在交易日收盘后（约 17:00）才更新，面板可能展示的是昨日数据，
+// 必须标注数据所属交易日避免误读；未加载成功时不加后缀（避免出现空日期「—」）
+const cffexDateText = computed(() => {
+  const d = cffexPos.value?.date;
+  return d && d.length === 8 ? "（" + d.slice(4, 6) + "-" + d.slice(6) + "）" : "";
+});
 // 净多变化 → 动态文案：正=加多、负=加空（多空方向每日由数据决定，不预设口径）
 function posLabel(netLongChg: number): string {
   if (!Number.isFinite(netLongChg) || netLongChg === 0) return "持平";

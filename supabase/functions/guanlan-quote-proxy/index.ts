@@ -7,8 +7,8 @@
 //
 // 协议：POST { supabase_url }/functions/v1/guanlan-quote-proxy
 //   请求体（语义化，前端不关心具体源）：
-//     { kind: "realtime"|"kline"|"trend"|"flow"|"search"|"news"|"ulist"|"clist",
-//       secid?, period?, keyword?, secids?, fields?, query?, forceSource? }
+//     { kind: "realtime"|"kline"|"trend"|"flow"|"search"|"news"|"ulist"|"clist"|"futures"|"cffex",
+//       secid?, period?, keyword?, secids?, fields?, query?, forceSource?, date?, product? }
 //   响应体：
 //     成功 { ok: true,  source: "eastmoney"|"tencent"|"sina", text: "<上游原始响应>" }
 //     失败 { ok: false, error: "..." }
@@ -25,8 +25,8 @@
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
-type Kind = "realtime" | "kline" | "trend" | "flow" | "search" | "news" | "ulist" | "clist" | "futures";
-type SourceId = "eastmoney" | "tencent" | "sina";
+type Kind = "realtime" | "kline" | "trend" | "flow" | "search" | "news" | "ulist" | "clist" | "futures" | "cffex";
+type SourceId = "eastmoney" | "tencent" | "sina" | "cffex";
 
 // ---- 数据源顺序（配置文件）：默认东财 → 腾讯 → 新浪，三级冗余，用不了自动切下级 ----
 const DEFAULT_SOURCES: Record<Kind, SourceId[]> = {
@@ -39,6 +39,7 @@ const DEFAULT_SOURCES: Record<Kind, SourceId[]> = {
   ulist: ["eastmoney"],
   clist: ["eastmoney"],
   futures: ["sina"], // 商品期货 Eastmoney 不提供，统一走新浪期货接口
+  cffex: ["cffex"], // 中金所官方持仓排名 CSV，单一官方源，无冗余可切
 };
 
 let SOURCES: Record<Kind, SourceId[]> = JSON.parse(JSON.stringify(DEFAULT_SOURCES));
@@ -75,12 +76,14 @@ const SOURCE_HOSTS: Record<SourceId, string[]> = {
     "vip.stock.finance.sina.com.cn",
     "finance.sina.com.cn",
   ],
+  cffex: ["www.cffex.com.cn"],
 };
 
 const REFERER: Record<SourceId, string> = {
   eastmoney: "https://quote.eastmoney.com/",
   tencent: "https://gu.qq.com/",
   sina: "https://finance.sina.com.cn/",
+  cffex: "https://www.cffex.com.cn/",
 };
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -270,6 +273,20 @@ function buildUrl(
     }
   }
 
+  if (kind === "cffex") {
+    if (source === "cffex") {
+      // 中金所成交持仓排名日更 CSV（GBK）：/sj/ccpm/YYYYMM/DD/{IF|IH|IC|IM}_1.csv
+      // date=YYYYMMDD，product 限定四品种白名单，杜绝路径注入
+      const date = String(p.date || "");
+      const product = String(p.product || "");
+      if (!/^\d{8}$/.test(date) || !["IF", "IH", "IC", "IM"].includes(product)) return null;
+      return {
+        url: `http://www.cffex.com.cn/sj/ccpm/${date.slice(0, 6)}/${date.slice(6)}/${product}_1.csv`,
+        enc: "gbk",
+      };
+    }
+  }
+
   return null;
 }
 
@@ -362,12 +379,12 @@ Deno.serve(async (req: Request) => {
   }
 
   const kind: Kind = payload?.kind;
-  const KINDS: Kind[] = ["realtime", "kline", "trend", "flow", "search", "news", "ulist", "clist", "futures"];
+  const KINDS: Kind[] = ["realtime", "kline", "trend", "flow", "search", "news", "ulist", "clist", "futures", "cffex"];
   if (!KINDS.includes(kind)) {
     return json(400, { ok: false, error: "缺少或非法的 kind 参数" });
   }
 
-  const { secid, period, keyword, secids, fields, query, forceSource } = payload || {};
+  const { secid, period, keyword, secids, fields, query, forceSource, date, product } = payload || {};
   const params: Record<string, unknown> = {
     ...(secid ? { secid: String(secid) } : {}),
     ...(period ? { period: String(period) } : {}),
@@ -376,6 +393,8 @@ Deno.serve(async (req: Request) => {
     ...(fields ? { fields: String(fields) } : {}),
     ...(query ? { query } : {}),
     ...(forceSource ? { forceSource: String(forceSource) } : {}),
+    ...(date ? { date: String(date) } : {}),
+    ...(product ? { product: String(product) } : {}),
   };
 
   const result = await tryChain(kind, params);

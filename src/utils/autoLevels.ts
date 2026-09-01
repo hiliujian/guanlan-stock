@@ -156,8 +156,10 @@ export interface LevelCtx {
 }
 
 // 价格簇三维打分：触碰频次(40) + 反转反应(35) + 角色互换(25)，叠加四维权重修正。
+// baseScore = 未叠加四维修正的基准分（图表/报告共用，保证两侧选簇与门槛 100% 一致）；
+// score = baseScore + 量能/筹码/DMI 修正（仅报告用于强弱评级展示，不参与选簇与门槛）。
 export interface ClusterScore {
-  touches: number; reversal: number; swap: number; score: number; broken: boolean;
+  touches: number; reversal: number; swap: number; score: number; baseScore: number; broken: boolean;
   volBoost?: number; chipBoost?: number; dmiBoost?: number;
 }
 function scoreCluster(series: any[], cl: PriceCluster, role: "support" | "pressure", tol: number, ctx?: LevelCtx): ClusterScore {
@@ -208,6 +210,7 @@ function scoreCluster(series: any[], cl: PriceCluster, role: "support" | "pressu
   const swap = crossed ? 8 : SWING_SWAP_MAX; // 稳定未被穿越的支撑/压力拿满；来回震荡穿越位仅基础分（更符合交易常识）
   let score = freq + reversal + swap;
   if (broken) score *= 0.4; // 被实体击穿的价位大幅扣分（不再作为有效支撑/压力）
+  const baseScore = score; // 基准分（与四维修正解耦，图表/报告选簇与门槛共用）
   // ── 四维权重修正 ──
   let volBoost = 0, chipBoost = 0, dmiBoost = 0;
   if (ctx) {
@@ -222,17 +225,19 @@ function scoreCluster(series: any[], cl: PriceCluster, role: "support" | "pressu
     }
   }
   score += volBoost + chipBoost + dmiBoost;
-  return { touches, reversal, swap, score, broken, volBoost, chipBoost, dmiBoost };
+  return { touches, reversal, swap, score, baseScore, broken, volBoost, chipBoost, dmiBoost };
 }
 
 // 窗口内取某角色综合得分第 1 的价格簇；minTouch 过滤单脉冲簇（摆动点个数 < minTouch 不生成线，默认不过滤）
+// 选簇按 baseScore（与四维修正解耦）：报告侧 ctx 修正只影响展示评级，绝不影响选中哪个簇，
+// 否则图表（无 ctx）与报告（有 ctx）会画出/选出不同价位的支撑压力线。
 function bestCluster(series: any[], pts: SwingPt[], role: "support" | "pressure", tol: number, minTouch = 1, ctx?: LevelCtx): { cl: PriceCluster; sc: ClusterScore } | null {
   const clusters = clusterSwings(pts, tol);
   let best: PriceCluster | null = null, bestSc: ClusterScore | null = null, bestScore = -1;
   for (const cl of clusters) {
     if (cl.members.length < minTouch) continue; // 单次插针脉冲（仅 1 个摆动点）直接过滤，不生成 S/B
     const sc = scoreCluster(series, cl, role, tol, ctx);
-    if (sc.score > bestScore) { bestScore = sc.score; best = cl; bestSc = sc; }
+    if (sc.baseScore > bestScore) { bestScore = sc.baseScore; best = cl; bestSc = sc; }
   }
   return best && bestSc ? { cl: best, sc: bestSc } : null;
 }
@@ -413,14 +418,15 @@ function buildRawLevels(series: any[], guard: PeriodGuard, ctx?: LevelCtx): RawL
       cluster: supTrade?.cl ?? null,
       sc: supTrade?.sc ?? null,
       broken: supTrade?.sc.broken ?? false,
-      invalid: !(supTrade && !supTradeInvalid && supTrade.sc.score >= MIN_TOTAL_SCORE && supTrade.cl.center != null),
+      // 门槛用 baseScore（与四维修正解耦）：图表（无 ctx）与报告（有 ctx）判同一有效性
+      invalid: !(supTrade && !supTradeInvalid && supTrade.sc.baseScore >= MIN_TOTAL_SCORE && supTrade.cl.center != null),
     },
     tradePressureB: {
       price: presTrade ? presTrade.cl.center : null,
       cluster: presTrade?.cl ?? null,
       sc: presTrade?.sc ?? null,
       broken: presTrade?.sc.broken ?? false,
-      invalid: !(presTrade && !presTradeInvalid && presTrade.sc.score >= MIN_TOTAL_SCORE && presTrade.cl.center != null),
+      invalid: !(presTrade && !presTradeInvalid && presTrade.sc.baseScore >= MIN_TOTAL_SCORE && presTrade.cl.center != null),
     },
   };
 }
@@ -513,9 +519,9 @@ export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard, d
   const structPresPrice = pres?.price ?? null;
 
   // 交易参考支撑（红细虚线，挂载 S 标签；与结构线同价则去重，避免密集平行线）
-  // 硬性准入：①单脉冲过滤 ②总分≥30 ③未被统一失效判定(supTradeInvalid：连续2根实体破位或箱体破位)
+  // 硬性准入统一由 buildRawLevels 的 invalid 判定（单脉冲过滤 + baseScore≥门槛 + 未破位）
   // 错误侧守卫：现价已收于 S 中枢上方不足「连续2根」时仍会短暂驻留错误侧 → 降级「破」而非显示有效低吸参考
-  if (!raw.tradeSupportS.invalid && raw.tradeSupportS.price != null && raw.tradeSupportS.sc!.score >= MIN_TOTAL_SCORE) {
+  if (!raw.tradeSupportS.invalid && raw.tradeSupportS.price != null) {
     const price = raw.tradeSupportS.price;
     const overlap = dedupe && structSupPrice != null && Math.abs(price - structSupPrice) / structSupPrice <= TOL_PCT;
     const wrongSide = cur > 0 && price > cur;
@@ -528,8 +534,8 @@ export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard, d
         label: L.tS.name, src: wrongSide ? `交易参考支撑·已破位（原价位 ${price.toFixed(2)}）` : "交易参考支撑·短线低点簇 No.1",
       });
   }
-  // 交易参考压力（绿细虚线，挂载 B 标签；硬性准入：单脉冲过滤 + 总分≥30 + 未破位；错误侧守卫同上）
-  if (!raw.tradePressureB.invalid && raw.tradePressureB.price != null && raw.tradePressureB.sc!.score >= MIN_TOTAL_SCORE) {
+  // 交易参考压力（绿细虚线，挂载 B 标签；硬性准入同上，统一由 invalid 判定；错误侧守卫同上）
+  if (!raw.tradePressureB.invalid && raw.tradePressureB.price != null) {
     const price = raw.tradePressureB.price;
     const overlap = dedupe && structPresPrice != null && Math.abs(price - structPresPrice) / structPresPrice <= TOL_PCT;
     const wrongSide = cur > 0 && price < cur;
@@ -572,6 +578,7 @@ export interface PriceLevelItem {
   totalScore: number;     // 综合总分（量价·筹码·趋势加权后，0-100 量级）
   touchCount: number;     // 触碰次数
   isBroken: boolean;      // 失效：连续2根实体击穿 / 箱体破位 / 现价已收于画线错误侧
+  status: "ok" | "broken" | "ref"; // 与图表状态一一对应：ok=正常 / broken=已破位 / ref=参考位（簇缺失兜底）
   level: "强" | "中" | "弱"; // 强弱评级
   volDesc: string;        // 量能描述：放量确认/缩量触碰
   chipDesc: string;       // 筹码匹配描述
@@ -598,7 +605,9 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
     rl: RawLevel,
     tag: string, name: string, sub: string
   ): PriceLevelItem | null => {
-    if (rl.invalid || rl.price == null || !rl.sc) return null;
+    // 注意：不在此处按 rl.invalid 拦截——破位结构线图表仍降级展示（已破位），报告需同价同状态；
+    // 交易线的 invalid 拦截由调用方完成（图表对失效交易线同样不绘制）。
+    if (rl.price == null || !rl.sc) return null;
     const boxBoost = inBox ? 4 : 0; // 箱体区间内统一 +4 分
     const finalScore = rl.sc.score + boxBoost;
     const isSupportRole = role === "structSupport" || role === "tradeSupportS";
@@ -623,6 +632,7 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
       totalScore: Math.round(finalScore),
       touchCount: rl.sc.touches,
       isBroken,
+      status: isBroken ? "broken" : "ok",
       level,
       volDesc,
       chipDesc,
@@ -630,14 +640,41 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
       desc: sub || name,
     };
   };
+  // 结构线与图表 100% 同源：正常/破位（含错误侧）路径直接走 mk（rl.price 与 ensureStructLine
+  // 同值）；簇缺失时与图表一样兜底「最近摆动点 → 窗口极值」，标参考位（status=ref，弱级），
+  // 杜绝「图表画了参考位、报告却没有该价位」的不一致。
+  const structMk = (
+    role: "structSupport" | "structPressure",
+    rl: RawLevel,
+    tag: string, name: string
+  ): PriceLevelItem | null => {
+    const it = mk(role, rl, tag, name, "");
+    if (it) return it;
+    const ensureRole = role === "structSupport" ? "support" : "pressure";
+    const sl = ensureStructLine(series, raw, ensureRole, guard);
+    if (!sl || sl.sub !== "参考位") return null; // 仅兜底参考位路径；数据不足与图表一致地缺省
+    return {
+      price: sl.price, totalScore: 0, touchCount: 0,
+      isBroken: false, status: "ref", level: "弱",
+      volDesc: "", chipDesc: "", labelTag: tag, desc: "参考位（簇缺失兜底）",
+    };
+  };
+  const sS = structMk("structSupport", raw.structSupport, L.sS.tag, L.sS.name);
+  const sP = structMk("structPressure", raw.structPressure, L.sP.tag, L.sP.name);
+  let tS = raw.tradeSupportS.invalid ? null : mk("tradeSupportS", raw.tradeSupportS, L.tS.tag, L.tS.name, L.tS.sub);
+  let tP = raw.tradePressureB.invalid ? null : mk("tradePressureB", raw.tradePressureB, L.tP.tag, L.tP.name, L.tP.sub);
+  // 同向去重与图表 computeAutoLevelsFromSeries 完全同口径（图表默认结构线+交易线同开 → dedupe=true）：
+  // 交易 S/B 与结构支撑/压力价差 ≤TOL_PCT 时隐藏交易线只留结构线，保证报告行与图表画线一一对应。
+  if (tS && sS && Math.abs(tS.price - sS.price) / sS.price <= TOL_PCT) tS = null;
+  if (tP && sP && Math.abs(tP.price - sP.price) / sP.price <= TOL_PCT) tP = null;
   return {
     band: raw.band,
     breakDown: raw.breakDown,
     boxBottom: raw.boxBottom,
     boxTop: raw.boxTop,
-    structSupport: mk("structSupport", raw.structSupport, L.sS.tag, L.sS.name, ""),
-    structPressure: mk("structPressure", raw.structPressure, L.sP.tag, L.sP.name, ""),
-    tradeSupportS: mk("tradeSupportS", raw.tradeSupportS, L.tS.tag, L.tS.name, L.tS.sub),
-    tradePressureB: mk("tradePressureB", raw.tradePressureB, L.tP.tag, L.tP.name, L.tP.sub),
+    structSupport: sS,
+    structPressure: sP,
+    tradeSupportS: tS,
+    tradePressureB: tP,
   };
 }

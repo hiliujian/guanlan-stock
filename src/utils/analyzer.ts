@@ -356,10 +356,6 @@ export interface AnalysisResult {
   priceLevels: PriceLevelGroup; // 分层价位（结构支撑 sS / 结构压力 sP / 交易支撑 S / 交易压力 B + 箱体上下沿），与图表智能标注 100% 同源
   mainSupport: number;   // 主支撑（最强有效支撑，箱体下沿兜底）
   mainResistance: number; // 主压力（最强有效压力，箱体上沿兜底）
-  bottomZone: number;
-  topZone: number;
-  distSup: number;
-  distRes: number;
   nearBottom: boolean;
   nearTop: boolean;
   nearSup: boolean;
@@ -376,7 +372,6 @@ export interface AnalysisResult {
   scoreReasons: { label: string; delta: number }[];
   stage: string;
   stageText: string;
-  stageDetail: string;
   score: number;
   riskLevel: string;
   watch: boolean;
@@ -437,8 +432,6 @@ export interface AnalysisResult {
     indexTrend: string; // 大盘趋势文字（上涨趋势 / 震荡偏强 / 区间震荡 / 震荡偏弱 / 下跌趋势）
     indexTrendDisplay: string; // 合成唯一结论 = 今日动能定性(冲突时) 或 中期趋势(无冲突)；报告只展示此字段，禁止叠加方向矛盾表述
     indexTodayPct: number | null; // 大盘指数今日实时涨跌幅（%），实时感知「今天」的方向
-    indexMoveJudge: string; // 今日动能定性结论（不简单陈列涨跌幅）：超跌反弹/修复企稳/反转信号/正常回踩/阶段调整/见顶信号；无显著冲突为 ""
-    indexMoveBasis: string; // 定性结论的结构依据（站上20日线、放量、DMI转多 等，逗号连接）
     indexAdx: number; // 大盘 ADX（趋势强度）
     alignScore: number; // 与大盘方向协同得分：同向±6， 中性0（方向一致且同涨加分、同跌确认弱势扣分）
     alignText: string; // "顺大盘上涨" / "逆势回调" 等自然语言描述
@@ -450,14 +443,11 @@ export interface AnalysisResult {
     sectorName?: string; // 行业名，如「半导体及元件」
     sectorTrend?: string; // 行业趋势文字（同 indexTrend）
     sectorTrendDisplay?: string; // 行业合成唯一结论（同 indexTrendDisplay 逻辑）
-    sectorMoveJudge?: string; // 行业今日动能定性结论（同 indexMoveJudge）
-    sectorMoveBasis?: string; // 行业定性结论结构依据
     sectorAlignScore?: number; // 个股与行业方向协同得分：同向+4，反向-4，中性0
     sectorAlignText?: string; // "顺行业上涨" / "逆行业回调" 等自然语言
     // 仓位建议（由大盘环境 + 行业协同综合推导，服务于量化仓位调控）
     positionAdvice: string; // "建议轻仓避险（≤20%）" / "可积极配置（60%–80%）" / "暂无数据" 等
     positionPct: number; // 建议上限仓位百分比（0 = 暂无数据）
-    positionBasis: string; // 推导依据自然语言
   };
   // ---- 今日盘中走势（A 股特有：涨停/跌停/炸板，实时反映当日异动）----
   intradayMove: {
@@ -706,7 +696,10 @@ export function analyze(
   const nearBottom = price <= bottomZone * 1.05;
   const nearTop = price >= topZone * 0.93;
   const nearSup = distSup < 0.05;
-  const nearRes = distRes < 0.05;
+  // 压力侧收紧到 3%（支撑侧维持 5%）：支撑「临近」是低吸预案，需要提前量；
+  // 压力「临近/附近/承压」是减仓预警，5% 会把近半根涨停的距离也喊成临近（如茅台
+  // 压力距现价 4.6% 被标「临近」），误导用户提前离场，故收紧。
+  const nearRes = distRes < 0.03;
 
   const f5 = flowSumByDays(flowMap, 5);
   const f10 = flowSumByDays(flowMap, 10);
@@ -738,33 +731,26 @@ export function analyze(
 
   let stage: string;
   let stageText: string;
-  let stageDetail: string;
   // 注：阶段判断基于价/量/资金的技术形态识别，仅描述「当前形态特征」，
   // 不确认背后是否存在真实的主力吸筹/派发行为（后者无法仅凭价量序列证明）。
   if (nearTop && (rNow > 72 || f10.sum < 0)) {
     stage = "dist";
     stageText = "高位滞涨";
-    stageDetail = "价格接近阶段高位，且RSI偏高或近10日主力资金转为净流出，呈现量价背离的滞涨特征，需警惕回调。";
   } else if (nearBottom && f5.sum > 0 && rNow < 55 && volRatio > 0.85) {
     stage = "acc";
     stageText = "低位蓄势";
-    stageDetail = "股价处于相对低位、近5日主力资金净流入、成交温和，呈现低位企稳蓄势的技术特征。";
   } else if (trend === "up" && volRatio > 1.1 && f5.sum > 0) {
     stage = "pull";
     stageText = "多头加速";
-    stageDetail = "均线多头排列、放量上行、近5日主力净流入，处于趋势加速段，动能偏强。";
   } else if (trend === "down" && volRatio < 0.95) {
     stage = "wash";
     stageText = "弱势整理";
-    stageDetail = "趋势偏弱、缩量调整，处于阴跌/弱势整理格局，建议观望等待企稳。";
   } else if (trend === "shake" || trend === "shake_up" || trend === "shake_down") {
     stage = "range";
     stageText = "区间震荡";
-    stageDetail = "多空僵持、方向尚不明朗，建议等待放量突破或跌破关键位后再确认。";
   } else {
     stage = "mid";
     stageText = "趋势运行";
-    stageDetail = "处于趋势中途，跟随均线持有、关注关键价位得失。";
   }
 
   // 综合评分 + 评分依据（结构化，便于报告展示「为什么这个分数」）
@@ -1206,27 +1192,26 @@ export function analyze(
   function judgeTodayMove(opts: {
     closeNow: number; ma20Now: number; ma5Now: number; slope: number;
     volRatio: number; pdi: number; mdi: number; todayPct: number; dir: "up" | "down";
-  }): { judge: string; basis: string } {
-    if (Math.abs(opts.todayPct) < 1) return { judge: "", basis: "" };
+  }): { judge: string } {
+    if (Math.abs(opts.todayPct) < 1) return { judge: "" };
     // 同向异动无歧义，不贴标签（今日涨且中期涨 / 今日跌且中期跌 → 直接用中期趋势结论）
     if ((opts.dir === "up" && opts.todayPct > 0) || (opts.dir === "down" && opts.todayPct < 0)) {
-      return { judge: "", basis: "" };
+      return { judge: "" };
     }
     let struct = 0;
-    const basis: string[] = [];
-    if (opts.ma20Now && opts.closeNow >= opts.ma20Now) { struct += 2; basis.push("站上20日线"); }
-    else { struct -= 2; basis.push("20日线下方"); }
+    if (opts.ma20Now && opts.closeNow >= opts.ma20Now) struct += 2;
+    else struct -= 2;
     if (opts.ma5Now && opts.closeNow >= opts.ma5Now) struct += 1; else struct -= 1;
-    if (opts.slope > 0.001) { struct += 2; basis.push("MA20走平上拐"); }
-    else if (opts.slope < -0.004) { struct -= 2; basis.push("MA20仍下行"); }
-    if (opts.volRatio >= 1.3) { struct += 1; basis.push("放量"); }
-    else if (opts.volRatio < 0.7) { struct -= 1; basis.push("缩量"); }
-    if (opts.pdi > opts.mdi) { struct += 2; basis.push("DMI转多"); }
-    else if (opts.mdi > opts.pdi) { struct -= 2; basis.push("DMI偏空"); }
+    if (opts.slope > 0.001) struct += 2;
+    else if (opts.slope < -0.004) struct -= 2;
+    if (opts.volRatio >= 1.3) struct += 1;
+    else if (opts.volRatio < 0.7) struct -= 1;
+    if (opts.pdi > opts.mdi) struct += 2;
+    else if (opts.mdi > opts.pdi) struct -= 2;
     const judge = opts.dir === "down"
       ? (struct >= 4 ? "反转信号" : struct >= 1 ? "修复企稳" : "超跌反弹")
       : (struct <= -4 ? "见顶信号" : struct <= -1 ? "阶段调整" : "正常回踩");
-    return { judge, basis: basis.join("，") };
+    return { judge };
   }
 
   // ---------------- 大盘 · 市场环境（beta 感知：同向协同/逆势过滤） ----------------
@@ -1323,7 +1308,6 @@ export function analyze(
     // 合成为唯一定性结论（judgeTodayMove），再与中期趋势合并为 indexTrendDisplay——
     // 报告只展示 indexTrendDisplay（如「超跌反弹」「反转信号」），不再叠加「下跌趋势」造成歧义。
     let indexMoveJudge = "";
-    let indexMoveBasis = "";
     const idxCloseNow = idxClose[idxLen - 1];
     const idxMa5Now = (idxMa5[idxLen - 1] as number) || idxCloseNow;
     const idxDir: "up" | "down" | "" = marketUp ? "up" : marketDown ? "down" : "";
@@ -1333,7 +1317,6 @@ export function analyze(
         volRatio: idxVolRatio, pdi: idxPdi, mdi: idxMdi, todayPct: idxTodayPct, dir: idxDir,
       });
       indexMoveJudge = r.judge;
-      indexMoveBasis = r.basis;
     }
     // 合成唯一结论：有冲突定性时用定性结论，否则用中期趋势（杜绝「下跌趋势 · 超跌反弹」方向矛盾叠加）
     const indexTrendDisplay = indexMoveJudge || idxTrend;
@@ -1345,7 +1328,6 @@ export function analyze(
     let sectorTrend: string | undefined;
     let sectorTrendDisplay: string | undefined;
     let sectorMoveJudge = "";
-    let sectorMoveBasis = "";
     let sectorAlignScore = 0;
     let sectorAlignText = "";
     const sector = market.sector;
@@ -1388,7 +1370,6 @@ export function analyze(
           volRatio: sVolRatio, pdi: sPdi, mdi: sMdi, todayPct: sTodayPct, dir: sDir,
         });
         sectorMoveJudge = r.judge;
-        sectorMoveBasis = r.basis;
       }
       sectorTrendDisplay = sectorMoveJudge || sectorTrend;
       if (stockUp && sUp) { sectorAlignScore = 4; sectorAlignText = "顺行业上涨，板块共振做多"; }
@@ -1401,36 +1382,28 @@ export function analyze(
     // 大盘/行业环境决定可承担的风险敞口——这是「大盘趋势对仓位调控的影响」的落地点。
     let positionAdvice = "";
     let positionPct = 0;
-    let positionBasis = "";
     if (idxTrend === "下跌趋势" || breadthScore <= -3) {
       positionPct = 20;
       positionAdvice = "建议轻仓避险（≤20%）";
-      positionBasis = "大盘下跌趋势 / 市场情绪低迷，系统性风险偏高";
     } else if (sectorAlignScore <= -4) {
       positionPct = 30;
       positionAdvice = "建议控仓（≤30%）";
-      positionBasis = "个股与所属行业逆风，板块 beta 不利";
     } else if (idxTrend === "上涨趋势" && breadthScore >= 3 && sectorAlignScore >= 4) {
       positionPct = 70;
       positionAdvice = "可积极配置（60%–80%）";
-      positionBasis = "大盘上行 + 情绪偏多 + 行业共振，顺势环境";
     } else if (idxTrend === "上涨趋势" || (breadthScore >= 3 && sectorAlignScore >= 0)) {
       positionPct = 55;
       positionAdvice = "可适度加仓（50%–60%）";
-      positionBasis = "大盘偏强、情绪尚可，顺势但需留有余地";
     } else {
       positionPct = 40;
       positionAdvice = "建议中性仓位（30%–50%）";
-      positionBasis = "大盘区间震荡、情绪中性，等待方向确认";
       // 中性环境下用「今日实时动能」微调风险敞口：今日大涨可稍积极、今日大跌应更谨慎
       if (idxTodayScore >= 2) {
         positionPct = 45;
         positionAdvice = "建议中性偏积极（40%–50%）";
-        positionBasis = "大盘区间震荡，但今日走强，可稍偏积极";
       } else if (idxTodayScore <= -2) {
         positionPct = 30;
         positionAdvice = "建议谨慎控仓（≤30%）";
-        positionBasis = "大盘区间震荡，今日走弱，短线宜谨慎";
       }
     }
 
@@ -1445,8 +1418,6 @@ export function analyze(
       indexTrend: idxTrend,
       indexTrendDisplay,
       indexTodayPct: idxTodayPct,
-      indexMoveJudge,
-      indexMoveBasis,
       indexAdx: idxAdx,
       alignScore,
       alignText,
@@ -1457,13 +1428,10 @@ export function analyze(
       sectorName,
       sectorTrend,
       sectorTrendDisplay,
-      sectorMoveJudge,
-      sectorMoveBasis,
       sectorAlignScore,
       sectorAlignText,
       positionAdvice,
       positionPct,
-      positionBasis,
     };
     // 市场环境极差时直接升级风险等级（大盘下跌趋势 或 市场情绪低迷 或 行业逆风）
     if (idxTrend === "下跌趋势" || breadthScore <= -3 || sectorAlignScore <= -4) riskLevel = riskLevel === "低" ? "中" : riskLevel === "中" ? "高" : riskLevel;
@@ -1475,8 +1443,6 @@ export function analyze(
       indexTrend: "暂无数据",
       indexTrendDisplay: "暂无数据",
       indexTodayPct: null,
-      indexMoveJudge: "",
-      indexMoveBasis: "",
       indexAdx: 0,
       alignScore: 0,
       alignText: "暂无数据",
@@ -1487,13 +1453,10 @@ export function analyze(
       sectorName: undefined,
       sectorTrend: undefined,
       sectorTrendDisplay: undefined,
-      sectorMoveJudge: "",
-      sectorMoveBasis: "",
       sectorAlignScore: 0,
       sectorAlignText: "",
       positionAdvice: "暂无数据",
       positionPct: 0,
-      positionBasis: "",
     };
   }
 
@@ -1521,10 +1484,6 @@ export function analyze(
     priceLevels,
     mainSupport,
     mainResistance,
-    bottomZone,
-    topZone,
-    distSup,
-    distRes,
     nearBottom,
     nearTop,
     nearSup,
@@ -1541,7 +1500,6 @@ export function analyze(
     scoreReasons,
     stage,
     stageText,
-    stageDetail,
     score,
     riskLevel,
     watch,

@@ -82,7 +82,7 @@
         <view class="lv subsection">
           <text class="lv-k">支撑位</text>
           <view class="lv-right">
-            <PriceText :value="a.support" :size="30" />
+            <PriceText :value="a.support" :size="30" :weight="400" />
             <text v-if="a.breakdown" class="lv-tag bad">已跌破</text>
             <text v-else-if="a.nearSup" class="lv-tag warn">临近</text>
           </view>
@@ -94,7 +94,7 @@
         <view class="lv subsection">
           <text class="lv-k">压力位</text>
           <view class="lv-right">
-            <PriceText :value="a.resistance" :size="30" />
+            <PriceText :value="a.resistance" :size="30" :weight="400" />
             <text v-if="a.breakout" class="lv-tag ok">已突破</text>
             <text v-else-if="a.nearRes" class="lv-tag warn">临近</text>
           </view>
@@ -204,7 +204,7 @@
           <text class="m-v">{{ chipRangeText }}</text>
         </view>
       </view>
-      <text class="base-note">筹码基于近 120 日成交量加权近似（CYQ）；获利盘过高易回吐，跌破密集峰意味着多数人被套。</text>
+      <text class="base-note">筹码为近 120 日成交量加权近似（CYQ）：获利盘过高易回吐，跌破密集峰多数人被套。</text>
     </view>
 
     <!-- 波动与风险 -->
@@ -286,7 +286,7 @@
           </view>
         </template>
       </view>
-      <text class="base-note">大盘环境权重最高 ±18 分（协同 ±6 + 行业 ±4 + 情绪 ±5 + 量能 ±3），已纳入综合评分并推导仓位建议；逆势/行业逆风时请务必降仓避险。</text>
+      <text class="base-note">大盘环境已纳入综合评分（最高 ±18 分）；逆势或行业逆风时请降仓避险。</text>
     </view>
 
     <view class="panel news-panel anim-fade-up" :style="{ animationDelay: '160ms' }">
@@ -327,7 +327,7 @@
           <text class="ni-k bad">利空风险事件</text>
           <text class="ni-v">{{ ns.risks.join('、') }}</text>
         </view>
-        <text class="ni-note">资讯情绪已按 ±12 分纳入综合评分（当前贡献 {{ newsDelta > 0 ? '+' : '' }}{{ newsDelta }} 分），与量价 / 资金因子协同研判，不构成单独买卖依据。</text>
+        <text class="ni-note">资讯情绪已按 ±12 分纳入综合评分（当前贡献 {{ newsDelta > 0 ? '+' : '' }}{{ newsDelta }} 分）。</text>
       </view>
     </view>
 
@@ -420,7 +420,9 @@ const marketIdxStrength = computed(() => {
 });
 const alignColor = computed(() => {
   const s = a.value.marketEnv?.alignScore || 0;
-  if (s > 0) return "var(--primary)";
+  // A股约定同 breadthColor：顺大盘（正分=利多）红、逆大盘（负分=利空）绿、中性灰。
+  // 此前正分用 --primary 品牌绿，与相邻 breadthColor 红绿口径相悖且和利空绿混淆，已统一。
+  if (s > 0) return "var(--up)";
   if (s < 0) return "var(--down)";
   return "var(--text-2)";
 });
@@ -450,7 +452,8 @@ const sectorDisplayColor = computed(() => {
 });
 const sectorAlignColor = computed(() => {
   const s = a.value.marketEnv?.sectorAlignScore || 0;
-  if (s > 0) return "var(--primary)";
+  // 与 alignColor 同口径：顺行业（正分=利多）红、逆行业（负分=利空）绿、中性灰
+  if (s > 0) return "var(--up)";
   if (s < 0) return "var(--down)";
   return "var(--text-2)";
 });
@@ -699,64 +702,35 @@ const newsDelta = computed(() =>
 );
 
 // ---------------- 分析结论（综合合成） ----------------
+// 结论文案：短句直给——「定位 + 怎么做 + 价位应对 + 逆风提示」。
+// 各指标明细已由上方面板呈现，结论不再复读数据（避免长文劝退）；
+// 破位止损/突破跟进、逆风降仓是防误判的关键信息，必须保留。
 const conclusion = computed(() => {
   const r = a.value;
   const parts: string[] = [];
-  parts.push(`当前${r.trendText}（${r.strength}），均线${r.maState}，处于「${r.stageText}」阶段。${r.stageDetail}`);
-  const pb = r.bollPctB[r.bollPctB.length - 1];
-  const bollStr = pb == null ? "—" : pb.toFixed(2);
-  parts.push(
-    `技术面：MACD${r.macdCross === "gold" ? "金叉" : r.macdCross === "dead" ? "死叉" : "红绿柱交替"}，KDJ${r.kdjCross === "gold" ? "金叉" : r.kdjCross === "dead" ? "死叉" : "纠缠"}且${r.kdjState}，RSI(12)=${r.rNow.toFixed(2)}（${rsiState.value}），量能比${r.volRatio.toFixed(2)}（${volState.value}）；趋势强度 ADX(14)=${r.adx[r.adx.length - 1].toFixed(2)}（${r.adxState}），布林%B=${bollStr}，近20日平均换手率${r.turnAvg > 0 ? r.turnAvg.toFixed(2) + "%（" + r.turnState + "）" : "暂无数据"}。`
-  );
-  // 筹码结构 + 乖离率 + 布林带宽：在结论中单列一段，体现新增的 3 个分析维度已经整合
-  {
-    const extra: string[] = [];
-    if (r.chip) {
-      const pr = (r.chip.profitRatio * 100).toFixed(0);
-      extra.push(`筹码面获利盘 ${pr}%，平均持仓成本 ${r.chip.avgCost.toFixed(2)}，密集峰 ${r.chip.peakPrice.toFixed(2)}`);
+  parts.push(`${r.trendText}（${r.strength}），处于「${r.stageText}」阶段，${r.riskLevel}风险。`);
+  if (r.reduce) parts.push("信号偏空，建议逢高减仓、严控仓位。");
+  else if (r.add) parts.push("趋势与资金配合良好，可于回调分批加仓。");
+  else if (r.build) parts.push("处于相对低位且风险可控，可于支撑附近分批建仓。");
+  else if (r.watch) parts.push("可纳入自选关注，等待更优介入时点。");
+  else parts.push("多空信号交织，建议观望，等方向明朗。");
+  parts.push(`支撑 ${r.support.toFixed(2)}、压力 ${r.resistance.toFixed(2)}：有效跌破支撑应止损离场，放量突破压力可顺势跟进。`);
+  // 指数数据缺失时（analyzer 占位 marketEnv：positionPct=0、alignScore=0）跳过本段，
+  // 避免把「无数据」误报成「市场环境偏弱」误导用户；该分支内 positionAdvice 必为真实文案。
+  const env = r.marketEnv;
+  if (env && env.indexTrend !== "暂无数据") {
+    const mktAdverse = (env.alignScore || 0) < 0;
+    const sectorAdverse = (env.sectorAlignScore || 0) < 0;
+    const defensive = (env.positionPct || 0) <= 30;
+    if (mktAdverse || sectorAdverse || defensive) {
+      const what = mktAdverse ? "大盘逆风" : sectorAdverse ? "行业逆风" : "市场环境偏弱";
+      parts.push(`${what}，${env.positionAdvice}。`);
     }
-    extra.push(`乖离率 BIAS(6/12/24)=${r.bias6.toFixed(1)}%/${r.bias12.toFixed(1)}%/${r.bias24.toFixed(1)}%`);
-    if (r.bollSqueeze) extra.push("布林带极度收敛，即将选择方向（Squeeze）");
-    else extra.push(`布林带宽相对中值 ${r.bollBwNow.toFixed(2)}`);
-    parts.push(extra.join("；") + "。");
   }
-  parts.push(
-    `关键价位：支撑 ${r.support.toFixed(2)}（距现价 ${(r.distSup * 100).toFixed(2)}%），压力 ${r.resistance.toFixed(2)}（上方空间 ${(r.distRes * 100).toFixed(2)}%）；近5日主力净流入${flowText.value}。`
-  );
-  // 大盘环境：在结论里单列一段，让 beta 感知直接体现在总览文字里
-  if (r.marketEnv) {
-    let envText = `大盘环境：${r.marketEnv.indexName} 呈现${r.marketEnv.indexTrendDisplay}`;
-    if (r.marketEnv.indexMoveBasis) envText += `（依据：${r.marketEnv.indexMoveBasis}）`;
-    envText += `，个股与大盘${r.marketEnv.alignText}；市场情绪${r.marketEnv.breadthText}，${r.marketEnv.mktVolText}（${r.marketEnv.idxVolRatio.toFixed(2)}倍均量）。`;
-    if (r.marketEnv.sectorName) {
-      envText += ` 行业层面：所属「${r.marketEnv.sectorName}」${r.marketEnv.sectorTrendDisplay || "趋势不明"}${r.marketEnv.sectorMoveBasis ? "（依据：" + r.marketEnv.sectorMoveBasis + "）" : ""}，个股与行业${r.marketEnv.sectorAlignText || "无明显协同"}。`;
-    }
-    if (r.marketEnv.positionAdvice && r.marketEnv.positionAdvice !== "暂无数据") {
-      envText += ` 仓位层面：${r.marketEnv.positionAdvice}（依据：${r.marketEnv.positionBasis}）。`;
-    }
-    parts.push(envText);
+  if (ns.value && newsDelta.value !== 0) {
+    parts.push(`近3日资讯情绪${newsDelta.value > 0 ? "偏多" : "偏空"}（评分${newsDelta.value > 0 ? "+" : ""}${newsDelta.value} 分）。`);
   }
-  // 资讯情绪因子：与其他量化因子一并汇总进结论（放在关联资讯板块之后，形成完整闭环）
-  if (ns.value) {
-    const tone = newsDelta.value > 0 ? "偏多" : newsDelta.value < 0 ? "偏空" : "中性";
-    const cats = ns.value.catalysts.length ? `利好催化含「${ns.value.catalysts.join("、")}」` : "";
-    const risks = ns.value.risks.length ? `需留意「${ns.value.risks.join("、")}」等风险事件` : "";
-    const conn = cats && risks ? "，" : "";
-    parts.push(
-      `资讯面：近3日相关公开资讯情绪${tone}（综合评分贡献 ${newsDelta.value > 0 ? "+" : ""}${newsDelta.value} 分）${cats}${conn}${risks}。`
-    );
-  }
-  let rec = "";
-  if (r.reduce) rec = "综合信号偏空，建议逢高减仓、严格控制仓位风险。";
-  else if (r.add) rec = "趋势与资金配合良好，可于回调时分批加仓。";
-  else if (r.build) rec = "处于相对低位且风险可控，可于支撑区附近考虑建仓。";
-  else if (r.watch) rec = "可纳入自选关注，等待更优介入时点。";
-  else rec = "多空信号交织，建议以观望为主，等待方向明朗。";
-  parts.push(rec);
-  parts.push(
-    "综上，以上研判综合了大盘环境、趋势、均线、动量(KDJ/MACD/RSI)、筹码(CYQ)、乖离率/布林带宽、量能与资金(主力净流入)、波动风险(ATR/最大回撤/换手率)及资讯情绪等全部量化因子，力求对各维度的一致性与矛盾点给出整体判断。"
-  );
-  parts.push("（注：「量价阶段」为技术形态识别，仅描述量价特征，不构成对主力行为的确认；以上仅为技术参考，非投资建议。）");
+  parts.push("以上为技术面参考，非投资建议。");
   return parts.join("");
 });
 
@@ -843,7 +817,7 @@ function openNews(it: NewsItem) {
   align-items: center;
   gap: 12rpx;
   padding: 12rpx 24rpx;
-  border-top: 1rpx solid var(--r-edge);
+  border-top: 1px solid var(--r-edge);
   font-size: var(--font-sm);
 }
 .sig-alert.up { background: rgba(239, 35, 42, 0.08); color: var(--up); }
@@ -863,7 +837,7 @@ function openNews(it: NewsItem) {
   70% { box-shadow: 0 0 0 12rpx transparent; }
   100% { box-shadow: 0 0 0 0 transparent; }
 }
-.sig-alert .sa-pct { font-weight: 800; font-size: var(--font-sm); }
+.sig-alert .sa-pct { font-size: var(--font-sm); }
 .sa-spacer { flex: 1; }
 .sa-sub { font-size: var(--font-xs); opacity: 0.8; }
 
@@ -887,7 +861,6 @@ function openNews(it: NewsItem) {
 }
 .score-num {
   font-size: var(--font-3xl);
-  font-weight: 700;
   line-height: 1;
   color: var(--r-ink);
 }
@@ -913,7 +886,6 @@ function openNews(it: NewsItem) {
 }
 .meta-v {
   color: var(--r-ink);
-  font-weight: 500;
 }
 
 /* 通用面板（研判 / 评分依据 / 结论） */
@@ -937,13 +909,15 @@ function openNews(it: NewsItem) {
 }
 
 /* 多维研判：2 列网格
-   卡片内部分隔线统一为 1rpx 发丝线（与 .score-divider / .sig-alert / .decision 等
-   卡片内分隔保持一致，避免 2rpx 造成的「粗细不一」观感）。 */
+   卡片内部分隔线统一为 1px 发丝线（与 .score-divider / .sig-alert / .decision / .sig-detail
+   等卡片内分隔保持一致）。注意必须用绝对 1px 而非 1rpx：1rpx 在桌面高分屏缩放下为
+   次像素（≈0.65px），网格 gap 透缝按行取整会导致「有的行有线、有的行没有」；
+   1px 在任何 DPR 下都稳定渲染且粗细一致。 */
 .metric-grid {
   display: grid;
   /* 2 列布局适配手机屏宽；奇数 metric 时让最后一格跨满整行，避免右下角空缺 */
   grid-template-columns: 1fr 1fr;
-  gap: 1rpx;
+  gap: 1px;
   background: var(--border);
   border-radius: var(--radius-sm);
   overflow: hidden;
@@ -968,7 +942,6 @@ function openNews(it: NewsItem) {
 }
 .m-v {
   font-size: var(--font-sm);
-  font-weight: 600;
   color: var(--r-ink);
   letter-spacing: 0.3rpx;
   text-align: center;
@@ -993,7 +966,6 @@ function openNews(it: NewsItem) {
   color: var(--r-soft);
 }
 .r-delta {
-  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .base-note {
@@ -1008,7 +980,7 @@ function openNews(it: NewsItem) {
   margin-bottom: 0;
 }
 .score-divider {
-  height: 1rpx;
+  height: 1px;
   background: var(--border);
   margin: 16rpx 0;
 }
@@ -1021,7 +993,7 @@ function openNews(it: NewsItem) {
   margin-bottom: 0;
   margin-top: 14rpx;
   padding-top: 14rpx;
-  border-top: 1rpx solid var(--border);
+  border-top: 1px solid var(--border);
 }
 
 /* 分析结论 */
@@ -1046,7 +1018,6 @@ function openNews(it: NewsItem) {
   padding: 10rpx 22rpx;
   border-radius: 999rpx;
   font-size: var(--font-sm);
-  font-weight: 500;
   transition: transform var(--dur-fast) var(--ease-out);
 }
 .dec-item:active {
@@ -1082,7 +1053,6 @@ function openNews(it: NewsItem) {
 }
 .lv-v {
   font-size: var(--font-md);
-  font-weight: 600;
   color: var(--r-ink);
 }
 
@@ -1122,7 +1092,6 @@ function openNews(it: NewsItem) {
 .sig-type {
   flex: none;
   font-size: var(--font-xs);
-  font-weight: 600;
   padding: 6rpx 16rpx;
   border-radius: 999rpx;
   background: var(--card-2);
@@ -1131,7 +1100,7 @@ function openNews(it: NewsItem) {
 }
 .sig-detail {
   background: var(--r-panel);
-  border-top: 1rpx solid var(--r-edge);
+  border-top: 1px solid var(--r-edge);
   padding: 16rpx 24rpx;
 }
 .sd-row { display: flex; gap: 16rpx; padding: 8rpx 0; }
@@ -1140,7 +1109,7 @@ function openNews(it: NewsItem) {
 
 /* 关键价位状态徽标（A股约定：已突破/上涨=红 var(--up)、已跌破/下跌=绿 var(--down)） */
 .lv-right { display: flex; align-items: center; gap: 12rpx; }
-.lv-tag { font-size: var(--font-xs); padding: 4rpx 12rpx; border-radius: 8rpx; font-weight: 600; }
+.lv-tag { font-size: var(--font-xs); padding: 4rpx 12rpx; border-radius: 8rpx; }
 .lv-tag.ok { color: var(--up); background: rgba(239, 35, 42, 0.12); }
 .lv-tag.bad { color: var(--down); background: rgba(9, 176, 122, 0.12); }
 .lv-tag.warn { color: #c87f00; background: rgba(255, 159, 28, 0.14); }
@@ -1208,10 +1177,11 @@ function openNews(it: NewsItem) {
 .ni-tag {
   flex: none;
   font-size: var(--font-xs);
-  font-weight: 700;
-  padding: 3rpx 12rpx;
+  /* 行高与标题首行等高（--font-sm × 1.5）：标签盒子恒等于标题一行高，
+     文字由 line-height 垂直居中；去掉旧 margin-top 手动凑位与竖向 padding（撑高失对齐） */
+  line-height: calc(var(--font-sm) * 1.5);
+  padding: 0 12rpx;
   border-radius: 6rpx;
-  margin-top: 4rpx;
 }
 .ni-tag.ok { color: var(--up); background: rgba(239, 35, 42, 0.14); }
 .ni-tag.bad { color: var(--down); background: rgba(9, 176, 122, 0.14); }
@@ -1276,7 +1246,6 @@ function openNews(it: NewsItem) {
 .ni-k {
   flex: none;
   font-size: var(--font-xs);
-  font-weight: 600;
   padding: 3rpx 12rpx;
   border-radius: 6rpx;
 }

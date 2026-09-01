@@ -39,7 +39,8 @@ withDefaults(
 }
 .ac-title {
   font-size: var(--font-lg);
-  font-weight: 600;
+  /* 卡片标题不加重：层级靠字号区分，加粗只留给关键数字/信号（防滥用） */
+  font-weight: 400;
   color: var(--text);
 }
 .ac-extra {
