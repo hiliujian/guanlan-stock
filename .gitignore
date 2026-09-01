@@ -44,6 +44,10 @@ dist_trash_*/
 tmp/
 supabase/.temp/
 
+# 验证 / 分析报告为本地交付物，不进版本库（易误提交且非源码）
+*验证报告*.md
+*核对清单*.md
+
 # ---- Editor directories and files ----
 .idea
 .trae
