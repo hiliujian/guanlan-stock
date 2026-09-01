@@ -69,6 +69,25 @@ const DOWN = cssColor("--down", DOWN_FALLBACK);
 // 图内文字标签统一的方形实底内边距（彩色实底白字标签），多处复用避免重复字面量
 const TEXT_PAD = { paddingLeft: 4, paddingRight: 4, paddingTop: 4, paddingBottom: 4 };
 
+// 离屏 canvas 测量文字宽度（用于标签溢出钳制；H5 浏览器环境 document 可用）
+let _mtxCtx: CanvasRenderingContext2D | null = null;
+function measureTextWidth(text: string, size: number): number {
+  if (typeof document === "undefined") return text.length * size * 0.62; // 非浏览器兜底估算
+  if (!_mtxCtx) {
+    const cv = document.createElement("canvas");
+    _mtxCtx = cv.getContext("2d");
+  }
+  if (!_mtxCtx) return text.length * size * 0.62;
+  _mtxCtx.font = `${size}px -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif`;
+  return _mtxCtx.measureText(text).width;
+}
+// 左对齐标签的 x 钳制：默认 x=0（与原逻辑一致，短标签保持原样）；若文字右端（含 padding + 安全余量）
+// 会越过右边界，则整体左移使右端恰好贴住右边界——保证标签永不向右溢出，又不改变左对齐形态。
+function clampLeftX(text: string, size: number, availW: number): number {
+  const boxW = measureTextWidth(text, size) + TEXT_PAD.paddingLeft + TEXT_PAD.paddingRight + 4; // +4 安全余量
+  return Math.min(0, availW - boxW);
+}
+
 // 量柱/MACD 柱取涨跌色（兜底 UP/DOWN/中性色）：自定义指标拿不到 klinecharts 内置量柱默认样式，
 // 故用项目统一涨跌色兜底，确保量柱可见——否则量面板会退化成无柱的平直线。
 function readBarColors(defaultStyles: any): { up: string; down: string; noChange: string } {
@@ -1013,15 +1032,15 @@ function ensureTrendOverlay() {
         const bounding = params.bounding as { width: number; height: number };
         if (!coordinates || coordinates.length < 1) return [];
         const y = coordinates[0].y;
-        // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角 + padding；右对齐到轴右缘(x:bounding.width, align:right)，
-        // 无论文字多长，标签右端恒贴图表右边界，绝不向右溢出被裁剪；过长时向左延展进图内（仍在可视区域内）。
+        // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角 + padding；保持左对齐(x:0, align:left)原形态，
+        // 仅当文字右端会越过右边界时才整体左移（clampLeftX），保证永不向右溢出被裁剪。
         // 标签（含价格）统一 size 10；下方 sub 提示统一 size 8（无论结构线/交易参考线/S/B/支压）。
         const bg = overlay?.extendData?.bg || overlay?.styles?.line?.color || "#888";
         const main = overlay?.extendData?.text || "";
         const sub = overlay?.extendData?.sub || "";
         const figs: any[] = [{
           type: "text",
-          attrs: { x: bounding.width, y, text: main, align: "right", baseline: "middle" },
+          attrs: { x: clampLeftX(main, 10, bounding.width), y, text: main, align: "left", baseline: "middle" },
           styles: {
             color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
             ...TEXT_PAD, size: 10,
@@ -1031,7 +1050,7 @@ function ensureTrendOverlay() {
         if (sub) {
           figs.push({
             type: "text",
-            attrs: { x: bounding.width, y: y + 13, text: sub, align: "right", baseline: "middle" },
+            attrs: { x: clampLeftX(sub, 8, bounding.width), y: y + 13, text: sub, align: "left", baseline: "middle" },
             styles: {
               color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
               ...TEXT_PAD, size: 8,
@@ -1129,7 +1148,7 @@ function ensureDrawOverlays() {
         const text = (tag ? tag + " " : "") + (price != null ? Number(price).toFixed(2) : "");
         return [{
           type: "text",
-          attrs: { x: bounding.width, y, text, align: "right", baseline: "middle" },
+          attrs: { x: clampLeftX(text, 10, bounding.width), y, text, align: "left", baseline: "middle" },
           styles: {
             color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
             ...TEXT_PAD, size: 10,
@@ -1179,7 +1198,7 @@ function ensureDrawOverlays() {
           if (price == null) return;
           figs.push({
             type: "text",
-            attrs: { x: bounding.width, y: c.y, text: Number(price).toFixed(2), align: "right", baseline: "middle" },
+            attrs: { x: clampLeftX(Number(price).toFixed(2), 10, bounding.width), y: c.y, text: Number(price).toFixed(2), align: "left", baseline: "middle" },
             styles: {
               color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
               ...TEXT_PAD, size: 10,
@@ -1222,8 +1241,9 @@ function ensureDrawOverlays() {
             const y = coordinates[1].y + yDif * percent;
             const value = ((points[1].value ?? 0) + valueDif * percent).toFixed(pricePrec);
             lines.push({ coordinates: [{ x: 0, y }, { x: bounding.width, y }] });
+            const fibText = `${value} (${(percent * 100).toFixed(1)}%)`;
             texts.push({
-              x: bounding.width, y, text: `${value} (${(percent * 100).toFixed(1)}%)`, baseline: "bottom", align: "right",
+              x: clampLeftX(fibText, 10, bounding.width), y, text: fibText, baseline: "bottom", align: "left",
               // 分割线标签也跟随线色生成彩色实底白字，避免与横线一样出现「都绿」
               color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
               ...TEXT_PAD, size: 10,
