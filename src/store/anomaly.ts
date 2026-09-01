@@ -6,8 +6,9 @@
 // - 异动卡片切换与行情页大盘指数切换共用 <RollSwap>，动画完全一致。
 //
 // 数据说明：当前行情代理(API)仅提供 现价/涨跌幅/成交量(手)/成交额(元)，
-// 不含五档盘口委买委卖。因此「大笔买入/卖出」以「单轮成交量突增 + 价格方向」
-// 作为盘口代理信号；其余类型均基于真实可得字段。
+// 不含五档盘口委买委卖。因此「大笔买入/卖出」以「单轮成交量突增 或 单轮成交额突增
+// (≥100万, 对齐同花顺特大单金额门槛) + 价格方向」作为盘口代理信号；金额维度不偏袒高价/低价股，
+// 其余类型均基于真实可得字段。
 // =====================================================================
 import { reactive, computed } from "vue";
 import { fetchSnapshot, type SnapResult } from "@/api/quote";
@@ -49,7 +50,8 @@ export const ANOMALY_META: Record<AnomalyType, { label: string; cls: "up" | "dow
 
 // ---- 阈值（集中可调） ----
 const RAPID_PCT = 1.0; // 单轮(~20s)涨跌幅变动超 1% 视为快速
-const BIG_VOL = 20000; // 单轮成交量(手)突增超 20000 手视为大单（盘口代理）；阈值提高以过滤常规成交噪声，单股日误报量显著下降
+const BIG_VOL = 2000; // 单轮成交量(手)突增兜底门槛（≈同花顺大单下限 2000 手），与金额维度取「或」
+const BIG_AMT = 3_000_000; // 单轮成交额(元)突增 ≥300万 视为大单（同花顺特大单单笔门槛100万；此处为15s累计突增，取3倍以贴合"大资金扫货"异动语义并降频；金额维度不偏袒高价/低价股）
 const BREAKOUT_MULT = 2.0; // 单轮成交额相对 EMA 放大 2 倍视为放量突破
 const BREAKOUT_MIN_AMT = 5_000_000; // 放量突破最小成交额增量（500 万，过滤噪声）
 const FIRE_COOLDOWN_MS = 5 * 60 * 1000; // 同股同类型 5 分钟内不重复触发
@@ -169,10 +171,11 @@ function detect(it: { code: string; market: string; name: string }, secid: strin
     else if (dpct <= -RAPID_PCT) addAnomaly(makeRecord(it, "rapid_down", time, s), secid);
   }
 
-  // 3) 大笔买入 / 卖出（盘口代理）：单轮成交量突增 + 价格方向
+  // 3) 大笔买入 / 卖出（盘口代理）：单轮成交量突增 或 单轮成交额突增（金额维度，对齐同花顺大单门槛）
   if (t.prevVol != null) {
     const dvol = s.vol - t.prevVol;
-    if (dvol >= BIG_VOL) {
+    const dAmt = t.prevAmount != null ? s.amount - t.prevAmount : 0;
+    if (dvol >= BIG_VOL || dAmt >= BIG_AMT) {
       if (s.price >= (t.prevPrice ?? s.price)) addAnomaly(makeRecord(it, "big_buy", time, s), secid);
       else addAnomaly(makeRecord(it, "big_sell", time, s), secid);
     }
