@@ -561,7 +561,7 @@ const anomKey = computed(() =>
   curSlide.value.kind === "anom" ? "anom:" + curSlide.value.rec.id : "today"
 );
 // ===== 轮播三原则：最新 / 有效 / 不重复 =====
-// - 最新+有效：每股只滚动其最新一条异动（anomalyList 已按时间倒序，首见即最新）；
+// - 最新+聚合：按 code 聚合，每股票只滚动其最新一条异动（buildAnomCycle 内按 rec.time 严格取最新）；
 // - 不重复：已滚动展示过的异动（shownAnomIds）整页生命周期内不再滚动；
 // - 节奏：今日最热 → 异动1..N → 今日最热（一圈展示完后重建队列等新异动；
 //   无新异动时定时器空转，恒显今日最热，不会反复播放旧信息）。
@@ -569,10 +569,12 @@ const shownAnomIds = new Set<string>(); // 已展示过的异动 id
 let anomCycle: AnomSlide[] = []; // 本轮待展示队列
 let cyclePos = -1; // -1 = 今日最热；k = anomCycle[k]
 function buildAnomCycle() {
-  // 先按股取最新（倒序首见），再剔除已展示过的——某股最新一条已展示时，其旧异动也不再滚动
+  // 按 code 聚合：同一只股票只保留时间最新的一条异动参与轮播（单股只显最新一条）。
+  // 用 rec.time 严格比较，不依赖 anomalies 外部排序；再剔除整页已展示过的。
   const latestByCode = new Map<string, AnomalyRecord>();
   for (const rec of anomalyList.value) {
-    if (!latestByCode.has(rec.code)) latestByCode.set(rec.code, rec);
+    const prev = latestByCode.get(rec.code);
+    if (!prev || rec.time > prev.time) latestByCode.set(rec.code, rec);
   }
   anomCycle = [];
   for (const rec of latestByCode.values()) {

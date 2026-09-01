@@ -49,7 +49,7 @@ export const ANOMALY_META: Record<AnomalyType, { label: string; cls: "up" | "dow
 
 // ---- 阈值（集中可调） ----
 const RAPID_PCT = 1.0; // 单轮(~20s)涨跌幅变动超 1% 视为快速
-const BIG_VOL = 5000; // 单轮成交量(手)突增超 5000 手视为大单（盘口代理）
+const BIG_VOL = 20000; // 单轮成交量(手)突增超 20000 手视为大单（盘口代理）；阈值提高以过滤常规成交噪声，单股日误报量显著下降
 const BREAKOUT_MULT = 2.0; // 单轮成交额相对 EMA 放大 2 倍视为放量突破
 const BREAKOUT_MIN_AMT = 5_000_000; // 放量突破最小成交额增量（500 万，过滤噪声）
 const FIRE_COOLDOWN_MS = 5 * 60 * 1000; // 同股同类型 5 分钟内不重复触发
