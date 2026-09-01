@@ -356,7 +356,11 @@ function buildRawLevels(series: any[], guard: PeriodGuard, ctx?: LevelCtx): RawL
   if (!series || series.length < 12) return emptyRaw();
   const bandSeries = guard.bandWin > 0 ? series.slice(-guard.bandWin) : [];
   const tradeSeries = guard.tradeWin > 0 ? series.slice(-guard.tradeWin) : [];
-  const { highs, lows } = findSwings(bandSeries, SWING_WIN);
+  const sw = findSwings(bandSeries, SWING_WIN);
+  // 前复权负价守卫：高分红股深度历史（如实测中远海控月/周K）经前复权后价位可能为负，
+  // 负价拐点无交易意义，统一剔除；正常全正数据此过滤为空操作。
+  const highs = sw.highs.filter((p) => p.value > 0);
+  const lows = sw.lows.filter((p) => p.value > 0);
   const { band, breakDown } = detectBandType(highs, lows, bandSeries, current);
   // 箱体识别：(maxHigh-minLow)/midPrice < 0.06 视为箱体，记录上下沿
   let boxBottom: number | null = null;
@@ -372,7 +376,8 @@ function buildRawLevels(series: any[], guard: PeriodGuard, ctx?: LevelCtx): RawL
 
   const supStruct = guard.disableStruct ? null : bestCluster(bandSeries, lows, "support", TOL_PCT, MIN_TOUCH_COUNT, effCtx);
   const presStruct = guard.disableStruct ? null : bestCluster(bandSeries, highs, "pressure", TOL_PCT, MIN_TOUCH_COUNT, effCtx);
-  const tradeSwings = findSwings(tradeSeries, SWING_WIN);
+  const tsw = findSwings(tradeSeries, SWING_WIN);
+  const tradeSwings = { highs: tsw.highs.filter((p) => p.value > 0), lows: tsw.lows.filter((p) => p.value > 0) };
   const supTrade = guard.disableTrade ? null : bestCluster(tradeSeries, tradeSwings.lows, "support", TOL_PCT, MIN_TOUCH_COUNT, effCtx);
   const presTrade = guard.disableTrade ? null : bestCluster(tradeSeries, tradeSwings.highs, "pressure", TOL_PCT, MIN_TOUCH_COUNT, effCtx);
 
@@ -460,17 +465,25 @@ function ensureStructLine(
   if (r.price != null) {
     // 破位（连续实体击穿，或支撑遇箱体破位）→ 不隐藏，淡化 + 「破」标注
     const broken = r.broken || (role === "support" && raw.breakDown);
-    if (broken) return { price: r.price, tag: `${base.tag}·破`, sub: "已破位", label: base.name, src: `${srcBase}·已破位（原价位 ${r.price.toFixed(2)}）`, degraded: true };
+    // 错误侧守卫：现价已越过画线（收于支撑线下方 / 压力线上方）→ 即使未达「连续2根击穿簇中枢」
+    // 判破基准（画线基准=实体边缘 ≠ 判破基准=簇中枢，存在价格长期驻留画线错误侧的窗口），
+    // 也按破位降级标注，杜绝「有效支撑悬在头顶 / 有效压力坠在脚下」的视觉误导。
+    const current = series[series.length - 1]?.close ?? 0;
+    const wrongSide = current > 0 && (role === "support" ? current < r.price : current > r.price);
+    if (broken || wrongSide) return { price: r.price, tag: base.tag, sub: "已破位", label: base.name, src: `${srcBase}·已破位（原价位 ${r.price.toFixed(2)}）`, degraded: true };
     return { price: r.price, tag: base.tag, sub: "", label: base.name, src: `${srcBase}·波段${role === "support" ? "低点" : "高点"}簇 No.1`, degraded: false };
   }
-  // 簇缺失 → 最近摆动点；再无 → 窗口极值
+  // 簇缺失 → 最近摆动点；再无 → 窗口极值（前复权负价守卫：仅取正价）
   const pts = role === "support" ? raw.lows : raw.highs;
   let price: number | null = pts.length ? pts[pts.length - 1].value : null;
   if (price == null) {
-    const sl = guard.bandWin > 0 ? series.slice(-guard.bandWin) : series;
-    price = role === "support" ? Math.min(...sl.map((d: any) => d.low)) : Math.max(...sl.map((d: any) => d.high));
+    const sl = (guard.bandWin > 0 ? series.slice(-guard.bandWin) : series)
+      .map((d: any) => (role === "support" ? d.low : d.high))
+      .filter((v: number) => v > 0);
+    if (!sl.length) return null;
+    price = role === "support" ? Math.min(...sl) : Math.max(...sl);
   }
-  return { price, tag: `${base.tag}·参`, sub: "参考位", label: base.name, src: `${srcBase}·参考位（簇缺失兜底）`, degraded: true };
+  return { price, tag: base.tag, sub: "参考位", label: base.name, src: `${srcBase}·参考位（簇缺失兜底）`, degraded: true };
 }
 
 /**
@@ -481,12 +494,13 @@ function ensureStructLine(
  */
 export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard, dedupe = true): AutoLevel[] {
   const raw = buildRawLevels(series, guard);
+  const cur = series[series.length - 1]?.close ?? 0;
   const L = BAND_LABELS[raw.band];
   const out: AutoLevel[] = [];
 
   // 结构支撑/压力「必须画出」：破位（连续实体击穿/箱体破位）不再隐藏，淡化+「破」标注；
   // 簇缺失（摆动点不足/分散）退化为最近摆动点或窗口极值，淡化+「参」标注。杜绝"时有时无"。
-  // 报告侧 computePriceLevels 仍用 buildRawLevels 的 invalid 原逻辑，本改动仅影响图表。
+  // 报告侧 computePriceLevels 对此类价位以 isBroken 判失效（含同一错误侧守卫），两端口径一致。
   const sup = ensureStructLine(series, raw, "support", guard);
   if (sup) {
     out.push({ kind: "support", role: "structSupport", price: sup.price, color: sup.degraded ? fadeColor(SUPPORT_COLOR, 0.5) : SUPPORT_COLOR, bg: SUPPORT_COLOR, size: 1, dashed: true, tag: sup.tag, sub: sup.sub, label: sup.label, src: sup.src });
@@ -500,18 +514,33 @@ export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard, d
 
   // 交易参考支撑（红细虚线，挂载 S 标签；与结构线同价则去重，避免密集平行线）
   // 硬性准入：①单脉冲过滤 ②总分≥30 ③未被统一失效判定(supTradeInvalid：连续2根实体破位或箱体破位)
+  // 错误侧守卫：现价已收于 S 中枢上方不足「连续2根」时仍会短暂驻留错误侧 → 降级「破」而非显示有效低吸参考
   if (!raw.tradeSupportS.invalid && raw.tradeSupportS.price != null && raw.tradeSupportS.sc!.score >= MIN_TOTAL_SCORE) {
     const price = raw.tradeSupportS.price;
     const overlap = dedupe && structSupPrice != null && Math.abs(price - structSupPrice) / structSupPrice <= TOL_PCT;
+    const wrongSide = cur > 0 && price > cur;
     if (!overlap)
-      out.push({ kind: "support", role: "tradeSupport", price, color: TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR, size: 1, dashed: true, tag: L.tS.tag, sub: L.tS.sub, label: L.tS.name, src: "交易参考支撑·短线低点簇 No.1" });
+      out.push({
+        kind: "support", role: "tradeSupport", price,
+        color: wrongSide ? fadeColor(TRADE_SUPPORT_COLOR, 0.5) : TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR,
+        size: 1, dashed: true,
+        tag: L.tS.tag, sub: wrongSide ? "已破位" : L.tS.sub,
+        label: L.tS.name, src: wrongSide ? `交易参考支撑·已破位（原价位 ${price.toFixed(2)}）` : "交易参考支撑·短线低点簇 No.1",
+      });
   }
-  // 交易参考压力（绿细虚线，挂载 B 标签；硬性准入：单脉冲过滤 + 总分≥30 + 未破位）
+  // 交易参考压力（绿细虚线，挂载 B 标签；硬性准入：单脉冲过滤 + 总分≥30 + 未破位；错误侧守卫同上）
   if (!raw.tradePressureB.invalid && raw.tradePressureB.price != null && raw.tradePressureB.sc!.score >= MIN_TOTAL_SCORE) {
     const price = raw.tradePressureB.price;
     const overlap = dedupe && structPresPrice != null && Math.abs(price - structPresPrice) / structPresPrice <= TOL_PCT;
+    const wrongSide = cur > 0 && price < cur;
     if (!overlap)
-      out.push({ kind: "pressure", role: "tradePressure", price, color: TRADE_PRESSURE_COLOR, bg: TRADE_PRESSURE_COLOR, size: 1, dashed: true, tag: L.tP.tag, sub: L.tP.sub, label: L.tP.name, src: "交易参考压力·短线高点簇 No.1" });
+      out.push({
+        kind: "pressure", role: "tradePressure", price,
+        color: wrongSide ? fadeColor(TRADE_PRESSURE_COLOR, 0.5) : TRADE_PRESSURE_COLOR, bg: TRADE_PRESSURE_COLOR,
+        size: 1, dashed: true,
+        tag: L.tP.tag, sub: wrongSide ? "已破位" : L.tP.sub,
+        label: L.tP.name, src: wrongSide ? `交易参考压力·已破位（原价位 ${price.toFixed(2)}）` : "交易参考压力·短线高点簇 No.1",
+      });
   }
 
   // 趋势线：仅主升 uptrend 连 3 个抬升摆动低点；主跌连 3 个降低摆动高点；
@@ -542,7 +571,7 @@ export interface PriceLevelItem {
   price: number;          // 价位
   totalScore: number;     // 综合总分（量价·筹码·趋势加权后，0-100 量级）
   touchCount: number;     // 触碰次数
-  isBroken: boolean;      // 是否连续2根实体击穿 / 箱体破位（失效）
+  isBroken: boolean;      // 失效：连续2根实体击穿 / 箱体破位 / 现价已收于画线错误侧
   level: "强" | "中" | "弱"; // 强弱评级
   volDesc: string;        // 量能描述：放量确认/缩量触碰
   chipDesc: string;       // 筹码匹配描述
@@ -563,6 +592,7 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
   const raw = buildRawLevels(series, guard, ctxIn);
   const L = BAND_LABELS[raw.band];
   const inBox = !!raw.boxBottom;
+  const cur = series[series.length - 1]?.close ?? 0;
   const mk = (
     role: "structSupport" | "structPressure" | "tradeSupportS" | "tradePressureB",
     rl: RawLevel,
@@ -572,7 +602,10 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
     const boxBoost = inBox ? 4 : 0; // 箱体区间内统一 +4 分
     const finalScore = rl.sc.score + boxBoost;
     const isSupportRole = role === "structSupport" || role === "tradeSupportS";
-    const isBroken = rl.broken || (isSupportRole && raw.breakDown);
+    const isBroken = rl.broken || (isSupportRole && raw.breakDown)
+      // 错误侧守卫（与图表 ensureStructLine 同口径）：现价收于画线错误侧即视为失效，
+      // 避免报告把「现价上方的支撑 / 现价下方的压力」标成有效价位。
+      || (cur > 0 && rl.price != null && (isSupportRole ? rl.price > cur : rl.price < cur));
     let level: "强" | "中" | "弱" = "弱";
     if (isBroken) level = "弱";
     else if (finalScore >= 60) level = "强";

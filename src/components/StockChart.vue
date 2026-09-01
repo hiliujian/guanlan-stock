@@ -1010,16 +1010,18 @@ function ensureTrendOverlay() {
       createYAxisFigures: (params: any) => {
         const coordinates = params.coordinates as { x: number; y: number }[];
         const overlay = params.overlay as any;
+        const bounding = params.bounding as { width: number; height: number };
         if (!coordinates || coordinates.length < 1) return [];
         const y = coordinates[0].y;
-        // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角 + padding；紧贴轴左缘(x:0, align:left)去多余左侧间距。
+        // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角 + padding；右对齐到轴右缘(x:bounding.width, align:right)，
+        // 无论文字多长，标签右端恒贴图表右边界，绝不向右溢出被裁剪；过长时向左延展进图内（仍在可视区域内）。
         // 标签（含价格）统一 size 10；下方 sub 提示统一 size 8（无论结构线/交易参考线/S/B/支压）。
         const bg = overlay?.extendData?.bg || overlay?.styles?.line?.color || "#888";
         const main = overlay?.extendData?.text || "";
         const sub = overlay?.extendData?.sub || "";
         const figs: any[] = [{
           type: "text",
-          attrs: { x: 0, y, text: main, align: "left", baseline: "middle" },
+          attrs: { x: bounding.width, y, text: main, align: "right", baseline: "middle" },
           styles: {
             color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
             ...TEXT_PAD, size: 10,
@@ -1029,7 +1031,7 @@ function ensureTrendOverlay() {
         if (sub) {
           figs.push({
             type: "text",
-            attrs: { x: 0, y: y + 13, text: sub, align: "left", baseline: "middle" },
+            attrs: { x: bounding.width, y: y + 13, text: sub, align: "right", baseline: "middle" },
             styles: {
               color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
               ...TEXT_PAD, size: 8,
@@ -1118,6 +1120,7 @@ function ensureDrawOverlays() {
       createYAxisFigures: (params: any) => {
         const coordinates = params.coordinates as { x: number; y: number }[];
         const overlay = params.overlay as any;
+        const bounding = params.bounding as { width: number; height: number };
         if (!coordinates || coordinates.length < 1) return [];
         const y = coordinates[0].y;
         const col = overlay?.styles?.line?.color || "#888";
@@ -1126,7 +1129,7 @@ function ensureDrawOverlays() {
         const text = (tag ? tag + " " : "") + (price != null ? Number(price).toFixed(2) : "");
         return [{
           type: "text",
-          attrs: { x: 0, y, text, align: "left", baseline: "middle" },
+          attrs: { x: bounding.width, y, text, align: "right", baseline: "middle" },
           styles: {
             color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
             ...TEXT_PAD, size: 10,
@@ -1167,6 +1170,7 @@ function ensureDrawOverlays() {
       createYAxisFigures: (params: any) => {
         const coordinates = params.coordinates as { x: number; y: number }[];
         const overlay = params.overlay as any;
+        const bounding = params.bounding as { width: number; height: number };
         if (!coordinates || coordinates.length < 1) return [];
         const col = overlay?.styles?.line?.color || TREND;
         const figs: any[] = [];
@@ -1175,7 +1179,7 @@ function ensureDrawOverlays() {
           if (price == null) return;
           figs.push({
             type: "text",
-            attrs: { x: 0, y: c.y, text: Number(price).toFixed(2), align: "left", baseline: "middle" },
+            attrs: { x: bounding.width, y: c.y, text: Number(price).toFixed(2), align: "right", baseline: "middle" },
             styles: {
               color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
               ...TEXT_PAD, size: 10,
@@ -1219,7 +1223,7 @@ function ensureDrawOverlays() {
             const value = ((points[1].value ?? 0) + valueDif * percent).toFixed(pricePrec);
             lines.push({ coordinates: [{ x: 0, y }, { x: bounding.width, y }] });
             texts.push({
-              x: 0, y, text: `${value} (${(percent * 100).toFixed(1)}%)`, baseline: "bottom",
+              x: bounding.width, y, text: `${value} (${(percent * 100).toFixed(1)}%)`, baseline: "bottom", align: "right",
               // 分割线标签也跟随线色生成彩色实底白字，避免与横线一样出现「都绿」
               color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
               ...TEXT_PAD, size: 10,
