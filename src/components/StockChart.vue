@@ -81,11 +81,12 @@ function measureTextWidth(text: string, size: number): number {
   _mtxCtx.font = `${size}px -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif`;
   return _mtxCtx.measureText(text).width;
 }
-// 左对齐标签的 x 钳制：默认 x=0（与原逻辑一致，短标签保持原样）；若文字右端（含 padding + 安全余量）
-// 会越过右边界，则整体左移使右端恰好贴住右边界——保证标签永不向右溢出，又不改变左对齐形态。
-function clampLeftX(text: string, size: number, availW: number): number {
-  const boxW = measureTextWidth(text, size) + TEXT_PAD.paddingLeft + TEXT_PAD.paddingRight + 4; // +4 安全余量
-  return Math.min(0, availW - boxW);
+// 标签盒宽钳制（标签恒贴左 x:0，不位移）：默认返回 undefined，宽度交由 klinecharts 按文字自然计算，
+// 短标签与原逻辑像素级一致；仅当盒宽会越过右边界时才压到可视宽度——此时 klinecharts 以 maxWidth 绘制，
+// 文字自动缩放填满盒内（左右等 padding，内容居中），既不向右溢出也不被裁剪。
+function clampBoxW(text: string, size: number, availW: number): number | undefined {
+  const boxW = measureTextWidth(text, size) + TEXT_PAD.paddingLeft + TEXT_PAD.paddingRight;
+  return boxW > availW ? availW : undefined;
 }
 
 // 量柱/MACD 柱取涨跌色（兜底 UP/DOWN/中性色）：自定义指标拿不到 klinecharts 内置量柱默认样式，
@@ -1032,15 +1033,15 @@ function ensureTrendOverlay() {
         const bounding = params.bounding as { width: number; height: number };
         if (!coordinates || coordinates.length < 1) return [];
         const y = coordinates[0].y;
-        // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角 + padding；保持左对齐(x:0, align:left)原形态，
-        // 仅当文字右端会越过右边界时才整体左移（clampLeftX），保证永不向右溢出被裁剪。
+        // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角 + padding；标签恒贴左(x:0, align:left)不位移，
+        // 仅当盒宽会越过右边界时限宽（clampBoxW），文字自动缩放居中于盒内，永不溢出被裁剪。
         // 标签（含价格）统一 size 10；下方 sub 提示统一 size 8（无论结构线/交易参考线/S/B/支压）。
         const bg = overlay?.extendData?.bg || overlay?.styles?.line?.color || "#888";
         const main = overlay?.extendData?.text || "";
         const sub = overlay?.extendData?.sub || "";
         const figs: any[] = [{
           type: "text",
-          attrs: { x: clampLeftX(main, 10, bounding.width), y, text: main, align: "left", baseline: "middle" },
+          attrs: { x: 0, y, text: main, align: "left", baseline: "middle", width: clampBoxW(main, 10, bounding.width) },
           styles: {
             color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
             ...TEXT_PAD, size: 10,
@@ -1050,7 +1051,7 @@ function ensureTrendOverlay() {
         if (sub) {
           figs.push({
             type: "text",
-            attrs: { x: clampLeftX(sub, 8, bounding.width), y: y + 13, text: sub, align: "left", baseline: "middle" },
+            attrs: { x: 0, y: y + 13, text: sub, align: "left", baseline: "middle", width: clampBoxW(sub, 8, bounding.width) },
             styles: {
               color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
               ...TEXT_PAD, size: 8,
@@ -1148,7 +1149,7 @@ function ensureDrawOverlays() {
         const text = (tag ? tag + " " : "") + (price != null ? Number(price).toFixed(2) : "");
         return [{
           type: "text",
-          attrs: { x: clampLeftX(text, 10, bounding.width), y, text, align: "left", baseline: "middle" },
+          attrs: { x: 0, y, text, align: "left", baseline: "middle", width: clampBoxW(text, 10, bounding.width) },
           styles: {
             color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
             ...TEXT_PAD, size: 10,
@@ -1198,7 +1199,7 @@ function ensureDrawOverlays() {
           if (price == null) return;
           figs.push({
             type: "text",
-            attrs: { x: clampLeftX(Number(price).toFixed(2), 10, bounding.width), y: c.y, text: Number(price).toFixed(2), align: "left", baseline: "middle" },
+            attrs: { x: 0, y: c.y, text: Number(price).toFixed(2), align: "left", baseline: "middle", width: clampBoxW(Number(price).toFixed(2), 10, bounding.width) },
             styles: {
               color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
               ...TEXT_PAD, size: 10,
@@ -1243,7 +1244,7 @@ function ensureDrawOverlays() {
             lines.push({ coordinates: [{ x: 0, y }, { x: bounding.width, y }] });
             const fibText = `${value} (${(percent * 100).toFixed(1)}%)`;
             texts.push({
-              x: clampLeftX(fibText, 10, bounding.width), y, text: fibText, baseline: "bottom", align: "left",
+              x: 0, y, text: fibText, baseline: "bottom", align: "left", width: clampBoxW(fibText, 10, bounding.width),
               // 分割线标签也跟随线色生成彩色实底白字，避免与横线一样出现「都绿」
               color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
               ...TEXT_PAD, size: 10,
