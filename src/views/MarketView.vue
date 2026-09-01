@@ -590,10 +590,10 @@ async function refreshFull() {
   // 仅在有有效实时价时才覆盖（见 setRealtime），避免把实时快照偶发失败得到的 null 写回，
   // 导致非分时模式头部回落到静态日线收盘而「冻结」。
   setRealtime(b.realtime);
-  // 关联资讯：先取行情拿到确切公司名，再按「代码 + 公司名」双关键词抓取，
-  // 经「多维严格关联（代码/全称/核心词/简称）+ 时效（最近3天）」过滤后注入情绪量化。
-  const n = await fetchNews(secid.value, name.value).catch(() => [] as NewsItem[]);
-  const filtered = filterNews(n, { code: curCode.value, name: name.value });
+  // 关联资讯：先取行情拿到确切公司名与行业名，再按「代码 + 公司名 + 所属板块」三路关键词抓取，
+  // 经「多维严格关联（代码/全称/核心词/简称；板块资讯按行业名验证）+ 时效（最近3天）」过滤后注入情绪量化。
+  const n = await fetchNews(secid.value, name.value, b.industry || "").catch(() => [] as NewsItem[]);
+  const filtered = filterNews(n, { code: curCode.value, name: name.value, industry: b.industry || "" });
   news.value = filtered;
   newsSig.value = scoreNews(filtered);
   applyPeriod(period.value);
@@ -700,10 +700,10 @@ async function run(forceMarket?: Market, track = true) {
     // 仅在有有效实时价时才覆盖（见 setRealtime），避免把实时快照偶发失败得到的 null 写回，
     // 导致非分时模式头部回落到静态日线收盘而「冻结」。
     setRealtime(b.realtime);
-    // 关联资讯：先做「多维严格关联 + 时效（最近3天）」过滤，所有 scope 统一校验相关性，
+    // 关联资讯：先做「多维严格关联 + 时效（最近3天）」过滤（板块资讯按行业名验证关联），
     // 确保展示与情绪量化因子都只基于「对当前股票相关的近期资讯」；过滤后再计算情绪信号。
-    const n = await fetchNews(sid, name.value).catch(() => [] as NewsItem[]);
-    const filtered = filterNews(n, { code: curCode.value, name: name.value });
+    const n = await fetchNews(sid, name.value, b.industry || "").catch(() => [] as NewsItem[]);
+    const filtered = filterNews(n, { code: curCode.value, name: name.value, industry: b.industry || "" });
     news.value = filtered;
     newsSig.value = scoreNews(filtered);
     applyPeriod(period.value); // 从缓存装配当前周期，切换无需再等联网

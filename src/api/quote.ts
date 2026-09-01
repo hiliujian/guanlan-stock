@@ -139,6 +139,7 @@ export interface QuoteBundle {
   trends: Trend[]; // 分时（m 周期用）
   flowMap: FlowMap; // 资金流（按日期累计，与图表周期解耦，全周期展示）
   name: string;
+  industry: string; // 个股所属行业名（东财 f100，如「半导体」）；空串=未知。供关联资讯按板块抓取
   preClose: number;
   realtime: {
     price: number;
@@ -324,6 +325,7 @@ export async function fetchBundle(secid: string): Promise<QuoteBundle> {
     trends: trend.trends || [],
     flowMap: flow || {},
     name: rt.name || secid,
+    industry: industry || "",
     preClose: rt.preClose || (klines.d.length ? klines.d[klines.d.length - 1].close : 0),
     realtime: {
       price: rt.price,
@@ -339,13 +341,14 @@ export async function fetchBundle(secid: string): Promise<QuoteBundle> {
   return bundle;
 }
 
-// 关联资讯：按 secid + 公司名 缓存 10 分钟（资讯时效性弱于行情，长缓存既省流量又避免刷新抖动）。
-// 公司名纳入缓存键：首屏 name 可能为空、行情包返回后才拿到确切公司名，避免空名结果被缓存后污染。
-export async function fetchNews(secid: string, name?: string): Promise<NewsItem[]> {
-  const ck = "news:" + secid + ":" + (name || "");
+// 关联资讯：按 secid + 公司名 + 行业名 缓存 10 分钟（资讯时效性弱于行情，长缓存既省流量又避免刷新抖动）。
+// 公司名/行业名纳入缓存键：首屏 name 可能为空、行情包返回后才拿到确切公司名与行业名，
+// 避免空名结果被缓存后污染。
+export async function fetchNews(secid: string, name?: string, industry?: string): Promise<NewsItem[]> {
+  const ck = "news:" + secid + ":" + (name || "") + ":" + (industry || "");
   const hit = cget<NewsItem[]>(ck, 10 * 60_000);
   if (hit) return hit;
-  const items = await getNews(secid, name).catch(() => [] as NewsItem[]);
+  const items = await getNews(secid, name, industry).catch(() => [] as NewsItem[]);
   cset(ck, items);
   return items;
 }

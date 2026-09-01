@@ -302,7 +302,10 @@
           </view>
           <view v-if="it.summary" class="ni-sum">{{ it.summary }}</view>
           <view class="ni-foot">
-            <text class="ni-src">{{ it.source }}</text>
+            <view class="ni-foot-l">
+              <text class="ni-src">{{ it.source }}</text>
+              <text v-if="it.scope === 'industry'" class="ni-scope">板块</text>
+            </view>
             <text class="ni-time">{{ it.time || '时间未知' }}</text>
           </view>
         </view>
@@ -1235,6 +1238,18 @@ function openNews(it: NewsItem) {
   margin-top: 8rpx;
   font-size: var(--font-xs);
   color: var(--text-2);
+}
+.ni-foot-l {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+/* 板块资讯标识：所属板块动态（板块行情联动个股） */
+.ni-scope {
+  color: var(--primary);
+  background: rgba(7, 193, 96, 0.1);
+  padding: 1rpx 10rpx;
+  border-radius: 6rpx;
 }
 .news-empty {
   font-size: var(--font-sm);

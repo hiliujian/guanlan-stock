@@ -376,16 +376,22 @@ export async function getIndustryBoards(): Promise<IndustryBoard[]> {
 export type { NewsItem } from "@/utils/newsSentiment";
 export type { IndexBreadth, IndustryBoard } from "./eastmoney";
 
-// 关联资讯：并行取「个股关联」与「全市场/行业」，合并去重并按时间倒序。
+// 关联资讯：并行取「代码 / 公司名」（个股）与「所属行业名」（板块）三路关键词，
+// 合并去重（按底层文章 id，同一篇经多路取回只保留首个——个股批优先）并按时间倒序。
 // 若资讯接口不可达，返回 []，由上层 graceful 处理，不阻断行情主流程。
-export async function getNews(secid: string, name?: string): Promise<NewsItem[]> {
+export async function getNews(secid: string, name?: string, industry?: string): Promise<NewsItem[]> {
   const code = codeFromSecid(secid);
   const keys = Array.from(
     new Set([code, name].filter((k): k is string => !!k && k.trim().length >= 2))
   );
-  const batches = await Promise.all(
-    keys.map((k) => searchByKeyword(k).catch(() => [] as NewsItem[]))
-  );
+  const ind = (industry || "").trim();
+  const batches = await Promise.all([
+    ...keys.map((k) => searchByKeyword(k, "stock").catch(() => [] as NewsItem[])),
+    // 所属板块资讯：板块行情联动个股（如半导体整体上涨带动板块内个股），与主流平台一致
+    ...(ind.length >= 2 && ind !== (name || "").trim()
+      ? [searchByKeyword(ind, "industry").catch(() => [] as NewsItem[])]
+      : []),
+  ]);
   const seen = new Set<string>();
   const out: NewsItem[] = [];
   for (const arr of batches) {

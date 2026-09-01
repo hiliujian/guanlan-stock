@@ -6,8 +6,9 @@
 //   前端解析时先剥掉 cb(...) 包装，再取 data.cmsArticleWebOld（多结构兜底）。
 //
 //   取数策略（按作用域构造关键词）：
-//     · stock  ：用 6 位股票代码 / 公司名 / 简称作关键词，返回相关新闻；
-//     · market ：用「A股」作关键词，返回市场 / 行业层面的宏观动态。
+//     · stock   ：用 6 位股票代码 / 公司名 / 简称作关键词，返回相关新闻；
+//     · industry：用所属行业名（东财 f100，如「半导体」）作关键词，返回板块动态——
+//                 板块行情联动个股（与主流平台一致）。
 //   任何字段缺漏都不抛错，最坏返回 []（上层 graceful 处理，不阻断行情主流程）。
 // =====================================================================
 import { requestGateway } from "@/api/transport";
@@ -61,13 +62,15 @@ function normUrl(u: string | undefined): string {
   return u;
 }
 
-function mapItem(r: RawHit, scope: NewsScope, idx: number): NewsItem | null {
+function mapItem(r: RawHit, scope: NewsScope): NewsItem | null {
   const title = (r.title || "").trim();
   if (!title) return null;
   const { time, ts } = parseTime((r.date ?? r.datetime ?? r.time) as number | string | undefined);
   const source = (r.mediaName || r.source || "").trim() || "东方财富";
   return {
-    id: String(r.id ?? r.url ?? title) + "_" + idx,
+    // 底层文章 id 天然唯一：不加批次内序号后缀，保证跨关键词批次（代码/公司名）
+    // 取到同一篇时能被 getNews 的 id 去重正确合并（否则同文重复展示且情绪双计）。
+    id: String(r.id ?? r.url ?? title),
     title,
     summary: (r.content || r.summary || r.abstract || "").trim(),
     time,
@@ -89,8 +92,8 @@ function parseSearch(text: string, scope: NewsScope): NewsItem[] {
       (Array.isArray(json?.data) ? json.data : []);
     if (!Array.isArray(arr) || !arr.length) return [];
     const out: NewsItem[] = [];
-    arr.forEach((r, i) => {
-      const it = mapItem(r, scope, i);
+    arr.forEach((r) => {
+      const it = mapItem(r, scope);
       if (it) out.push(it);
     });
     return out;
@@ -101,13 +104,13 @@ function parseSearch(text: string, scope: NewsScope): NewsItem[] {
 
 // 按任意关键词搜索东财资讯。始终返回数组，便于上层直接展开合并。
 // 东财搜索索引基于标题/摘要文本，纯数字代码命中极低；公司名/简称才是高频词，
-// 故上层应优先用公司名/简称作为关键词抓取个股资讯。
-export async function searchByKeyword(keyword: string): Promise<NewsItem[]> {
+// 故上层应优先用公司名/简称作为关键词抓取个股资讯；所属行业名用于板块资讯。
+export async function searchByKeyword(keyword: string, scope: NewsScope = "stock"): Promise<NewsItem[]> {
   const kw = (keyword || "").trim();
   if (kw.length < 2) return [];
   try {
     const { text } = await requestGateway("news", { keyword: kw });
-    return parseSearch(text, "stock");
+    return parseSearch(text, scope);
   } catch {
     return [];
   }

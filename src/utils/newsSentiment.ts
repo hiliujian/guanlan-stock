@@ -12,7 +12,7 @@
 // 与量价、资金等技术因子等权协同，不单独决定买卖。
 // =====================================================================
 
-export type NewsScope = "stock" | "industry" | "market";
+export type NewsScope = "stock" | "industry";
 
 export interface NewsItem {
   id: string;
@@ -154,9 +154,9 @@ export function scoreNews(items: NewsItem[], now: number = Date.now()): NewsSign
 //   1) 有效性 + 时效：必须能解析出时间，且落在「最近 maxDays 天（含今日）」内；
 //      无法解析时间（ts=0）或超期的条目直接丢弃——不能验证时效的内容不算
 //      「有效资讯」，宁可少给也不给过期/无法判断的旧闻。
-//   2) 严格关联性（所有 scope 统一执行）：条目必须真正在标题或摘要中命中
-//      「股票代码 / 公司全称 / 去后缀核心词 / 去地理前缀简称」任一维度，
-//      过滤掉代码搜索返回来的泛关联噪声以及不提及本股的行业/市场类资讯。
+//   2) 严格关联性（scope 分维度）：个股资讯须命中「股票代码 / 公司全称 / 去后缀核心词 /
+//      去地理前缀简称」任一维度；所属板块资讯（industry）须命中行业名——板块行情联动
+//      个股（如半导体整体上涨带动板块内个股），与主流平台一致，不强求正文提及本股。
 //   3) 排序：按发布时间倒序（最新在前），保持原有展示顺序与格式不变。
 //
 // 多维关联关键词（buildKeywords）示例：贵州茅台 →
@@ -172,6 +172,7 @@ export function scoreNews(items: NewsItem[], now: number = Date.now()): NewsSign
 interface NewsFilterOpts {
   code: string; // 6 位股票代码
   name: string; // 股票名称（全称或标准简称）
+  industry?: string; // 所属行业名（东财 f100，如「半导体」），用于板块资讯关联验证
   now?: number; // 基准时间（epoch ms），默认 Date.now()
   maxDays?: number; // 时效窗口（天，含今日），默认 3
 }
@@ -231,10 +232,16 @@ function buildKeywords(code: string, name: string): string[] {
   return [...kw].filter((k) => k.length >= 2);
 }
 
-// 严格关联判定：任一关键词（>=2 字符）出现在标题或摘要中即视为相关。
-function isRelated(it: NewsItem, kws: string[]): boolean {
-  if (!kws.length) return true; // 无可判定身份时不误杀
+// 严格关联判定（scope 分维度）：任一关键词（>=2 字符）出现在标题或摘要中即视为相关。
+//   · stock 条目：命中股票关联词（代码/全称/核心词/简称）；
+//   · industry 条目（所属板块资讯）：命中行业名即认可（板块行情联动个股，与主流平台
+//     一致，不强求正文提及本股）；若行业名缺失则退回股票关联词判定。
+function isRelated(it: NewsItem, kws: string[], industryKw?: string): boolean {
+  if (!kws.length && !industryKw) return true; // 无可判定身份时不误杀
   const hay = (it.title + " " + it.summary).toLowerCase();
+  if (it.scope === "industry" && industryKw) {
+    return hay.includes(industryKw) || kws.some((k) => hay.includes(k));
+  }
   return kws.some((k) => hay.includes(k));
 }
 
@@ -244,14 +251,16 @@ export function filterNews(items: NewsItem[], opts: NewsFilterOpts): NewsItem[] 
   const cut = now - maxDays * 86_400_000; // 窗口下界（含今日往前 maxDays 天）
   // 多维关联关键词：代码 / 全称 / 核心词 / 简称
   const kws = buildKeywords(opts.code, opts.name);
+  const industryKw = (opts.industry || "").trim().toLowerCase() || undefined;
   const out: NewsItem[] = [];
   for (const it of items) {
     // 1) 有效性 + 时效：必须可解析时间，且在 [now-maxDays, now+1天] 窗口内
     //    （+1 天容忍少量时钟/时区偏差，避免把"今天"的资讯误判为超期）
     if (!it.ts || it.ts < cut || it.ts > now + 86_400_000) continue;
-    // 2) 严格关联性：所有 scope 统一要求命中关联关键词，确保展示与情绪量化因子
-    //    的每一条资讯都经过股票关联验证，避免无关资讯干扰因子计算。
-    if (!isRelated(it, kws)) continue;
+    // 2) 严格关联性（scope 分维度）：股票资讯须命中股票关联词，板块资讯须命中
+    //    行业名，确保展示与情绪量化因子的每一条资讯都经过关联验证，避免无关噪声
+    //    干扰因子计算。
+    if (!isRelated(it, kws, industryKw)) continue;
     out.push(it);
   }
   // 3) 时间倒序（保持原有排序逻辑与展示格式不变）
