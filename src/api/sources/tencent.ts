@@ -48,7 +48,9 @@ export function parseTXKline(text: string, sym: string, period: PeriodKey): Klin
   const node = json?.data?.[sym];
   if (!node) return null;
   const keyMap: Record<string, string> = { d: "qfqday", w: "qfqweek", M: "qfqmonth", y: "qfqyear" };
-  const arr: any[] = node[keyMap[period]] || node[period] || node.day || [];
+  // 指数无除权除息，腾讯不返回 qfq* 键，只有原始键 day/week/month/year（网关恒以 qfq 参数请求）
+  const rawMap: Record<string, string> = { d: "day", w: "week", M: "month", y: "year" };
+  const arr: any[] = node[keyMap[period]] || node[rawMap[period]] || node.day || [];
   if (!arr.length) return null;
   return arr.map((r: any[], i: number) => {
     const date = String(r[0]);
