@@ -367,8 +367,8 @@ export function initMessageRealtime() {
   }
 }
 
-/** 停止消息中心实时订阅（登出 / 应用卸载时调用，防止 channel 泄漏）。 */
-export function stopMessageRealtime() {
+/** 停止消息中心实时订阅（仅 useMessageCenter().reset 登出/切换账号时调用；无外部使用故不导出）。 */
+function stopMessageRealtime() {
   unsubscribeMessageRealtime();
 }
 

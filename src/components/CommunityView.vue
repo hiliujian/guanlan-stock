@@ -68,7 +68,7 @@
     </view>
 
     <!-- 可滚动内容区 -->
-    <scroll-view class="cm-scroll" scroll-y :scroll-top="scrollTop" @scrolltolower="onScrollToLower">
+    <scroll-view class="cm-scroll" scroll-y :scroll-top="scrollTop" @scroll="onScroll" @scrolltolower="onScrollToLower">
 
     <!-- 加载态 -->
     <view v-if="feedLoading && !displayPosts.length" class="cm-loading"><view class="cl-spin" /></view>
@@ -81,7 +81,7 @@
       :mine="isMine(p)"
       @like="like"
       @reply="reply"
-      @remove="remove"
+      @remove="askRemove"
     />
 
     <!-- 空态 -->
@@ -101,6 +101,26 @@
     <!-- 底部留白（避免被固定 tabbar 与底部发帖卡片遮挡） -->
     <view class="cm-pad" />
     </scroll-view>
+
+    <!-- 返回顶部：滚过约一屏后浮现（淡入/淡出），点击回顶。避开底部发帖卡片的高度。 -->
+    <Transition name="cm-top">
+      <view v-if="showBackTop" class="cm-backtop" role="button" aria-label="回到顶部" @click="scrollToTop">
+        <OutlineIcon type="chevron-up" :size="34" color="var(--text)" />
+      </view>
+    </Transition>
+
+    <!-- 删除确认弹层：主题化确认框（与公告弹窗同一套设计语言：透明遮罩 + 不透明实心卡片 +
+         药丸按钮），替代样式不符系统主题的原生 showModal。点遮罩取消。 -->
+    <view v-if="delOpen" class="cm-mask" @click="delOpen = false">
+      <view class="cm-dialog" @click.stop>
+        <text class="cm-dialog-title">删除动态</text>
+        <text class="cm-dialog-text">删除后不可恢复，确定删除这条动态吗？</text>
+        <view class="cm-dialog-ft">
+          <view class="cm-dlg-btn ghost" role="button" @click="delOpen = false">取消</view>
+          <view class="cm-dlg-btn danger" role="button" @click="confirmRemove">删除</view>
+        </view>
+      </view>
+    </view>
 
     <!-- 底部发帖卡片：复用自选同款 PeekSheet（与自选卡片一致），折叠态为输入框卡片，展开进入完整发帖界面。
          折叠态一并将「在线人数」并入此卡片（复用 Realtime Presence 实时统计），不再单独建卡片。 -->
@@ -238,6 +258,30 @@ const myFrame = computed(() =>
   userState.loggedIn ? userState.profile?.avatar_frame || "" : ""
 );
 
+// 删除自己的动态：先弹主题化确认弹层（与公告弹窗同一套设计语言，替代样式不符的原生
+// showModal），确认后才调 store.remove。store.remove 只清主信息流 posts；
+// 「某用户帖子」模式下同步清理 userPosts，否则该列表中的帖子删除后仍显示。
+let pendingRemoveId = "";
+const delOpen = ref(false);
+const delBusy = ref(false);
+function askRemove(id: string) {
+  pendingRemoveId = id;
+  delOpen.value = true;
+}
+async function confirmRemove() {
+  if (delBusy.value) return;
+  delBusy.value = true;
+  try {
+    await remove(pendingRemoveId);
+    userPosts.value = userPosts.value.filter((x) => x.id !== pendingRemoveId);
+    delOpen.value = false;
+  } catch {
+    uni.showToast({ title: "删除失败，请稍后再试", icon: "none" });
+  } finally {
+    delBusy.value = false;
+  }
+}
+
 function isMine(p: CommunityPost): boolean {
   // 已登录：按账号 id 判定（帖子创建时已写入 userId）
   if (userState.loggedIn && userState.userId) {
@@ -306,8 +350,27 @@ watch(
 // 支持滚动加载；顶部吸顶栏变为「返回 + X 的动态」，隐藏筛选 / 搜索。
 const PAGE_SIZE = 10; // 每次续拉条数（与「某用户帖子」分页保持一致：默认每页 10）
 const viewingUser = ref<CommunityUserTarget | null>(null);
-// 滚动视图位置（发帖成功后滚回顶部，确保用户在信息流最上方立即看到自己刚发的帖子）
+// 滚动视图位置（发帖成功后 / 点击返回顶部按钮时归零）
 const scrollTop = ref(0);
+
+// ---------------- 返回顶部 ----------------
+// scroll-view 的 scroll-top 只在值变化时触发滚动（同值不滚），故 @scroll 持续记录实际
+// 位置 realTop；点击时两步赋值（先对齐当前位置再归零），保证从任何位置都能回顶。
+const BACKTOP_AT = 500; // 滚动超过该距离(px，约一屏)后显示返回顶部按钮
+let realTop = 0;
+const showBackTop = ref(false);
+function onScroll(e: any) {
+  const t = Number(e?.detail?.scrollTop) || 0;
+  realTop = t;
+  const show = t > BACKTOP_AT;
+  if (show !== showBackTop.value) showBackTop.value = show;
+}
+function scrollToTop() {
+  scrollTop.value = realTop;
+  nextTick(() => {
+    scrollTop.value = 0;
+  });
+}
 const userPosts = ref<CommunityPost[]>([]);
 const userPostsCursor = ref<number | null>(null); // 下一页游标：本页末条 createdAt（ms）
 const userPostsLoading = ref(false); // 首屏或续拉加载中
@@ -480,7 +543,7 @@ async function onPublish(payload: { content?: string; card?: PostCardData; topic
 function afterPublish() {
   if (viewingUser.value) exitUserMode();
   nextTick(() => {
-    scrollTop.value = 0;
+    scrollToTop();
   });
 }
 
@@ -534,6 +597,7 @@ defineExpose({ refresh });
 
 <style scoped>
 .cm-root {
+  position: relative; /* 返回顶部按钮的绝对定位基准 */
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -765,6 +829,120 @@ defineExpose({ refresh });
 
 .cm-pad {
   height: calc(200rpx + env(safe-area-inset-bottom));
+}
+
+/* 返回顶部悬浮按钮：毛玻璃圆钮，浮于信息流右下。
+   bottom 抬到 210rpx：折叠态发帖卡片顶边 = fixed bottom 110rpx + 高 76rpx = 186rpx(+safe-area)，
+   180rpx 会被卡片遮住下半截（阴影再吃一截），210rpx 留出约 24rpx 间隙完整露出。 */
+.cm-backtop {
+  position: absolute;
+  right: 28rpx;
+  bottom: calc(210rpx + env(safe-area-inset-bottom));
+  z-index: 5;
+  width: 76rpx;
+  height: 76rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--card);
+  border: 1rpx solid var(--border);
+  box-shadow: var(--shadow-1);
+  backdrop-filter: blur(16rpx) saturate(140%);
+  -webkit-backdrop-filter: blur(16rpx) saturate(140%);
+}
+.cm-backtop:active {
+  opacity: 0.6;
+}
+.cm-top-enter-active,
+.cm-top-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.cm-top-enter-from,
+.cm-top-leave-to {
+  opacity: 0;
+  transform: translateY(16rpx);
+}
+
+/* 删除确认弹层：与公告弹窗（AnnouncementOverlay）同一套设计语言——
+   透明遮罩不压暗背景 + 不透明实心卡片（浅 #fff / 深 #11161f）+ 药丸按钮；
+   z-index 80：高于底部卡片(40)/筛选栏(61)，低于 BottomSheet(91)。 */
+.cm-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: cmFade var(--dur-fast) ease both;
+}
+.cm-dialog {
+  width: 84%;
+  max-width: 600rpx;
+  background: #ffffff;
+  border-radius: 28rpx;
+  border: 1rpx solid var(--border);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+  animation: cmScale var(--dur) var(--ease-out) both;
+}
+/* 深色主题：不透明深色表面（同公告弹窗） */
+:global(.theme-dark) .cm-dialog {
+  background: #11161f;
+}
+.cm-dialog-title {
+  display: block;
+  padding: 34rpx 32rpx 6rpx;
+  font-size: var(--font-lg);
+  color: var(--text);
+}
+.cm-dialog-text {
+  display: block;
+  padding: 0 32rpx;
+  font-size: var(--font-md);
+  line-height: 1.7;
+  color: var(--text-2);
+}
+.cm-dialog-ft {
+  display: flex;
+  gap: 16rpx;
+  padding: 30rpx 28rpx;
+}
+/* 药丸按钮：形状/字重对齐系统 .btn-primary（999rpx、72rpx、不加粗）；
+   删除键用危险色，激活态 danger-dark + 轻微下沉（系统「按下」语言） */
+.cm-dlg-btn {
+  flex: 1;
+  height: 72rpx;
+  line-height: 72rpx;
+  text-align: center;
+  border-radius: 999rpx;
+  font-size: var(--font-md);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.2s ease;
+}
+.cm-dlg-btn.ghost {
+  background: var(--card-2);
+  color: var(--text-2);
+}
+.cm-dlg-btn.ghost:active {
+  transform: translateY(1rpx);
+}
+.cm-dlg-btn.danger {
+  background: var(--danger);
+  color: #fff;
+}
+.cm-dlg-btn.danger:active {
+  background: var(--danger-dark);
+  transform: translateY(1rpx);
+  box-shadow: 0 4rpx 14rpx rgba(229, 72, 77, 0.35);
+}
+@keyframes cmFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes cmScale {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 /* 搜索栏：吸顶，置于话题筛选之上 */
