@@ -159,7 +159,7 @@ import { marketCharFor, resolveSecid } from "@/utils/period";
 import { openInMarket, goTab } from "@/store/nav";
 import { useFollow } from "@/store/follow";
 import { useReplyExpansion } from "@/store/replyExpansion";
-import { useUser, userState } from "@/store/user";
+import { userState } from "@/store/user";
 
 const props = defineProps<{ post: CommunityPost; mine: boolean; preview?: boolean }>();
 const emit = defineEmits<{
@@ -167,8 +167,6 @@ const emit = defineEmits<{
   (e: "reply", id: string, content: string, replyTo?: { name: string; userId?: string | null }): void;
   (e: "remove", id: string): void;
 }>();
-
-const user = useUser();
 
 // 关注 / 取消关注：仅对非本人帖子展示（mine 由社区页按身份判定）。
 // follows 为响应式 Set，computed 读取 follows.value 即可随切换实时重渲染。
@@ -206,7 +204,7 @@ function openStock(code?: string) {
 }
 
 // 评论区展开态改为全局互斥：仅当前帖子可展开，展开其它自动收起（需求：互斥展开）
-const { isReplyOpen, toggleReply: toggleReplyExp, openReply, closeReply } = useReplyExpansion();
+const { isReplyOpen, openReply, closeReply } = useReplyExpansion();
 const showReply = computed(() => isReplyOpen(props.post.id));
 const replyText = ref("");
 // 回复目标：点击某条评论后进入回复模式，占位文案变为「回复 昵称…」，

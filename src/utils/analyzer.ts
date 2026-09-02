@@ -88,8 +88,6 @@ function rsi(close: number[], n: number): (number | null)[] {
   }
   return r;
 }
-// pivots 已废弃：支撑/压力统一改用 autoLevels.ts 的分层引擎（与图表 StockChart 智能标注 100% 同源），
-// 旧逻辑仅做窗口极值、无聚类/打分/破位验证/量价·筹码·趋势联动，且会导致报告与图表两套数值。
 // Wilder 平滑 (RMA)：前 n 项用 SMA 初始化，之后递推。ATR/ADX 的标准算法（与 RSI 同源）。
 function rma(arr: number[], n: number): number[] {
   const r = new Array(arr.length).fill(null);
@@ -990,7 +988,6 @@ export function analyze(
   //   · 突破要求 VMA5/VMA20 > 1.0（近期放量，确认资金真实参与）
   //   · 跌破要求 VMA5/VMA20 > 0.9（至少接近均量，排除无量假跌破）
   // 支撑/压力是否来自明确的 pivot 拐点（非近60日极值兜底 / 箱体兜底）。
-  // 原 below/above（pivots() 产出）已随旧算法移除，改用同源 priceLevels 判定：
   // 仅当存在有效（未破位、同侧）的结构/交易线时，才视为来自真实拐点。
   const supportFromPivot = !!(
     (priceLevels.structSupport && !priceLevels.structSupport.isBroken && priceLevels.structSupport.price < price) ||

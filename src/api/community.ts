@@ -271,7 +271,7 @@ async function listRemote(opts?: { limit?: number; cursor?: number }): Promise<C
   // 点赞态以服务端 community_likes 为唯一权威（不再本地缓存）
   const liked = await loadLikedFromServer(sb);
   // 联表批量取作者头像 / 头像框 / VIP 态（一次查询，避免每条再发请求）
-  const profileMap = await loadProfilesForPosts(sb, data as any[]);
+  await loadProfilesForPosts(sb, data as any[]); // 填充 profileCache，供 authorInfoOf 回退旧帖作者头像/边框/VIP
   return (data as any[]).map((r) => {
     const ai = authorInfoOf(r.user_id);
     return mapRowToPost(r, ai, liked);
@@ -335,7 +335,7 @@ async function searchRemote(query: string): Promise<CommunityPost[]> {
   if (error || !data) return [];
   // 点赞态 / 作者资料与列表一致（复用同一套服务端权威逻辑）
   const liked = await loadLikedFromServer(sb);
-  const profileMap = await loadProfilesForPosts(sb, data as any[]);
+  await loadProfilesForPosts(sb, data as any[]); // 填充 profileCache，供 authorInfoOf 回退旧帖作者头像/边框/VIP
   return (data as any[]).map((r) => {
     const ai = authorInfoOf(r.user_id);
     return mapRowToPost(r, ai, liked);
@@ -374,7 +374,7 @@ async function listByUserRemote(
   );
   if (error || !data) return [];
   const liked = await loadLikedFromServer(sb);
-  const profileMap = await loadProfilesForPosts(sb, data as any[]);
+  await loadProfilesForPosts(sb, data as any[]); // 填充 profileCache，供 authorInfoOf 回退旧帖作者头像/边框/VIP
   return (data as any[]).map((r) => {
     const ai = authorInfoOf(r.user_id);
     return mapRowToPost(r, ai, liked);

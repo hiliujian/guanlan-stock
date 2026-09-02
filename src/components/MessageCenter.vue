@@ -153,7 +153,6 @@ const {
   unreadComment,
   unreadTotal,
   activeThread,
-  threadLoading,
   loadNotifications,
   loadConversations,
   openThread,
