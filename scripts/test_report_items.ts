@@ -459,6 +459,50 @@ async function auditStock(secid: string, name: string, idxKl: any[]) {
       && (c.profitRatio < 0.20) === chipProfitText(c.profitRatio).includes("抛压轻")
       && chipProfitColor(c.profitRatio) === (c.profitRatio > 0.85 ? UP : c.profitRatio < 0.20 ? PRIMARY : INK),
       chipProfitText(c.profitRatio));
+    // 独立重算（Volume-Profile 近似全流程复刻：60桶 + [low,high]摊入 + (1,2,1)/4 平滑 + 线性插值分位）
+    const slice = ks.slice(-Math.min(120, ks.length));
+    let minP = Infinity, maxP = -Infinity;
+    slice.forEach((k) => { minP = Math.min(minP, k.low); maxP = Math.max(maxP, k.high); });
+    if (minP === maxP) maxP = minP + 1;
+    const B = 60, step = (maxP - minP) / B;
+    const vb = new Array(B).fill(0);
+    slice.forEach((k) => {
+      let b0 = Math.max(0, Math.min(B - 1, Math.floor((k.low - minP) / step)));
+      let b1 = Math.max(0, Math.min(B - 1, Math.floor((k.high - minP) / step)));
+      if (b1 < b0) b1 = b0;
+      const span = b1 - b0 + 1;
+      for (let b = b0; b <= b1; b++) vb[b] += k.vol / span;
+    });
+    const sm = vb.slice();
+    for (let i = 1; i < B - 1; i++) sm[i] = (vb[i - 1] + vb[i] * 2 + vb[i + 1]) / 4;
+    const smTotal = sm.reduce((x, y) => x + y, 0) || 1;
+    let pk = 0;
+    for (let i = 1; i < B; i++) if (sm[i] > sm[pk]) pk = i;
+    const myPeak = minP + (pk + 0.5) * step;
+    let wsum = 0;
+    for (let i = 0; i < B; i++) wsum += (minP + (i + 0.5) * step) * sm[i];
+    const myAvg = wsum / smTotal;
+    let pv = 0;
+    for (let i = 0; i < B; i++) if (minP + (i + 0.5) * step <= price) pv += sm[i];
+    const myPr = pv / smTotal;
+    const myPct: Record<string, number> = {};
+    const targets = [5, 10, 25, 50, 75, 90, 95];
+    let cum = 0, ti = 0;
+    for (let i = 0; i < B && ti < targets.length; i++) {
+      const prevC = cum;
+      cum += sm[i];
+      while (ti < targets.length && (cum / smTotal) * 100 >= targets[ti]) {
+        const t = targets[ti] / 100, pLo = prevC / smTotal, pHi = cum / smTotal;
+        const f = pHi !== pLo ? (t - pLo) / (pHi - pLo) : 0;
+        myPct[String(targets[ti])] = +(minP + (i + f) * step).toFixed(2);
+        ti++;
+      }
+    }
+    check("筹码独立重算（成本/密集峰/获利盘/90%区间）",
+      near(c.avgCost, myAvg, Math.abs(myAvg) * 1e-6) && near(c.peakPrice, myPeak, 0.01)
+      && near(c.profitRatio, myPr, 1e-6)
+      && near(c.percentiles["5"], myPct["5"], 0.02) && near(c.percentiles["95"], myPct["95"], 0.02),
+      `90%区间 ${c.percentiles["5"]}~${c.percentiles["95"]} · 成本${c.avgCost.toFixed(2)} · 现价${price.toFixed(2)}`);
   }
 
   // 14) 支撑/压力

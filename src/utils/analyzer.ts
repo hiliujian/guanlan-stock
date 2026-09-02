@@ -584,7 +584,10 @@ export function analyze(
   // 筹码分布 · 成本结构（CYQ）：用近 120 交易日的成交量做 Volume-Profile 近似，
   // 得到平均成本、密集峰、获利盘比例三个核心维度，是支撑/压力和主力行为的重要参考。
   // 样本不足时返回 null，由 UI 显示「暂无数据」。
-  const chipR = klines.length >= 20 ? chip(klines, 120) : null;
+  // 筹码口径与文案（「近 120 日」）及换手率(turnSrc)保持一致：统一用日 K 序列，
+  // 周线视图下不退化为 120 周、月线视图不膨胀为 120 月——筹码/评分不随周期切换漂移。
+  const chipSrc = dailyKlines && dailyKlines.length >= 20 ? dailyKlines : klines;
+  const chipR = chipSrc.length >= 20 ? chip(chipSrc, 120) : null;
 
   // 布林带宽挤压（Squeeze）检测：带宽收缩到近 120 日的 15% 分位以下，
   // 是布林带最有价值的信号之一——波动率压缩到极限后必然扩张，预示即将变盘。
