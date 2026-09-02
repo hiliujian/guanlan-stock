@@ -13,13 +13,16 @@
     <text class="ann-toast-text truncate">{{ toastAnn.title }}</text>
   </view>
 
-  <!-- 弹窗模式：居中/顶部/底部 modal，支持图文 -->
+  <!-- 弹窗模式：居中/顶部/底部 modal，支持图文；无遮罩压暗（透明全屏层仅承接点空白关闭） -->
   <view v-if="modalAnn" class="ann-mask" @click="onMaskClick">
     <view :class="['ann-modal', 'pos-' + modalAnn.position]" @click.stop>
       <view class="ann-modal-hd">
+        <view class="ann-modal-badge flex-center">
+          <OutlineIcon type="bell" :size="30" color="var(--primary)" />
+        </view>
         <text class="ann-modal-title">{{ modalAnn.title }}</text>
         <view class="ann-modal-close flex-center" @click="dismiss(modalAnn)">
-          <OutlineIcon type="close" :size="28" />
+          <OutlineIcon type="close" :size="26" />
         </view>
       </view>
       <scroll-view class="ann-modal-bd" scroll-y>
@@ -206,26 +209,27 @@ onMounted(async () => {
 }
 
 /* ---- 弹窗模式 ---- */
+/* 遮罩已移除：透明全屏层不再压暗背景，仅承接「点空白处关闭」；
+   卡片自身用玻璃底 + 大阴影与页面内容区分层 */
 .ann-mask {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
   animation: annFade var(--dur-fast) ease both;
 }
 .ann-modal {
-  width: 86%;
-  max-width: 640rpx;
+  width: 84%;
+  max-width: 620rpx;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  background: var(--card);
-  border-radius: var(--radius);
+  background: var(--tabbar-bg);
+  border-radius: 28rpx;
   border: 1rpx solid var(--border);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-4);
   backdrop-filter: blur(var(--glass-blur)) saturate(150%);
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
   overflow: hidden;
@@ -241,15 +245,23 @@ onMounted(async () => {
   margin-bottom: 0;
   width: 100%;
   max-width: 100%;
-  border-radius: var(--radius) var(--radius) 0 0;
+  border-radius: 22rpx 22rpx 0 0;
   animation: annSlideUp var(--dur) var(--ease-out) both;
 }
 .ann-modal-hd {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  padding: 24rpx 28rpx 12rpx;
+  gap: 16rpx;
+  padding: 28rpx 24rpx 12rpx 28rpx;
   flex: none;
+}
+/* 标题左侧的铃铛图标芯片（主色浅底圆角块），点明「公告」属性 */
+.ann-modal-badge {
+  flex: none;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 20rpx;
+  background: var(--primary-soft);
 }
 .ann-modal-title {
   flex: 1;
@@ -291,21 +303,22 @@ onMounted(async () => {
 }
 .ann-modal-ft {
   display: flex;
-  gap: 16rpx;
-  padding: 16rpx 28rpx 24rpx;
+  gap: 20rpx;
+  padding: 16rpx 28rpx 28rpx;
   flex: none;
 }
 .ann-modal-btn {
   flex: 1;
-  height: 76rpx;
+  height: 80rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-sm);
+  border-radius: 999rpx;
   background: var(--primary);
   color: #fff;
   font-size: var(--font-md);
   font-weight: 600;
+  box-shadow: var(--shadow-primary-2);
   cursor: pointer;
   transition: transform var(--dur-fast) var(--ease-out);
 }
