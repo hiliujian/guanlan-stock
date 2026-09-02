@@ -37,10 +37,10 @@
         <text v-if="modalAnn.content" class="ann-modal-content">{{ modalAnn.content }}</text>
       </scroll-view>
       <view v-if="modalAnn.link || modalAnn.content" class="ann-modal-ft">
-        <view v-if="modalAnn.link" class="ann-modal-btn" @click="onAction(modalAnn)">
+        <view v-if="modalAnn.link" class="ann-modal-btn ghost" @click="onAction(modalAnn)">
           <text>查看详情</text>
         </view>
-        <view class="ann-modal-btn ghost" @click="dismiss(modalAnn)">
+        <view class="ann-modal-btn" @click="dismiss(modalAnn)">
           <text>我知道了</text>
         </view>
       </view>
@@ -226,12 +226,17 @@ onMounted(async () => {
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  background: var(--card);
+  /* 不透明实心卡：项目 --card 为玻璃半透明（浅 0.72 / 深 0.06），不符合「不要透明」要求 */
+  background: #ffffff;
   border-radius: 28rpx;
   border: 1rpx solid var(--border);
   box-shadow: var(--shadow-3);
   overflow: hidden;
   animation: annScale var(--dur) var(--ease-out) both;
+}
+/* 深色主题：替换为不透明深色表面，跨主题一致 */
+:global(.theme-dark) .ann-modal {
+  background: #11161f;
 }
 .ann-modal.pos-top {
   align-self: flex-start;
@@ -306,32 +311,38 @@ onMounted(async () => {
   padding: 8rpx 28rpx 28rpx;
   flex: none;
 }
-/* 主按钮：主色药丸，轻投影仅作可点暗示，不使用 font-weight 加粗 */
+/* 按钮形状 / 字重对齐系统 .btn-primary：药丸 999rpx、高 72rpx、不加粗（继承 400） */
 .ann-modal-btn {
   flex: 1;
-  height: 80rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  height: 72rpx;
+  line-height: 72rpx;
+  text-align: center;
+  border: none;
   border-radius: 999rpx;
   background: var(--primary);
   color: #fff;
   font-size: var(--font-md);
-  box-shadow: var(--shadow-primary-1);
   cursor: pointer;
-  transition: transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, opacity 0.2s ease, background 0.15s ease;
 }
+/* 激活态复用系统「按下」语言：primary-dark + 轻微下沉 + 主色投影 + 内高光（非 scale 抖动） */
 .ann-modal-btn:active {
-  transform: scale(0.97);
+  background: var(--primary-dark);
+  color: #fff;
+  transform: translateY(1rpx);
+  box-shadow: var(--shadow-primary-1), inset 0 1rpx 0 rgba(255, 255, 255, 0.22);
 }
-/* 次按钮：无填充的安静文字药丸，弱化存在感，不使用 font-weight 加粗 */
+/* 次按钮：柔和我方 --card-2 软填充（替代原先透明文字，解决「很丑 / 不搭主题」），形状一致 */
 .ann-modal-btn.ghost {
-  background: transparent;
+  background: var(--card-2);
   color: var(--text-2);
   box-shadow: none;
 }
 .ann-modal-btn.ghost:active {
-  opacity: 0.6;
+  background: var(--card-2);
+  color: var(--text-2);
+  transform: translateY(1rpx);
+  opacity: 0.85;
 }
 
 /* ---- 动画 ---- */
