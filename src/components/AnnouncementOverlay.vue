@@ -210,7 +210,7 @@ onMounted(async () => {
 
 /* ---- 弹窗模式 ---- */
 /* 遮罩已移除：透明全屏层不再压暗背景，仅承接「点空白处关闭」；
-   卡片自身用玻璃底 + 大阴影与页面内容区分层 */
+   卡片改用实心 --card 背景（非玻璃），让正文在透明背景下仍能聚焦、易读 */
 .ann-mask {
   position: fixed;
   inset: 0;
@@ -222,16 +222,14 @@ onMounted(async () => {
 }
 .ann-modal {
   width: 84%;
-  max-width: 620rpx;
+  max-width: 600rpx;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  background: var(--tabbar-bg);
+  background: var(--card);
   border-radius: 28rpx;
   border: 1rpx solid var(--border);
-  box-shadow: var(--shadow-4);
-  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  box-shadow: var(--shadow-3);
   overflow: hidden;
   animation: annScale var(--dur) var(--ease-out) both;
 }
@@ -252,21 +250,22 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 16rpx;
-  padding: 28rpx 24rpx 12rpx 28rpx;
+  padding: 30rpx 24rpx 18rpx 28rpx;
   flex: none;
+  border-bottom: 1rpx solid var(--border);
 }
 /* 标题左侧的铃铛图标芯片（主色浅底圆角块），点明「公告」属性 */
 .ann-modal-badge {
   flex: none;
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 20rpx;
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 18rpx;
   background: var(--primary-soft);
 }
+/* 标题：本组件全程禁用 font-weight 加粗，层级仅靠字号 + 颜色 + 图标区分 */
 .ann-modal-title {
   flex: 1;
   font-size: var(--font-lg);
-  font-weight: 700;
   color: var(--r-ink, var(--text));
 }
 .ann-modal-close {
@@ -283,7 +282,7 @@ onMounted(async () => {
 }
 .ann-modal-bd {
   flex: 1;
-  padding: 0 28rpx;
+  padding: 24rpx 28rpx 8rpx;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -295,18 +294,19 @@ onMounted(async () => {
 .ann-modal-content {
   display: block;
   font-size: var(--font-md);
-  line-height: 1.7;
-  color: var(--r-soft, var(--text-2));
+  line-height: 1.8;
+  color: var(--r-soft, var(--text));
   white-space: pre-wrap;
   word-break: break-word;
   margin-bottom: 16rpx;
 }
 .ann-modal-ft {
   display: flex;
-  gap: 20rpx;
-  padding: 16rpx 28rpx 28rpx;
+  gap: 16rpx;
+  padding: 8rpx 28rpx 28rpx;
   flex: none;
 }
+/* 主按钮：主色药丸，轻投影仅作可点暗示，不使用 font-weight 加粗 */
 .ann-modal-btn {
   flex: 1;
   height: 80rpx;
@@ -317,17 +317,21 @@ onMounted(async () => {
   background: var(--primary);
   color: #fff;
   font-size: var(--font-md);
-  font-weight: 600;
-  box-shadow: var(--shadow-primary-2);
+  box-shadow: var(--shadow-primary-1);
   cursor: pointer;
-  transition: transform var(--dur-fast) var(--ease-out);
+  transition: transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
 }
 .ann-modal-btn:active {
   transform: scale(0.97);
 }
+/* 次按钮：无填充的安静文字药丸，弱化存在感，不使用 font-weight 加粗 */
 .ann-modal-btn.ghost {
-  background: var(--card-2);
+  background: transparent;
   color: var(--text-2);
+  box-shadow: none;
+}
+.ann-modal-btn.ghost:active {
+  opacity: 0.6;
 }
 
 /* ---- 动画 ---- */
