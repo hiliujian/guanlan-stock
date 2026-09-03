@@ -290,7 +290,9 @@ function mapRowToPost(
   return {
     id: r.id,
     type: r.type,
-    author: r.author,
+    // 作者昵称：优先用 profiles 当前 display_name（改昵称后历史帖即时显示新昵称），
+    // 回退发布时冗余快照 r.author（旧帖 / 游客帖 / profiles 未取到时）。
+    author: currentAuthorName(r.user_id, r.author),
     userId: r.user_id || null,
     // 作者展示字段：优先用帖子冗余快照（发布时写入，不依赖 profiles RLS），
     // 旧帖（迁移前）无快照则回退 profiles 联表结果（profiles 现已公开可读）。
@@ -309,7 +311,8 @@ function mapRowToPost(
       const ri = authorInfoOf(x.user_id);
       return {
         id: x.id,
-        author: x.author,
+        // 评论昵称同样优先用当前 display_name（含本人改昵称后的旧评论也显示新昵称）
+        author: currentAuthorName(x.user_id, x.author),
         userId: x.user_id || null,
         authorVip: vipActive(ri.vip, ri.vip_expires_at),
         content: x.content,
@@ -398,31 +401,31 @@ async function loadLikedFromServer(sb: any): Promise<Set<string>> {
 }
 
 // 作者资料缓存：listRemote 批量联表后写入，供 createRemote / toggleLikeRemote 即时取用，
-// 避免单帖回查或丢失头像框。键为 user_id → { 头像 URL, 头像框 id, VIP 态, VIP 有效期 }。
+// 避免单帖回查或丢失头像框 / 昵称。键为 user_id → { 头像 URL, 头像框 id, VIP 态, VIP 有效期, display_name }。
 let profileCache: Map<
   string,
-  { avatar_url: string; avatar_frame: string; vip: boolean; vip_expires_at: string | null }
+  { avatar_url: string; avatar_frame: string; vip: boolean; vip_expires_at: string | null; display_name: string }
 > | null = null;
 
 /**
- * 批量联表取作者头像 / 头像框 / VIP 态：从帖子与评论收集 user_id，一次查询 profiles，
- * 返回 user_id → { avatar_url, avatar_frame, vip, vip_expires_at } 映射，并写入 profileCache 供后续复用。
- * 旧帖 / 游客帖 user_id 为空：对应项缺省为「字」头像（无边框、非 VIP），由 PostCard 回退。
+ * 批量联表取作者头像 / 头像框 / VIP 态 / 当前昵称：从帖子与评论收集 user_id，一次查询 profiles，
+ * 返回 user_id → { avatar_url, avatar_frame, vip, vip_expires_at, display_name } 映射，并写入 profileCache 供后续复用。
+ * 旧帖 / 游客帖 user_id 为空：对应项缺省为「字」头像（无边框、非 VIP）、昵称空（由上层回退发布时冗余快照）。
  */
 async function loadProfilesForPosts(
   sb: any,
   rows: any[]
-): Promise<Map<string, { avatar_url: string; avatar_frame: string; vip: boolean; vip_expires_at: string | null }>> {
+): Promise<Map<string, { avatar_url: string; avatar_frame: string; vip: boolean; vip_expires_at: string | null; display_name: string }>> {
   const ids = Array.from(
     new Set(
       rows.flatMap((r) => [r.user_id, ...((r.replies || []) as any[]).map((x) => x.user_id)]).filter(Boolean)
     )
   ) as string[];
-  const map = new Map<string, { avatar_url: string; avatar_frame: string; vip: boolean; vip_expires_at: string | null }>();
+  const map = new Map<string, { avatar_url: string; avatar_frame: string; vip: boolean; vip_expires_at: string | null; display_name: string }>();
   if (ids.length) {
     const { data } = await sb
       .from("profiles")
-      .select("id, avatar_url, avatar_frame, vip, vip_expires_at")
+      .select("id, avatar_url, avatar_frame, vip, vip_expires_at, display_name")
       .in("id", ids);
     for (const p of (data as any[]) || []) {
       map.set(p.id, {
@@ -430,6 +433,7 @@ async function loadProfilesForPosts(
         avatar_frame: p.avatar_frame || "",
         vip: p.vip === true,
         vip_expires_at: typeof p.vip_expires_at === "string" ? p.vip_expires_at : null,
+        display_name: p.display_name || "",
       });
     }
   }
@@ -437,10 +441,19 @@ async function loadProfilesForPosts(
   return map;
 }
 
-/** 从缓存取某作者的头像 / 头像框 / VIP 态（无缓存则回退「字」头像、无边框、非 VIP） */
-function authorInfoOf(userId?: string | null): { avatar_url: string; avatar_frame: string; vip: boolean; vip_expires_at: string | null } {
+/** 从缓存取某作者的头像 / 头像框 / VIP 态 / 当前昵称（无缓存则回退「字」头像、无边框、非 VIP、空昵称） */
+function authorInfoOf(userId?: string | null): { avatar_url: string; avatar_frame: string; vip: boolean; vip_expires_at: string | null; display_name: string } {
   if (userId && profileCache && profileCache.has(userId)) return profileCache.get(userId)!;
-  return { avatar_url: "", avatar_frame: "", vip: false, vip_expires_at: null };
+  return { avatar_url: "", avatar_frame: "", vip: false, vip_expires_at: null, display_name: "" };
+}
+
+/**
+ * 取作者当前昵称：优先用 profiles.display_name（用户改昵称后，历史帖与评论即时显示新昵称），
+ * 缺失时回退发布时冗余快照（旧帖 / 游客帖 / 极端情况下 profiles 未取到时仍可用）。
+ */
+function currentAuthorName(userId: string | null | undefined, fallback: string): string {
+  const live = authorInfoOf(userId).display_name;
+  return live || fallback;
 }
 
 async function createRemote(input: {
@@ -516,11 +529,13 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
     .single();
   if (ferr || !fresh) return null;
   const f = fresh as any;
+  // 重新联表取作者资料（含当前昵称），确保点赞返回的单帖也即时反映改名后的昵称
+  await loadProfilesForPosts(sb, [f]);
   const ai = authorInfoOf(f.user_id);
   return {
     id: f.id,
     type: f.type,
-    author: f.author,
+    author: currentAuthorName(f.user_id, f.author),
     userId: f.user_id || null,
     authorAvatarUrl: f.author_avatar_url || ai.avatar_url || "",
     authorFrame: f.author_frame || ai.avatar_frame || "",
@@ -537,7 +552,7 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
       const ri = authorInfoOf(x.user_id);
       return {
         id: x.id,
-        author: x.author,
+        author: currentAuthorName(x.user_id, x.author),
         userId: x.user_id || null,
         authorVip: vipActive(ri.vip, ri.vip_expires_at),
         content: x.content,
@@ -581,12 +596,14 @@ async function addReplyRemote(
     .single();
   if (error || !data) return null;
   const d = data as any;
+  // 重新联表取作者资料（含当前昵称），确保评论返回的单帖也即时反映改名后的昵称
+  await loadProfilesForPosts(sb, [d]);
   const ai = authorInfoOf(d.user_id); // profiles 联表兜底（profiles 现已公开可读）
   const liked = likedCache ? likedCache.ids.has(id) : false;
   return {
     id: d.id,
     type: d.type,
-    author: d.author,
+    author: currentAuthorName(d.user_id, d.author),
     userId: d.user_id || null,
     authorAvatarUrl: d.author_avatar_url || ai.avatar_url || "",
     authorFrame: d.author_frame || ai.avatar_frame || "",
@@ -603,7 +620,7 @@ async function addReplyRemote(
       const ri = authorInfoOf(x.user_id);
       return {
         id: x.id,
-        author: x.author,
+        author: currentAuthorName(x.user_id, x.author),
         userId: x.user_id || null,
         authorVip: vipActive(ri.vip, ri.vip_expires_at),
         content: x.content,

@@ -22,9 +22,6 @@ interface GlobalIndexItem {
 }
 interface GlobalIndexGroup {
   title: string; // 分组标题：A股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货 / 科技热点
-  /** 口径说明（可选）：在组标题下以小字展示，明确该组统计方式，避免与「市场魔方」等
-   *  行业级口径混淆。例如科技组标注 A股/美国的加权方式与「热点细分非全行业」的边界。 */
-  note?: string;
   items: GlobalIndexItem[];
 }
 export interface GlobalIndexQuote {
@@ -103,7 +100,6 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     // 数据、篮子口径失真，故此处显式用 106.。
     // 韩国主题（半导体/存储）：网关无韩国个股行情数据源，暂无法合成，待有源后补。
     title: "科技热点",
-    note: "A股=官方板块指数(市值加权) · 美国=成分股等权 · 热点细分，非全行业口径",
     items: [
       { secid: "90.BK0917", name: "半导体(中国)", flag: "cn" },
       { secid: "90.BK1137", name: "存储芯片(中国)", flag: "cn" },
