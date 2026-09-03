@@ -15,6 +15,7 @@ const STOCKS = [
   ["sh601899", "紫金矿业"],
   ["sz300750", "宁德时代"],
   ["sh600036", "招商银行"],
+  ["sz300308", "中际旭创"],
 ];
 
 async function fetchDaily(sym) {
