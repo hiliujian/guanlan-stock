@@ -1063,12 +1063,11 @@ function drawAutoLevels() {
 // ---- 右侧 y 轴标签统一错位布局 ----
 // 多条支压线/手绘线价位接近时，右侧标签互相重叠看不清。这里把同一帧内全部参与标签
 // （自动支压线 + 手绘横线 + 趋势线端点）收集后统一做「上下接着排」的错位：
-// 按目标 y 排序 → 自上而下推挤保证间距 → 底部溢出则自下而上收拢钳回 → 再自上而下钳顶。
+// 按目标 y 排序 → 自上而下推挤紧贴并排 → 底部溢出则自下而上收拢钳回 → 再自上而下钳顶。
 // 纯函数：同帧各 createYAxisFigures 回调对相同输入产出相同结果，无帧间时序依赖；
 // 价位在可视区外的线不参与（原行为其标签本就被裁剪不可见）。
 const TAG_H = 20;      // 单行标签高度（size 10 + 上下 padding 4）
 const TAG_SUB_H = 33;  // 自动支压线主标签 + sub 两行总高（20 + 13）
-const TAG_GAP = 4;     // 相邻标签最小间距
 
 function toPaneY(value: unknown): number | null {
   if (!chart || typeof value !== "number" || !isFinite(value)) return null;
@@ -1113,7 +1112,7 @@ function buildYAxisLabelLayout(boundH: number): Map<string, number> {
   items.sort((a, b) => a.y - b.y);
   let prevBottom = -Infinity;
   for (const it of items) {
-    it.y = Math.max(it.y, prevBottom + TAG_GAP);
+    it.y = Math.max(it.y, prevBottom);
     prevBottom = it.y + it.h;
   }
   if (prevBottom > boundH) {
@@ -1121,11 +1120,11 @@ function buildYAxisLabelLayout(boundH: number): Map<string, number> {
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i];
       it.y = Math.min(it.y + it.h, nextTop) - it.h;
-      nextTop = it.y - TAG_GAP;
+      nextTop = it.y;
     }
     let prevB = -Infinity;
     for (const it of items) {
-      it.y = Math.max(it.y, prevB + TAG_GAP);
+      it.y = Math.max(it.y, prevB);
       prevB = it.y + it.h;
     }
   }
