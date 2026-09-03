@@ -72,8 +72,7 @@
 
     <!-- 搜索态：模糊匹配到多个用户名时，在结果顶部展示所有匹配的用户名片（抖音风用户卡片），
          带入场/退场过渡；并入帖子结果一起展示 -->
-    <text v-if="searching && matchedUsers.length" class="ucard-head">相关用户</text>
-    <TransitionGroup name="ucard" tag="view" class="ucard-list">
+    <TransitionGroup name="ucard" tag="view">
       <UserCard v-for="u in matchedUsers" :key="u.id" :user="u" />
     </TransitionGroup>
 
@@ -822,20 +821,6 @@ defineExpose({ refresh });
   padding: 90rpx 0;
 }
 /* 空态标题已统一为全局 .empty-title（见 global.css） */
-
-/* 搜索态：用户名片区（模糊匹配多结果） */
-.ucard-head {
-  display: block;
-  font-size: var(--font-sm);
-  color: var(--text-3);
-  padding: 18rpx 4rpx 6rpx;
-}
-.ucard-list {
-  display: flex;
-  flex-direction: column;
-  gap: 18rpx;
-  padding-top: 4rpx;
-}
 
 /* 在线人数指示：已并入底部发帖卡片的折叠态（pe-peek）内，作为一行右侧信息，
    不再单独建卡片。视觉与折叠行语言一致（小圆点 + 低调文案）。 */
