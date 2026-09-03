@@ -215,31 +215,38 @@ const threadLoading = ref(false);
 // 无 read 标记，故以「通知创建时间晚于该类型基线」判定为该类型未读（社媒通行的「最后查看
 // 时间」模式）。分类型基线让点赞、评论各自独立计未读，用户能在标签栏看到分别的红点徽标，
 // 一眼区分「被赞了」还是「被评论了」，而非混成一个总数。
-const SEEN_LIKE_KEY = "gl_last_like_seen_at";
-const SEEN_COMMENT_KEY = "gl_last_comment_seen_at";
-const OLD_SEEN_KEY = "gl_last_notif_seen_at"; // 旧版单一基线，首次加载时迁移到分类型
-const seenLikeAt = ref<number>(Number(uni.getStorageSync(SEEN_LIKE_KEY)) || 0);
-const seenCommentAt = ref<number>(Number(uni.getStorageSync(SEEN_COMMENT_KEY)) || 0);
-// 旧基线迁移：已有用户本机存过旧的合并时间戳，直接继承到两个分类型，避免历史通知瞬间全标未读
-if (seenLikeAt.value === 0 && seenCommentAt.value === 0) {
-  const old = Number(uni.getStorageSync(OLD_SEEN_KEY)) || 0;
-  if (old > 0) {
-    seenLikeAt.value = old;
-    seenCommentAt.value = old;
-    persistSeenLike();
-    persistSeenComment();
+// 通知「已读基线」：按消息类型（点赞 / 评论）分别持久化的「最后查看时间」时间戳（ms）。
+// 后端 NotificationItem 无 read 标记，故以「通知创建时间晚于该类型基线」判定为该类型未读
+// （社媒通行的「最后查看时间」模式）。基线**按当前登录用户隔离**持久化到本地存储：
+// 重新登录（同一用户）能从本地读回，不再把已读历史重新标红；切换账号自动隔离，互不干扰。
+function seenKey(kind: "like" | "comment"): string {
+  const uid = userState.userId || "anon";
+  return `gl_last_${kind}_seen_at_${uid}`;
+}
+const seenLikeAt = ref<number>(0);
+const seenCommentAt = ref<number>(0);
+// 登录态变化 / 重新拉取前：若内存基线为空，从本地存储读回当前用户的已读基线。
+// 仅当内存态为 0 时才读回，避免覆盖本次会话内 markNotifSeen 已更新的内存值。
+function ensureSeenLoaded() {
+  if (seenLikeAt.value === 0) {
+    const v = Number(uni.getStorageSync(seenKey("like"))) || 0;
+    if (v > 0) seenLikeAt.value = v;
+  }
+  if (seenCommentAt.value === 0) {
+    const v = Number(uni.getStorageSync(seenKey("comment"))) || 0;
+    if (v > 0) seenCommentAt.value = v;
   }
 }
 function persistSeenLike() {
   try {
-    uni.setStorageSync(SEEN_LIKE_KEY, seenLikeAt.value);
+    uni.setStorageSync(seenKey("like"), seenLikeAt.value);
   } catch {
     /* 持久化失败不影响内存态角标 */
   }
 }
 function persistSeenComment() {
   try {
-    uni.setStorageSync(SEEN_COMMENT_KEY, seenCommentAt.value);
+    uni.setStorageSync(seenKey("comment"), seenCommentAt.value);
   } catch {
     /* 持久化失败不影响内存态角标 */
   }
@@ -276,24 +283,19 @@ function dismissNotification(id: string) {
 async function loadNotifications() {
   notifLoading.value = true;
   try {
+    // 重新登录 / 登出再进：内存基线可能被 reset 清 0，先从本地读回当前用户已读基线，
+    // 避免把已读历史重新标红。
+    ensureSeenLoaded();
     notifications.value = await communityRepo.myNotifications();
-    // 首次加载（某类型基线为 0）：把该类型基线设为「最早一条通知时间 - 1」，
-    // 使历史通知不被一次性计为未读；之后再有新通知才会触发对应类型角标。
-    if (notifications.value.length) {
-      const minT = notifications.value
-        .map((n) => new Date(n.createdAt).getTime())
-        .filter((t) => Number.isFinite(t));
-      if (minT.length) {
-        const base = Math.min(...minT) - 1;
-        if (seenLikeAt.value === 0) {
-          seenLikeAt.value = base;
-          persistSeenLike();
-        }
-        if (seenCommentAt.value === 0) {
-          seenCommentAt.value = base;
-          persistSeenComment();
-        }
-      }
+    // 校准「已读基线」：仅当本用户从未有过基线（首次进入消息中心）时，把基线设为「此刻」，
+    // 使所有历史通知视为已读；之后新到达的通知（晚于此刻）才计未读。
+    // 若已有基线（含重新登录从本地读回），保持原值，避免把已读历史重新标红。
+    if (notifications.value.length && seenLikeAt.value === 0 && seenCommentAt.value === 0) {
+      const now = Date.now();
+      seenLikeAt.value = now;
+      seenCommentAt.value = now;
+      persistSeenLike();
+      persistSeenComment();
     }
   } finally {
     notifLoading.value = false;
@@ -360,6 +362,8 @@ function unsubscribeMessageRealtime() {
 
 /** 初始化消息中心实时订阅（幂等；未登录时自动退订）。登录态变化时调用。 */
 export function initMessageRealtime() {
+  // 登录态变化（含重新登录）时先恢复已读基线，使顶部角标即时正确，无需等进消息中心
+  ensureSeenLoaded();
   if (userState.loggedIn && userState.userId && getSupabase()) {
     subscribeMessageRealtime();
   } else {
@@ -447,7 +451,8 @@ export function useMessageCenter() {
   /** 标记活动通知已读：按类型把对应基线推到「现在」并持久化；不传类型则两类一并清。
    *  分类型标记使「看过点赞」不会顺带清掉「评论」红点，用户能在标签栏区分未读类型。 */
   function markNotifSeen(kind?: "like" | "comment") {
-    const now = Date.now();
+    // 留 1s 余量，规避客户端与服务端时钟漂移导致「刚标记已读却仍判未读」
+    const now = Date.now() + 1000;
     if (kind === "like") {
       seenLikeAt.value = now;
       persistSeenLike();
