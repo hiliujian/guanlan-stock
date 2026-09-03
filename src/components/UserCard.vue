@@ -8,7 +8,7 @@
       <UserAvatar
         :url="user.avatar_url"
         :seed="user.display_name || user.username"
-        :size="96"
+        :size="60"
         :frame="user.avatar_frame"
       />
       <view class="uc-meta">
@@ -119,8 +119,8 @@ function goProfile() {
 .uc-name {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: calc(100% - 30rpx);
-  font-size: var(--font-lg);
+  max-width: calc(100% - 34rpx);
+  font-size: var(--font-md);
   color: var(--text);
 }
 .uc-crown {
@@ -130,7 +130,7 @@ function goProfile() {
   line-height: 1;
 }
 .uc-username {
-  font-size: var(--font-sm);
+  font-size: var(--font-xs);
   color: var(--text-3);
 }
 /* 「我」标识：中性描边胶囊，区别于关注按钮（主色） */
@@ -190,7 +190,6 @@ function goProfile() {
 }
 .uc-fans-n {
   color: var(--text);
-  font-weight: 600;
 }
 
 /* 平滑过渡（由外层 <Transition name="ucard"> 触发，类加在本组件根元素上） */
