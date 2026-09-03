@@ -449,7 +449,8 @@ const indexDisplayColor = computed(() => {
   const t = a.value.marketEnv?.indexTrendDisplay || "";
   if (t === "超跌反弹" || t === "修复企稳" || t === "反转信号") return "var(--up)";
   if (t === "见顶信号") return "var(--down)";
-  if (t === "正常回踩" || t === "阶段调整") return "var(--text-2)";
+  // 中性也是真实结论（正常回踩/阶段调整），用墨黑；淡黑仅保留给下方「暂无数据」占位
+  if (t === "正常回踩" || t === "阶段调整") return "var(--r-ink)";
   if (t === "上涨趋势" || t === "震荡偏强") return "var(--up)";
   if (t === "下跌趋势" || t === "震荡偏弱") return "var(--down)";
   return "var(--text-2)";
@@ -464,33 +465,39 @@ const marketIdxStrength = computed(() => {
   return "震荡(ADX " + adx.toFixed(0) + ")";
 });
 const alignColor = computed(() => {
-  const s = a.value.marketEnv?.alignScore || 0;
-  // A股约定同 breadthColor：顺大盘（正分=利多）红、逆大盘（负分=利空）绿、中性灰。
+  const env = a.value.marketEnv;
+  // 淡黑仅用于「暂无数据」占位；真实内容（含中性「与大盘方向一致」）一律墨黑。
+  // A股约定同 breadthColor：顺大盘（正分=利多）红、逆大盘（负分=利空）绿、中性墨黑。
   // 此前正分用 --primary 品牌绿，与相邻 breadthColor 红绿口径相悖且和利空绿混淆，已统一。
+  if (!env || env.alignText === "暂无数据") return "var(--text-2)";
+  const s = env.alignScore || 0;
   if (s > 0) return "var(--up)";
   if (s < 0) return "var(--down)";
-  return "var(--text-2)";
+  return "var(--r-ink)";
 });
 const breadthColor = computed(() => {
-  const s = a.value.marketEnv?.breadthScore || 0;
+  const env = a.value.marketEnv;
+  if (!env || env.breadthText === "暂无数据") return "var(--text-2)";
+  const s = env.breadthScore || 0;
   if (s > 0) return "var(--up)";
   if (s < 0) return "var(--down)";
-  return "var(--text-2)";
+  return "var(--r-ink)";
 });
-// 大盘量能颜色：缩量+上涨趋势=警惕(偏空)，放量+下跌趋势=恐慌(偏空)，其余中性
+// 大盘量能颜色：放量+上涨趋势=红(量价配合)、放量+下跌趋势=绿(恐慌抛售)；缩量/量能正常=中性墨黑
 const mktVolColor = computed(() => {
   const env = a.value.marketEnv;
-  if (!env) return "var(--text-2)";
-  if (env.mktVolText === "大盘缩量") return "var(--r-soft)";
+  if (!env || env.mktVolText === "暂无数据") return "var(--text-2)";
+  if (env.mktVolText === "大盘缩量") return "var(--r-ink)";
   if (env.mktVolText === "大盘放量") return env.indexTrend === "上涨趋势" || env.indexTrend === "震荡偏强" ? "var(--up)" : "var(--down)";
-  return "var(--text-2)";
+  return "var(--r-ink)";
 });
 // 行业板块维度着色：合成唯一结论（行业今日动能定性 + 中期行业趋势）同口径着色
 const sectorDisplayColor = computed(() => {
   const t = a.value.marketEnv?.sectorTrendDisplay || "";
   if (t === "超跌反弹" || t === "修复企稳" || t === "反转信号") return "var(--up)";
   if (t === "见顶信号") return "var(--down)";
-  if (t === "正常回踩" || t === "阶段调整") return "var(--text-2)";
+  // 中性也是真实结论，用墨黑；淡黑仅保留给未定义（无行业数据）的占位
+  if (t === "正常回踩" || t === "阶段调整") return "var(--r-ink)";
   if (t === "上涨趋势" || t === "震荡偏强") return "var(--up)";
   if (t === "下跌趋势" || t === "震荡偏弱") return "var(--down)";
   return "var(--text-2)";
@@ -509,7 +516,8 @@ const positionColor = computed(() => {
   if (advice === "暂无数据") return "var(--text-2)";
   if (pct >= 55) return "var(--up)";
   if (pct <= 30) return "var(--down)";
-  return "var(--text-2)";
+  // 中性仓位建议（30%–55%）是真实结论，用墨黑而非淡黑
+  return "var(--r-ink)";
 });
 // 今日盘中异动样式（A股约定：涨=红 var(--up)、跌=绿 var(--down)）
 const intradayCls = computed(() => {
@@ -1149,7 +1157,7 @@ function openNews(it: NewsItem) {
 }
 .dec-item.wait {
   background: var(--card-2);
-  color: var(--text-2);
+  color: var(--r-ink); /* 「观望」是真实决策结论，墨黑；与信号卡 wait 态同色 */
 }
 
 .levels {
@@ -1319,7 +1327,8 @@ function openNews(it: NewsItem) {
 }
 .ni-tag.ok { color: var(--up); background: rgba(239, 35, 42, 0.14); }
 .ni-tag.bad { color: var(--down); background: rgba(9, 176, 122, 0.14); }
-.ni-tag.neutral { color: var(--text-2); background: var(--border); }
+/* 中性标签是真实判定（非「暂无数据」），文字用墨黑，仅靠灰底与利好/利空彩签区分 */
+.ni-tag.neutral { color: var(--r-ink); background: var(--border); }
 .ni-title {
   flex: 1;
   font-size: var(--font-sm);
@@ -1329,7 +1338,7 @@ function openNews(it: NewsItem) {
 .ni-sum {
   margin-top: 8rpx;
   font-size: var(--font-xs);
-  color: var(--text-2);
+  color: var(--r-ink); /* 摘要是正文内容，用墨黑；淡黑仅限暂无数据/标签/注释 */
   line-height: 1.55;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -1388,7 +1397,7 @@ function openNews(it: NewsItem) {
 .ni-v {
   flex: 1;
   font-size: var(--font-sm);
-  color: var(--r-soft);
+  color: var(--r-ink); /* 催化/风险列举是正文内容，用墨黑 */
   line-height: 1.5;
 }
 .ni-note {

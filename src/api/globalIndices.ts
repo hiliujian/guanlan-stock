@@ -89,38 +89,33 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     ],
   },
   {
-    // 科技指数·中国：东财概念板块指数本身就是「成分股加权合成」的官方板块指数，
-    // 符合「追踪一篮子股票形成的指数」的定义，直接引用官方点值。
-    title: "科技指数·中国",
-    items: [
-      { secid: "90.BK0917", name: "半导体", flag: "cn" },
-      { secid: "90.BK1137", name: "存储芯片", flag: "cn" },
-      { secid: "90.BK1128", name: "CPO", flag: "cn" },
-      { secid: "90.BK1629", name: "AI应用", flag: "cn" },
-      { secid: "90.BK0963", name: "商业航天", flag: "cn" },
-      { secid: "90.BK1090", name: "机器人", flag: "cn" },
-    ],
-  },
-  {
-    // 科技指数·美国：东财无 SOX 等美股主题指数与半导体系列 ETF 覆盖（实测），
-    // 故按市场魔方思路自建等权合成指数：每个主题取一篮子代表性美股
-    // （全部经网关 ulist 实测有实时行情），点位/涨跌幅由成分股等权计算。
+    // 科技指数（中美合为一组）：A 股用东财概念板块指数（本身就是成分股加权合成的
+    // 官方板块指数，符合「追踪一篮子股票形成的指数」定义，直接引用官方点值）；
+    // 美股东财无 SOX 等主题指数与半导体系列 ETF 覆盖（实测），按同思路自建等权合成
+    // 指数：每个主题取一篮子代表性美股（全部经网关 ulist 实测有实时行情），
+    // 点位/涨跌幅由成分股等权计算。
     // 韩国主题（半导体/存储）：网关无韩国个股行情数据源，暂无法合成，待有源后补。
-    title: "科技指数·美国",
+    title: "科技指数",
     items: [
+      { secid: "90.BK0917", name: "半导体(中国)", flag: "cn" },
+      { secid: "90.BK1137", name: "存储芯片(中国)", flag: "cn" },
+      { secid: "90.BK1128", name: "CPO(中国)", flag: "cn" },
+      { secid: "90.BK1629", name: "AI应用(中国)", flag: "cn" },
+      { secid: "90.BK0963", name: "商业航天(中国)", flag: "cn" },
+      { secid: "90.BK1090", name: "机器人(中国)", flag: "cn" },
       {
         secid: "bkt.us.semi",
-        name: "半导体",
+        name: "半导体(美国)",
         flag: "us",
         members: ["105.NVDA", "105.AMD", "105.INTC", "105.QCOM", "105.TXN", "105.ADI", "105.MRVL"],
       },
-      { secid: "bkt.us.storage", name: "存储芯片", flag: "us", members: ["105.MU", "105.STX", "105.SNDK"] },
-      { secid: "bkt.us.cpo", name: "CPO", flag: "us", members: ["106.COHR", "105.LITE", "106.CIEN", "105.AAOI"] },
-      { secid: "bkt.us.aiapp", name: "AI应用", flag: "us", members: ["105.PLTR", "105.MSFT", "105.GOOG", "105.META"] },
-      { secid: "bkt.us.space", name: "商业航天", flag: "us", members: ["105.RKLB", "105.ASTS", "105.LUNR"] },
+      { secid: "bkt.us.storage", name: "存储芯片(美国)", flag: "us", members: ["105.MU", "105.STX", "105.SNDK"] },
+      { secid: "bkt.us.cpo", name: "CPO(美国)", flag: "us", members: ["106.COHR", "105.LITE", "106.CIEN", "105.AAOI"] },
+      { secid: "bkt.us.aiapp", name: "AI应用(美国)", flag: "us", members: ["105.PLTR", "105.MSFT", "105.GOOG", "105.META"] },
+      { secid: "bkt.us.space", name: "商业航天(美国)", flag: "us", members: ["105.RKLB", "105.ASTS", "105.LUNR"] },
       {
         secid: "bkt.us.robot",
-        name: "机器人",
+        name: "机器人(美国)",
         flag: "us",
         members: ["105.ISRG", "105.TER", "106.ROK", "105.SYM", "105.SERV", "105.TSLA"],
       },
