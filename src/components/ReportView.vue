@@ -209,7 +209,7 @@
             <text class="m-v" :style="{ color: btSellColor }">{{ btSellText }}</text>
           </view>
         </view>
-        <text class="base-note">口径：MA5/20 交叉+放量确认 · 近 {{ a.backtest.bars }} 根日线回放 · 20 日前瞻；历史统计，非未来保证。</text>
+        <text class="base-note">口径说明：此处仅回测「MA5/20 金叉/死叉 + 放量确认」这一条历史规则（近 {{ a.backtest.bars }} 根日线、20 日前瞻），用于观察该单一规则的胜率参考；它不等于对上方综合评分与买卖信号的统计验证，亦非量化策略回测。历史统计，非未来保证。</text>
       </template>
       <view v-else class="news-empty">
         <text>样本不足</text>
