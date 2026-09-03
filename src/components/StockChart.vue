@@ -279,6 +279,45 @@ function ensureMacdfs() {
   }
 }
 
+// ---- 分时 Y 轴预留空间（AXIS_SPAN 隐形指标，仅分时模式）----
+// 对齐同花顺分时行为：y 轴区间以昨收为中心对称（昨收±D），而非贴合当日最高/最低铺满画布；
+// 现价即使等于当日最高，上方仍保留一段空间。D 另设下限 ±0.5%，开盘初期偏离极小时区间不至过窄。
+// 实现原理（klinecharts YAxisImp.calcRange 源码）：面板内所有指标 figure 数值都会参与 y 轴
+// 区间计算，故注册一个「画两条透明水平线」的隐形指标，两线值即区间上下沿；线透明 + shortName
+// 空使其不可见，且 buildLegend 只读 AVP/MA 键，不会进入图例。
+let axisSpanRegistered = false;
+function ensureAxisSpan() {
+  if (axisSpanRegistered) return;
+  try {
+    registerIndicator({
+      name: "AXIS_SPAN",
+      shortName: "", // 面板标题不显示（同 AVP）
+      figures: [
+        { key: "top", type: "line", styles: () => ({ color: "rgba(0,0,0,0)" }) },
+        { key: "bottom", type: "line", styles: () => ({ color: "rgba(0,0,0,0)" }) },
+      ],
+      calc: (list: any[]) => {
+        // 昨收 = 首根分时柱的 open（toKLineData 约定首根 open=昨收）；异常时返回空对象走自动缩放兜底
+        const pre = list.length ? Number(list[0].open) : 0;
+        if (!Number.isFinite(pre) || pre <= 0) return list.map(() => ({}));
+        // D = 全天相对昨收的最大偏离（high/low/close 三向，与 buildLegend 全天高低口径一致）
+        let dev = 0;
+        for (const b of list) {
+          if (!b) continue;
+          const hi = Math.max(b.high, b.close); // high 缺失/异常时用收盘价兜底，保证极值有效
+          const lo = Math.min(b.low, b.close);
+          dev = Math.max(dev, Math.abs(hi - pre), Math.abs(pre - lo));
+        }
+        const d = Math.max(dev, pre * 0.005);
+        return list.map(() => ({ top: pre + d, bottom: pre - d }));
+      },
+    } as never);
+    axisSpanRegistered = true;
+  } catch {
+    /* noop */
+  }
+}
+
 // ---- 主图均线（MA）独立指标：MA5/MA10/MA20/MA60 各自注册为单线指标 ----
 // klinecharts 内置 "MA" 指标一次渲染 4 条（calcParams=[5,10,20,60]）无法独立开关，
 // 故注册 4 个独立指标，buildLayout 按 maConfig 决定往主图 push 哪几条。
@@ -588,7 +627,8 @@ function buildLayout(): any[] {
       visibleMas.forEach((d) => candleContent.push("MA" + d.period));
     }
   }
-  if (props.mode === "intraday") candleContent.push("AVP");
+  // 分时主图叠加均价线 + AXIS_SPAN 隐形指标（撑出昨收对称的 y 轴预留空间，见 ensureAxisSpan）
+  if (props.mode === "intraday") candleContent.push("AVP", "AXIS_SPAN");
   const layout: any[] = [
     { type: "candle", content: candleContent, options: { id: "candle_pane", height: priceH, minHeight: Math.round(priceH * 0.6), dragEnabled: false } },
   ];
@@ -790,6 +830,10 @@ function onDataReady() {
 
 // ---- 生命周期 ----
 function destroyChart() {
+  if (chartLeaveCb && chartEl.value) {
+    chartEl.value.removeEventListener("mouseleave", chartLeaveCb);
+    chartLeaveCb = null;
+  }
   if (crosshairCb && chart) {
     try {
       chart.unsubscribeAction(ActionType.OnCrosshairChange, crosshairCb);
@@ -1451,8 +1495,17 @@ function updateLegendLatest() {
   buildLegend(last, undefined, dataList.length - 1);
 }
 
+// 鼠标移出图表区域：图例回弹到最新 K 线 + 隐藏智能标注悬浮。
+// 根因：klinecharts 仅在 crosshair.paneId 为字符串时才派发 OnCrosshairChange（源码
+// ChartImp.crosshairChange 内 isString(paneId) 判断），鼠标移开后引擎内部 setCrosshair({})
+// 无 paneId，动作被抑制——光标线消失但图例停留在最后选中的历史柱，订阅回调收不到该事件。
 let crosshairCb: ((d: any) => void) | null = null;
 let dataReadyCb: (() => void) | null = null;
+let chartLeaveCb: (() => void) | null = null;
+function onChartLeave() {
+  tip.show = false;
+  updateLegendLatest();
+}
 function onCrosshair(c: any) {
   // 图例跟随十字光标：主图/成交量/MACD 任一面板悬浮都显示当前选中 K 线的 OHLC + 各面板指标值。
   // 此前仅在 candle_pane 才更新，导致在成交量/MACD 面板选柱时图例不跟随（始终显示最新值）。
@@ -1632,6 +1685,7 @@ function buildChart() {
   ensureAvp();
   ensureIntradayVol();
   ensureMacdfs();
+  ensureAxisSpan();
   ensureMaIndicators();
   ensureTrendOverlay();
   ensureDrawOverlays();
@@ -1685,6 +1739,9 @@ function buildChart() {
   } catch {
     /* noop */
   }
+  // 鼠标移出图表容器：图例回弹最新数据（引擎不派发离开事件，自行监听，见 onChartLeave 注释）
+  chartLeaveCb = onChartLeave;
+  el.addEventListener("mouseleave", chartLeaveCb);
   // 数据就绪订阅：分时模式首载/刷新/实时末根后保持「整日全貌」铺满视图
   dataReadyCb = onDataReady;
   try {
