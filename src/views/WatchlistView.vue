@@ -185,8 +185,8 @@
           <template #peek>
             <view class="peek-row" role="button" aria-label="展开底部面板">
               <text class="peek-label">{{ peekLabel }}</text>
-              <!-- 今日最热 ↔ 今日异动 切换与多异动轮播，均复用 <RollSwap>（与行情页大盘指数切换动画完全一致）；
-                   异动轮播滚动完所有提示后回到「今日最热」slide 再循环 -->
+              <!-- 今日最热 ↔ 今日异动 提醒切换复用 <RollSwap>（与行情页大盘指数切换动画完全一致）；
+                   异动仅在「产生时刻起的展示窗口内」切换显示，错过窗口不再出现 -->
               <RollSwap class="peek-roll" :roll-key="anomKey">
                 <!-- 今日最热 slide：点击展开榜单面板（PeekSheet 原生折叠→半屏→铺满→下拉收回） -->
                 <template v-if="curSlide && curSlide.kind === 'today'">
@@ -541,7 +541,7 @@ async function loadPeek() {
   }
 }
 
-// ===== 今日异动：卡片转换(今日最热 ↔ 今日异动) + 多异动轮播 + 列表（同窗体面板） =====
+// ===== 今日异动：提醒（按产生时刻的时间窗触发）+ 列表（同窗体面板） =====
 // 复用 PeekSheet + .peek-row 同一套底部卡片（与行情页指数卡、自选页热榜卡同源），
 // 切换/轮播动画复用 <RollSwap>（与行情页大盘指数切换完全一致：垂直滚动 360ms cubic-bezier(0.22,0.61,0.36,1)）；
 // 异动列表作为 PeekSheet 内的独立面板（activePanel='anomaly'），展开即半屏，上拉铺满、下拉收回，交互与其他卡片完全一致。
@@ -553,63 +553,48 @@ const myCodes = computed(() => new Set(wl.items.map((it) => it.code)));
 const anomalyList = computed(() => anomalies.value.filter((a) => myCodes.value.has(a.code)));
 // 折叠卡标题随当前 slide 切换：今日最热 ↔ 今日异动
 const ANOM_LABEL = "今日异动";
-const ANOM_ROTATE_MS = 5000; // 轮播间隔（放慢节奏）
+const ANOM_SHOW_MS = 5000; // 提醒展示时长（维持原轮播单条 5s 的展示配置）
 const curSlide = ref<AnomSlide>({ kind: "today" });
 const peekLabel = computed(() => (curSlide.value.kind === "anom" ? ANOM_LABEL : "今日最热"));
 // RollSwap 的 key：今日最热=today，异动=anom:<id>（slide 变化时 key 变化触发垂直滚动切换）
 const anomKey = computed(() =>
   curSlide.value.kind === "anom" ? "anom:" + curSlide.value.rec.id : "today"
 );
-// ===== 轮播三原则：最新 / 有效 / 不重复 =====
-// - 最新+聚合：按 code 聚合，每股票只滚动其最新一条异动（buildAnomCycle 内按 rec.time 严格取最新）；
-// - 不重复：已滚动展示过的异动（shownAnomIds）整页生命周期内不再滚动；
-// - 节奏：今日最热 → 异动1..N → 今日最热（一圈展示完后重建队列等新异动；
-//   无新异动时定时器空转，恒显今日最热，不会反复播放旧信息）。
-const shownAnomIds = new Set<string>(); // 已展示过的异动 id
-let anomCycle: AnomSlide[] = []; // 本轮待展示队列
-let cyclePos = -1; // -1 = 今日最热；k = anomCycle[k]
-function buildAnomCycle() {
-  // 按 code 聚合：同一只股票只保留时间最新的一条异动参与轮播（单股只显最新一条）。
-  // 用 rec.time 严格比较，不依赖 anomalies 外部排序；再剔除整页已展示过的。
-  const latestByCode = new Map<string, AnomalyRecord>();
+// ===== 提醒时效模型：纯时间驱动，无已读状态 =====
+// 异动在 rec.time 产生 → 提醒必须在该时间点触发，持续展示 ANOM_SHOW_MS 后消失：
+// - 窗口内（rec.time ≤ 现在 < rec.time + ANOM_SHOW_MS）恒展示该提醒：无论异动产生多久、
+//   页面是否刷新，只要此刻仍在窗口内就继续展示（无已读标记可阻断）；
+// - 错过窗口（现在 ≥ rec.time + ANOM_SHOW_MS）永不触发：从本地恢复的历史异动不再回放；
+// - 多条异动窗口重叠时展示最新一条（延续原轮播「最新优先」原则）。
+function activeAnomaly(now: number): AnomalyRecord | null {
+  let latest: AnomalyRecord | null = null;
   for (const rec of anomalyList.value) {
-    const prev = latestByCode.get(rec.code);
-    if (!prev || rec.time > prev.time) latestByCode.set(rec.code, rec);
+    const t = new Date(rec.time).getTime();
+    if (Number.isNaN(t) || now < t || now >= t + ANOM_SHOW_MS) continue;
+    if (!latest || rec.time > latest.time) latest = rec;
   }
-  anomCycle = [];
-  for (const rec of latestByCode.values()) {
-    if (!shownAnomIds.has(rec.id)) anomCycle.push({ kind: "anom", rec });
-  }
+  return latest;
+}
+function syncAnomReminder() {
+  const rec = activeAnomaly(Date.now());
+  curSlide.value = rec ? { kind: "anom", rec } : { kind: "today" };
 }
 let anomTimer: any = null;
-function startAnomRotate() {
+function startAnomSync() {
   if (anomTimer) return;
-  cyclePos = -1;
-  curSlide.value = { kind: "today" };
-  buildAnomCycle();
-  anomTimer = setInterval(() => {
-    // 离开当前异动 slide 即标记已展示（后续不再滚动）
-    const cur = curSlide.value;
-    if (cur.kind === "anom") shownAnomIds.add(cur.rec.id);
-    if (++cyclePos >= anomCycle.length) {
-      // 本轮异动全部展示完 → 回到今日最热，重建队列等待新异动
-      buildAnomCycle();
-      cyclePos = -1;
-    }
-    curSlide.value = cyclePos < 0 ? { kind: "today" } : anomCycle[cyclePos];
-  }, ANOM_ROTATE_MS);
+  syncAnomReminder(); // 启动即对齐：挂载/回页时可能正处于某条异动的展示窗口内
+  anomTimer = setInterval(syncAnomReminder, 500); // 500ms 对齐触发时刻（列表 ≤50 条，开销可忽略）
 }
-function stopAnomRotate() {
+function stopAnomSync() {
   if (anomTimer) {
     clearInterval(anomTimer);
     anomTimer = null;
   }
-  cyclePos = -1;
   curSlide.value = { kind: "today" };
 }
-// immediate：挂载时异动列表可能已从本地恢复为非空，必须立即启动轮播，
-// 否则 watch 不触发、定时器不启动，卡片会永远停在今日最热。
-watch(anomalyList, (list) => (list.length > 0 ? startAnomRotate() : stopAnomRotate()), {
+// immediate：挂载时异动列表可能已从本地恢复为非空，必须立即启动对齐定时器，
+// 否则 watch 不触发、定时器不启动，窗口内的提醒不会展示。
+watch(anomalyList, (list) => (list.length > 0 ? startAnomSync() : stopAnomSync()), {
   immediate: true,
 });
 function onSheetExpand() {
@@ -1167,14 +1152,14 @@ onActivated(() => {
   loadQuotesSafe();
   startPolling();
   loadPeek(); // 回到本页即刷新「今日最热」预览，避免展示过期的空态
-  // onDeactivated 已停轮播：回页后须重启，否则异动不再更新只能等新异动到达
-  if (anomalyList.value.length > 0) startAnomRotate();
+  // onDeactivated 已停提醒对齐：回页后须重启，否则窗口内的异动提醒不再展示
+  if (anomalyList.value.length > 0) startAnomSync();
 });
 onDeactivated(stopPolling);
-onDeactivated(stopAnomRotate);
+onDeactivated(stopAnomSync);
 onUnmounted(() => {
   stopPolling();
-  stopAnomRotate();
+  stopAnomSync();
 });
 watch(
   () => userState.loggedIn,
