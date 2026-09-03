@@ -98,8 +98,9 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     // A 股项直接引用东财概念板块指数（官方市值加权指数，返回真实点位）；
     // 美股东财无 SOX 等主题指数覆盖，按同思路自建等权合成指数：每主题取一篮子代表性
     // 美股（全部经网关 ulist 有实时行情），涨跌幅由成分股等权平均。
-    // 注：美股统一用 105. 前缀（东财 ulist 美股 secid）；NYSE 上市个股亦用 105.（曾误用
-    // 106. 导致 COHR/CIEN/ROK 静默取不到数据、篮子口径失真，已修正）。
+    // 东财美股 secid 规则（实测确认）：NASDAQ 上市用 105. 前缀，NYSE 上市用 106. 前缀。
+    // COHR / CIEN / ROK 均为 NYSE 上市，必须用 106.；曾误把它们统一成 105. 导致静默取不到
+    // 数据、篮子口径失真，故此处显式用 106.。
     // 韩国主题（半导体/存储）：网关无韩国个股行情数据源，暂无法合成，待有源后补。
     title: "科技热点",
     note: "A股=官方板块指数(市值加权) · 美国=成分股等权 · 热点细分，非全行业口径",
@@ -117,14 +118,14 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
         members: ["105.NVDA", "105.AMD", "105.INTC", "105.QCOM", "105.TXN", "105.ADI", "105.MRVL"],
       },
       { secid: "bkt.us.storage", name: "存储芯片(美国)", flag: "us", members: ["105.MU", "105.STX", "105.SNDK"] },
-      { secid: "bkt.us.cpo", name: "CPO(美国)", flag: "us", members: ["105.COHR", "105.LITE", "105.CIEN", "105.AAOI"] },
+      { secid: "bkt.us.cpo", name: "CPO(美国)", flag: "us", members: ["106.COHR", "105.LITE", "106.CIEN", "105.AAOI"] },
       { secid: "bkt.us.aiapp", name: "AI应用(美国)", flag: "us", members: ["105.PLTR", "105.MSFT", "105.GOOG", "105.META"] },
       { secid: "bkt.us.space", name: "商业航天(美国)", flag: "us", members: ["105.RKLB", "105.ASTS", "105.LUNR"] },
       {
         secid: "bkt.us.robot",
         name: "机器人(美国)",
         flag: "us",
-        members: ["105.ISRG", "105.TER", "105.ROK", "105.SYM", "105.SERV", "105.TSLA"],
+        members: ["105.ISRG", "105.TER", "106.ROK", "105.SYM", "105.SERV", "105.TSLA"],
       },
     ],
   },
