@@ -27,7 +27,7 @@
         @confirm="onSearchConfirm"
         @focus="searchFocused = true"
         @blur="searchFocused = false"
-        placeholder="搜索帖子、股票代码或名称"
+        placeholder="搜索用户名、帖子、股票代码或名称"
         placeholder-class="cm-search-ph"
         confirm-type="search"
       />

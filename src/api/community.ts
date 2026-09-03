@@ -216,6 +216,12 @@ export const communityRepo = {
   async lookupUserIdByName(name: string): Promise<string | null> {
     return lookupUserIdByNameRemote(name);
   },
+
+  // ---------------- 某用户发布的动态总数（用户名片「动态数」展示用） ----------------
+  // 走 Supabase head + count 精确计数，不拉取行数据，无需新增 RPC，亦无需重新部署后端。
+  async countPosts(userId: string): Promise<number> {
+    return countPostsRemote(userId);
+  },
 };
 
 // ---------------------------------------------------------------------
@@ -648,6 +654,25 @@ async function lookupUserIdByNameRemote(name: string): Promise<string | null> {
     .eq("display_name", name)
     .limit(1);
   return (data && data[0] && data[0].id) || null;
+}
+
+/**
+ * 取某用户发布的动态总数（用户名片「动态数」展示）。
+ * 用 Supabase head + count 精确计数：只返回 count，不拉取任何行，开销极低；
+ * 无需新增 RPC，也无需重新部署后端。无后端 / uid 为空时返回 0。
+ */
+async function countPostsRemote(userId: string): Promise<number> {
+  const sb = getSupabase();
+  if (!sb || !userId) return 0;
+  const { count, error } = await withTimeout(
+    sb
+      .from("community_posts")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId) as unknown as Promise<{ count: number | null; error: any }>,
+    10000
+  );
+  if (error) return 0;
+  return (count as number) ?? 0;
 }
 
 // =====================================================================

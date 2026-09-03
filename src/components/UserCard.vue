@@ -40,9 +40,10 @@
     <text v-if="user.signature" class="uc-bio">{{ user.signature }}</text>
     <text v-else class="uc-bio uc-bio-empty">这个人很懒，还没有填写简介</text>
 
-    <!-- 粉丝数（真实值，来自 count_followers RPC） -->
+    <!-- 粉丝数 / 动态数（真实值，来自 count_followers RPC 与 community_posts 计数） -->
     <view class="uc-foot">
-      <text class="uc-fans"><text class="uc-fans-n">{{ followerCount }}</text> 粉丝</text>
+      <text class="uc-stat"><text class="uc-fans-n">{{ followerCount }}</text> 粉丝</text>
+      <text class="uc-stat"><text class="uc-fans-n">{{ postCount }}</text> 动态</text>
     </view>
   </view>
 </template>
@@ -52,6 +53,7 @@ import { ref, computed, watch, onMounted } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import UserAvatar from "./UserAvatar.vue";
 import type { UsernameLookup } from "@/api/user";
+import { communityRepo } from "@/api/community";
 import { useFollow } from "@/store/follow";
 import { userState } from "@/store/user";
 import { vipActive } from "@/store/level";
@@ -66,13 +68,16 @@ const isSelf = computed(() => !!userState.loggedIn && !!userState.userId && prop
 // VIP 有效态（过期自动退回普通视觉）
 const isVip = computed(() => vipActive(props.user.vip, props.user.vip_expires_at));
 
-// 粉丝数：每次名片指向的用户变化时重新拉取（count_followers 公开可读）
+// 粉丝数 / 动态数：每次名片指向的用户变化时重新拉取（均公开可读）
 const followerCount = ref(0);
-async function loadFans() {
-  followerCount.value = await fetchFollowerCount(props.user.id);
+const postCount = ref(0);
+async function loadStats() {
+  const uid = props.user.id;
+  followerCount.value = await fetchFollowerCount(uid);
+  postCount.value = await communityRepo.countPosts(uid);
 }
-watch(() => props.user.id, loadFans, { immediate: true });
-onMounted(loadFans);
+watch(() => props.user.id, loadStats, { immediate: true });
+onMounted(loadStats);
 
 async function onToggleFollow() {
   if (!userState.loggedIn) {
@@ -183,8 +188,9 @@ function goProfile() {
 }
 .uc-foot {
   display: flex;
+  gap: 28rpx;
 }
-.uc-fans {
+.uc-stat {
   font-size: var(--font-sm);
   color: var(--text-3);
 }
