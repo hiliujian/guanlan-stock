@@ -95,6 +95,21 @@ function clampBoxW(text: string, size: number, availW: number): number | undefin
   return boxW > availW ? availW : undefined;
 }
 
+// 右侧 y 轴彩色实底白字标签统一构造（自动支压线 / 手绘横线 / 趋势线端点共用，消除重复样式块；
+// fib 标签画在图内左缘、结构不同，不共用）
+function axisTagFig(text: string, y: number, bg: string, availW: number, opts?: { size?: number }) {
+  const size = opts?.size ?? 10;
+  return {
+    type: "text",
+    attrs: { x: 0, y, text, align: "left", baseline: "middle", width: clampBoxW(text, size, availW) },
+    styles: {
+      color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
+      ...TEXT_PAD, size,
+    },
+    ignoreEvent: true,
+  };
+}
+
 // 量柱/MACD 柱取涨跌色（兜底 UP/DOWN/中性色）：自定义指标拿不到 klinecharts 内置量柱默认样式，
 // 故用项目统一涨跌色兜底，确保量柱可见——否则量面板会退化成无柱的平直线。
 function readBarColors(defaultStyles: any): { up: string; down: string; noChange: string } {
@@ -1045,6 +1060,79 @@ function drawAutoLevels() {
   }
 }
 
+// ---- 右侧 y 轴标签统一错位布局 ----
+// 多条支压线/手绘线价位接近时，右侧标签互相重叠看不清。这里把同一帧内全部参与标签
+// （自动支压线 + 手绘横线 + 趋势线端点）收集后统一做「上下接着排」的错位：
+// 按目标 y 排序 → 自上而下推挤保证间距 → 底部溢出则自下而上收拢钳回 → 再自上而下钳顶。
+// 纯函数：同帧各 createYAxisFigures 回调对相同输入产出相同结果，无帧间时序依赖；
+// 价位在可视区外的线不参与（原行为其标签本就被裁剪不可见）。
+const TAG_H = 20;      // 单行标签高度（size 10 + 上下 padding 4）
+const TAG_SUB_H = 33;  // 自动支压线主标签 + sub 两行总高（20 + 13）
+const TAG_GAP = 4;     // 相邻标签最小间距
+
+function toPaneY(value: unknown): number | null {
+  if (!chart || typeof value !== "number" || !isFinite(value)) return null;
+  try {
+    const r = chart.convertToPixel([{ value }], { paneId: "candle_pane" }) as any;
+    const y = Array.isArray(r) ? r[0]?.y : r?.y;
+    return typeof y === "number" && isFinite(y) ? y : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildYAxisLabelLayout(boundH: number): Map<string, number> {
+  const items: { key: string; y: number; h: number }[] = [];
+  // 自动支撑/压力线（autoLevelLine）：主标签（含 sub）整体参与
+  for (const id of autoIds) {
+    const o: any = chart?.getOverlayById(id);
+    if (!o || o.name !== "autoLevelLine") continue;
+    const y = toPaneY(o.points?.[0]?.value);
+    if (y == null || y < 0 || y >= boundH) continue;
+    items.push({ key: id, y, h: o.extendData?.sub ? TAG_SUB_H : TAG_H });
+  }
+  // 手绘横线（kcHLine）与趋势线端点（kcTrend，每端点一枚标签）
+  for (const id of overlayIds) {
+    const o: any = chart?.getOverlayById(id);
+    if (!o) continue;
+    if (o.name === "kcHLine") {
+      const y = toPaneY(o.points?.[0]?.value);
+      if (y == null || y < 0 || y >= boundH) continue;
+      items.push({ key: id, y, h: TAG_H });
+    } else if (o.name === "kcTrend") {
+      const pts = o.points || [];
+      for (let i = 0; i < pts.length; i++) {
+        const y = toPaneY(pts[i]?.value);
+        if (y == null || y < 0 || y >= boundH) continue;
+        items.push({ key: `${id}:${i}`, y, h: TAG_H });
+      }
+    }
+  }
+  const map = new Map<string, number>();
+  if (!items.length) return map;
+  items.sort((a, b) => a.y - b.y);
+  let prevBottom = -Infinity;
+  for (const it of items) {
+    it.y = Math.max(it.y, prevBottom + TAG_GAP);
+    prevBottom = it.y + it.h;
+  }
+  if (prevBottom > boundH) {
+    let nextTop = boundH;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      it.y = Math.min(it.y + it.h, nextTop) - it.h;
+      nextTop = it.y - TAG_GAP;
+    }
+    let prevB = -Infinity;
+    for (const it of items) {
+      it.y = Math.max(it.y, prevB + TAG_GAP);
+      prevB = it.y + it.h;
+    }
+  }
+  for (const it of items) map.set(it.key, it.y);
+  return map;
+}
+
 // ---- 自动趋势线自定义 overlay（线段 + 末端开放箭头标示方向）----
 let trendOverlayRegistered = false;
 function ensureTrendOverlay() {
@@ -1102,33 +1190,16 @@ function ensureTrendOverlay() {
         const overlay = params.overlay as any;
         const bounding = params.bounding as { width: number; height: number };
         if (!coordinates || coordinates.length < 1) return [];
-        const y = coordinates[0].y;
-        // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角 + padding；标签恒贴左(x:0, align:left)不位移，
+        // 统一错位布局：同帧所有右侧标签上下接着排，价位接近时不再互相重叠
+        const top = buildYAxisLabelLayout(bounding.height).get(String(overlay?.id)) ?? coordinates[0].y;
+        // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角；标签恒贴左(x:0, align:left)不位移，
         // 仅当盒宽会越过右边界时限宽（clampBoxW），文字自动缩放居中于盒内，永不溢出被裁剪。
         // 标签（含价格）统一 size 10；下方 sub 提示统一 size 8（无论结构线/交易参考线/S/B/支压）。
         const bg = overlay?.extendData?.bg || overlay?.styles?.line?.color || "#888";
         const main = overlay?.extendData?.text || "";
         const sub = overlay?.extendData?.sub || "";
-        const figs: any[] = [{
-          type: "text",
-          attrs: { x: 0, y, text: main, align: "left", baseline: "middle", width: clampBoxW(main, 10, bounding.width) },
-          styles: {
-            color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
-            ...TEXT_PAD, size: 10,
-          },
-          ignoreEvent: true,
-        }];
-        if (sub) {
-          figs.push({
-            type: "text",
-            attrs: { x: 0, y: y + 13, text: sub, align: "left", baseline: "middle", width: clampBoxW(sub, 8, bounding.width) },
-            styles: {
-              color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
-              ...TEXT_PAD, size: 8,
-            },
-            ignoreEvent: true,
-          });
-        }
+        const figs: any[] = [axisTagFig(main, top, bg, bounding.width)];
+        if (sub) figs.push(axisTagFig(sub, top + 13, bg, bounding.width, { size: 8 }));
         return figs;
       },
     } as never);
@@ -1212,20 +1283,12 @@ function ensureDrawOverlays() {
         const overlay = params.overlay as any;
         const bounding = params.bounding as { width: number; height: number };
         if (!coordinates || coordinates.length < 1) return [];
-        const y = coordinates[0].y;
         const col = overlay?.styles?.line?.color || "#888";
         const tag = overlay?.extendData?.tag || "";
         const price = overlay?.points?.[0]?.value;
         const text = (tag ? tag + " " : "") + (price != null ? Number(price).toFixed(2) : "");
-        return [{
-          type: "text",
-          attrs: { x: 0, y, text, align: "left", baseline: "middle", width: clampBoxW(text, 10, bounding.width) },
-          styles: {
-            color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
-            ...TEXT_PAD, size: 10,
-          },
-          ignoreEvent: true,
-        }];
+        const top = buildYAxisLabelLayout(bounding.height).get(String(overlay?.id)) ?? coordinates[0].y;
+        return [axisTagFig(text, top, col, bounding.width)];
       },
       performEventPressedMove: (params: any) => {
         const points = params.points as any[];
@@ -1263,19 +1326,13 @@ function ensureDrawOverlays() {
         const bounding = params.bounding as { width: number; height: number };
         if (!coordinates || coordinates.length < 1) return [];
         const col = overlay?.styles?.line?.color || TREND;
+        const layout = buildYAxisLabelLayout(bounding.height);
         const figs: any[] = [];
         coordinates.forEach((c: any, i: number) => {
           const price = overlay?.points?.[i]?.value;
           if (price == null) return;
-          figs.push({
-            type: "text",
-            attrs: { x: 0, y: c.y, text: Number(price).toFixed(2), align: "left", baseline: "middle", width: clampBoxW(Number(price).toFixed(2), 10, bounding.width) },
-            styles: {
-              color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
-              ...TEXT_PAD, size: 10,
-            },
-            ignoreEvent: true,
-          });
+          const top = layout.get(`${overlay?.id}:${i}`) ?? c.y;
+          figs.push(axisTagFig(Number(price).toFixed(2), top, col, bounding.width));
         });
         return figs;
       },
