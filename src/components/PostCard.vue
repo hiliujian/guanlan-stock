@@ -31,7 +31,7 @@
       <view v-if="post.topic" class="p-topic" :style="topicStyle">#{{ post.topic.name }}</view>
       <!-- 关注 / 取消关注：非本人帖子展示；点击切换并即时反映状态（plus→关注 / check→已关注）；
            预览态不展示任何交互件 -->
-      <view v-if="!mine && !preview" class="p-follow" :class="{ on: following }" hover-class="p-follow-hover" @click.stop="toggleFollow(post.author)">
+      <view v-if="!mine && !preview && post.userId" class="p-follow" :class="{ on: following }" hover-class="p-follow-hover" @click.stop="toggleFollow(post.userId)">
         <OutlineIcon :type="following ? 'check' : 'plus'" :size="26" :color="following ? 'var(--text-2)' : 'var(--primary)'" />
         <text class="p-follow-t">{{ following ? "已关注" : "关注" }}</text>
       </view>
@@ -168,10 +168,10 @@ const emit = defineEmits<{
   (e: "remove", id: string): void;
 }>();
 
-// 关注 / 取消关注：仅对非本人帖子展示（mine 由社区页按身份判定）。
-// follows 为响应式 Set，computed 读取 follows.value 即可随切换实时重渲染。
+// 关注 / 取消关注：仅对非本人帖子（且有账号 id）展示。follows 为响应式 uid 集合，
+// computed 读取 follows.value 即可随服务端关注切换实时重渲染。
 const { follows, toggleFollow } = useFollow();
-const following = computed(() => follows.value.has(props.post.author));
+const following = computed(() => !!props.post.userId && follows.value.has(props.post.userId));
 
 // 是否本人帖子（按账号 id 判定）：点击头像时决定跳「个人资料」还是「公开资料」
 const isSelf = computed(

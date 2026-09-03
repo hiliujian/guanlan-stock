@@ -70,6 +70,11 @@
     <!-- 可滚动内容区 -->
     <scroll-view class="cm-scroll" scroll-y :scroll-top="scrollTop" @scroll="onScroll" @scrolltolower="onScrollToLower">
 
+    <!-- 搜索态：命中唯一用户名时，在结果顶部展示该用户名片（抖音风用户卡片），带入场/退场过渡 -->
+    <Transition name="ucard">
+      <UserCard v-if="searching && matchedUser" :user="matchedUser" />
+    </Transition>
+
     <!-- 加载态 -->
     <view v-if="feedLoading && !displayPosts.length" class="cm-loading"><view class="cl-spin" /></view>
 
@@ -162,6 +167,7 @@ import OutlineIcon from "./OutlineIcon.vue";
 import PageHeader from "./PageHeader.vue";
 import PostComposer from "./PostComposer.vue";
 import PostCard from "./PostCard.vue";
+import UserCard from "./UserCard.vue";
 import UserAvatar from "./UserAvatar.vue";
 import PeekSheet from "./PeekSheet.vue";
 import MessageCenter from "./MessageCenter.vue";
@@ -175,6 +181,7 @@ import { getMyName } from "@/store/identity";
 import { userState } from "@/store/user";
 import { avatarSeed } from "@/utils/avatar";
 import { communityRepo, type CommunityPost, type PostCard as PostCardData, type Topic } from "@/api/community";
+import { lookupUserByUsername, type UsernameLookup } from "@/api/user";
 
 const { posts, loading, searchResults, load, loadMore, feedDone, publish, like, reply, remove, search } = useCommunity();
 // 评论区互斥展开：提供 closeReply 用于切换筛选 / 重新激活时收起已展开的评论框
@@ -456,7 +463,7 @@ const filteredPosts = computed(() => {
       // 我发布的或我回过的帖子都算「参与」
       return base.filter((p) => isMine(p) || p.replies.some((r) => r.author === myName.value));
     case "following":
-      return base.filter((p) => follows.value.has(p.author));
+      return base.filter((p) => !!p.userId && follows.value.has(p.userId));
     case "liked":
       // 我赞过的：仅展示 likedByMe 为真的帖子（likedByMe 由服务端 community_likes 权威标记）
       return base.filter((p) => p.likedByMe);
@@ -497,16 +504,31 @@ const searchFocused = ref(false);
 const searching = computed(() => searchQuery.value.trim().length > 0);
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
+// 用户名匹配：输入内容与某社区用户名精确相等时，展示该用户名片（用户名唯一索引保证至多 1 个）。
+// 与帖子搜索共用同一 300ms 防抖，避免额外延迟。
+const matchedUser = ref<UsernameLookup | null>(null);
+let lookupToken = 0;
+
 function runSearch() {
   filterOpen.value = false;
   if (searchTimer) {
     clearTimeout(searchTimer);
     searchTimer = null;
   }
-  if (searchQuery.value.trim()) {
-    search(searchQuery.value);
+  const q = searchQuery.value.trim();
+  if (q) {
+    search(q); // 帖子搜索（RPC）
+    const token = ++lookupToken; // 防竞态：仅采纳最后一次查询的回包
+    lookupUserByUsername(q)
+      .then((u) => {
+        if (token === lookupToken) matchedUser.value = u;
+      })
+      .catch(() => {
+        if (token === lookupToken) matchedUser.value = null;
+      });
   } else {
     searchResults.value = [];
+    matchedUser.value = null;
   }
 }
 function onSearchInput(e: any) {
@@ -520,6 +542,7 @@ function onSearchConfirm() {
 }
 function clearSearch() {
   searchQuery.value = "";
+  matchedUser.value = null;
   if (searchTimer) {
     clearTimeout(searchTimer);
     searchTimer = null;

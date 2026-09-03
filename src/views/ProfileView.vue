@@ -193,10 +193,10 @@ const watch = useWatchlist();
 const { posts: communityPosts, load: loadCommunity } = useCommunity();
 // 社区筛选预设：跳转社区前 setPreset，由 CommunityView 激活时消费（如「我的帖子」→「我发布的」）
 const { setPreset } = useCommunityPreset();
-// 关注系统：复用全局关注 store（本地持久化），驱动「我的关注」计数与跨 tab 打开弹层信号。
-const { list: followList } = useFollow();
+// 关注系统：复用全局关注 store（服务端 uid 维度），驱动「我的关注」计数与跨 tab 打开弹层信号。
+const { follows } = useFollow();
 const { followPanelOpen } = useFollowPanel();
-const followCount = computed(() => followList().length);
+const followCount = computed(() => follows.value.size);
 
 // 声明可接收的自定义事件：父级（pages/index）在 watch 激活时向动态组件绑定 open-market，
 // KeepAlive 缓存其它视图后仍可能把该监听透传到本组件。声明为 emit 后 Vue 按自定义事件

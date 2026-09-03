@@ -240,12 +240,9 @@ const isSelf = computed(
 );
 // VIP 有效态（黑金昵称 / 会员金框 / 金冠徽章共用；过期自动退回普通视觉）
 const isVip = computed(() => vipActive(profile.value?.vip, profile.value?.vip_expires_at));
-// 关注态（与社区帖子关注同源：本地持久化集合，以昵称为键）
+// 关注态（与社区帖子关注同源：服务端 follows 表，以 uid 为键）
 const { follows, toggleFollow } = useFollow();
-const following = computed(() => {
-  const name = profile.value?.display_name || profile.value?.username;
-  return !!name && follows.value.has(name);
-});
+const following = computed(() => !!profile.value && follows.value.has(profile.value.id));
 // 关注按钮文案（未登录 → 登录后关注，与私信「登录后私信」同源）
 const followLabel = computed(() => {
   if (!user.loggedIn) return "登录后关注";
@@ -263,9 +260,9 @@ const dmLabel = computed(() => {
 
 function onFollowToggle() {
   if (!user.loggedIn) return; // 未登录：关注按钮为「登录后关注」禁用态，点击无效
-  const name = profile.value?.display_name || profile.value?.username;
-  if (!name) return;
-  toggleFollow(name);
+  const id = profile.value?.id;
+  if (!id) return;
+  toggleFollow(id);
 }
 function onDmClick() {
   if (!user.loggedIn) {

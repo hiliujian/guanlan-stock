@@ -7,7 +7,7 @@
       <view class="fl-peek">
         <OutlineIcon type="user" :size="30" color="var(--text-2)" />
         <text class="fl-peek-t">我的关注</text>
-        <text v-if="followList.length" class="fl-peek-badge">{{ followList.length }}</text>
+        <text v-if="followedUsers.length" class="fl-peek-badge">{{ followedUsers.length }}</text>
       </view>
     </template>
 
@@ -22,23 +22,23 @@
         <!-- 关注列表（可滚动） -->
         <scroll-view scroll-y class="fl-scroll">
           <view
-            v-for="f in followList"
-            :key="f"
+            v-for="f in followedUsers"
+            :key="f.id"
             class="fl-item"
           >
-            <!-- 点击头像 / 昵称 → 进入该用户资料页（关注列表仅存昵称，需按昵称反查 uid） -->
-            <view class="fl-item-info" hover-class="fl-item-info-hover" @click="openProfile(f)">
-              <UserAvatar :url="avatarOf(f)" :seed="f" :size="84" :frame="frameOf(f)" />
+            <!-- 点击头像 / 昵称 → 进入该用户资料页 -->
+            <view class="fl-item-info" hover-class="fl-item-info-hover" @click="openProfile(f.id)">
+              <UserAvatar :url="f.avatar_url" :seed="f.display_name || f.username" :size="84" :frame="f.avatar_frame" />
               <view class="fl-item-mid">
-                <text class="fl-item-name truncate">{{ f }}</text>
+                <text class="fl-item-name truncate">{{ f.display_name || f.username }}</text>
               </view>
             </view>
             <!-- 取消关注：点击即移除，列表随 follows 响应式收缩 -->
-            <view class="fl-unfollow" hover-class="fl-unfollow-hover" @click="unfollow(f)">
+            <view class="fl-unfollow" hover-class="fl-unfollow-hover" @click="unfollow(f.id)">
               <text class="fl-unfollow-t">取消关注</text>
             </view>
           </view>
-          <view v-if="!followList.length" class="fl-empty">
+          <view v-if="!followedUsers.length" class="fl-empty">
             <OutlineIcon type="user" :size="80" color="var(--border)" />
             <text class="empty-title">还没有关注任何人</text>
           </view>
@@ -49,46 +49,51 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, watch, onMounted, onUnmounted } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import UserAvatar from "./UserAvatar.vue";
 import PeekSheet from "./PeekSheet.vue";
 import { useFollow } from "@/store/follow";
-import { useCommunity } from "@/store/community";
-import { communityRepo } from "@/api/community";
 import { userState } from "@/store/user";
+import { getSupabase } from "@/api/supabase";
 
 withDefaults(defineProps<{ modelValue: boolean; zIndex?: number }>(), { modelValue: false, zIndex: 40 });
 const emit = defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
 
-const { list, unfollow: doUnfollow } = useFollow();
-const { posts } = useCommunity();
+const { follows, toggleFollow } = useFollow();
 
-const followList = computed(() => list());
-
-// 关注仅以昵称唯一标识，头像从社区帖子反查（昵称一致即同一用户），无帖子则用「字」头像兜底。
-const avatarMap = computed(() => {
-  const m = new Map<string, { url: string; frame: string }>();
-  for (const p of posts.value) {
-    if (!m.has(p.author)) m.set(p.author, { url: p.authorAvatarUrl || "", frame: p.authorFrame || "" });
+// 关注列表：由「我关注的用户 uid 集合」反查 profiles（服务端权威，含头像 / 昵称 / 头像框），
+// 不再依赖社区帖子反查昵称，头像与资料页一致。
+interface FollowedUser {
+  id: string;
+  display_name: string;
+  username: string;
+  avatar_url: string;
+  avatar_frame: string;
+}
+const followedUsers = ref<FollowedUser[]>([]);
+async function loadFollowedUsers() {
+  const ids = Array.from(follows.value);
+  if (!ids.length) {
+    followedUsers.value = [];
+    return;
   }
-  return m;
-});
-function avatarOf(name: string): string {
-  return avatarMap.value.get(name)?.url || "";
+  const sb = getSupabase();
+  if (!sb) return;
+  const { data } = await sb
+    .from("profiles")
+    .select("id, display_name, username, avatar_url, avatar_frame")
+    .in("id", ids);
+  followedUsers.value = (data || []) as FollowedUser[];
 }
-function frameOf(name: string): string {
-  return avatarMap.value.get(name)?.frame || "";
-}
-function unfollow(name: string) {
-  doUnfollow(name);
-}
+watch(follows, loadFollowedUsers, { immediate: true });
 
-/** 点击关注项（头像 / 昵称）→ 进入该用户资料页。
- *  关注列表仅以昵称标识，故按昵称反查账号 id（与评论「回复 X」共用同一套兜底）。 */
-async function openProfile(name: string) {
-  const uid = await communityRepo.lookupUserIdByName(name);
-  if (!uid) return; // 该昵称无对应账号（如已注销 / 游客帖作者），不做跳转
+/** 取消关注：toggleFollow 在已关注状态下会自动取消。 */
+function unfollow(uid: string) {
+  toggleFollow(uid);
+}
+/** 点击关注项（头像 / 昵称）→ 进入该用户资料页。 */
+function openProfile(uid: string) {
   if (uid === userState.userId) uni.navigateTo({ url: "/pages/profile/edit" });
   else uni.navigateTo({ url: `/pages/profile/detail?uid=${encodeURIComponent(uid)}` });
 }
@@ -96,6 +101,7 @@ async function openProfile(name: string) {
 const sheet = ref<any>(null);
 // 挂载即展开（ProfileView 已控制跳转社区并置 followPanelOpen，本组件按需挂载）
 onMounted(() => {
+  loadFollowedUsers();
   sheet.value?.expand();
 });
 
