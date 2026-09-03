@@ -24,8 +24,14 @@
       </view>
     </view>
     <div ref="chartEl" class="kc-chart" :style="{ height: props.height + 'px' }"></div>
-    <!-- 筹码分布叠加层（右侧横向直方图，与蜡烛同坐标系），默认不拦截指针 -->
-    <canvas ref="cyqEl" class="kc-ov kc-ov--cyq"></canvas>
+    <!-- 筹码分布叠加层（右侧横向直方图，与蜡烛同坐标系），默认不拦截指针。
+         外层 wrap 必须是绝对定位容器：uni-app H5 的 <canvas> 编译为 <uni-canvas>，
+         框架默认样式给根元素 position:relative（width:300/height:150），一旦该默认/内联
+         样式压过 .kc-ov 的 absolute（部分运行时还会内联 relative），叠加层就落入文档流，
+         在图表下方顶出约 150px 空白。wrap 兜底保证任何情况下都不占文档流高度。 -->
+    <view class="kc-ov-wrap">
+      <canvas ref="cyqEl" class="kc-ov kc-ov--cyq"></canvas>
+    </view>
     <!-- 看盘画线工具栏：点击后在图上点击/拖拽绘制；支撑=绿、压力=红、趋势/分割=主色绿。
          由外部画板图标控制 toolsOpen 淡入/淡出（<Transition> 处理进出场动画）。 -->
     <Transition name="kct">
@@ -1986,9 +1992,23 @@ onBeforeUnmount(() => {
 .down {
   color: var(--down);
 }
-.kc-ov {
+/* 叠加层容器：绝对定位充满 .kc（其文档流高度=图表高），overflow:hidden 兜底——
+   即使内部 uni-canvas 因框架默认/内联样式回落为 relative，也被关在本层内，
+   不再给图表下方顶出空白（详见模板注释）。 */
+.kc-ov-wrap {
   position: absolute;
   inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+}
+.kc-ov {
+  /* 样式表 !important 优先级高于内联样式：uni-canvas 根元素可能带内联 position:relative
+     （uni-app 框架行为），不加 !important 会被压过导致叠加层落回文档流 */
+  position: absolute !important;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   z-index: 2;
 }
