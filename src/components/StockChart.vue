@@ -547,6 +547,24 @@ function subPaneHeights(total: number): { priceH: number; volH: number; macdH: n
   return { priceH, volH, macdH };
 }
 
+// 重设副图（量/MACD）面板高度回设计值。必须在每次 chart.resize() 之前调用：
+// klinecharts 的 resize() 不会重读布局里的 options.height（_measurePaneHeight 源码）——
+// 副图保留「当前 bounding 高度」（仅向上钳到 minHeight），主图固定吃掉「总高 − 副图 − x轴」的剩余。
+// 因此任何一次在容器高度未稳定时触发的 resize（tab 切换/布局过渡中的瞬时小高度，或一次 init 后的
+// 过早测量）都会把量/MACD 压到 minHeight，之后容器恢复 460px 时主图便膨胀吃掉全部余量，且后续
+// resize 全部维持这个坏状态——表现为「主图有时抢占量/MACD 空间，重建图表才恢复」。
+// 这里显式 setPaneOptions 回 subPaneHeights 的设计值（引擎内部会触发全量重排），主图自动拿剩余。
+function applyPaneHeights() {
+  if (!chart) return;
+  const { volH, macdH } = subPaneHeights(Math.max(140, props.height));
+  try {
+    chart.setPaneOptions({ id: "vol_pane", height: volH, minHeight: 40 });
+    chart.setPaneOptions({ id: "macd_pane", height: macdH, minHeight: 60 });
+  } catch {
+    /* noop */
+  }
+}
+
 // ---- 布局（主图 + 成交量 + MACD 三分面，按比例控高）----
 // 成交量面板与 MACD 面板均常驻显示（不可整体关闭），故布局恒为主图 0.56 + 量图 0.22 + MACD 顶满。
 function buildLayout(): any[] {
@@ -757,6 +775,8 @@ function fitViewAll() {
 // 数据就绪回调：每次数据变化（首载 / 刷新 / 实时末根）后保持「铺满全貌」+ 刷新图例（所有模式通用）
 function onDataReady() {
   // 数据就绪后再次确认布局尺寸正确（某些情况下 applyNewData 异步解析后内部尺寸可能漂移）
+  // resize 前先重设副图高度（见 applyPaneHeights：resize 不会重读 options.height，需显式纠正）
+  applyPaneHeights();
   try { if (chart) chart.resize(); } catch { /* noop */ }
   fitViewAll();
   updateLegendLatest();
@@ -1688,6 +1708,9 @@ function buildChart() {
     // 三个分面（主图/成交量/MACD）精确填满容器、互不重叠。
     const drawOverlays = () => {
       if (!chart || !chartEl.value) return;
+      // 首帧绘制后重排前，同样先重设副图高度：init 时容器可能尚未回流完成，
+      // 引擎按瞬时高度分面后主图吃掉全部剩余（见 applyPaneHeights 注释）
+      applyPaneHeights();
       try { chart.resize(); } catch {
         /* noop */
       }
@@ -1735,6 +1758,7 @@ function refreshData() {
 
 function resizeAll() {
   if (chart) {
+    applyPaneHeights(); // 同 applyPaneHeights 注释：resize 不会重读 options.height
     try {
       chart.resize();
     } catch {
