@@ -1015,6 +1015,12 @@ export function analyze(
   if (nearTop && rNow > 75) {
     banner = "⚠️ 近期涨幅较大，已进入高风险区域，注意回调风险。";
     bannerCls = "bad";
+  } else if (nearRes && nearBottom) {
+    // 窄幅区间重叠：箱体宽度 < 8% 时「贴支撑(5%)」与「贴压力(3%)」可同时成立。
+    // 此时「接近支撑=风险较低」不成立——上方压力仅 3% 之遥；若仍发✅可重点关注，
+    // 会与下方卖点信号（临近压力+动能转弱→逢高减仓）自相矛盾。
+    banner = "⏸️ 价格处于支撑与压力之间的窄幅区间，短期方向待量能选择。";
+    bannerCls = "warn";
   } else if (nearBottom && f5.sum > 0) {
     banner = "✅ 当前价格接近阶段支撑区域，风险较低，可重点关注。";
   } else if (trend === "up" && f5.sum > 0) {
