@@ -17,7 +17,7 @@ interface GlobalIndexItem {
   icon?: string;
 }
 interface GlobalIndexGroup {
-  title: string; // 分组标题：A股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货
+  title: string; // 分组标题：A股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货 / 科技指数
   items: GlobalIndexItem[];
 }
 export interface GlobalIndexQuote {
@@ -82,6 +82,26 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
       { secid: "112.HG00Y", name: "美铜", icon: "copper" },
       { secid: "112.CL00Y", name: "美原油", icon: "oil" },
       { secid: "112.BR00Y", name: "布伦特原油", icon: "oil" },
+    ],
+  },
+  {
+    // 科技指数（对齐市场魔方式主题速览）：中国用东财概念板块（90.BK*，均为官方板块实时点值）；
+    // 美国东财无费城半导体(SOX)/半导体系列 ETF(SOXX/SOXL)及韩国个股/板块覆盖（实测 ulist/realtime 均无），
+    // 故用龙头/主题 ETF 代理并在名称括注，标签即所代表主题。
+    title: "科技指数",
+    items: [
+      { secid: "90.BK0917", name: "半导体", flag: "cn" },
+      { secid: "90.BK1137", name: "存储芯片", flag: "cn" },
+      { secid: "90.BK1128", name: "CPO", flag: "cn" },
+      { secid: "90.BK1629", name: "AI应用", flag: "cn" },
+      { secid: "90.BK0963", name: "商业航天", flag: "cn" },
+      { secid: "90.BK1090", name: "机器人", flag: "cn" },
+      { secid: "105.NVDA", name: "英伟达(半导体)", flag: "us" },
+      { secid: "105.MU", name: "美光(存储芯片)", flag: "us" },
+      { secid: "106.COHR", name: "Coherent(CPO)", flag: "us" },
+      { secid: "105.PLTR", name: "Palantir(AI应用)", flag: "us" },
+      { secid: "107.ARKX", name: "ARKX(商业航天)", flag: "us" },
+      { secid: "105.BOTZ", name: "BOTZ(机器人)", flag: "us" },
     ],
   },
 ];
