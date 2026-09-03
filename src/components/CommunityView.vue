@@ -17,7 +17,7 @@
       </template>
     </PageHeader>
 
-    <!-- 搜索栏：关键字 / 股票代码 / 股票名称（某用户帖子模式下隐藏） -->
+    <!-- 搜索栏：帖子关键字 / 用户名（用户名模糊匹配，多结果展示；某用户帖子模式下隐藏） -->
     <view v-if="!viewingUser" class="cm-search" :class="{ focused: searchFocused }">
       <OutlineIcon type="search" :size="26" color="var(--text-2)" />
       <input
@@ -70,10 +70,12 @@
     <!-- 可滚动内容区 -->
     <scroll-view class="cm-scroll" scroll-y :scroll-top="scrollTop" @scroll="onScroll" @scrolltolower="onScrollToLower">
 
-    <!-- 搜索态：命中唯一用户名时，在结果顶部展示该用户名片（抖音风用户卡片），带入场/退场过渡 -->
-    <Transition name="ucard">
-      <UserCard v-if="searching && matchedUser" :user="matchedUser" />
-    </Transition>
+    <!-- 搜索态：模糊匹配到多个用户名时，在结果顶部展示所有匹配的用户名片（抖音风用户卡片），
+         带入场/退场过渡；并入帖子结果一起展示 -->
+    <text v-if="searching && matchedUsers.length" class="ucard-head">相关用户</text>
+    <TransitionGroup name="ucard" tag="view" class="ucard-list">
+      <UserCard v-for="u in matchedUsers" :key="u.id" :user="u" />
+    </TransitionGroup>
 
     <!-- 加载态 -->
     <view v-if="feedLoading && !displayPosts.length" class="cm-loading"><view class="cl-spin" /></view>
@@ -89,8 +91,8 @@
       @remove="askRemove"
     />
 
-    <!-- 空态 -->
-    <view v-if="!feedLoading && !displayPosts.length" class="cm-empty">
+    <!-- 空态（有用户名片命中时不展示，避免与上方用户区矛盾） -->
+    <view v-if="!feedLoading && !displayPosts.length && !matchedUsers.length" class="cm-empty">
       <OutlineIcon type="chatbubble" :size="84" color="var(--border)" />
       <text class="empty-title">{{ emptyText }}</text>
     </view>
@@ -181,7 +183,7 @@ import { getMyName } from "@/store/identity";
 import { userState } from "@/store/user";
 import { avatarSeed } from "@/utils/avatar";
 import { communityRepo, type CommunityPost, type PostCard as PostCardData, type Topic } from "@/api/community";
-import { lookupUserByUsername, type UsernameLookup } from "@/api/user";
+import { searchUsersByUsername, type UsernameLookup } from "@/api/user";
 
 const { posts, loading, searchResults, load, loadMore, feedDone, publish, like, reply, remove, search } = useCommunity();
 // 评论区互斥展开：提供 closeReply 用于切换筛选 / 重新激活时收起已展开的评论框
@@ -504,9 +506,9 @@ const searchFocused = ref(false);
 const searching = computed(() => searchQuery.value.trim().length > 0);
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
-// 用户名匹配：输入内容与某社区用户名精确相等时，展示该用户名片（用户名唯一索引保证至多 1 个）。
+// 用户名匹配：输入内容与用户名子串模糊匹配（ilike，不区分大小写），命中多个时全部展示名片。
 // 与帖子搜索共用同一 300ms 防抖，避免额外延迟。
-const matchedUser = ref<UsernameLookup | null>(null);
+const matchedUsers = ref<UsernameLookup[]>([]);
 let lookupToken = 0;
 
 function runSearch() {
@@ -517,18 +519,18 @@ function runSearch() {
   }
   const q = searchQuery.value.trim();
   if (q) {
-    search(q); // 帖子搜索（RPC）
+    search(q); // 帖子搜索（RPC，基于内容 ILIKE，不区分大小写）
     const token = ++lookupToken; // 防竞态：仅采纳最后一次查询的回包
-    lookupUserByUsername(q)
-      .then((u) => {
-        if (token === lookupToken) matchedUser.value = u;
+    searchUsersByUsername(q)
+      .then((users) => {
+        if (token === lookupToken) matchedUsers.value = users;
       })
       .catch(() => {
-        if (token === lookupToken) matchedUser.value = null;
+        if (token === lookupToken) matchedUsers.value = [];
       });
   } else {
     searchResults.value = [];
-    matchedUser.value = null;
+    matchedUsers.value = [];
   }
 }
 function onSearchInput(e: any) {
@@ -542,7 +544,7 @@ function onSearchConfirm() {
 }
 function clearSearch() {
   searchQuery.value = "";
-  matchedUser.value = null;
+  matchedUsers.value = [];
   if (searchTimer) {
     clearTimeout(searchTimer);
     searchTimer = null;
@@ -820,6 +822,20 @@ defineExpose({ refresh });
   padding: 90rpx 0;
 }
 /* 空态标题已统一为全局 .empty-title（见 global.css） */
+
+/* 搜索态：用户名片区（模糊匹配多结果） */
+.ucard-head {
+  display: block;
+  font-size: var(--font-sm);
+  color: var(--text-3);
+  padding: 18rpx 4rpx 6rpx;
+}
+.ucard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+  padding-top: 4rpx;
+}
 
 /* 在线人数指示：已并入底部发帖卡片的折叠态（pe-peek）内，作为一行右侧信息，
    不再单独建卡片。视觉与折叠行语言一致（小圆点 + 低调文案）。 */
