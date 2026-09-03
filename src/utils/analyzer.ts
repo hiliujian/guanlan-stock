@@ -401,6 +401,10 @@ export interface AnalysisResult {
   maxDrawdown: number;
   atrPct: number;
   obvTrend: string;
+  divergence: "top" | "bottom" | null; // 量价背离（严格版）：价创新高 OBV 不创新高=顶背离；价创新低 OBV 不创新低=底背离
+  var95: number; // 近 120 日 1日 VaR(95%)（%，负值）：正常市场下 95% 的交易日单日跌幅不超此值
+  rangePos: number; // 现价在近 120 日高低区间的分位（0=贴底 100=触顶）
+  distHigh120: number; // 现价距 120 日最高价的百分比（≤0）
   turnAvg: number;
   turnState: string;
   // ---- 筹码分布 · 成本结构（CYQ，成交量加权近似）：新增到分析主链路，
@@ -410,6 +414,17 @@ export interface AnalysisResult {
   breakout: boolean; // 已有效突破压力（仅当压力来自明确 pivot 拐点）
   breakdown: boolean; // 已有效跌破支撑（仅当支撑来自明确 pivot 拐点）
   sigType: string; // 走势预测：突破上攻 / 破位下行 / 承压回落 / 企稳反弹 / 震荡上行 / 震荡下行 / 区间震荡
+  // ---- 信号历史回测（MA5/20 交叉核心规则，20 日前瞻收益的历史校准；样本不足由 UI 降级）----
+  backtest: {
+    horizon: number; // 前瞻窗口（交易日）
+    bars: number; // 回放样本 K 线数
+    buyCount: number;
+    buyWinRate: number; // 0~1：信号后 horizon 日收盘上涨占比
+    buyAvgRet: number; // 小数收益，如 0.042 = +4.2%
+    sellCount: number;
+    sellWinRate: number; // 0~1：信号后 horizon 日收盘下跌占比
+    sellAvgRet: number;
+  };
   signal: {
     level: "buy" | "sell" | "hold" | "watch" | "wait";
     label: string; // 买点 / 卖点 / 持有 / 关注 / 观望
@@ -549,6 +564,12 @@ export function analyze(
   const mr = rets.reduce((a, b) => a + b, 0) / (rets.length || 1);
   const varr = rets.reduce((a, b) => a + (b - mr) * (b - mr), 0) / (rets.length || 1);
   const volAnn = Math.sqrt(varr) * Math.sqrt(252);
+  // 1日 VaR(95%)：近 120 日日收益的 5% 经验分位——正常市场下 95% 的交易日单日跌幅不超过此值，
+  // 比「平均波动」更贴近风险直觉（收益左偏/尾部风险时比 σ 更保守）
+  const sortedRets = rets.slice().sort((a, b) => a - b);
+  const var95 = sortedRets.length
+    ? sortedRets[Math.min(sortedRets.length - 1, Math.floor(sortedRets.length * 0.05))] * 100
+    : 0;
   // 最大回撤（近 120 日）
   let peak = -Infinity;
   let mdd = 0;
@@ -558,6 +579,16 @@ export function analyze(
     if (peak > 0) mdd = Math.max(mdd, (peak - close[i]) / peak);
   }
   const atrPct = price ? (atr[len - 1] / price) * 100 : 0;
+  // 现价在近 120 日高低区间的位置（0=贴区间底、100=触区间顶）与距区间顶距离：
+  // 给「高位/低位」一个量化坐标，与 nearTop/nearBottom（箱体锚定）互为印证
+  let h120 = -Infinity;
+  let l120 = Infinity;
+  for (let i = Math.max(0, len - 120); i < len; i++) {
+    h120 = Math.max(h120, high[i]);
+    l120 = Math.min(l120, low[i]);
+  }
+  const rangePos = h120 > l120 ? ((price - l120) / (h120 - l120)) * 100 : 50;
+  const distHigh120 = h120 > 0 ? (price / h120 - 1) * 100 : 0;
   // OBV 能量潮 + 20 日均线：量能趋势与背离确认
   const obvArr = new Array(len).fill(0);
   for (let i = 1; i < len; i++) {
@@ -580,6 +611,17 @@ export function analyze(
   // OBV 与自身 20 日均线比较：上行=量能配合价格，下行=量能走弱（注意：并非严格「背离」，
   // 背离需价格与 OBV 反向，这里仅表达 OBV 相对自身均线的强弱）。
   const obvTrend = obvUp ? "量能配合(OBV上行)" : "量能走弱(OBV下行)";
+  // 量价背离（严格版）：价格与 OBV 方向矛盾。区别于上方 obvTrend 仅对比 OBV 自身均线，
+  // 这里检测「价创近 60 日新高而 OBV 未创新高（顶背离）」「价创新低而 OBV 未创新低（底背离）」
+  // ——经典动能衰减/积聚信号；OBV 偏离窗口极值 2% 以上才算「未同步」。
+  const divWin = Math.min(60, len);
+  const divCMax = Math.max(...close.slice(len - divWin));
+  const divCMin = Math.min(...close.slice(len - divWin));
+  const divOMax = Math.max(...obvArr.slice(len - divWin));
+  const divOMin = Math.min(...obvArr.slice(len - divWin));
+  let divergence: "top" | "bottom" | null = null;
+  if (price >= divCMax && obvArr[len - 1] < divOMax * 0.98) divergence = "top";
+  else if (price <= divCMin && obvArr[len - 1] > divOMin * 1.02) divergence = "bottom";
 
   // 筹码分布 · 成本结构（CYQ）：用近 120 交易日的成交量做 Volume-Profile 近似，
   // 得到平均成本、密集峰、获利盘比例三个核心维度，是支撑/压力和主力行为的重要参考。
@@ -770,13 +812,10 @@ export function analyze(
   // 位置因子：「价格相对 20 周期均线的偏离」做均值回归倾斜。
   // A 股主板有 ±10% 涨跌停（科创板 ±20%），15% 偏离在主板永远达不到，
   // 改为 8% 触发：偏离 >8% 视为超买回撤风险（轻微扣），<-8% 视为超卖反弹机会（轻微加）。
+  // 计分延后至下方「动量·乖离簇」统一封顶（同源去重），不再单独加分。
   const distMa20 = ma20_now ? (price - ma20_now) / ma20_now : 0;
   const posDelta = distMa20 > 0.08 ? -6 : distMa20 < -0.08 ? 6 : 0;
-  score += posDelta;
-  addReason(
-    distMa20 > 0.08 ? "偏离均线偏高" : distMa20 < -0.08 ? "偏离均线偏低" : "均线附近",
-    posDelta
-  );
+  const posLabel = distMa20 > 0.08 ? "偏离均线偏高" : distMa20 < -0.08 ? "偏离均线偏低" : "均线附近";
   // 资金流：从二元改进为分档——避免 0.01 亿与 50 亿同得 10 分。
   // 按 A 股主力净流入量级分 4 档（中小板到大盘股的日常成交规模覆盖）。
   let flowDelta = 0;
@@ -795,10 +834,10 @@ export function analyze(
   // RSI：50 为多空平衡。原 30-55 给 +5 (含 30-50 偏弱区间) 过于乐观。
   // 拆成 4 档：<35 超卖反弹 +6, 35-50 中性偏弱 +2, 50-70 中性 0, 70-80 偏高 -6, >80 严重超买 -14。
   const rsiDelta = rNow < 35 ? 6 : rNow < 50 ? 2 : rNow <= 70 ? 0 : rNow <= 80 ? -6 : -14;
-  score += rsiDelta;
-  addReason(rNow > 80 ? "RSI超买" : rNow > 70 ? "RSI偏高" : rNow < 35 ? "RSI超卖" : rNow < 50 ? "RSI偏弱" : "RSI中性", rsiDelta);
+  const rsiLabel = rNow > 80 ? "RSI超买" : rNow > 70 ? "RSI偏高" : rNow < 35 ? "RSI超卖" : rNow < 50 ? "RSI偏弱" : "RSI中性";
   // MACD：除金叉/死叉（近期动量转折）外，加上 DIF 与 DEA 的静态状态（柱状图正负），
   // 避免一只强势股 MACD 红柱持续放大，只因金叉发生在 9 天前就得 0 分。
+  // 计分延后至下方「动量·乖离簇」统一封顶（同源去重），不再单独加分。
   const dif = m.dif[len - 1] as number;
   const dea = m.dea[len - 1] as number;
   const macdBar = dif - dea; // 柱状图值（注意：原始 MACD 定义是 (dif-dea)×2，这里符号判断即可）
@@ -810,28 +849,43 @@ export function analyze(
   else if (dif > dea) { macdDelta = 2; macdReasonLabel = "MACD多头排列"; }
   else if (dif < dea && macdBar < 0) { macdDelta = -3; macdReasonLabel = "MACD绿柱放大"; }
   else if (dif < dea) { macdDelta = -2; macdReasonLabel = "MACD空头排列"; }
-  score += macdDelta;
-  addReason(macdReasonLabel, macdDelta);
 
-  // ---------------- 乖离率 BIAS 评分（均值回归因子：价格偏离均线过远必然回归） ----------------
+  // ---------------- 乖离率 BIAS（均值回归因子：价格偏离均线过远必然回归） ----------------
   // A 股有涨跌停限制，偏离度阈值与成熟市场不同；按三周期分档：
   //   · BIAS(12)  > 12% → 短期超买回撤压力（扣 3）
   //   · BIAS(12)  < -12% → 短期超卖反弹机会（加 3）
   //   · BIAS(24)  > 20% → 中期超买，主升浪末端风险（扣 5）
   //   · BIAS(24)  < -20% → 中期超卖，恐慌见底信号（加 5）
-  {
-    let biasDelta = 0;
-    if (bias24 > 20) biasDelta = -5;
-    else if (bias24 < -20) biasDelta = 5;
-    else if (bias12 > 12) biasDelta = -3;
-    else if (bias12 < -12) biasDelta = 3;
-    const biasLabel =
-      bias24 > 20 ? "BIAS(24)超买" :
-      bias24 < -20 ? "BIAS(24)超卖" :
-      bias12 > 12 ? "BIAS(12)超买" :
-      bias12 < -12 ? "BIAS(12)超卖" : "乖离正常";
-    score += biasDelta;
-    addReason(biasLabel, biasDelta);
+  // 计分延后至下方「动量·乖离簇」统一封顶（同源去重），不再单独加分。
+  let biasDelta = 0;
+  if (bias24 > 20) biasDelta = -5;
+  else if (bias24 < -20) biasDelta = 5;
+  else if (bias12 > 12) biasDelta = -3;
+  else if (bias12 < -12) biasDelta = 3;
+  const biasLabel =
+    bias24 > 20 ? "BIAS(24)超买" :
+    bias24 < -20 ? "BIAS(24)超卖" :
+    bias12 > 12 ? "BIAS(12)超买" :
+    bias12 < -12 ? "BIAS(12)超卖" : "乖离正常";
+
+  // ---------------- 动量·乖离簇去重（结构性修正） ----------------
+  // RSI（动量速度）、MACD（趋势动量）、BIAS 与位置偏离（均值回归）全部由收盘价变换而来，
+  // 直接累加会把同一份价格信息隐性计权 3~4 遍（极端时簇合计可达 ±31 分，反超趋势主因子 ±18）。
+  // 聚合后整体封顶 ±20（与趋势 ±18、资金 ±12 同量级），簇内按原 delta 等比缩放：
+  // 保留各因子成因标签与相对强弱，仅消除同源重复计权。
+  const momentumCluster = [
+    { label: posLabel, delta: posDelta },
+    { label: rsiLabel, delta: rsiDelta },
+    { label: macdReasonLabel, delta: macdDelta },
+    { label: biasLabel, delta: biasDelta },
+  ];
+  const momTotal = momentumCluster.reduce((s, f) => s + f.delta, 0);
+  const MOM_CAP = 20;
+  const momScale = Math.abs(momTotal) > MOM_CAP ? MOM_CAP / Math.abs(momTotal) : 1;
+  for (const f of momentumCluster) {
+    const d = Math.round(f.delta * momScale);
+    score += d;
+    addReason(f.label, d);
   }
 
   // ---------------- 筹码结构（CYQ）评分：成本分布是 A 股主力行为与支撑压力的核心参考 ----------------
@@ -856,6 +910,14 @@ export function analyze(
     if (chipDelta !== 0) addReason(chipLabels.join("+") || "筹码结构中性", chipDelta);
   }
 
+  // ---------------- 量价背离因子（信息源为成交量序列，与收盘价簇正交，不参与簇封顶） ----------------
+  const divDelta = divergence === "top" ? -8 : divergence === "bottom" ? 6 : 0;
+  score += divDelta;
+  addReason(
+    divergence === "top" ? "顶背离·量价背离" : divergence === "bottom" ? "底背离·量价背离" : "量价同步",
+    divDelta
+  );
+
   // ---------------- 布林带宽挤压（Squeeze）：收缩极限后必扩张，提示变盘风险 ----------------
   // 挤压本身无方向性（既可能向上变盘也可能向下），不作为多空评分的加减项，
   // 但它是非常有价值的"即将波动"信号，直接加入 risks 和阶段描述。
@@ -864,7 +926,6 @@ export function analyze(
     score -= 2;
     addReason("布林带宽极度扩张", -2);
   }
-  score = Math.max(5, Math.min(95, Math.round(score)));
 
   // ---------------- 资讯情绪因子（协同参与综合评分） ----------------
   // 情绪分 -100~100 映射到 ±12 分：与趋势(±18)、资金(±10) 同量级，作为「协同因子」
@@ -921,6 +982,7 @@ export function analyze(
   if (nearRes) risks.push(`上方压力位在 ${resistance.toFixed(2)} 附近，若无量能配合可能遇阻。`);
   if (trend === "down") risks.push("均线空头排列，整体处于下跌趋势，抄底需严格控制仓位。");
   if (Math.abs(bias6) > 10) risks.push(`短期乖离率 BIAS(6) 达 ${bias6.toFixed(2)}%，价格偏离短期均线过远，存在均值回归压力。`);
+  if (divergence === "top") risks.push("价格创阶段新高但量能/OBV 未同步（顶背离），上涨动能衰减，注意冲高回落。");
   if (elevatedVol) risks.push(`平均真实波幅(ATR)约 ${atrPct.toFixed(2)}%，日内波动偏大，需放宽止损空间。`);
   if (deepDd) risks.push(`近 120 日最大回撤达 ${(mdd * 100).toFixed(2)}%，历史持股体验波动剧烈。`);
   // 资讯面风险：把量化出的利空关键词作为消息面风险提示（最多取 2 条，避免淹没技术风险）
@@ -1460,6 +1522,53 @@ export function analyze(
     };
   }
 
+  // ---------------- 信号历史回测：MA5/20 交叉核心规则的 20 日前瞻表现 ----------------
+  // 完整 signal 依赖资金流/大盘历史（不可得），回测口径为核心规则：
+  //   买入 = MA5 上穿 MA20 且当日量 > 5日均量（放量确认）；卖出 = MA5 下穿 MA20。
+  // 统计信号后 20 个交易日收盘涨跌的胜率与均值，为「量化预判」提供历史校准。
+  // 优先日线序列（周期切换时口径稳定），样本不足时由 UI 显示「样本不足」降级。
+  const btSrc = dailyKlines && dailyKlines.length >= 80 ? dailyKlines : klines;
+  const btClose = btSrc.map((k) => k.close);
+  const btVol = btSrc.map((k) => k.vol);
+  const btMa5 = ma(btClose, 5);
+  const btMa20 = ma(btClose, 20);
+  const btVma5 = ma(btVol, 5);
+  const BT_HORIZON = 20;
+  let btBuyN = 0;
+  let btBuyWin = 0;
+  let btBuyRet = 0;
+  let btSellN = 0;
+  let btSellWin = 0;
+  let btSellRet = 0;
+  for (let i = 20; i < btClose.length - BT_HORIZON; i++) {
+    const m5 = btMa5[i];
+    const m5p = btMa5[i - 1];
+    const m20 = btMa20[i];
+    const m20p = btMa20[i - 1];
+    const v5 = btVma5[i];
+    if (m5 == null || m5p == null || m20 == null || m20p == null || v5 == null) continue;
+    const fwd = btClose[i + BT_HORIZON] / btClose[i] - 1;
+    if (m5p <= m20p && m5 > m20 && btVol[i] > v5) {
+      btBuyN++;
+      btBuyRet += fwd;
+      if (fwd > 0) btBuyWin++;
+    } else if (m5p >= m20p && m5 < m20) {
+      btSellN++;
+      btSellRet += fwd;
+      if (fwd < 0) btSellWin++;
+    }
+  }
+  const backtest = {
+    horizon: BT_HORIZON,
+    bars: btClose.length,
+    buyCount: btBuyN,
+    buyWinRate: btBuyN ? btBuyWin / btBuyN : 0,
+    buyAvgRet: btBuyN ? btBuyRet / btBuyN : 0,
+    sellCount: btSellN,
+    sellWinRate: btSellN ? btSellWin / btSellN : 0,
+    sellAvgRet: btSellN ? btSellRet / btSellN : 0,
+  };
+
   return {
     price,
     last,
@@ -1530,6 +1639,10 @@ export function analyze(
     maxDrawdown: mdd,
     atrPct,
     obvTrend,
+    divergence,
+    var95,
+    rangePos,
+    distHigh120,
     turnAvg,
     turnState,
     chip: chipR,
@@ -1537,6 +1650,7 @@ export function analyze(
     breakdown,
     sigType,
     signal,
+    backtest,
     newsScore,
     newsLabel,
     newsBull,

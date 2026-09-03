@@ -162,8 +162,20 @@
           <text class="m-v" :style="{ color: volColor }">{{ a.volRatio.toFixed(2) }} · {{ volState }}</text>
         </view>
         <view class="metric">
+          <text class="m-k">量价背离</text>
+          <text class="m-v" :style="{ color: divColor }">{{ divText }}</text>
+        </view>
+        <view class="metric">
           <text class="m-k">主力净流入(近5日)</text>
-          <text class="m-v" :style="{ color: flowColor }">{{ flowText }}</text>
+          <text class="m-v" :style="{ color: flow5Color }">{{ flow5Text }}</text>
+        </view>
+        <view class="metric">
+          <text class="m-k">主力净流入(近10日)</text>
+          <text class="m-v" :style="{ color: flow10Color }">{{ flow10Text }}</text>
+        </view>
+        <view class="metric">
+          <text class="m-k">主力净流入(近20日)</text>
+          <text class="m-v" :style="{ color: flow20Color }">{{ flow20Text }}</text>
         </view>
         <view class="metric">
           <text class="m-k">布林%B</text>
@@ -177,6 +189,30 @@
           <text class="m-k">布林带宽</text>
           <text class="m-v" :style="{ color: bollBwColor }">{{ bollBwText }}</text>
         </view>
+      </view>
+    </view>
+
+    <!-- 信号回测 · 历史胜率：为「量化预判」提供历史校准（样本不足时优雅降级） -->
+    <view class="panel anim-fade-up" :style="{ animationDelay: '70ms' }">
+      <view class="panel-title">
+        <OutlineIcon type="check" :size="28" color="var(--primary)" />
+        <text>信号回测 · 历史胜率</text>
+      </view>
+      <template v-if="btValid">
+        <view class="metric-grid">
+          <view class="metric">
+            <text class="m-k">买入信号</text>
+            <text class="m-v" :style="{ color: btBuyColor }">{{ btBuyText }}</text>
+          </view>
+          <view class="metric">
+            <text class="m-k">卖出信号</text>
+            <text class="m-v" :style="{ color: btSellColor }">{{ btSellText }}</text>
+          </view>
+        </view>
+        <text class="base-note">口径：MA5/20 交叉+放量确认 · 近 {{ a.backtest.bars }} 根日线回放 · 20 日前瞻；历史统计，非未来保证。</text>
+      </template>
+      <view v-else class="news-empty">
+        <text>样本不足</text>
       </view>
     </view>
 
@@ -227,6 +263,14 @@
           <text class="m-v">{{ atrPctText }}</text>
         </view>
         <view class="metric">
+          <text class="m-k">单日VaR(95%)</text>
+          <text class="m-v" :style="{ color: var95Color }">{{ var95Text }}</text>
+        </view>
+        <view class="metric">
+          <text class="m-k">120日区间位置</text>
+          <text class="m-v" :style="{ color: rangePosColor }">{{ rangePosText }}</text>
+        </view>
+        <view class="metric">
           <text class="m-k">平均换手率(20日)</text>
           <text class="m-v" :style="{ color: turnColor }">{{ turnText }}</text>
         </view>
@@ -235,6 +279,7 @@
           <text class="m-v" :style="{ color: obvColor }">{{ a.obvTrend }}</text>
         </view>
       </view>
+      <text class="base-note">VaR 为近 120 日日收益的 5% 分位（正常市场下 95% 交易日单日跌幅不超此值）；区间位置 0=区间底 100=区间顶。</text>
     </view>
 
     <!-- 大盘 · 市场环境（beta 感知：宽基指数 + 行业板块 + 市场情绪 + 量能 一体纳入）
@@ -562,16 +607,26 @@ const volColor = computed(() => {
   if (v < 0.85) return "var(--down)";
   return "var(--r-ink)";
 });
-const flowText = computed(() => {
-  const f = a.value.f5;
-  if (!f.has) return "暂无数据";
-  return (f.sum > 0 ? "+" : "") + f.sum.toFixed(2) + "亿";
-});
-const flowColor = computed(() => {
-  const f = a.value.f5;
-  if (!f.has) return "var(--text-2)";
-  return f.sum > 0 ? "var(--up)" : "var(--down)";
-});
+// 主力资金净流入（近5/10/20日）：同一口径生成文本与着色，避免三份重复实现。
+// f10/f20 analyzer 早已计算并参与 reduce 卖出信号，此前仅展示近5日，属展示缺口。
+function flowCell(key: "f5" | "f10" | "f20") {
+  return {
+    text: computed(() => {
+      const f = a.value[key];
+      if (!f.has) return "暂无数据";
+      return (f.sum > 0 ? "+" : "") + f.sum.toFixed(2) + "亿";
+    }),
+    color: computed(() => {
+      const f = a.value[key];
+      if (!f.has) return "var(--text-2)";
+      return f.sum > 0 ? "var(--up)" : "var(--down)";
+    }),
+  };
+}
+// 解构成顶层 ref：对象内嵌 ComputedRef 在模板中不会自动解包
+const { text: flow5Text, color: flow5Color } = flowCell("f5");
+const { text: flow10Text, color: flow10Color } = flowCell("f10");
+const { text: flow20Text, color: flow20Color } = flowCell("f20");
 // 换手率无数据（降级源未提供）时统一用 --text-3 着色，与主力净流入无数据保持一致
 const turnColor = computed(() => {
   const v = a.value.turnAvg;
@@ -622,6 +677,41 @@ const turnText = computed(() => {
 const obvColor = computed(() =>
   a.value.obvTrend.indexOf("配合") >= 0 ? "var(--up)" : "var(--down)"
 );
+
+// ---------------- 量价背离（严格版）派生（A股约定：顶背离=偏空=绿，底背离=偏多=红） ----------------
+const divText = computed(() => {
+  const d = a.value.divergence;
+  if (d === "top") return "顶背离·动能衰减";
+  if (d === "bottom") return "底背离·动能积聚";
+  return "量价同步";
+});
+const divColor = computed(() =>
+  a.value.divergence === "top" ? "var(--down)" : a.value.divergence === "bottom" ? "var(--up)" : "var(--r-ink)"
+);
+
+// ---------------- VaR / 区间位置派生（风险=偏空=绿，低位机会=偏多=红，与回撤/风险等级同口径） ----------------
+const var95Text = computed(() => a.value.var95.toFixed(2) + "%");
+const var95Color = computed(() =>
+  a.value.var95 <= -5 ? "var(--down)" : a.value.var95 <= -3 ? "#ff9f1c" : "var(--r-ink)"
+);
+const rangePosText = computed(() => `${a.value.rangePos.toFixed(0)}%（距高点 ${a.value.distHigh120.toFixed(1)}%）`);
+const rangePosColor = computed(() =>
+  a.value.rangePos > 80 ? "var(--down)" : a.value.rangePos < 20 ? "var(--up)" : "var(--r-ink)"
+);
+
+// ---------------- 信号回测派生（样本不足时降级为「样本不足」） ----------------
+const bt = computed(() => a.value.backtest);
+const btValid = computed(() => bt.value.bars >= 80 && bt.value.buyCount + bt.value.sellCount >= 3);
+const fmtBtRet = (v: number) => (v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%";
+const btBuyText = computed(() =>
+  `${bt.value.buyCount}次 · ${bt.value.horizon}日胜率 ${(bt.value.buyWinRate * 100).toFixed(0)}% · 均收 ${fmtBtRet(bt.value.buyAvgRet)}`
+);
+const btSellText = computed(() =>
+  `${bt.value.sellCount}次 · ${bt.value.horizon}日胜率 ${(bt.value.sellWinRate * 100).toFixed(0)}% · 均收 ${fmtBtRet(bt.value.sellAvgRet)}`
+);
+// 均收为正=该方向有效=红；均收为负=失效=绿（A股约定）
+const btBuyColor = computed(() => (bt.value.buyAvgRet > 0 ? "var(--up)" : bt.value.buyAvgRet < 0 ? "var(--down)" : "var(--r-ink)"));
+const btSellColor = computed(() => (bt.value.sellAvgRet > 0 ? "var(--up)" : bt.value.sellAvgRet < 0 ? "var(--down)" : "var(--r-ink)"));
 
 // ---------------- 乖离率 BIAS · 布林带宽（均值回归 + 波动率挤压）派生 ----------------
 const biasText = computed(() => {
@@ -703,18 +793,32 @@ const newsDelta = computed(() =>
 
 // ---------------- 分析结论（综合合成） ----------------
 // 结论文案：短句直给——「定位 + 怎么做 + 价位应对 + 逆风提示」。
-// 各指标明细已由上方面板呈现，结论不再复读数据（避免长文劝退）；
-// 破位止损/突破跟进、逆风降仓是防误判的关键信息，必须保留。
+// 各指标明细已由上方面板呈现，结论不复读数值细节（避免长文劝退）；
+// 但防误判关键信息必须收束进结论：技术面总分与走势预测、已破位/已突破的
+// 既成事实、资金背离、极端超买超卖、量价背离。
 const conclusion = computed(() => {
   const r = a.value;
   const parts: string[] = [];
-  parts.push(`${r.trendText}（${r.strength}），处于「${r.stageText}」阶段，${r.riskLevel}风险。`);
+  parts.push(`${r.trendText}（${r.strength}），处于「${r.stageText}」阶段，${r.riskLevel}风险，技术面评分 ${r.score} 分，走势预测「${r.sigType}」。`);
   if (r.reduce) parts.push("信号偏空，建议逢高减仓、严控仓位。");
   else if (r.add) parts.push("趋势与资金配合良好，可于回调分批加仓。");
   else if (r.build) parts.push("处于相对低位且风险可控，可于支撑附近分批建仓。");
   else if (r.watch) parts.push("可纳入自选关注，等待更优介入时点。");
   else parts.push("多空信号交织，建议观望，等方向明朗。");
-  parts.push(`支撑 ${r.support.toFixed(2)}、压力 ${r.resistance.toFixed(2)}：有效跌破支撑应止损离场，放量突破压力可顺势跟进。`);
+  // 价位应对必须区分「既成事实」与「待验证假设」：已破位仍念通用止损提示会误导
+  if (r.breakdown) parts.push(`支撑 ${r.support.toFixed(2)} 已被有效跌破，原支撑或转为压力，反弹无力应止损离场。`);
+  else if (r.breakout) parts.push(`压力 ${r.resistance.toFixed(2)} 已有效突破，回踩不破可顺势持有或跟进。`);
+  else parts.push(`支撑 ${r.support.toFixed(2)}、压力 ${r.resistance.toFixed(2)}：有效跌破支撑应止损离场，放量突破压力可顺势跟进。`);
+  // 资金背离防误判：给偏多建议但主力明显净流出（analyzer 同口径 ≤ -0.5 亿）时必须点破
+  if ((r.add || r.build || r.watch) && r.f5.has && r.f5.sum <= -0.5) {
+    parts.push(`但近5日主力资金净流出 ${Math.abs(r.f5.sum).toFixed(2)} 亿，介入宜轻仓试探、严控仓位。`);
+  }
+  // 极端超买/超卖属结论级状态（追高/抄底风险），仅极端时提示；RSI 无效数据不参与
+  if (r.rsiValid && (r.rNow > 78 || r.bias24 > 20)) parts.push("短期超买明显，追高需防回撤。");
+  else if (r.rsiValid && !r.reduce && (r.rNow < 22 || r.bias24 < -20)) parts.push("短期超卖明显，随时可能出现技术性反弹。");
+  // 量价背离属防误判关键信号：顶背离警示动能衰减、底背离提示下跌动能减弱
+  if (r.divergence === "top") parts.push("量价顶背离，上涨动能衰减，追高需防冲高回落。");
+  else if (r.divergence === "bottom") parts.push("量价底背离，下跌动能减弱，关注企稳信号。");
   // 指数数据缺失时（analyzer 占位 marketEnv：positionPct=0、alignScore=0）跳过本段，
   // 避免把「无数据」误报成「市场环境偏弱」误导用户；该分支内 positionAdvice 必为真实文案。
   const env = r.marketEnv;
