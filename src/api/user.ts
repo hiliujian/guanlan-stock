@@ -34,24 +34,6 @@ function toUsernameLookup(d: any): UsernameLookup {
 const USER_LOOKUP_COLS = "id, display_name, username, avatar_url, avatar_frame, signature, vip, vip_expires_at, level";
 
 /**
- * 按用户名（username）精确查询唯一用户。用于社区搜索「输入即匹配用户名」场景。
- * - username 在 profiles 上有非空唯一索引（deploy.sql），故精确 eq 至多返回 1 行；
- * - 用 maybeSingle() 避免 PGRST116（无匹配时报错）；查不到 / 出错返回 null。
- * - 游客亦可调用（profiles 公开读），用户名搜索对未登录用户同样可用。
- */
-export async function lookupUserByUsername(name: string): Promise<UsernameLookup | null> {
-  const sb = getSupabase();
-  if (!sb || !name) return null;
-  const { data, error } = await sb
-    .from("profiles")
-    .select(USER_LOOKUP_COLS)
-    .eq("username", name.trim())
-    .maybeSingle();
-  if (error || !data) return null;
-  return toUsernameLookup(data);
-}
-
-/**
  * 模糊搜索用户名：输入子串（如 "Li"）匹配所有包含该子串的用户名，不区分大小写（Postgres ilike）。
  * 用于社区搜索框实时展示多个匹配的用户名片（如搜索 "Li" 同时命中 Liu、Li1 等）。
  * - 最多返回 limit 条（默认 20），按用户名升序，避免超长结果拖慢渲染；

@@ -60,13 +60,14 @@ create table public.profiles (
   created_at   timestamptz not null default now()
 );
 
--- 1.1.1 用户名唯一索引（部分唯一索引）
+-- 1.1.1 用户名唯一索引（部分唯一索引，不区分大小写）
 --   · 非空 username 必须唯一（登录时用户名/邮箱二选一校验用）
+--   · 用 lower(username) 建索引：「A123 / a123 / A123」视为同一用户名，重复注册必被拒
 --   · 空 username 允许多个（兼容「用户名由用户自填」之前的历史账号，以及注册瞬间未写入期）
 --   · 配合前端注册校验 + 下方 is_username_taken() RPC，双保险防重
 --   · 唯一约束保证「用户名唯一」；应用层注册写入后只读，不再变更
-create unique index if not exists idx_profiles_username_unique
-  on public.profiles (username)
+create unique index if not exists idx_profiles_username_ci_unique
+  on public.profiles (lower(username))
   where username <> '';
 
 -- 1.2 自选股表
@@ -153,7 +154,7 @@ begin
   select u.email into v_email
   from public.profiles p
   join auth.users u on u.id = p.id
-  where p.username = p_username
+  where lower(p.username) = lower(p_username)
   limit 1;
   return v_email;
 end;
@@ -162,15 +163,19 @@ grant execute on function public.lookup_login_email(text) to anon, authenticated
 
 -- 1.4.2 用户名占用校验（security definer，供注册页实时校验）
 --   返回 true 表示该用户名已被占用（含非空匹配）；空串视为未占用（不校验）。
+--   不区分大小写：与 idx_profiles_username_ci_unique 唯一索引同口径，"A123" 注册后 "a123" 也算占用。
 create or replace function public.is_username_taken(p_username text)
 returns boolean
 language plpgsql security definer set search_path = public as $$
 declare
   v_exists boolean;
 begin
+  if p_username is null then
+    return false;
+  end if;
   select exists(
     select 1 from public.profiles
-    where username = p_username and username <> ''
+    where lower(username) = lower(p_username) and username <> ''
   ) into v_exists;
   return coalesce(v_exists, false);
 end;
