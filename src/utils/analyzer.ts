@@ -1344,7 +1344,7 @@ export function analyze(
       if (upRatio > 0.7) { breadthScore = 5; breadthText = "普涨行情，情绪偏多"; }
       else if (upRatio > 0.55) { breadthScore = 3; breadthText = "涨多跌少，情绪尚可"; }
       else if (upRatio < 0.3) { breadthScore = -5; breadthText = "普跌行情，情绪低迷"; }
-      else if (upRatio < 0.45) { breadthScore = -3; breadthText = "跌多跌少，情绪偏弱"; }
+      else if (upRatio < 0.45) { breadthScore = -3; breadthText = "跌多涨少，情绪偏弱"; }
       else { breadthScore = 0; breadthText = "涨跌参半，情绪中性"; }
     }
     // 大盘量能：VMA5/VMA20。<0.7 缩量（上涨无量存疑/下跌抛压减弱），

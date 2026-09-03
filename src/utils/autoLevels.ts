@@ -249,7 +249,7 @@ function bodyEdge(cl: PriceCluster, role: "support" | "pressure"): number {
 }
 
 // 各波段线条标签映射（轴标签短前缀 tag + 小字描述 sub + 悬浮名 name），严格按规范文档第八条映射
-export const BAND_LABELS: Record<BandType, {
+const BAND_LABELS: Record<BandType, {
   sS: { tag: string; name: string };
   tS: { tag: string; sub: string; name: string };
   sP: { tag: string; name: string };

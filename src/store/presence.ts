@@ -151,7 +151,7 @@ export function initPresence() {
 }
 
 /** 停止在线统计（登出 / 应用卸载时调用，防止 channel 泄漏）。 */
-export function stopPresence() {
+function stopPresence() {
   const sb = getSupabase();
   if (heartbeat) {
     clearInterval(heartbeat);
