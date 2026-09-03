@@ -571,10 +571,11 @@ const kdjStateText = computed(() => {
   const cross = c === "gold" ? "金叉" : c === "dead" ? "死叉" : "持平";
   return cross + "·" + a.value.kdjState;
 });
+// KDJ 状态着色（A股统一口径：超买=回落风险=利空绿，超卖=反弹机会=利多红，与 RSI/BIAS 同口径）
 const kdjColor = computed(() => {
   const s = a.value.kdjState;
-  if (s === "超买") return "var(--up)";
-  if (s === "超卖") return "var(--down)";
+  if (s === "超买") return "var(--down)";
+  if (s === "超卖") return "var(--up)";
   return "var(--r-ink)";
 });
 const rsiState = computed(() => {
@@ -591,8 +592,8 @@ const rsiText = computed(() => {
 const rsiColor = computed(() => {
   if (!a.value.rsiValid) return "var(--text-2)";
   const r = a.value.rNow;
-  if (r > 70) return "var(--up)";
-  if (r < 30) return "var(--down)";
+  if (r > 70) return "var(--down)"; // 超买=回落风险=利空绿
+  if (r < 30) return "var(--up)"; // 超卖=反弹机会=利多红
   return "var(--r-ink)";
 });
 const volState = computed(() => {
@@ -601,10 +602,11 @@ const volState = computed(() => {
   if (v < 0.85) return "缩量";
   return "温和";
 });
+// 量能比只表达「活跃度」无方向：放量=异动关注（橙，与布林变盘同警示口径），
+// 不占红绿多空语义；缩量/温和中性灰
 const volColor = computed(() => {
   const v = a.value.volRatio;
-  if (v > 1.15) return "var(--up)";
-  if (v < 0.85) return "var(--down)";
+  if (v > 1.15) return "#ff9f1c";
   return "var(--r-ink)";
 });
 // 主力资金净流入（近5/10/20日）：同一口径生成文本与着色，避免三份重复实现。
@@ -657,8 +659,8 @@ const bollPctBText = computed(() => {
 const bollColor = computed(() => {
   const v = a.value.bollPctB[a.value.bollPctB.length - 1];
   if (v == null) return "var(--r-ink)";
-  if (v > 1) return "var(--up)"; // 触上轨·超买 → 红
-  if (v < 0) return "var(--down)"; // 触下轨·超卖 → 绿
+  if (v > 1) return "var(--down)"; // 触上轨·超买=回落风险 → 绿
+  if (v < 0) return "var(--up)"; // 触下轨·超卖=反弹机会 → 红
   return "var(--r-ink)";
 });
 const volAnnText = computed(() => (a.value.volAnn * 100).toFixed(2) + "%");
@@ -723,8 +725,8 @@ const biasText = computed(() => {
   return `6日 ${a.value.bias6.toFixed(1)}% / 12日 ${v.toFixed(1)}% / 24日 ${a.value.bias24.toFixed(1)}%`;
 });
 const biasColor = computed(() => {
-  if (a.value.bias24 > 20 || a.value.bias12 > 12) return "var(--up)";    // 超买（谨慎）→ 红
-  if (a.value.bias24 < -20 || a.value.bias12 < -12) return "var(--primary)"; // 超卖（机会）→ 绿
+  if (a.value.bias24 > 20 || a.value.bias12 > 12) return "var(--down)"; // 超买=均值回归风险 → 绿（评分 -3/-5 同号）
+  if (a.value.bias24 < -20 || a.value.bias12 < -12) return "var(--up)"; // 超卖=反弹机会 → 红（评分 +3/+5 同号）
   return "var(--r-ink)";
 });
 const bollBwText = computed(() => {
@@ -735,10 +737,9 @@ const bollBwText = computed(() => {
   return `带宽常态 · 波动正常`;
 });
 const bollBwColor = computed(() => {
-  if (a.value.bollSqueeze) return "#ff9f1c";                              // 变盘信号 → 橙
-  if (a.value.bollBwNow > 2.2) return "var(--up)";                        // 极度扩张 → 红
-  if (a.value.bollBwNow < 0.6) return "var(--primary)";                   // 蓄势待发 → 绿
-  return "var(--r-ink)";
+  if (a.value.bollSqueeze) return "#ff9f1c";                              // 变盘信号（无方向警示）→ 橙
+  if (a.value.bollBwNow > 2.2) return "var(--down)";                      // 极度扩张=波动风险 → 绿（评分 -2 同号）
+  return "var(--r-ink)";                                                  // 偏窄蓄势/常态均无方向 → 灰
 });
 
 // ---------------- 筹码分布（CYQ）派生 ----------------
@@ -755,7 +756,8 @@ const chipDistColor = computed(() => {
   const c = a.value.chip;
   if (!c) return "var(--r-ink)";
   const d = c.avgCost ? (a.value.price - c.avgCost) / c.avgCost : 0;
-  return d > 0.08 ? "var(--up)" : d < -0.08 ? "var(--primary)" : "var(--r-ink)";
+  // 高于成本重心=上方获利盘回吐压力 → 绿（评分 -2 同号）；低于=下方承接支撑 → 红（+2 同号）
+  return d > 0.08 ? "var(--down)" : d < -0.08 ? "var(--up)" : "var(--r-ink)";
 });
 const chipPeakText = computed(() => {
   const c = a.value.chip;
@@ -776,7 +778,8 @@ const chipProfitText = computed(() => {
 const chipProfitColor = computed(() => {
   const c = a.value.chip;
   if (!c) return "var(--r-ink)";
-  return c.profitRatio > 0.85 ? "var(--up)" : c.profitRatio < 0.20 ? "var(--primary)" : "var(--r-ink)";
+  // 获利盘过高=回吐风险 → 绿（评分 -5 同号）；稀少=抛压轻 → 红（+5 同号）
+  return c.profitRatio > 0.85 ? "var(--down)" : c.profitRatio < 0.20 ? "var(--up)" : "var(--r-ink)";
 });
 const chipRangeText = computed(() => {
   const c = a.value.chip;
@@ -897,18 +900,19 @@ function openNews(it: NewsItem) {
   line-height: 1.6;
   margin-bottom: 18rpx;
 }
-/* 通知语义配色：绿=好事/偏强，红=紧急/风险（与行情涨跌红绿相反）。 */
+/* A股语义统一：红=偏强/机会（利多），绿=偏弱/风险（利空），橙=警示/变盘。
+   与下方买卖信号、决策标签、突破/跌破标签同一口径，同一份报告不允许两套红绿语义。 */
 .banner.ok {
-  background: rgba(9, 176, 122, 0.1);
-  color: var(--down);
+  background: rgba(239, 35, 42, 0.1);
+  color: var(--up);
 }
 .banner.warn {
   background: rgba(255, 159, 28, 0.12);
   color: #c87f00;
 }
 .banner.bad {
-  background: rgba(239, 35, 42, 0.1);
-  color: var(--up);
+  background: rgba(9, 176, 122, 0.1);
+  color: var(--down);
 }
 .banner-text {
   flex: 1;
