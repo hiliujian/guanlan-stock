@@ -82,7 +82,7 @@
         <view class="lv subsection">
           <text class="lv-k">支撑位</text>
           <view class="lv-right">
-            <PriceText :value="a.support" :size="30" :weight="400" />
+            <PriceText :value="a.support" :neutral="true" :size="30" :weight="400" />
             <text v-if="a.breakdown" class="lv-tag bad">已跌破</text>
             <text v-else-if="a.nearSup" class="lv-tag warn">临近</text>
           </view>
@@ -94,7 +94,7 @@
         <view class="lv subsection">
           <text class="lv-k">压力位</text>
           <view class="lv-right">
-            <PriceText :value="a.resistance" :size="30" :weight="400" />
+            <PriceText :value="a.resistance" :neutral="true" :size="30" :weight="400" />
             <text v-if="a.breakout" class="lv-tag ok">已突破</text>
             <text v-else-if="a.nearRes" class="lv-tag warn">临近</text>
           </view>
@@ -388,7 +388,7 @@
     <!-- 风险提示 -->
     <view class="risks anim-fade-up" :style="{ animationDelay: '200ms' }">
       <view class="risks-title">
-        <OutlineIcon type="flag" :size="28" color="var(--up)" />
+        <OutlineIcon type="flag" :size="28" color="#ff9f1c" />
         <text>风险提示</text>
       </view>
       <view v-for="(r, i) in a.risks" :key="i" class="risk-item">
@@ -1248,7 +1248,7 @@ function openNews(it: NewsItem) {
   line-height: 1.6;
 }
 .dot {
-  color: var(--up);
+  color: var(--text-2);
 }
 
 /* 关联资讯板块 */

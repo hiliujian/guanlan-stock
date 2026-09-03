@@ -11,6 +11,7 @@ const props = withDefaults(
   defineProps<{
     value: number;
     prev?: number; // 与上一价比较决定颜色
+    neutral?: boolean; // 中性展示（价位级数据，不做涨跌着色）
     size?: number;
     weight?: number;
     prefix?: boolean; // 是否显示 +/- 号
@@ -20,6 +21,7 @@ const props = withDefaults(
 );
 
 const colorClass = computed(() => {
+  if (props.neutral) return "flat";
   const base = props.prev != null ? props.value - props.prev : props.value;
   if (base > 0) return "up";
   if (base < 0) return "down";
