@@ -63,7 +63,7 @@
             </view>
           </view>
         </view>
-        <text v-else class="cm-bar-t">搜索结果 · {{ displayPosts.length }}</text>
+        <text v-else class="cm-bar-t">搜索结果 · {{ displayPosts.length + matchedUsers.length }}</text>
       </template>
     </view>
 
