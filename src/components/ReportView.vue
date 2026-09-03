@@ -1253,7 +1253,8 @@ function openNews(it: NewsItem) {
 }
 .sig-detail {
   background: var(--r-panel);
-  border-top: 1px solid var(--r-edge);
+  /* 卡内分隔线用中性 --border：--r-edge 品牌绿压在警示条/语义色块上撞色突兀 */
+  border-top: 1px solid var(--border);
   padding: 16rpx 24rpx;
 }
 .sd-row { display: flex; gap: 16rpx; padding: 8rpx 0; }
