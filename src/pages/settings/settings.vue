@@ -36,6 +36,25 @@
           </view>
         </view>
         <text class="st-row-desc">深色护眼、浅色明亮；切换即时生效并记住你的选择。</text>
+        <!-- 字体：中文/英文配对方案，三选一即时切换 -->
+        <view class="st-row">
+          <view class="st-row-left">
+            <OutlineIcon type="color" :size="32" color="var(--text-2)" />
+            <text class="st-row-label">字体</text>
+          </view>
+          <view class="seg" role="group" aria-label="字体切换">
+            <view
+              v-for="o in FONT_OPTIONS"
+              :key="o.key"
+              class="seg-i"
+              :class="{ active: fontConfig.font === o.key }"
+              role="button"
+              :aria-pressed="fontConfig.font === o.key"
+              @click="setFont(o.key)"
+            >{{ o.label }}</view>
+          </view>
+        </view>
+        <text class="st-row-desc">{{ fontDesc }}</text>
       </view>
 
       <!-- 行情卡片：拖拽排序 + 显隐 -->
@@ -120,15 +139,18 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { reactive, ref, computed } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import { isDark, setTheme } from "@/utils/theme";
 import { cardOrder, hidden, metaOf, toggleCard, setOrder, resetCardLayout } from "@/utils/cardLayout";
 import { APP_VERSION } from "@/utils/version";
 import { usePageGuard } from "@/store/guard";
+import { FONT_OPTIONS, fontConfig, setFont } from "@/store/font";
 
 const appVersion = APP_VERSION;
+// 字体方案说明（随所选方案切换）
+const fontDesc = computed(() => FONT_OPTIONS.find((o) => o.key === fontConfig.font)?.desc ?? "");
 // 全局页面守卫：设置页未对游客开放 + 未登录 → 跳转登录页
 usePageGuard("/pages/settings/settings");
 const showReset = ref(false);
@@ -142,6 +164,7 @@ function back() {
 function doReset() {
   resetCardLayout();
   setTheme("light");
+  setFont("system");
   uni.showToast({ title: "已恢复默认", icon: "success" });
 }
 

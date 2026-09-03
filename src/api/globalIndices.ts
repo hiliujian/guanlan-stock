@@ -15,6 +15,10 @@ interface GlobalIndexItem {
   flag?: string;
   /** 非国家标的（商品期货等）改用本地 PNG 图片图标（gold / silver / copper / oil），与 flag 二选一 */
   icon?: string;
+  /** 篮子合成指数的成分股 secid 列表：有此字段时本项为「等权合成指数」，
+   *  点位=成分股最新价等权平均、涨跌幅=成分股涨跌幅等权平均（与市场魔方同思路，
+   *  用一篮子代表股合成主题指数，而非拿单只股票冒充）。secid 仅作展示键（bkt.* 非真实行情代码）。 */
+  members?: string[];
 }
 interface GlobalIndexGroup {
   title: string; // 分组标题：A股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货 / 科技指数
@@ -85,10 +89,9 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     ],
   },
   {
-    // 科技指数（对齐市场魔方式主题速览）：中国用东财概念板块（90.BK*，均为官方板块实时点值）；
-    // 美国东财无费城半导体(SOX)/半导体系列 ETF(SOXX/SOXL)及韩国个股/板块覆盖（实测 ulist/realtime 均无），
-    // 故用龙头/主题 ETF 代理并在名称括注，标签即所代表主题。
-    title: "科技指数",
+    // 科技指数·中国：东财概念板块指数本身就是「成分股加权合成」的官方板块指数，
+    // 符合「追踪一篮子股票形成的指数」的定义，直接引用官方点值。
+    title: "科技指数·中国",
     items: [
       { secid: "90.BK0917", name: "半导体", flag: "cn" },
       { secid: "90.BK1137", name: "存储芯片", flag: "cn" },
@@ -96,19 +99,43 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
       { secid: "90.BK1629", name: "AI应用", flag: "cn" },
       { secid: "90.BK0963", name: "商业航天", flag: "cn" },
       { secid: "90.BK1090", name: "机器人", flag: "cn" },
-      { secid: "105.NVDA", name: "英伟达(半导体)", flag: "us" },
-      { secid: "105.MU", name: "美光(存储芯片)", flag: "us" },
-      { secid: "106.COHR", name: "Coherent(CPO)", flag: "us" },
-      { secid: "105.PLTR", name: "Palantir(AI应用)", flag: "us" },
-      { secid: "107.ARKX", name: "ARKX(商业航天)", flag: "us" },
-      { secid: "105.BOTZ", name: "BOTZ(机器人)", flag: "us" },
+    ],
+  },
+  {
+    // 科技指数·美国：东财无 SOX 等美股主题指数与半导体系列 ETF 覆盖（实测），
+    // 故按市场魔方思路自建等权合成指数：每个主题取一篮子代表性美股
+    // （全部经网关 ulist 实测有实时行情），点位/涨跌幅由成分股等权计算。
+    // 韩国主题（半导体/存储）：网关无韩国个股行情数据源，暂无法合成，待有源后补。
+    title: "科技指数·美国",
+    items: [
+      {
+        secid: "bkt.us.semi",
+        name: "半导体",
+        flag: "us",
+        members: ["105.NVDA", "105.AMD", "105.INTC", "105.QCOM", "105.TXN", "105.ADI", "105.MRVL"],
+      },
+      { secid: "bkt.us.storage", name: "存储芯片", flag: "us", members: ["105.MU", "105.STX", "105.SNDK"] },
+      { secid: "bkt.us.cpo", name: "CPO", flag: "us", members: ["106.COHR", "105.LITE", "106.CIEN", "105.AAOI"] },
+      { secid: "bkt.us.aiapp", name: "AI应用", flag: "us", members: ["105.PLTR", "105.MSFT", "105.GOOG", "105.META"] },
+      { secid: "bkt.us.space", name: "商业航天", flag: "us", members: ["105.RKLB", "105.ASTS", "105.LUNR"] },
+      {
+        secid: "bkt.us.robot",
+        name: "机器人",
+        flag: "us",
+        members: ["105.ISRG", "105.TER", "106.ROK", "105.SYM", "105.SERV", "105.TSLA"],
+      },
     ],
   },
 ];
 
-// 全部待取 secid（去重），供批量请求一次拿全。
+// 全部待取 secid（去重）：普通标的取自身 secid，篮子合成指数展开为全部成分股，
+// 供批量请求一次拿全（篮子展示键 bkt.* 不进请求）。
 const ALL_SECIDS: string[] = Array.from(
-  new Set(GLOBAL_INDEX_GROUPS.flatMap((g) => g.items.map((i) => i.secid)))
+  new Set(
+    GLOBAL_INDEX_GROUPS.flatMap((g) =>
+      g.items.flatMap((i) => (i.members ? i.members : [i.secid]))
+    )
+  )
 );
 
 // 批量拉取全球重要指数 + 商品期货实时报价。
@@ -138,6 +165,23 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
       pct: q.pct,
       chg: q.chg,
     });
+  }
+  // 篮子合成指数：成分股等权。点位=成员最新价等权平均（同主题同币种，可比），
+  // 涨跌幅/涨跌额=成员等权平均；个别成员缺行情自动跳过，全缺则该项降级「暂无数据」。
+  for (const g of GLOBAL_INDEX_GROUPS) {
+    for (const it of g.items) {
+      if (!it.members) continue;
+      const rows = it.members.map((m) => map.get(m)).filter((q): q is GlobalIndexQuote => !!q && q.price != null);
+      if (!rows.length) continue;
+      const n = rows.length;
+      map.set(it.secid, {
+        secid: it.secid,
+        name: it.name,
+        price: rows.reduce((s, q) => s + (q.price as number), 0) / n,
+        pct: rows.reduce((s, q) => s + (q.pct ?? 0), 0) / n,
+        chg: rows.reduce((s, q) => s + (q.chg ?? 0), 0) / n,
+      });
+    }
   }
   return map;
 }

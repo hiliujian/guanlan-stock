@@ -139,8 +139,11 @@ page {
   background: var(--bg);
   color: var(--text);
   font-size: var(--font-md);
-  /* 不指定 font-family：交给各平台系统默认字体（iOS SF / Windows 微软雅黑 / 安卓系默认无衬线），
-     避免显式字体栈覆盖系统观感；button 仍用 font-family:inherit 继承该默认字体。 */
+  /* 字体偏好：store/font.ts 在用户选择方案后把 --font-app 写到根节点。
+     未选择（默认「系统」）时该变量不存在，font-family 按规范回落为继承值，
+     仍交给各平台系统默认字体（iOS SF / Windows 微软雅黑 / 安卓系默认无衬线）；
+     button 仍用 font-family:inherit 继承生效字体。 */
+  font-family: var(--font-app);
   -webkit-font-smoothing: antialiased;
 }
 

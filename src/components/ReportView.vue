@@ -82,19 +82,19 @@
         <view class="lv subsection">
           <text class="lv-k">支撑位</text>
           <view class="lv-right">
-            <PriceText :value="a.support" :neutral="true" :size="30" :weight="400" />
+            <PriceText :value="a.support" :neutral="true" :size="28" :weight="400" :class="supPriceCls" />
             <text v-if="a.breakdown" class="lv-tag bad">已跌破</text>
             <text v-else-if="a.nearSup" class="lv-tag warn">临近</text>
           </view>
         </view>
         <view class="lv subsection">
           <text class="lv-k">建议买入区间</text>
-          <text class="lv-v">{{ buyText }}</text>
+          <text class="lv-v" :class="buyActive ? 'lv-bz-ok' : ''">{{ buyText }}</text>
         </view>
         <view class="lv subsection">
           <text class="lv-k">压力位</text>
           <view class="lv-right">
-            <PriceText :value="a.resistance" :neutral="true" :size="30" :weight="400" />
+            <PriceText :value="a.resistance" :neutral="true" :size="28" :weight="400" :class="resPriceCls" />
             <text v-if="a.breakout" class="lv-tag ok">已突破</text>
             <text v-else-if="a.nearRes" class="lv-tag warn">临近</text>
           </view>
@@ -847,6 +847,14 @@ const buyText = computed(() => {
   if (r.buyLow == null || isNaN(r.buyLow) || isNaN(r.buyHigh)) return "—（远离支撑，按趋势跟踪）";
   return `${r.buyLow} ~ ${r.buyHigh}`;
 });
+// 关键价位状态着色：三个数值默认统一墨色，出现状态时数值本身换语义色
+// （已突破/买入区间成立=红·机会，已跌破=绿·风险，临近=橙·无方向警示），不再是「淡黑没意义」
+const supPriceCls = computed(() => (a.value.breakdown ? "lv-st-bad" : a.value.nearSup ? "lv-st-warn" : ""));
+const resPriceCls = computed(() => (a.value.breakout ? "lv-st-ok" : a.value.nearRes ? "lv-st-warn" : ""));
+const buyActive = computed(() => {
+  const r = a.value;
+  return r.buyLow != null && !isNaN(r.buyLow) && !isNaN(r.buyHigh);
+});
 
 // ---------------- 关联资讯展示列表 ----------------
 // 直接使用 MarketView 已做完「相关性 + 最近3天 + 时间倒序」过滤后的条目（props.news），
@@ -1162,6 +1170,24 @@ function openNews(it: NewsItem) {
 .lv-v {
   font-size: var(--font-md);
   color: var(--r-ink);
+}
+/* 关键价位三个数值统一口径：字号 28（--font-md）+ 墨色 --r-ink（支撑/压力经
+   .price-text 覆盖 PriceText 默认平盘色，与建议买入区间完全一致）；
+   出现状态（已突破/买入区间成立/临近/已跌破）时数值换语义色，强化状态可读性 */
+.lv-right .price-text {
+  color: var(--r-ink);
+}
+.lv-right .price-text.lv-st-ok {
+  color: var(--up);
+}
+.lv-right .price-text.lv-st-bad {
+  color: var(--down);
+}
+.lv-right .price-text.lv-st-warn {
+  color: #c87f00;
+}
+.lv-v.lv-bz-ok {
+  color: var(--up);
 }
 
 /* 直白操作信号卡片（核心卖点） */

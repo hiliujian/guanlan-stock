@@ -6,6 +6,8 @@ import { initAppConfig } from "@/store/appConfig";
 import { initPageAccess } from "@/store/access";
 import { installNavGuards } from "@/store/guard";
 import { startAnomalyMonitor } from "@/store/anomaly";
+// 导入即恢复用户字体偏好（store/font.ts 模块级 applyFont），并注册 setFont 供设置页使用
+import "@/store/font";
 onLaunch(() => {
   // 应用启动即套用用户保存的主题（深色默认）
   initTheme();
