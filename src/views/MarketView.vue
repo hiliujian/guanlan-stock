@@ -169,8 +169,11 @@
             </view>
             <scroll-view class="idx-scroll" scroll-y>
               <view v-for="g in globalGroups" :key="g.title" class="idx-grp">
-                <text class="idx-grp-t">{{ g.title }}</text>
-                <view class="idx-grp-list">
+                <view class="idx-grp-head" @click="toggleGrp(g.title)">
+                  <text class="idx-grp-t">{{ g.title }}</text>
+                  <OutlineIcon type="chevron-up" :size="20" color="var(--text-3)" class="idx-caret" :class="{ closed: collapsedGrps.has(g.title) }" />
+                </view>
+                <view v-show="!collapsedGrps.has(g.title)" class="idx-grp-list">
                   <view v-for="it in g.items" :key="it.secid" class="idx-item">
                     <view class="idx-item-head">
                       <image v-if="it.flag" class="peek-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
@@ -188,8 +191,11 @@
                    持仓变化为客观事实、非行情涨跌，故数据一律中性色呈现，不做多空红绿着色引导；
                    图标沿用国旗（期指即中国股指期货）。 -->
               <view class="idx-grp">
-                <text class="idx-grp-t">期指持仓{{ cffexDateText }}</text>
-                <view class="idx-grp-list">
+                <view class="idx-grp-head" @click="toggleGrp('期指持仓')">
+                  <text class="idx-grp-t">期指持仓{{ cffexDateText }}</text>
+                  <OutlineIcon type="chevron-up" :size="20" color="var(--text-3)" class="idx-caret" :class="{ closed: collapsedGrps.has('期指持仓') }" />
+                </view>
+                <view v-show="!collapsedGrps.has('期指持仓')" class="idx-grp-list">
                   <view class="idx-item">
                     <view class="idx-item-head">
                       <image class="peek-flag" :src="'https://flagcdn.com/w40/cn.png'" mode="aspectFit" />
@@ -335,6 +341,14 @@ const idxPctText = computed(() => fmtPct(idxSnap.value?.pct));
 
 // 展开态：全球重要市场指数实时面板数据（按目录分组渲染，缺失项降级「暂无数据」）
 const globalGroups = GLOBAL_INDEX_GROUPS;
+// 分组展开/收起：默认全部展开，点击组标题行切换（含期指持仓）
+const collapsedGrps = ref(new Set<string>());
+function toggleGrp(key: string) {
+  const s = new Set(collapsedGrps.value);
+  if (s.has(key)) s.delete(key);
+  else s.add(key);
+  collapsedGrps.value = s;
+}
 const globalQuotes = ref<Map<string, GlobalIndexQuote>>(new Map());
 let globalTimer: any = null;
 async function refreshGlobal() {
@@ -1366,10 +1380,23 @@ defineExpose({ refresh: () => refreshFull() });
 }
 .idx-grp-t {
   display: block;
+  flex: 1;
   font-size: var(--font-sm);
   color: var(--text-2);
   letter-spacing: 1rpx;
+}
+/* 组标题行可点击展开/收起：展开=箭头朝上（可收起），收起=旋转 180° 朝下 */
+.idx-grp-head {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
   margin-bottom: 12rpx;
+}
+.idx-caret {
+  transition: transform 0.2s ease;
+}
+.idx-caret.closed {
+  transform: rotate(180deg);
 }
 /* 两列网格：宽松呈现各市场主要指数，避免一行三列过于拥挤 */
 .idx-grp-list {
