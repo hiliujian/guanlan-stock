@@ -286,7 +286,7 @@ function inferLimitPct(klines: Kline[]): number {
 
 function detectLimitMove(klines: Kline[], code?: string) {
   const len = klines.length;
-  const empty = { pct: 0, isLimitUp: false, isLimitDown: false, isBrokenLimitUp: false, isBrokenLimitDown: false, isBigUp: false, isBigDown: false, limitPct: 0.10 };
+  const empty = { pct: 0, isLimitUp: false, isLimitDown: false, isBrokenLimitUp: false, isBrokenLimitDown: false, isBigUp: false, isBigDown: false, limitPct: 0.10, offLimitPct: null as number | null };
   if (len < 2) return empty;
   const last = klines[len - 1];
   const prev = klines[len - 2];
@@ -310,7 +310,15 @@ function detectLimitMove(klines: Kline[], code?: string) {
   // 而不再被淹没在日线趋势里（阈值随板块自适应：主板 6%、创业板/科创板 12%）。
   const isBigUp = !isLimitUp && !isBrokenLimitUp && pct >= limitPct * 0.6;
   const isBigDown = !isLimitDown && !isBrokenLimitDown && pct <= -limitPct * 0.6;
-  return { pct, isLimitUp, isLimitDown, isBrokenLimitUp, isBrokenLimitDown, isBigUp, isBigDown, limitPct };
+  // 距板幅度（%）：仅炸板/跌停开板场景有意义——此刻用户关心的是「从板回到哪了」，
+  // 而非相对昨收的涨跌幅（开板现价仍是大跌，直接显示 -8.55% 无信息量）。
+  // 开板=现价距跌停价（正值=回升），炸板=现价距涨停价（负值=回落）；其余场景 null。
+  const offLimitPct = isBrokenLimitDown
+    ? (last.close / limitDownPrice - 1) * 100
+    : isBrokenLimitUp
+      ? (last.close / limitUpPrice - 1) * 100
+      : null;
+  return { pct, isLimitUp, isLimitDown, isBrokenLimitUp, isBrokenLimitDown, isBigUp, isBigDown, limitPct, offLimitPct };
 }
 
 // ---------------- 主分析 ----------------
@@ -472,6 +480,9 @@ export interface AnalysisResult {
     isBigUp: boolean; // 大幅放量上涨（≥60% 涨跌幅阈值，非涨停，如创业板 +14%）
     isBigDown: boolean; // 大幅下跌（≤-60% 阈值，非跌停）
     limitPct: number; // 涨跌停阈值（0.10/0.20/0.30）
+    // 距板幅度（%）：跌停开板=现价距跌停价（正值=回升），炸板=现价距涨停价（负值=回落）；
+    // 封板/大涨/大跌等其余场景 null（此时涨跌幅本身即有效信息）
+    offLimitPct: number | null;
     label: string; // "今日封涨停" / "今日炸板" / "今日大涨" / ""（无特殊走势）
   };
 }
@@ -1227,6 +1238,7 @@ export function analyze(
     isBigUp: intraday.isBigUp,
     isBigDown: intraday.isBigDown,
     limitPct: intraday.limitPct,
+    offLimitPct: intraday.offLimitPct,
     label: moveLabel,
   };
 

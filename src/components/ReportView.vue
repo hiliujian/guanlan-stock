@@ -537,14 +537,23 @@ const intradaySub = computed(() => {
   if (m.isBigDown) return "放量急跌，注意风险";
   return "";
 });
-// 今日涨跌幅展示文本（+14.04%）
+// 异动数值展示文本：
+// 跌停开板/炸板 → 显示「较跌停/较涨停」的距板幅度（用户关心从板回到哪了，
+// 此时相对昨收的涨跌幅无信息量）；封板/大涨大跌/无异动 → 显示今日涨跌幅。
 const intradayPctText = computed(() => {
-  const p = a.value.intradayMove.pct * 100;
+  const m = a.value.intradayMove;
+  if (m.offLimitPct != null) {
+    const v = m.offLimitPct;
+    return (v >= 0 ? "较跌停 +" : "较涨停 ") + v.toFixed(2) + "%";
+  }
+  const p = m.pct * 100;
   return (p >= 0 ? "+" : "") + p.toFixed(2) + "%";
 });
-// 异动涨跌幅着色（A股：涨=红、跌=绿）
+// 异动数值着色（A股：涨=红、跌=绿）——距板口径下回升=红、回落=绿
 const intradayPctColor = computed(() => {
-  return a.value.intradayMove.pct >= 0 ? "var(--up)" : "var(--down)";
+  const m = a.value.intradayMove;
+  if (m.offLimitPct != null) return m.offLimitPct >= 0 ? "var(--up)" : "var(--down)";
+  return m.pct >= 0 ? "var(--up)" : "var(--down)";
 });
 
 // ---------------- 多维研判派生 ----------------
@@ -941,7 +950,9 @@ function openNews(it: NewsItem) {
   align-items: center;
   gap: 12rpx;
   padding: 12rpx 24rpx;
-  border-top: 1px solid var(--r-edge);
+  /* 分隔线用中性 --border（与 .score-divider/.decision 发丝线同源）：
+     --r-edge 是品牌绿描边，压在涨/跌语义浅底（警示条背景）上会撞色突兀 */
+  border-top: 1px solid var(--border);
   font-size: var(--font-sm);
 }
 .sig-alert.up { background: rgba(239, 35, 42, 0.08); color: var(--up); }
