@@ -173,6 +173,7 @@
                   <text class="idx-grp-t">{{ g.title }}</text>
                   <OutlineIcon type="chevron-up" :size="20" color="var(--text-3)" class="idx-caret" :class="{ closed: collapsedGrps.has(g.title) }" />
                 </view>
+                <view v-if="g.note" class="idx-grp-note">{{ g.note }}</view>
                 <view v-show="!collapsedGrps.has(g.title)" class="idx-grp-list">
                   <view v-for="it in g.items" :key="it.secid" class="idx-item">
                     <view class="idx-item-head">
@@ -181,7 +182,7 @@
                       <text class="idx-item-name">{{ it.name }}</text>
                     </view>
                     <view class="idx-item-right">
-                      <text class="idx-item-price" :class="[qCls(it.secid), qNa(it.secid) ? 'na' : '']">{{ qPrice(it.secid) }}</text>
+                      <text v-if="!it.members" class="idx-item-price" :class="[qCls(it.secid), qNa(it.secid) ? 'na' : '']">{{ qPrice(it.secid) }}</text>
                       <text class="idx-item-pct" :class="qCls(it.secid)">{{ qPct(it.secid) }}</text>
                     </view>
                   </view>
@@ -1397,6 +1398,14 @@ defineExpose({ refresh: () => refreshFull() });
 }
 .idx-caret.closed {
   transform: rotate(180deg);
+}
+/* 分组口径说明：小字灰显，明确该组统计方式，避免与「市场魔方」等行业级口径混淆 */
+.idx-grp-note {
+  font-size: var(--font-xs);
+  color: var(--text-3);
+  line-height: 1.5;
+  margin: -4rpx 0 12rpx;
+  letter-spacing: 0.3rpx;
 }
 /* 两列网格：宽松呈现各市场主要指数，避免一行三列过于拥挤 */
 .idx-grp-list {

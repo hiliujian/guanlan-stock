@@ -21,7 +21,10 @@ interface GlobalIndexItem {
   members?: string[];
 }
 interface GlobalIndexGroup {
-  title: string; // 分组标题：A股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货 / 科技指数
+  title: string; // 分组标题：A股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货 / 科技热点
+  /** 口径说明（可选）：在组标题下以小字展示，明确该组统计方式，避免与「市场魔方」等
+   *  行业级口径混淆。例如科技组标注 A股/美国的加权方式与「热点细分非全行业」的边界。 */
+  note?: string;
   items: GlobalIndexItem[];
 }
 export interface GlobalIndexQuote {
@@ -89,13 +92,17 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     ],
   },
   {
-    // 科技指数（中美合为一组）：A 股用东财概念板块指数（本身就是成分股加权合成的
-    // 官方板块指数，符合「追踪一篮子股票形成的指数」定义，直接引用官方点值）；
-    // 美股东财无 SOX 等主题指数与半导体系列 ETF 覆盖（实测），按同思路自建等权合成
-    // 指数：每个主题取一篮子代表性美股（全部经网关 ulist 实测有实时行情），
-    // 点位/涨跌幅由成分股等权计算。
+    // 科技热点（中美合为一组）：与「市场魔方」行业级口径不同——此处是**热点概念细分**，
+    // 非申万电子/计算机/通信/传媒全行业口径，目的在于让用户快速看 AI/半导体/机器人等
+    // 最热科技方向的涨跌，不等同于「科技板块整体」。
+    // A 股项直接引用东财概念板块指数（官方市值加权指数，返回真实点位）；
+    // 美股东财无 SOX 等主题指数覆盖，按同思路自建等权合成指数：每主题取一篮子代表性
+    // 美股（全部经网关 ulist 有实时行情），涨跌幅由成分股等权平均。
+    // 注：美股统一用 105. 前缀（东财 ulist 美股 secid）；NYSE 上市个股亦用 105.（曾误用
+    // 106. 导致 COHR/CIEN/ROK 静默取不到数据、篮子口径失真，已修正）。
     // 韩国主题（半导体/存储）：网关无韩国个股行情数据源，暂无法合成，待有源后补。
-    title: "科技指数",
+    title: "科技热点",
+    note: "A股=官方板块指数(市值加权) · 美国=成分股等权 · 热点细分，非全行业口径",
     items: [
       { secid: "90.BK0917", name: "半导体(中国)", flag: "cn" },
       { secid: "90.BK1137", name: "存储芯片(中国)", flag: "cn" },
@@ -110,14 +117,14 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
         members: ["105.NVDA", "105.AMD", "105.INTC", "105.QCOM", "105.TXN", "105.ADI", "105.MRVL"],
       },
       { secid: "bkt.us.storage", name: "存储芯片(美国)", flag: "us", members: ["105.MU", "105.STX", "105.SNDK"] },
-      { secid: "bkt.us.cpo", name: "CPO(美国)", flag: "us", members: ["106.COHR", "105.LITE", "106.CIEN", "105.AAOI"] },
+      { secid: "bkt.us.cpo", name: "CPO(美国)", flag: "us", members: ["105.COHR", "105.LITE", "105.CIEN", "105.AAOI"] },
       { secid: "bkt.us.aiapp", name: "AI应用(美国)", flag: "us", members: ["105.PLTR", "105.MSFT", "105.GOOG", "105.META"] },
       { secid: "bkt.us.space", name: "商业航天(美国)", flag: "us", members: ["105.RKLB", "105.ASTS", "105.LUNR"] },
       {
         secid: "bkt.us.robot",
         name: "机器人(美国)",
         flag: "us",
-        members: ["105.ISRG", "105.TER", "106.ROK", "105.SYM", "105.SERV", "105.TSLA"],
+        members: ["105.ISRG", "105.TER", "105.ROK", "105.SYM", "105.SERV", "105.TSLA"],
       },
     ],
   },
@@ -161,19 +168,22 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
       chg: q.chg,
     });
   }
-  // 篮子合成指数：成分股等权。点位=成员最新价等权平均（同主题同币种，可比），
-  // 涨跌幅/涨跌额=成员等权平均；个别成员缺行情自动跳过，全缺则该项降级「暂无数据」。
+  // 篮子合成指数：成分股等权。涨跌幅/涨跌额=成员等权平均；个别成员缺行情自动跳过，
+  // 全缺则该项降级「暂无数据」。注意：不合成伪「点位」——成分股股价量纲不同，等权平均
+  // 出的数值无指数含义，故 price 置 null，UI 仅展示涨跌幅（与 A 股官方板块指数区分）。
   for (const g of GLOBAL_INDEX_GROUPS) {
     for (const it of g.items) {
       if (!it.members) continue;
-      const rows = it.members.map((m) => map.get(m)).filter((q): q is GlobalIndexQuote => !!q && q.price != null);
+      const rows = it.members
+        .map((m) => map.get(m))
+        .filter((q): q is GlobalIndexQuote => !!q && q.price != null && q.pct != null);
       if (!rows.length) continue;
       const n = rows.length;
       map.set(it.secid, {
         secid: it.secid,
         name: it.name,
-        price: rows.reduce((s, q) => s + (q.price as number), 0) / n,
-        pct: rows.reduce((s, q) => s + (q.pct ?? 0), 0) / n,
+        price: null,
+        pct: rows.reduce((s, q) => s + (q.pct as number), 0) / n,
         chg: rows.reduce((s, q) => s + (q.chg ?? 0), 0) / n,
       });
     }
