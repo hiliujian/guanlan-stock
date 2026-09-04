@@ -33,7 +33,7 @@ interface GlobalIndexGroup {
   title: string; // 分组标题：A股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货 / 科技热点
   items: GlobalIndexItem[];
 }
-export type GlobalSessionLabel = "盘前" | "盘后" | "正式" | "休市";
+type GlobalSessionLabel = "盘前" | "盘后" | "正式" | "休市";
 export interface GlobalIndexQuote {
   secid: string;
   name: string;
@@ -45,7 +45,7 @@ export interface GlobalIndexQuote {
 }
 
 // ---------------- 美东交易日划分（时区经 Intl 由 ICU 处理，自动适应冬/夏令时） ----------------
-export type UsSession = "pre" | "regular" | "post" | "closed";
+type UsSession = "pre" | "regular" | "post" | "closed";
 interface EtNow {
   weekday: string;
   month: number;
@@ -71,7 +71,7 @@ function etNow(d: Date = new Date()): EtNow {
   };
 }
 /** 美股当前阶段：盘前 04:00–09:30 / 正式 09:30–16:00 / 盘后 16:00–20:00（美东，周一至五）。 */
-export function usSession(d: Date = new Date()): UsSession {
+function usSession(d: Date = new Date()): UsSession {
   const et = etNow(d);
   if (et.weekday === "Sat" || et.weekday === "Sun") return "closed";
   if (et.minutes >= 240 && et.minutes < 570) return "pre";
