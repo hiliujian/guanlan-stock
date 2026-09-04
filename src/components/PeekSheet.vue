@@ -35,7 +35,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from "vue";
+import { computed, ref, onMounted, onUnmounted, onDeactivated } from "vue";
 import { usePreventPageScroll } from "@/composables/usePreventPageScroll";
 
 // 纯持久窗体：始终渲染，折叠露出卡片(peek)；父组件通过 expand/collapse 控制展开/收起，
@@ -224,6 +224,12 @@ function collapse() {
   mode.value = "collapsed";
   emit("collapse");
 }
+// 页面切换（tab 切换 / 跳转子页）时自动收起：各视图均包裹在 keep-alive 内，
+// 离开即整棵子树失活，此处统一折叠，返回时卡片不再停留在展开态；
+// collapse() 会 emit('collapse') 让父组件同步复位面板状态（如 activePanel）。
+onDeactivated(() => {
+  if (mode.value !== "collapsed") collapse();
+});
 defineExpose({ expand, collapse });
 </script>
 

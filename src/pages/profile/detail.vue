@@ -39,7 +39,14 @@
           <view class="dp-id">
             <view class="dp-namerow">
               <text :class="['dp-name', 'truncate', { 'vip-name': isVip }]">{{ nameText }}</text>
-              <view v-if="typeof profile.level === 'number' && profile.level > 0" class="dp-level-inline">
+              <!-- 等级标签：全等级可见（新用户 = 0 级新手散户也展示）；点击进入我的等级页 -->
+              <view
+                class="dp-level-inline"
+                hover-class="dp-level-hover"
+                role="button"
+                aria-label="查看我的等级"
+                @click.stop="goLevel"
+              >
                 <LevelTag :level="profile.level" :vip="isVip" />
               </view>
             </view>
@@ -483,6 +490,11 @@ function goEdit() {
   uni.navigateTo({ url: "/pages/profile/edit" });
 }
 
+/** 等级标签点击 → 我的等级页（未登录由等级页守卫拦截跳登录，与「我的」页 goLevel 同款） */
+function goLevel() {
+  uni.navigateTo({ url: "/pages/profile/level" });
+}
+
 function goLogin() {
   openAuth("login");
 }
@@ -578,6 +590,11 @@ function goUserPosts() {
 .dp-level-inline {
   flex: none;
   align-self: center;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.dp-level-hover {
+  opacity: 0.85;
 }
 /* 右侧操作区：两行（关注 / 私信），与头像垂直对齐 */
 .dp-side {
