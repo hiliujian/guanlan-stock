@@ -842,10 +842,11 @@ export function analyze(
   }
   score += flowDelta;
   addReason(flowLabel, flowDelta);
-  // RSI：50 为多空平衡。原 30-55 给 +5 (含 30-50 偏弱区间) 过于乐观。
-  // 拆成 4 档：<35 超卖反弹 +6, 35-50 中性偏弱 +2, 50-70 中性 0, 70-80 偏高 -6, >80 严重超买 -14。
-  const rsiDelta = rNow < 35 ? 6 : rNow < 50 ? 2 : rNow <= 70 ? 0 : rNow <= 80 ? -6 : -14;
-  const rsiLabel = rNow > 80 ? "RSI超买" : rNow > 70 ? "RSI偏高" : rNow < 35 ? "RSI超卖" : rNow < 50 ? "RSI偏弱" : "RSI中性";
+  // RSI：话术与阈值与「多维技术研判」格完全统一（>70 超买 / <30 超卖 / 其余中性），
+  // 不再另设 35/40/72 等私有阈值。评分保留权重分级：>80 严重超买扣更重（-14）、>70 超买（-6）、
+  // <30 超卖（+6）；原 35~50「RSI偏弱」+2 档取消——研判格该区间显示「中性」，两处定性必须一致。
+  const rsiDelta = rNow < 30 ? 6 : rNow > 80 ? -14 : rNow > 70 ? -6 : 0;
+  const rsiLabel = rNow > 70 ? "RSI超买" : rNow < 30 ? "RSI超卖" : "RSI中性";
   // MACD：除金叉/死叉（近期动量转折）外，加上 DIF 与 DEA 的静态状态（柱状图正负），
   // 避免一只强势股 MACD 红柱持续放大，只因金叉发生在 9 天前就得 0 分。
   // 计分延后至下方「动量·乖离簇」统一封顶（同源去重），不再单独加分。
@@ -853,13 +854,13 @@ export function analyze(
   const dea = m.dea[len - 1] as number;
   const macdBar = dif - dea; // 柱状图值（注意：原始 MACD 定义是 (dif-dea)×2，这里符号判断即可）
   let macdDelta = 0;
+  // 话术与「多维技术研判」MACD 格统一（红柱·多头/绿柱·空头）；「多头排列/空头排列」
+  // 是均线系统专属术语，不得用于 MACD（DIF vs DEA），避免同词两义。
   let macdReasonLabel = "MACD持平";
   if (macdCross === "gold") { macdDelta = 6; macdReasonLabel = "MACD金叉"; }
   else if (macdCross === "dead") { macdDelta = -6; macdReasonLabel = "MACD死叉"; }
-  else if (dif > dea && macdBar > 0) { macdDelta = 3; macdReasonLabel = "MACD红柱放大"; }
-  else if (dif > dea) { macdDelta = 2; macdReasonLabel = "MACD多头排列"; }
-  else if (dif < dea && macdBar < 0) { macdDelta = -3; macdReasonLabel = "MACD绿柱放大"; }
-  else if (dif < dea) { macdDelta = -2; macdReasonLabel = "MACD空头排列"; }
+  else if (dif > dea) { macdDelta = macdBar > 0 ? 3 : 2; macdReasonLabel = "MACD红柱·多头"; }
+  else if (dif < dea) { macdDelta = macdBar < 0 ? -3 : -2; macdReasonLabel = "MACD绿柱·空头"; }
 
   // ---------------- 乖离率 BIAS（均值回归因子：价格偏离均线过远必然回归） ----------------
   // A 股有涨跌停限制，偏离度阈值与成熟市场不同；按三周期分档：
@@ -925,7 +926,8 @@ export function analyze(
   const divDelta = divergence === "top" ? -8 : divergence === "bottom" ? 6 : 0;
   score += divDelta;
   addReason(
-    divergence === "top" ? "顶背离·量价背离" : divergence === "bottom" ? "底背离·量价背离" : "量价同步",
+    // 与「多维技术研判」量价背离格同一话术（顶背离·动能衰减/底背离·动能积聚），不再写「顶背离·量价背离」同语重复
+    divergence === "top" ? "顶背离·动能衰减" : divergence === "bottom" ? "底背离·动能积聚" : "量价同步",
     divDelta
   );
 
@@ -988,7 +990,8 @@ export function analyze(
 
   const risks: string[] = [];
   if (nearTop) risks.push(`当前价格接近阶段高位（约 ${topZone.toFixed(2)}），短期回调风险较大。`);
-  if (rNow > 78) risks.push(`RSI(12) 已达 ${rNow.toFixed(2)}，进入超买区，追高需谨慎。`);
+  // 阈值与多维研判格 RSI 定义统一（>70 超买），不再用私有 78 造成「何时算超买」两处口径
+  if (rNow > 70) risks.push(`RSI(12) 已达 ${rNow.toFixed(2)}，处于超买区，追高需谨慎。`);
   if (macdCross === "dead") risks.push("MACD 近期出现死叉，短线动能转弱。");
   if (nearRes) risks.push(`上方压力位在 ${resistance.toFixed(2)} 附近，若无量能配合可能遇阻。`);
   if (trend === "down") risks.push("均线空头排列，整体处于下跌趋势，抄底需严格控制仓位。");
@@ -1116,7 +1119,7 @@ export function analyze(
       level: "sell",
       label: "卖点",
       text: "临近压力且动能转弱，注意逢高减仓",
-      reason: `价格接近压力 ${resistance.toFixed(2)}，且出现${rNow > 72 ? "RSI超买" : macdCross === "dead" ? "MACD死叉" : "资金净流出"}等滞涨信号`,
+      reason: `价格接近压力 ${resistance.toFixed(2)}，且出现${rNow > 70 ? "RSI超买" : macdCross === "dead" ? "MACD死叉" : "资金净流出"}等滞涨信号`,
       confirm: "若放量强势突破压力则转强可持有；否则易遇阻回落，应减仓",
     };
   } else if (nearSup && (rNow < 40 || macdCross === "gold" || build || (f5.has && f5.sum > 0))) {
@@ -1124,7 +1127,7 @@ export function analyze(
       level: "buy",
       label: "买点",
       text: "临近支撑且出现企稳信号，可逢低关注",
-      reason: `价格接近支撑 ${support.toFixed(2)}，且出现${rNow < 40 ? "RSI超卖" : macdCross === "gold" ? "MACD金叉" : "资金净流入"}等企稳信号`,
+      reason: `价格接近支撑 ${support.toFixed(2)}，且出现${rNow < 30 ? "RSI超卖" : macdCross === "gold" ? "MACD金叉" : "资金净流入"}等企稳信号`,
       confirm: "若放量站上支撑则确认止跌，可在买入区间内建仓；跌破则转弱观望",
     };
   } else if (trend === "up" && add) {

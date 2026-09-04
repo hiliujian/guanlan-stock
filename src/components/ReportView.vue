@@ -735,10 +735,11 @@ const btSellColor = computed(() => (bt.value.sellAvgRet > 0 ? "var(--up)" : bt.v
 // ---------------- 乖离率 BIAS · 布林带宽（均值回归 + 波动率挤压）派生 ----------------
 const biasText = computed(() => {
   const v = a.value.bias12;
-  if (a.value.bias24 > 20) return `BIAS24 ${a.value.bias24.toFixed(2)}% · 中期超买`;
-  if (a.value.bias24 < -20) return `BIAS24 ${a.value.bias24.toFixed(2)}% · 中期超卖`;
-  if (v > 12) return `BIAS12 ${v.toFixed(2)}% · 短期超买`;
-  if (v < -12) return `BIAS12 ${v.toFixed(2)}% · 短期超卖`;
+  // 写法统一用 BIAS(24)/BIAS(12) 带括号格式，与评分依据、风险提示同一话术
+  if (a.value.bias24 > 20) return `BIAS(24) ${a.value.bias24.toFixed(2)}% · 中期超买`;
+  if (a.value.bias24 < -20) return `BIAS(24) ${a.value.bias24.toFixed(2)}% · 中期超卖`;
+  if (v > 12) return `BIAS(12) ${v.toFixed(2)}% · 短期超买`;
+  if (v < -12) return `BIAS(12) ${v.toFixed(2)}% · 短期超卖`;
   return `6日 ${a.value.bias6.toFixed(1)}% / 12日 ${v.toFixed(1)}% / 24日 ${a.value.bias24.toFixed(1)}%`;
 });
 const biasColor = computed(() => {
@@ -749,7 +750,7 @@ const biasColor = computed(() => {
 const bollBwText = computed(() => {
   const bw = a.value.bollBwNow;
   if (a.value.bollSqueeze) return `带宽收缩 · 即将变盘`;
-  if (bw > 2.2) return `带宽扩张 · 波动剧烈`;
+  if (bw > 2.2) return `带宽极度扩张 · 波动剧烈`; // 与评分依据「布林带宽极度扩张」同一话术（同一 bollBwNow>2.2 条件）
   if (bw < 0.6) return `带宽偏窄 · 蓄势中`;
   return `带宽常态 · 波动正常`;
 });
