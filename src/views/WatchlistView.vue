@@ -1103,6 +1103,48 @@ function onDragEnd() {
   }
 }
 
+// ===== iOS 橡皮筋守卫：表格横向滚到最右/最左后继续朝外拉，Safari 会把整表往回弹（用户反馈）。
+// Safari 16+ 由上面的 overscroll-behavior-x:none 抑制；旧版 iOS 不支持该 CSS，
+// 这里在「滚动到边缘 + 横向意图明显(|dx|>|dy|)」时 preventDefault 兜底，双保险。
+let guardLastX = 0;
+let guardLastY = 0;
+function wlGuardStart(e: TouchEvent) {
+  const t = (e.target as HTMLElement | null);
+  if (!(t && t.closest && t.closest(".wl-grid"))) return;
+  const p = e.touches[0];
+  if (p) {
+    guardLastX = p.clientX;
+    guardLastY = p.clientY;
+  }
+}
+function wlGuardMove(e: TouchEvent) {
+  const tgt = e.target as HTMLElement | null;
+  if (!(tgt && tgt.closest && tgt.closest(".wl-grid"))) return;
+  const p = e.touches[0];
+  if (!p) return;
+  const dx = p.clientX - guardLastX;
+  const dy = p.clientY - guardLastY;
+  guardLastX = p.clientX;
+  guardLastY = p.clientY;
+  // closest 自内向外：先命中真正滚动着的内层 .uni-scroll-view
+  const scroller = tgt.closest(".uni-scroll-view") as HTMLElement | null;
+  if (!scroller) return;
+  const max = scroller.scrollWidth - scroller.clientWidth;
+  const outward =
+    (scroller.scrollLeft <= 0 && dx < 0) || (scroller.scrollLeft >= max - 1 && dx > 0);
+  if (outward && Math.abs(dx) > Math.abs(dy) && e.cancelable) {
+    e.preventDefault();
+  }
+}
+onMounted(() => {
+  document.addEventListener("touchstart", wlGuardStart, { passive: true });
+  document.addEventListener("touchmove", wlGuardMove, { passive: false });
+});
+onUnmounted(() => {
+  document.removeEventListener("touchstart", wlGuardStart);
+  document.removeEventListener("touchmove", wlGuardMove);
+});
+
 // 表头排序：点击列头切换 升/降序；null(加载中) 始终排末尾（名称列固定，不参与排序）
 type SortKey = "pct" | "price" | "chg" | "open" | "amp" | "amt" | "";
 const sortKey = ref<SortKey>("");
@@ -1501,8 +1543,12 @@ function removeLp() {
   min-height: 0;
   width: 100%;
   background: var(--bg-2);
-  /* 拖拽排序时滚动由 :scroll-x/:scroll-y 动态锁定；这里抑制 iOS 的滚动链回弹 */
-  overscroll-behavior: contain;
+}
+/* 横向到边不再橡皮筋：真正滚动的是 uni-scroll-view 内层元素，overscroll-behavior 必须打在它上
+   （Safari 16+ 生效；更旧 iOS 由下方 JS 边缘守卫兜底）。纵向 contain 防止滚动链传导到页面级回弹 */
+.wl-grid :deep(.uni-scroll-view) {
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: contain;
 }
 /* 表格外层：相对定位容器，承载滚动表格 + 列控制浮层；列控制按钮已移出 scroll-x 容器 */
 .wl-wrap {
