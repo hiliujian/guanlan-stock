@@ -1,12 +1,8 @@
 <template>
   <view class="report">
-    <!-- 顶部横幅 -->
-    <view :class="['banner', bannerCls]">
-      <OutlineIcon :type="bannerIcon" :size="34" />
-      <text class="banner-text">{{ a.banner }}</text>
-    </view>
-
-    <!-- 直白操作信号（核心卖点：什么时候买 / 什么时候卖）
+    <!-- 直白操作信号（核心卖点：什么时候买 / 什么时候卖。
+         原顶部横幅已移除：它与信号卡是两套独立判定，会出现「横幅建议观望 + 信号卡买点」
+         的自相矛盾；其独占信息（高位风险/布林收敛/资讯偏空）已并入下方风险提示区） -->
          信号头部 + 盘中异动警示 + 触发/确认详情上下拼接为一张连通卡片，共享圆角阴影与色条 -->
     <view :class="['signal-card', signalCls]">
       <view class="signal">
@@ -411,18 +407,6 @@ const props = defineProps<{ result: AnalysisResult; news?: NewsItem[]; newsSigna
 // 切换股票时 props.result 变了但 a 不变 → 报告不刷新。
 const a = computed(() => props.result);
 
-const bannerCls = computed(() => {
-  const c = a.value.bannerCls;
-  if (c === "bad") return "bad";
-  if (c === "warn") return "warn";
-  return "ok";
-});
-const bannerIcon = computed(() => {
-  if (bannerCls.value === "bad") return "info";
-  if (bannerCls.value === "warn") return "info";
-  // 用 star-filled 代替 medal，避免与"技术面评分"面板的 medal 图标重复。
-  return "star-filled";
-});
 // 操作信号卡片着色（A股约定：买/看涨=红 var(--up)、卖/看跌=绿 var(--down)、持有(蓝)/关注(橙)/观望(灰)）
 const signalCls = computed(() => {
   const l = a.value.signal.level;
@@ -918,34 +902,6 @@ function openNews(it: NewsItem) {
   --r-panel: var(--card);
   --r-edge: transparent;
 }
-.banner {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  padding: 18rpx 22rpx;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-sm);
-  line-height: 1.6;
-  margin-bottom: 18rpx;
-}
-/* A股语义统一：红=偏强/机会（利多），绿=偏弱/风险（利空），橙=警示/变盘。
-   与下方买卖信号、决策标签、突破/跌破标签同一口径，同一份报告不允许两套红绿语义。 */
-.banner.ok {
-  background: rgba(239, 35, 42, 0.1);
-  color: var(--up);
-}
-.banner.warn {
-  background: rgba(255, 159, 28, 0.12);
-  color: #c87f00;
-}
-.banner.bad {
-  background: rgba(9, 176, 122, 0.1);
-  color: var(--down);
-}
-.banner-text {
-  flex: 1;
-}
-
 /* 今日盘中异动警示条（内嵌于信号卡片：涨停/跌停/炸板/跌停开板）
    A股约定：涨=红(var(--up)=#ef232a)、跌=绿(var(--down)=#09b07a)。 */
 .sig-alert {

@@ -387,8 +387,6 @@ export interface AnalysisResult {
   buyLow: number;
   buyHigh: number;
   risks: string[];
-  banner: string;
-  bannerCls: string;
   // ---- 专业指标（新增，提升研判严谨度）----
   adx: number[];
   pDI: number[];
@@ -1002,6 +1000,8 @@ export function analyze(
   if (deepDd) risks.push(`近 120 日最大回撤达 ${(mdd * 100).toFixed(2)}%，历史持股体验波动剧烈。`);
   // 资讯面风险：把量化出的利空关键词作为消息面风险提示（最多取 2 条，避免淹没技术风险）
   for (const r of newsRisks.slice(0, 2)) risks.push("资讯面：" + r);
+  // 资讯整体偏空（情绪分 ≤ -30）：原由顶部横幅承载的「消息面风险」在此承接，横幅移除后不丢信息
+  if (news && news.score <= -30) risks.push("近期相关资讯整体偏空，注意消息面风险。");
   // 筹码结构风险：获利盘过高 → 获利回吐压力；现价远高于密集峰 → 套牢盘密集抛压
   if (chipR) {
     if (chipR.profitRatio > 0.9) risks.push(`筹码获利盘高达 ${(chipR.profitRatio * 100).toFixed(0)}%，浮盈盘集中易引发获利回吐。`);
@@ -1025,47 +1025,11 @@ export function analyze(
   if (reduce && risks.length === 0) risks.push("综合指标偏谨慎，建议以观望为主。");
   if (risks.length === 0) risks.push("暂无显著风险信号，但仍需关注量能与大盘环境。");
 
-  let banner: string;
-  let bannerCls = "";
-  if (nearTop && rNow > 75) {
-    banner = "⚠️ 近期涨幅较大，已进入高风险区域，注意回调风险。";
-    bannerCls = "bad";
-  } else if (nearRes && nearBottom) {
-    // 窄幅区间重叠：箱体宽度 < 8% 时「贴支撑(5%)」与「贴压力(3%)」可同时成立。
-    // 此时「接近支撑=风险较低」不成立——上方压力仅 3% 之遥；若仍发✅可重点关注，
-    // 会与下方卖点信号（临近压力+动能转弱→逢高减仓）自相矛盾。
-    banner = "⏸️ 价格处于支撑与压力之间的窄幅区间，短期方向待量能选择。";
-    bannerCls = "warn";
-  } else if (nearBottom && f5.sum > 0) {
-    banner = "✅ 当前价格接近阶段支撑区域，风险较低，可重点关注。";
-  } else if (trend === "up" && f5.sum > 0) {
-    banner = "🚀 近5日主力资金净流入，趋势偏强，可逢回调关注。";
-  } else if (trend === "shake_up") {
-    banner = "📈 价格震荡偏强，可逢回调（支撑位附近）关注。";
-  } else if (trend === "shake_down") {
-    banner = "📉 震荡偏弱，建议观望，等企稳再说。";
-    bannerCls = "warn";
-  } else if (trend === "shake") {
-    banner = "⏸️ 当前处于震荡阶段，建议等待方向确认再动手。";
-    bannerCls = "warn";
-  } else if (trend === "down") {
-    banner = "📉 当前处于下跌趋势，建议观望，不急于抄底。";
-    bannerCls = "bad";
-  } else {
-    banner = "📈 价格站上短期均线，处于偏强运行阶段。";
-  }
-  // 布林带挤压（收敛）：波动率压缩到近 120 日 15% 分位以下，是独立的「即将变盘」信号，
-  // 优先级高于常规趋势描述，直接覆盖 banner（若当前不是更高优先级的 bad）。
-  if (bollSqueeze && bannerCls !== "bad") {
-    banner = "⚡ 布林带极度收敛，近期将选择方向，关注量能配合再决定加减仓。";
-    bannerCls = "warn";
-  }
-  // 资讯偏空（情绪分 ≤ -30）且当前横幅尚未标红时，以警示色提示消息面风险，
-  // 让「重大利空新闻」能直接反映在顶部横幅，与技术风险形成合力提醒。
-  if (news && news.score <= -30 && bannerCls !== "bad") {
-    banner = "⚠️ 近期相关资讯偏空，注意消息面风险。";
-    bannerCls = "warn";
-  }
+  // 注：原先的顶部横幅（banner）已整体移除——它与「直白买卖信号」是两套独立判定，
+  // 会同时出现「横幅建议观望 + 信号卡买点」的自相矛盾结论（如 trend=震荡偏弱 且
+  // 临近支撑+资金净流入）。操作建议一律由信号卡单点给出；横幅原本承载的独占信息
+  // 已全部落在风险提示里：高位风险见 nearTop 行、布林收敛见 bollSqueeze 行、
+  // 资讯偏空见下方 news.score 行。
 
   // ---------------- 突破 / 跌破 判定 ----------------
   // 仅当支撑/压力来自明确的 pivot 拐点（非近60日极值兜底）才判定，
@@ -1640,8 +1604,6 @@ export function analyze(
     buyLow,
     buyHigh,
     risks,
-    banner,
-    bannerCls,
     adx,
     pDI,
     mDI,
