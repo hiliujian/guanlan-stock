@@ -90,8 +90,8 @@ let startY = 0;
 const shellStyle = computed(() => {
   if (!dragging.value) return {};
   if (dragUp.value) {
-    // 上拉：实时增高预览（直到铺满整页）
-    const base = winH.value * 0.62;
+    // 上拉：实时增高预览（直到铺满整页）。基准 = 展开态高度（50vh - 底部偏移，与 CSS 同式）
+    const base = winH.value * 0.5 - tabPx.value;
     const maxH = Math.max(base, winH.value - tabPx.value);
     let h = base - dragY.value; // dragY 为负（上拉），h 增大
     if (h > maxH) h = maxH + (h - maxH) * 0.2; // 超过铺满后加阻尼
@@ -256,7 +256,9 @@ defineExpose({ expand, collapse });
   animation: peekIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .peek-card.expanded {
-  height: 62vh;
+  /* 展开态总占屏 = 卡片高度 + 底部菜单偏移(110rpx+安全区) = 恰好半屏：
+     卡片高度先扣除底部偏移，保证加上底部菜单后顶边也不越过页面一半 */
+  height: calc(50vh - 110rpx - env(safe-area-inset-bottom));
 }
 .peek-card.max {
   height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
