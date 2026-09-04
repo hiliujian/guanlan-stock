@@ -1103,9 +1103,9 @@ function onDragEnd() {
   }
 }
 
-// ===== iOS 橡皮筋守卫：表格横向滚到最右/最左后继续朝外拉，Safari 会把整表往回弹（用户反馈）。
-// Safari 16+ 由上面的 overscroll-behavior-x:none 抑制；旧版 iOS 不支持该 CSS，
-// 这里在「滚动到边缘 + 横向意图明显(|dx|>|dy|)」时 preventDefault 兜底，双保险。
+// ===== iOS 橡皮筋守卫：表格横/纵向滚到边后继续朝外拉，Safari 会把整表往回弹（用户反馈）。
+// Safari 16+ 由上面的 overscroll-behavior:none 抑制；旧版 iOS 不支持该 CSS，
+// 这里在「对应轴滚到边缘 + 该轴意图明显(|位移|占优)」时 preventDefault 兜底，双保险。
 let guardLastX = 0;
 let guardLastY = 0;
 function wlGuardStart(e: TouchEvent) {
@@ -1129,10 +1129,19 @@ function wlGuardMove(e: TouchEvent) {
   // closest 自内向外：先命中真正滚动着的内层 .uni-scroll-view
   const scroller = tgt.closest(".uni-scroll-view") as HTMLElement | null;
   if (!scroller) return;
-  const max = scroller.scrollWidth - scroller.clientWidth;
-  const outward =
-    (scroller.scrollLeft <= 0 && dx < 0) || (scroller.scrollLeft >= max - 1 && dx > 0);
-  if (outward && Math.abs(dx) > Math.abs(dy) && e.cancelable) {
+  // 仅在对应轴真正可滚动时守卫（内容不溢出时拦默认动作毫无意义，还会误伤另一轴联动）
+  const hasH = scroller.scrollWidth > scroller.clientWidth + 1;
+  const hasV = scroller.scrollHeight > scroller.clientHeight + 1;
+  const outwardH =
+    hasH &&
+    ((scroller.scrollLeft <= 0 && dx < 0) ||
+      (scroller.scrollLeft >= scroller.scrollWidth - scroller.clientWidth - 1 && dx > 0));
+  const outwardV =
+    hasV &&
+    ((scroller.scrollTop <= 0 && dy < 0) ||
+      (scroller.scrollTop >= scroller.scrollHeight - scroller.clientHeight - 1 && dy > 0));
+  const dominantH = Math.abs(dx) > Math.abs(dy);
+  if (((outwardH && dominantH) || (outwardV && !dominantH)) && e.cancelable) {
     e.preventDefault();
   }
 }
@@ -1544,11 +1553,10 @@ function removeLp() {
   width: 100%;
   background: var(--bg-2);
 }
-/* 横向到边不再橡皮筋：真正滚动的是 uni-scroll-view 内层元素，overscroll-behavior 必须打在它上
-   （Safari 16+ 生效；更旧 iOS 由下方 JS 边缘守卫兜底）。纵向 contain 防止滚动链传导到页面级回弹 */
+/* 横/纵向到边均不再橡皮筋：真正滚动的是 uni-scroll-view 内层元素，overscroll-behavior 必须打在它上
+   （Safari 16+ 生效；更旧 iOS 由下方 JS 边缘守卫兜底） */
 .wl-grid :deep(.uni-scroll-view) {
-  overscroll-behavior-x: none;
-  overscroll-behavior-y: contain;
+  overscroll-behavior: none;
 }
 /* 表格外层：相对定位容器，承载滚动表格 + 列控制浮层；列控制按钮已移出 scroll-x 容器 */
 .wl-wrap {
