@@ -186,7 +186,8 @@
                     </view>
                     <view class="idx-item-right">
                       <text v-if="!it.members" class="idx-item-price" :class="[qCls(it.secid), qNa(it.secid) ? 'na' : '']">{{ qPrice(it.secid) }}</text>
-                      <text class="idx-item-pct" :class="qCls(it.secid)">{{ qPct(it.secid) }}</text>
+                      <text v-if="!hasRegPct(it)" class="idx-item-pct" :class="qCls(it.secid)">{{ qPct(it.secid) }}</text>
+                      <text v-else class="idx-item-pct"><text :class="qCls(it.secid)">{{ qPct(it.secid) }}</text><text class="idx-item-pct-reg" :class="regCls(it)">{{ regPctText(it) }}</text></text>
                     </view>
                   </view>
                 </view>
@@ -402,6 +403,23 @@ function qCls(secid: string): string {
 function qNa(secid: string): boolean {
   const q = qOf(secid);
   return !q || q.price == null || !Number.isFinite(q.price);
+}
+
+
+// 美股篮子盘前/盘后：小字并列展示「扩展时段涨跌幅 + 正式涨跌幅」（如 -0.18% +5.80%）
+// 正式涨跌幅来自新浪扩展行情的 (正式收盘-昨收)/昨收，仅盘前/盘后阶段有值
+function hasRegPct(it: { secid: string }): boolean {
+  const q = qOf(it.secid);
+  const r = q?.regPct;
+  return !!q && (q.session === '盘前' || q.session === '盘后') && r != null && Number.isFinite(r);
+}
+function regPctText(it: { secid: string }): string {
+  const r = qOf(it.secid)?.regPct ?? 0;
+  return (r >= 0 ? '+' : '') + r.toFixed(2) + '%';
+}
+function regCls(it: { secid: string }): string {
+  const r = qOf(it.secid)?.regPct ?? 0;
+  return r > 0 ? 'up' : r < 0 ? 'down' : 'flat';
 }
 
 // ---------------- 期指持仓（中金所官方，最近已发布交易日） ----------------
@@ -1461,6 +1479,11 @@ defineExpose({ refresh: () => refreshFull() });
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
+.idx-item-pct-reg {
+  margin-left: 10rpx;
+  color: var(--text-2);
+}
+
 .idx-item-pct {
   font-size: var(--font-sm);
   color: var(--text-2);

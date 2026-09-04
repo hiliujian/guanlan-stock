@@ -42,6 +42,8 @@ export interface GlobalIndexQuote {
   chg: number | null; // 涨跌额，带符号
   /** 篮子项当前所处美股行情阶段（盘前/盘后/正式），UI 用它替代固定「篮子」角标；非篮子项缺省 */
   session?: GlobalSessionLabel;
+  /** 美股篮子盘前/盘后时段的「正式涨跌幅」(%, 相对昨日收盘的正式时段涨跌)。仅此时填充供小字并列展示；其余缺省 */
+  regPct?: number | null;
 }
 
 // ---------------- 美东交易日划分（时区经 Intl 由 ICU 处理，自动适应冬/夏令时） ----------------
@@ -312,6 +314,7 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
         price: null,
         pct: r.pct,
         chg: r.chg,
+        regPct: nonUs ? null : (r.regPct ?? null),
         session: nonUs ? undefined : label,
       });
     }
@@ -365,7 +368,7 @@ function computeBasket(
   extMap: Map<string, SinaUsExtQuote>,
   session: UsSession,
   et: EtNow | null
-): { pct: number | null; chg: number | null } {
+): { pct: number | null; chg: number | null; regPct: number | null } {
   const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
   if (session === "pre" || session === "post") {
     const post = session === "post";
@@ -374,7 +377,7 @@ function computeBasket(
     //   consTol：报告涨跌幅 vs (扩展价-正式收盘)/正式收盘 推算值的容差(pp)（防字段错位）。
     const pctCap = post ? 15 : 25;
     const consTol = post ? 0.5 : 1.0;
-    const rows: { pct: number; chg: number }[] = [];
+    const rows: { pct: number; chg: number; reg: number | null }[] = [];
     for (const m of it.members ?? []) {
       const e = extMap.get(m);
       if (!e || e.extPrice == null || e.extPct == null || e.close == null) continue;
@@ -382,20 +385,28 @@ function computeBasket(
       if (Math.abs(e.extPct) > pctCap) continue;
       const derived = ((e.extPrice - e.close) / e.close) * 100;
       if (Math.abs(derived - e.extPct) > consTol) continue;
-      rows.push({ pct: e.extPct, chg: e.extPrice - e.close });
+      // 正式涨跌幅 = (正式收盘-昨收)/昨收（与新浪 [2] 字段同义），供盘前/盘后小字并列展示
+      const reg = e.preClose ? ((e.close - e.preClose) / e.preClose) * 100 : null;
+      rows.push({ pct: e.extPct, chg: e.extPrice - e.close, reg });
     }
     // 准入下限：盘后须至少一半成分有新鲜有效数据；盘前至少 2 只（保证可产出又防单点脏数据）
     const quorum = post ? Math.ceil((it.members?.length ?? 0) / 2) : 2;
-    if (rows.length < Math.max(quorum, 1)) return { pct: null, chg: null };
-    return { pct: mean(rows.map((r) => r.pct)), chg: mean(rows.map((r) => r.chg)) };
+    if (rows.length < Math.max(quorum, 1)) return { pct: null, chg: null, regPct: null };
+    const regs = rows.map((r) => r.reg).filter((v): v is number => v != null);
+    return {
+      pct: mean(rows.map((r) => r.pct)),
+      chg: mean(rows.map((r) => r.chg)),
+      regPct: regs.length ? mean(regs) : null,
+    };
   }
   // 正式/休市：常规口径（东财 ulist 等权，价格与涨跌幅非空即可入样）
   const rows = (it.members ?? [])
     .map((m) => map.get(m))
     .filter((q): q is GlobalIndexQuote => !!q && q.price != null && q.pct != null);
-  if (!rows.length) return { pct: null, chg: null };
+  if (!rows.length) return { pct: null, chg: null, regPct: null };
   return {
     pct: mean(rows.map((q) => q.pct as number)),
     chg: mean(rows.map((q) => q.chg ?? 0)),
+    regPct: null, // 常规口径的 pct 本身就是正式涨跌幅，无需另设
   };
 }
