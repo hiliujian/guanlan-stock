@@ -6,7 +6,16 @@
 // 数据可用性（实测）：A股主要指数、恒生/恒生科技/韩国/日经、美股三大、欧洲四大，
 // 均经 Eastmoney ulist（实时主机）返回真实点位；商品期货（沪金/沪银/沪铜/原油主连、
 // COMEX 金/银/铜、WTI/布伦特原油）Eastmoney 不提供，改走新浪期货接口返回真实价格。
-import { getUlistQuotes, getFuturesQuotes, getTencentFallbackQuotes, FUTURES_SECIDS, type UlistQuote } from "@/api/sources";
+import {
+  getUlistQuotes,
+  getFuturesQuotes,
+  getTencentFallbackQuotes,
+  getSinaUsExtQuotes,
+  parseSinaUsExtTime,
+  FUTURES_SECIDS,
+  type UlistQuote,
+  type SinaUsExtQuote,
+} from "@/api/sources";
 
 interface GlobalIndexItem {
   secid: string;
@@ -24,12 +33,51 @@ interface GlobalIndexGroup {
   title: string; // 分组标题：A股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货 / 科技热点
   items: GlobalIndexItem[];
 }
+export type GlobalSessionLabel = "盘前" | "盘后" | "正式";
 export interface GlobalIndexQuote {
   secid: string;
   name: string;
   price: number | null; // 最新点位
   pct: number | null; // 涨跌幅(%)，带符号
   chg: number | null; // 涨跌额，带符号
+  /** 篮子项当前所处美股行情阶段（盘前/盘后/正式），UI 用它替代固定「篮子」角标；非篮子项缺省 */
+  session?: GlobalSessionLabel;
+}
+
+// ---------------- 美东交易日划分（时区经 Intl 由 ICU 处理，自动适应冬/夏令时） ----------------
+export type UsSession = "pre" | "regular" | "post" | "closed";
+interface EtNow {
+  weekday: string;
+  month: number;
+  day: number;
+  minutes: number; // 当日 0 点起的美东分钟数
+}
+function etNow(d: Date = new Date()): EtNow {
+  const p = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(d);
+  const g = (t: string) => p.find((x) => x.type === t)?.value || "";
+  return {
+    weekday: g("weekday"),
+    month: parseInt(g("month"), 10),
+    day: parseInt(g("day"), 10),
+    minutes: (parseInt(g("hour"), 10) % 24) * 60 + parseInt(g("minute"), 10),
+  };
+}
+/** 美股当前阶段：盘前 04:00–09:30 / 正式 09:30–16:00 / 盘后 16:00–20:00（美东，周一至五）。 */
+export function usSession(d: Date = new Date()): UsSession {
+  const et = etNow(d);
+  if (et.weekday === "Sat" || et.weekday === "Sun") return "closed";
+  if (et.minutes >= 240 && et.minutes < 570) return "pre";
+  if (et.minutes >= 570 && et.minutes < 960) return "regular";
+  if (et.minutes >= 960 && et.minutes < 1200) return "post";
+  return "closed";
 }
 
 // 全球重要市场指数目录（按地区/品种分组）。国家/地区标的用 flag（列表前小国旗）；
@@ -102,6 +150,8 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     // 东财美股 secid 规则（实测确认）：NASDAQ 上市用 105. 前缀，NYSE 上市用 106. 前缀。
     // COHR / CIEN / ROK 均为 NYSE 上市，必须用 106.；曾误把它们统一成 105. 导致静默取不到
     // 数据、篮子口径失真，故此处显式用 106.。
+    // 盘前/盘后阶段：改用新浪美股 gb_ 扩展行情驱动篮子（见 fetchGlobalIndices 的分级过滤），
+    // 角标同步显示当前阶段（盘前/盘后/正式）。
     // 韩国主题（半导体/存储）：网关无韩国个股行情数据源，暂无法合成，待有源后补。
     title: "科技热点",
     items: [
@@ -179,6 +229,11 @@ const ALL_SECIDS: string[] = Array.from(
 // 指数走 Eastmoney ulist（实时主机）；商品期货 Eastmoney 不提供，改走新浪期货接口。
 // 两者并行拉取后合并：目录中所有标的先填入「暂无」骨架，再覆盖真实数据；
 // 任一源失败仅该部分缺数据，由上层降级为「暂无数据」。
+//
+// 篮子（美股科技热点）按美东阶段驱动：
+//   · 正式/休市 → 维持东财等权口径，session=「正式」；
+//   · 盘前/盘后 → 改用新浪扩展行情驱动，session=「盘前」/「盘后」，并施加脏数据过滤
+//     （新鲜度 + 涨跌幅上限 + 涨跌幅/价格一致性校验），盘后阈值比盘前更严。
 export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote>> {
   const map = new Map<string, GlobalIndexQuote>();
   for (const g of GLOBAL_INDEX_GROUPS) {
@@ -203,25 +258,86 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
       chg: q.chg,
     });
   }
+
   // 篮子合成指数：成分股等权。涨跌幅/涨跌额=成员等权平均；个别成员缺行情自动跳过，
   // 全缺则该项降级「暂无数据」。注意：不合成伪「点位」——成分股股价量纲不同，等权平均
   // 出的数值无指数含义，故 price 置 null，UI 仅展示涨跌幅（与 A 股官方板块指数区分）。
+  const session = usSession();
+  const extended = session === "pre" || session === "post";
+  const et = extended ? etNow() : null;
+  const extMap = new Map<string, SinaUsExtQuote>();
+  if (extended) {
+    const ext = await getSinaUsExtQuotes(
+      GLOBAL_INDEX_GROUPS.flatMap((g) => g.items.flatMap((i) => i.members ?? []))
+    ).catch(() => [] as SinaUsExtQuote[]);
+    for (const e of ext) extMap.set(e.secid, e);
+  }
   for (const g of GLOBAL_INDEX_GROUPS) {
     for (const it of g.items) {
       if (!it.members) continue;
-      const rows = it.members
-        .map((m) => map.get(m))
-        .filter((q): q is GlobalIndexQuote => !!q && q.price != null && q.pct != null);
-      if (!rows.length) continue;
-      const n = rows.length;
+      const r = computeBasket(it, map, extMap, session, et);
       map.set(it.secid, {
         secid: it.secid,
         name: it.name,
         price: null,
-        pct: rows.reduce((s, q) => s + (q.pct as number), 0) / n,
-        chg: rows.reduce((s, q) => s + (q.chg ?? 0), 0) / n,
+        pct: r.pct,
+        chg: r.chg,
+        session: session === "pre" ? "盘前" : session === "post" ? "盘后" : "正式",
       });
     }
   }
   return map;
+}
+
+/** 扩展时段数据新鲜度：成交时间须为美东「今天」且落在当前阶段窗口内（防旧盘后/假期/隔日脏数据）。 */
+function extFresh(
+  t: { month: number; day: number; minutes: number; am: boolean } | null,
+  et: EtNow,
+  session: "pre" | "post"
+): boolean {
+  if (!t || t.month !== et.month || t.day !== et.day) return false;
+  if (session === "pre") return t.am && t.minutes >= 240 && t.minutes < 570; // 04:00–09:30
+  return !t.am && t.minutes >= 960 && t.minutes <= 1260; // 盘后 16:00–20:00，容忍 21:00 前的迟到的戳
+}
+
+/** 篮子等权计算：正式/休市走东财常规口径；盘前/盘后走新浪扩展行情并施加分级过滤。 */
+function computeBasket(
+  it: GlobalIndexItem,
+  map: Map<string, GlobalIndexQuote>,
+  extMap: Map<string, SinaUsExtQuote>,
+  session: UsSession,
+  et: EtNow | null
+): { pct: number | null; chg: number | null } {
+  const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+  if (session === "pre" || session === "post") {
+    const post = session === "post";
+    // 过滤阈值：盘后比盘前更严（用户要求盘后不得沿用常规口径）。
+    //   pctCap：单成员扩展涨跌幅绝对值上限（防错价/错小数点类脏数据）；
+    //   consTol：报告涨跌幅 vs (扩展价-正式收盘)/正式收盘 推算值的容差(pp)（防字段错位）。
+    const pctCap = post ? 15 : 25;
+    const consTol = post ? 0.5 : 1.0;
+    const rows: { pct: number; chg: number }[] = [];
+    for (const m of it.members ?? []) {
+      const e = extMap.get(m);
+      if (!e || e.extPrice == null || e.extPct == null || e.close == null) continue;
+      if (!extFresh(parseSinaUsExtTime(e.extTime), et as EtNow, post ? "post" : "pre")) continue;
+      if (Math.abs(e.extPct) > pctCap) continue;
+      const derived = ((e.extPrice - e.close) / e.close) * 100;
+      if (Math.abs(derived - e.extPct) > consTol) continue;
+      rows.push({ pct: e.extPct, chg: e.extPrice - e.close });
+    }
+    // 准入下限：盘后须至少一半成分有新鲜有效数据；盘前至少 2 只（保证可产出又防单点脏数据）
+    const quorum = post ? Math.ceil((it.members?.length ?? 0) / 2) : 2;
+    if (rows.length < Math.max(quorum, 1)) return { pct: null, chg: null };
+    return { pct: mean(rows.map((r) => r.pct)), chg: mean(rows.map((r) => r.chg)) };
+  }
+  // 正式/休市：常规口径（东财 ulist 等权，价格与涨跌幅非空即可入样）
+  const rows = (it.members ?? [])
+    .map((m) => map.get(m))
+    .filter((q): q is GlobalIndexQuote => !!q && q.price != null && q.pct != null);
+  if (!rows.length) return { pct: null, chg: null };
+  return {
+    pct: mean(rows.map((q) => q.pct as number)),
+    chg: mean(rows.map((q) => q.chg ?? 0)),
+  };
 }

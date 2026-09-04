@@ -280,6 +280,88 @@ const FUTURES_SINA: Record<string, string> = {
 };
 export const FUTURES_SECIDS = Object.keys(FUTURES_SINA);
 
+// ---------------- 美股盘前/盘后扩展行情（新浪 gb_ 批量接口） ----------------
+// 新浪美股 gb_ 格式（逗号分隔，实测三样本交叉验证自洽）：
+//   [1]正式收盘价 [2]正式涨跌幅% [21]扩展时段(盘前或盘后)最新价
+//   [22]扩展涨跌幅%（相对正式收盘价，已验算 [22]=( [21]-[1] )/[1]*100）
+//   [24]扩展时段最后成交时间（如 "Sep 03 08:01PM EDT"；盘前时段则为 AM）
+//   [25]正式时段最后成交时间 [26]昨收
+// 复用网关 futures kind（即 hq.sinajs.cn/list= 通用批量接口，仅 URL 语义复用），零后端改动。
+export interface SinaUsExtQuote {
+  secid: string;
+  close: number | null; // [1] 正式收盘价（扩展涨跌幅基准 + chg 计算基准）
+  extPrice: number | null; // [21] 盘前/盘后最新价
+  extPct: number | null; // [22] 扩展涨跌幅%（相对正式收盘价）
+  preClose: number | null; // [26] 昨收
+  extTime: string; // [24] 扩展时段最后成交时间原始串（新鲜度校验用）
+}
+
+/** 解析新浪扩展时段成交时间（"Sep 03 08:01PM EDT"）→ ET 月/日/分钟/上下午；格式异常返回 null。 */
+export function parseSinaUsExtTime(
+  s: string
+): { month: number; day: number; minutes: number; am: boolean } | null {
+  const m = /^([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{1,2}):(\d{2})(AM|PM)\s+(?:EDT|EST)$/.exec(
+    (s || "").trim()
+  );
+  if (!m) return null;
+  const months: Record<string, number> = {
+    Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
+    Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12,
+  };
+  const month = months[m[1]];
+  if (!month) return null;
+  const h = parseInt(m[3], 10) % 12 + (m[5] === "PM" ? 12 : 0);
+  return { month, day: parseInt(m[2], 10), minutes: h * 60 + parseInt(m[4], 10), am: m[5] === "AM" };
+}
+
+/** 批量拉取美股盘前/盘后扩展行情（东财 secid 105./106. 自动映射 gb_ 小写符号）。 */
+export async function getSinaUsExtQuotes(secids: string[]): Promise<SinaUsExtQuote[]> {
+  const symOf = (secid: string): string => {
+    const [m, c] = secid.split(".");
+    return m === "105" || m === "106" ? `gb_${(c || "").toLowerCase()}` : "";
+  };
+  const pairs = new Map<string, string>(); // gb_ 符号 → 原始 secid（天然去重）
+  for (const s of secids) {
+    const sym = symOf(s);
+    if (sym) pairs.set(sym, s);
+  }
+  if (!pairs.size) return [];
+  try {
+    const { text } = await requestGateway("futures", { secids: [...pairs.keys()].join(",") });
+    const rows = new Map<string, string[]>();
+    for (const line of (text || "").split(/\r?\n/)) {
+      const i = line.indexOf('"');
+      const j = line.lastIndexOf('"');
+      if (i < 0 || j <= i) continue;
+      const sym = (line.slice(0, i).match(/hq_str_(gb_[a-z0-9.]+)/) || [])[1];
+      if (sym && pairs.has(sym)) rows.set(sym, line.slice(i + 1, j).split(","));
+    }
+    const num = (x: string | undefined): number | null => {
+      const v = parseFloat(x || "");
+      return Number.isFinite(v) ? v : null;
+    };
+    const out: SinaUsExtQuote[] = [];
+    for (const [sym, a] of rows) {
+      const close = num(a[1]);
+      const extPrice = num(a[21]);
+      out.push({
+        secid: pairs.get(sym) as string,
+        close: close != null && close > 0 ? close : null,
+        extPrice: extPrice != null && extPrice > 0 ? extPrice : null,
+        extPct: num(a[22]),
+        preClose: (() => {
+          const v = num(a[26]);
+          return v != null && v > 0 ? v : null;
+        })(),
+        extTime: (a[24] || "").trim(),
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 // 批量期货实时报价：单次网关 futures 请求（新浪）取多合约，返回与 UlistQuote 同构。
 // 涨跌以「最新价 vs 昨结算价」计算（期货主流口径，昨结算缺失时由解析层回退今开）。
 export async function getFuturesQuotes(secids: string[]): Promise<UlistQuote[]> {

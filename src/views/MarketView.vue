@@ -179,8 +179,8 @@
                       <image v-if="it.flag" class="peek-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
                       <image v-else-if="it.icon" class="peek-flag-ic" :src="COMMODITY_ICON[it.icon]" mode="aspectFit" />
                       <text class="idx-item-name">{{ it.name }}</text>
-                      <!-- 篮子合成指数口径角标：涨跌幅为成分股等权平均（非官方指数），显式标注防误读 -->
-                      <text v-if="it.members" class="idx-item-bkt">篮子</text>
+                      <!-- 篮子状态角标：当前美股行情阶段（盘前/盘后/正式），提示数据所属时段防误读 -->
+                      <text v-if="it.members" class="idx-item-bkt">{{ qOf(it.secid)?.session || '正式' }}</text>
                     </view>
                     <view class="idx-item-right">
                       <text v-if="!it.members" class="idx-item-price" :class="[qCls(it.secid), qNa(it.secid) ? 'na' : '']">{{ qPrice(it.secid) }}</text>
@@ -1429,7 +1429,7 @@ defineExpose({ refresh: () => refreshFull() });
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 篮子角标：小号灰底轻量呈现，仅口径提示不抢视觉 */
+/* 篮子状态角标（盘前/盘后/正式）：小号灰底轻量呈现，仅时段提示不抢视觉 */
 .idx-item-bkt {
   flex: none;
   font-size: var(--font-xs);
