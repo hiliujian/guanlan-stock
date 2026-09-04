@@ -187,7 +187,7 @@
                     <view class="idx-item-right">
                       <text v-if="!it.members" class="idx-item-price" :class="[qCls(it.secid), qNa(it.secid) ? 'na' : '']">{{ qPrice(it.secid) }}</text>
                       <text v-if="!hasRegPct(it)" class="idx-item-pct" :class="qCls(it.secid)">{{ qPct(it.secid) }}</text>
-                      <text v-else class="idx-item-pct"><text :class="qCls(it.secid)">{{ qPct(it.secid) }}</text><text class="idx-item-pct-reg" :class="regCls(it)">{{ regPctText(it) }}</text></text>
+                      <text v-else class="idx-item-pct" :class="qCls(it.secid)">{{ qPct(it.secid) }}<text class="idx-item-pct-reg" :class="regCls(it)">{{ regPctText(it) }}</text></text>
                     </view>
                   </view>
                 </view>
@@ -1492,13 +1492,17 @@ defineExpose({ refresh: () => refreshFull() });
 }
 /* 涨跌着色：红涨绿跌（默认中性 --text，仅 up/down 覆盖） */
 .idx-item-price.up,
-.idx-item-pct.up,
-.idx-item-pct .up {
+.idx-item-pct.up {
   color: var(--up);
 }
 .idx-item-price.down,
-.idx-item-pct.down,
-.idx-item-pct .down {
+.idx-item-pct.down {
+  color: var(--down);
+}
+.idx-item-pct-reg.up {
+  color: var(--up);
+}
+.idx-item-pct-reg.down {
   color: var(--down);
 }
 /* 缺失报价的指数：价格列降级为「暂无数据」并采用次级文字色（复用项目空态规范 --text-2） */
