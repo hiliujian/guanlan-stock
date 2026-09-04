@@ -152,7 +152,9 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     // 数据、篮子口径失真，故此处显式用 106.。
     // 盘前/盘后阶段：改用新浪美股 gb_ 扩展行情驱动篮子（见 fetchGlobalIndices 的分级过滤），
     // 角标同步显示当前阶段（盘前/盘后/正式）。
-    // 韩国主题（半导体/存储）：网关无韩国个股行情数据源，暂无法合成，待有源后补。
+    // 日韩主题（半导体/存储）：东财 ulist 覆盖韩国 KOSPI（市场号 177）与日本东证（市场号 176）
+    // 的个股行情，均为等权合成篮子；KST/JST 交易时段与美东无关，恒走常规口径、
+    // 不打美东阶段标签（见 fetchGlobalIndices 的 flag 特判）。
     title: "科技热点",
     items: [
       { secid: "90.BK0917", name: "半导体(中国)", flag: "cn" },
@@ -161,6 +163,13 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
       { secid: "90.BK1629", name: "AI应用(中国)", flag: "cn" },
       { secid: "90.BK0963", name: "商业航天(中国)", flag: "cn" },
       { secid: "90.BK1090", name: "机器人(中国)", flag: "cn" },
+      // 半导体(韩国)：三星电子(存储/代工/手机 SoC) + SK海力士(HBM/DRAM，全球存储双寡头)。
+      // 东财 177 = KOSPI 市场号，ulist 实测可用
+      { secid: "bkt.kr.semi", name: "半导体(韩国)", flag: "kr", members: ["177.005930", "177.000660"] },
+      // 半导体(日本)：东京电子(涂胶显影/刻蚀设备) + 爱德万测试(SoC/存储测试机) +
+      // 迪斯科(切割/研磨设备) + 信越化学(硅片)，设备与材料是日本半导体支柱环节。
+      // 东财 176 = 日本东证市场号，8035 实测可用（东京电子）
+      { secid: "bkt.jp.semi", name: "半导体(日本)", flag: "jp", members: ["176.8035", "176.6857", "176.6146", "176.4063"] },
       {
         // GPU/ASIC(英伟达/博通/AMD) + 代工/设备(台积电/阿斯麦/应用材料/泛林) +
         // CPU/模拟/连接(英特尔/高通/德仪/ADI/迈威尔)，覆盖半导体主线环节
@@ -184,9 +193,6 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
       },
       // 内存(MU/SanDisk) + 硬盘(希捷/西数)：存储两大形态全覆盖
       { secid: "bkt.us.storage", name: "存储芯片(美国)", flag: "us", members: ["105.MU", "105.SNDK", "105.STX", "105.WDC"] },
-      // 韩国半导体/存储双支柱（东财 177 = KOSPI 市场号，ulist 实测可用）：
-      // 三星电子(存储/代工/手机 SoC) + SK海力士(HBM/DRAM，全球存储双寡头之一)
-      { secid: "bkt.kr.semi", name: "半导体(韩国)", flag: "kr", members: ["177.005930", "177.000660"] },
       // 光模块/光引擎(Coherent/Lumentum/Ciena/新易盛对标 Fabrinet) + 连接/接入(AAOI/
       // Astera Labs) + 连接器/光纤(安费诺/康宁)，覆盖 CPO 产业链
       {
@@ -292,18 +298,18 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
   for (const g of GLOBAL_INDEX_GROUPS) {
     for (const it of g.items) {
       if (!it.members) continue;
-      // 韩国篮子（flag==="kr"）：KST 交易时段与美东无关，成分也不在新浪扩展行情内——
-      // 若套用美东 session，盘前/盘后时段会因 extMap 无 KR 数据而误显「暂无数据」。
+      // 日韩篮子（flag kr/jp）：KST/JST 交易时段与美东无关，成分也不在新浪美股扩展行情内——
+      // 若套用美东 session，盘前/盘后时段会因 extMap 无数据而误显「暂无数据」。
       // 故恒走常规口径（东财 ulist 等权），且不打美东阶段标签（与亚太指数一致，收盘后展示当日收盘）。
-      const kr = it.flag === "kr";
-      const r = kr ? computeBasket(it, map, extMap, "regular", null) : computeBasket(it, map, extMap, session, et);
+      const nonUs = it.flag === "kr" || it.flag === "jp";
+      const r = nonUs ? computeBasket(it, map, extMap, "regular", null) : computeBasket(it, map, extMap, session, et);
       map.set(it.secid, {
         secid: it.secid,
         name: it.name,
         price: null,
         pct: r.pct,
         chg: r.chg,
-        session: kr ? undefined : label,
+        session: nonUs ? undefined : label,
       });
     }
   }
