@@ -1492,11 +1492,13 @@ defineExpose({ refresh: () => refreshFull() });
 }
 /* 涨跌着色：红涨绿跌（默认中性 --text，仅 up/down 覆盖） */
 .idx-item-price.up,
-.idx-item-pct.up {
+.idx-item-pct.up,
+.idx-item-pct .up {
   color: var(--up);
 }
 .idx-item-price.down,
-.idx-item-pct.down {
+.idx-item-pct.down,
+.idx-item-pct .down {
   color: var(--down);
 }
 /* 缺失报价的指数：价格列降级为「暂无数据」并采用次级文字色（复用项目空态规范 --text-2） */
