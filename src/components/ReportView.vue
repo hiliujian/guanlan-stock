@@ -95,26 +95,12 @@
       </view>
       <view class="decision">
         <!-- 图标不传 color，通过 stroke="currentColor" 继承 .dec-item 父元素颜色，
-             避免每个图标手动传 color prop 造成多套颜色源 -->
-        <view v-if="a.watch" class="dec-item ok">
-          <OutlineIcon type="star" :size="26" />
-          <text>可关注</text>
-        </view>
-        <view v-if="a.build" class="dec-item ok">
-          <OutlineIcon type="fire" :size="26" />
-          <text>考虑建仓</text>
-        </view>
-        <view v-if="a.add" class="dec-item ok">
-          <OutlineIcon type="plus" :size="26" />
-          <text>可加仓</text>
-        </view>
-        <view v-if="a.reduce" class="dec-item warn">
-          <OutlineIcon type="arrow-down" :size="26" />
-          <text>建议减仓</text>
-        </view>
-        <view v-if="!a.watch && !a.build && !a.add && !a.reduce" class="dec-item wait">
-          <OutlineIcon type="info" :size="26" />
-          <text>观望为主</text>
+             避免每个图标手动传 color prop 造成多套颜色源。
+             标签内容唯一取自 a.decision（单链优先级 reduce→add→build→watch→wait），
+             与分析结论同一数据源，禁止回到 watch/build/add/reduce 四个布尔各判一遍 -->
+        <view :class="['dec-item', decisionView.cls]">
+          <OutlineIcon :type="decisionView.icon" :size="26" />
+          <text>{{ decisionView.text }}</text>
         </view>
       </view>
     </view>
@@ -804,11 +790,15 @@ const conclusion = computed(() => {
   const r = a.value;
   const parts: string[] = [];
   parts.push(`${r.trendText}（${r.strength}），处于「${r.stageText}」阶段，${r.riskLevel}风险，技术面评分 ${r.score} 分，走势预测「${r.sigType}」。`);
-  if (r.reduce) parts.push("信号偏空，建议逢高减仓、严控仓位。");
-  else if (r.add) parts.push("趋势与资金配合良好，可于回调分批加仓。");
-  else if (r.build) parts.push("处于相对低位且风险可控，可于支撑附近分批建仓。");
-  else if (r.watch) parts.push("可纳入自选关注，等待更优介入时点。");
-  else parts.push("多空信号交织，建议观望，等方向明朗。");
+  // 操作建议：与上方「决策标签」同读 r.decision（单一数据源、同一优先级），不再各排一遍 if/else
+  const advice: Record<string, string> = {
+    reduce: "信号偏空，建议逢高减仓、严控仓位。",
+    add: "趋势与资金配合良好，可于回调分批加仓。",
+    build: "处于相对低位且风险可控，可于支撑附近分批建仓。",
+    watch: "可纳入自选关注，等待更优介入时点。",
+    wait: "多空信号交织，建议观望，等方向明朗。",
+  };
+  parts.push(advice[r.decision] ?? advice.wait);
   // 价位应对必须区分「既成事实」与「待验证假设」：已破位仍念通用止损提示会误导
   if (r.breakdown) parts.push(`支撑 ${r.support.toFixed(2)} 已被有效跌破，原支撑或转为压力，反弹无力应止损离场。`);
   else if (r.breakout) parts.push(`压力 ${r.resistance.toFixed(2)} 已有效突破，回踩不破可顺势持有或跟进。`);
@@ -855,6 +845,19 @@ const resPriceCls = computed(() => (a.value.breakout ? "lv-st-ok" : a.value.near
 const buyActive = computed(() => {
   const r = a.value;
   return r.buyLow != null && !isNaN(r.buyLow) && !isNaN(r.buyHigh);
+});
+
+// 决策标签唯一视图：由 a.decision 单源派生（reduce→add→build→watch→wait）
+const decisionView = computed(() => {
+  const d = a.value.decision;
+  const map: Record<string, { text: string; cls: string; icon: string }> = {
+    reduce: { text: "建议减仓", cls: "warn", icon: "arrow-down" },
+    add: { text: "可加仓", cls: "ok", icon: "plus" },
+    build: { text: "考虑建仓", cls: "ok", icon: "fire" },
+    watch: { text: "可关注", cls: "ok", icon: "star" },
+    wait: { text: "观望为主", cls: "wait", icon: "info" },
+  };
+  return map[d] ?? map.wait;
 });
 
 // ---------------- 关联资讯展示列表 ----------------

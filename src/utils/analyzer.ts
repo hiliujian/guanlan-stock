@@ -384,6 +384,13 @@ export interface AnalysisResult {
   build: boolean;
   add: boolean;
   reduce: boolean;
+  /**
+   * 操作结论的**唯一取值**（reduce → add → build → watch → wait 单链优先级）。
+   * 决策标签与分析结论必须同读此字段，禁止各自再排一遍 if/else 顺序：此前 UI 按
+   * watch→build→add→reduce 判定，而 watch 几乎恒真，导致标签恒显示「可关注」，
+   * 与结论里的「建议减仓 / 可加仓」同屏打架。
+   */
+  decision: "reduce" | "add" | "build" | "watch" | "wait";
   buyLow: number;
   buyHigh: number;
   risks: string[];
@@ -799,7 +806,7 @@ export function analyze(
     stageText = "弱势整理";
   } else if (trend === "shake" || trend === "shake_up" || trend === "shake_down") {
     stage = "range";
-    stageText = "区间震荡";
+    stageText = "箱体整理"; // 阶段维度用「箱体整理」，与走势预测维度 sigType 的「区间震荡」区分开，避免同名不同义
   } else {
     stage = "mid";
     stageText = "趋势运行";
@@ -976,14 +983,9 @@ export function analyze(
   // add 必须排除 reduce 条件（nearTop / RSI超买 / 远离MA60+资金流出），
   // 否则「可加仓」与「建议减仓」同时亮起，给用户矛盾信号。
   const add = !reduce && trend === "up" && Math.abs(price - ma20[len - 1]!) / ma20[len - 1]! < 0.03 && f5.sum > 0 && rNow < 75;
-
-  // 买入区间仅在价格接近支撑（或距支撑 8% 内）时有意义；远离支撑的上涨趋势中
-  // 给出围绕支撑的买点会误导，故置 NaN，由 UI 显示「—」。
-  const nearBuyZone = nearSup || distSup < 0.08;
-  const buyLow = nearBuyZone ? +(support * 0.985).toFixed(2) : NaN;
-  const buyHigh = nearBuyZone
-    ? +Math.max(buyLow + 0.01, Math.min(support * 1.03, resistance)).toFixed(2)
-    : NaN;
+  // 操作结论唯一取值：单链优先级，UI（决策标签 + 分析结论）一律读它，不再各自排序
+  const decision: AnalysisResult["decision"] =
+    reduce ? "reduce" : add ? "add" : build ? "build" : watch ? "watch" : "wait";
 
   const risks: string[] = [];
   if (nearTop) risks.push(`当前价格接近阶段高位（约 ${topZone.toFixed(2)}），短期回调风险较大。`);
@@ -1049,6 +1051,16 @@ export function analyze(
   );
   const breakdown = supportFromPivot && price < support * 0.985 && volRatio > 0.9;
   const breakout = resistanceFromPivot && price > resistance * 1.015 && volRatio > 1.0;
+
+  // 买入区间仅在价格接近支撑（或距支撑 8% 内）时有意义；远离支撑的上涨趋势中
+  // 给出围绕支撑的买点会误导，故置 NaN，由 UI 显示「—」。
+  // 关键：必须排除已破位（breakdown）——否则会出现「支撑已被有效跌破、应止损离场」
+  // 与「建议买入区间 x~y」同屏并存的矛盾（distSup 在破位后为负，天然满足 <0.08）。
+  const nearBuyZone = !breakdown && (nearSup || distSup < 0.08);
+  const buyLow = nearBuyZone ? +(support * 0.985).toFixed(2) : NaN;
+  const buyHigh = nearBuyZone
+    ? +Math.max(buyLow + 0.01, Math.min(support * 1.03, resistance)).toFixed(2)
+    : NaN;
 
   // 走势预测（基于当前位置 + 趋势 + 量能的形态判断，非确定性预测）
   let sigType = "区间震荡";
@@ -1601,6 +1613,7 @@ export function analyze(
     build,
     add,
     reduce,
+    decision,
     buyLow,
     buyHigh,
     risks,
