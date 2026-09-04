@@ -1024,21 +1024,18 @@ function dragPtY(e: any): number {
 }
 // 鼠标拖拽期间把 move/up 挂到 window：行换位后手柄已移走，指针不必停留其上
 // （旧实现 mousemove/mouseleave 绑在手柄上，换位即触发 mouseleave 误结束、行弹回）。
-function onWinMouseMove(e: MouseEvent) {
-  onDragMove(e);
-}
 function onWinMouseUp() {
   onDragEnd();
 }
 function bindWinDrag() {
   try {
-    document.addEventListener("mousemove", onWinMouseMove);
+    document.addEventListener("mousemove", onDragMove);
     document.addEventListener("mouseup", onWinMouseUp);
   } catch (_) {}
 }
 function unbindWinDrag() {
   try {
-    document.removeEventListener("mousemove", onWinMouseMove);
+    document.removeEventListener("mousemove", onDragMove);
     document.removeEventListener("mouseup", onWinMouseUp);
   } catch (_) {}
 }

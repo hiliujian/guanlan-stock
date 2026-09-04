@@ -343,19 +343,18 @@ export async function getSinaUsExtQuotes(secids: string[]): Promise<SinaUsExtQuo
       const v = parseFloat(x || "");
       return Number.isFinite(v) ? v : null;
     };
+    const pos = (x: string | undefined): number | null => {
+      const v = num(x);
+      return v != null && v > 0 ? v : null;
+    };
     const out: SinaUsExtQuote[] = [];
     for (const [sym, a] of rows) {
-      const close = num(a[1]);
-      const extPrice = num(a[21]);
       out.push({
         secid: pairs.get(sym) as string,
-        close: close != null && close > 0 ? close : null,
-        extPrice: extPrice != null && extPrice > 0 ? extPrice : null,
+        close: pos(a[1]),
+        extPrice: pos(a[21]),
         extPct: num(a[22]),
-        preClose: (() => {
-          const v = num(a[26]);
-          return v != null && v > 0 ? v : null;
-        })(),
+        preClose: pos(a[26]),
         extTime: (a[24] || "").trim(),
       });
     }
