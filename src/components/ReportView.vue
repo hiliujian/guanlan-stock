@@ -331,7 +331,7 @@
           </view>
         </template>
       </view>
-      <text class="base-note">大盘环境已纳入综合评分（最高 ±18 分）；逆势或行业逆风时请降仓避险。</text>
+      <text class="base-note">大盘环境已纳入综合评分（理论上限 ±20 分：协同 ±6 + 今日动能 ±2 + 市场情绪 ±5 + 量能 ±3 + 行业协同 ±4）；逆势或行业逆风时请降仓避险。</text>
     </view>
 
     <view class="panel news-panel anim-fade-up" :style="{ animationDelay: '160ms' }">
