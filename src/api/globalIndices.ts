@@ -33,7 +33,7 @@ interface GlobalIndexGroup {
   title: string; // 分组标题：A股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货 / 科技热点
   items: GlobalIndexItem[];
 }
-type GlobalSessionLabel = "盘前" | "盘后" | "正式" | "休市";
+type GlobalSessionLabel = "盘前" | "盘后" | "正式";
 export interface GlobalIndexQuote {
   secid: string;
   name: string;
@@ -233,7 +233,8 @@ const ALL_SECIDS: string[] = Array.from(
 // 篮子（美股科技热点）标签与数据强绑定——标签永远描述「当前展示数据所属的阶段」：
 //   · 盘前/盘后 → 新浪扩展行情驱动（新鲜度 + 涨跌幅上限 + 一致性校验，盘后更严），标签=盘前/盘后；
 //   · 正式 → 仅当时钟处于正式时段且成分股行情时间戳确为今日实时盘中，标签=正式；
-//   · 休市 → 深夜/周末/假期（数据定格在最近收盘），标签=休市——绝不用「正式」冒充实时数据。
+//   · 休市（深夜/周末/假期，数据定格在最近收盘）→ 不打任何阶段标签（UI 不显示角标），
+//     绝不用「正式」冒充实时数据。
 export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote>> {
   const map = new Map<string, GlobalIndexQuote>();
   for (const g of GLOBAL_INDEX_GROUPS) {
@@ -275,7 +276,8 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
     for (const e of ext) extMap.set(e.secid, e);
   }
   // 「正式」标签须有数据实证：时钟在正式时段，且至少有成分股行情时间戳落在今日正式窗口内。
-  // 假期/停盘（时钟在正式时段但数据定格昨日收盘）自动判为「休市」，杜绝标签与数据脱节。
+  // 「正式」标签须有数据实证：时钟在正式时段，且至少有成分股行情时间戳落在今日正式窗口内。
+  // 假期/停盘/深夜/周末 → 不打标签（UI 隐藏角标），杜绝标签与数据脱节。
   const regularLive =
     session === "regular" &&
     GLOBAL_INDEX_GROUPS.some((g) =>
@@ -283,8 +285,8 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
         (i.members ?? []).some((m) => tsInRegularWindow(memberTs.get(m), et))
       )
     );
-  const label: GlobalSessionLabel =
-    session === "pre" ? "盘前" : session === "post" ? "盘后" : regularLive ? "正式" : "休市";
+  const label: GlobalSessionLabel | undefined =
+    session === "pre" ? "盘前" : session === "post" ? "盘后" : regularLive ? "正式" : undefined;
   for (const g of GLOBAL_INDEX_GROUPS) {
     for (const it of g.items) {
       if (!it.members) continue;
