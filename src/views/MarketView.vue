@@ -179,9 +179,9 @@
                       <image v-if="it.flag" class="peek-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
                       <image v-else-if="it.icon" class="peek-flag-ic" :src="COMMODITY_ICON[it.icon]" mode="aspectFit" />
                       <text class="idx-item-name">{{ it.name }}</text>
-                      <!-- 篮子状态角标：与数据强绑定的阶段（盘前/盘后/正式）；深夜/周末/假期等
-                           非交易阶段（数据定格收盘）不打标签，仅当时钟在正式时段且行情时间戳
-                           为今日实时才标「正式」，防止标签与数据脱节 -->
+                      <!-- 篮子状态角标：与数据强绑定的阶段（盘前/盘中/盘后）；深夜/周末/假期等
+                           非交易阶段（数据定格收盘）不打标签，仅当时钟在盘中时段且行情时间戳
+                           为今日实时才标「盘中」，防止标签与数据脱节 -->
                       <text v-if="it.members && qOf(it.secid)?.session" class="idx-item-bkt">{{ qOf(it.secid)?.session }}</text>
                     </view>
                     <view class="idx-item-right">
@@ -1459,7 +1459,7 @@ defineExpose({ refresh: () => refreshFull() });
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 篮子状态角标（盘前/盘后/正式）：小号灰底轻量呈现，仅时段提示不抢视觉 */
+/* 篮子状态角标（盘前/盘中/盘后）：小号灰底轻量呈现，仅时段提示不抢视觉 */
 .idx-item-bkt {
   flex: none;
   font-size: var(--font-xs);

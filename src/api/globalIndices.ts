@@ -33,14 +33,14 @@ interface GlobalIndexGroup {
   title: string; // 分组标题：A股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货 / 科技热点
   items: GlobalIndexItem[];
 }
-type GlobalSessionLabel = "盘前" | "盘后" | "正式";
+type GlobalSessionLabel = "盘前" | "盘中" | "盘后";
 export interface GlobalIndexQuote {
   secid: string;
   name: string;
   price: number | null; // 最新点位
   pct: number | null; // 涨跌幅(%)，带符号
   chg: number | null; // 涨跌额，带符号
-  /** 篮子项当前所处美股行情阶段（盘前/盘后/正式），UI 用它替代固定「篮子」角标；非篮子项缺省 */
+  /** 篮子项当前所处美股行情阶段（盘前/盘中/盘后），UI 用它替代固定「篮子」角标；非篮子项缺省 */
   session?: GlobalSessionLabel;
   /** 美股篮子盘前/盘后时段的「正式涨跌幅」(%, 相对昨日收盘的正式时段涨跌)。仅此时填充供小字并列展示；其余缺省 */
   regPct?: number | null;
@@ -72,7 +72,7 @@ function etNow(d: Date = new Date()): EtNow {
     minutes: (parseInt(g("hour"), 10) % 24) * 60 + parseInt(g("minute"), 10),
   };
 }
-/** 美股当前阶段：盘前 04:00–09:30 / 正式 09:30–16:00 / 盘后 16:00–20:00（美东，周一至五）。 */
+/** 美股当前阶段：盘前 04:00–09:30 / 盘中 09:30–16:00 / 盘后 16:00–20:00（美东，周一至五）。 */
 function usSession(d: Date = new Date()): UsSession {
   const et = etNow(d);
   if (et.weekday === "Sat" || et.weekday === "Sun") return "closed";
@@ -153,7 +153,7 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     // COHR / CIEN / ROK 均为 NYSE 上市，必须用 106.；曾误把它们统一成 105. 导致静默取不到
     // 数据、篮子口径失真，故此处显式用 106.。
     // 盘前/盘后阶段：改用新浪美股 gb_ 扩展行情驱动篮子（见 fetchGlobalIndices 的分级过滤），
-    // 角标同步显示当前阶段（盘前/盘后/正式）。
+    // 角标同步显示当前阶段（盘前/盘中/盘后）。
     // 日韩主题（半导体/存储）：东财 ulist 覆盖韩国 KOSPI（市场号 177）与日本东证（市场号 176）
     // 的个股行情，均为等权合成篮子；KST/JST 交易时段与美东无关，恒走常规口径、
     // 不打美东阶段标签（见 fetchGlobalIndices 的 flag 特判）。
@@ -246,9 +246,9 @@ const ALL_SECIDS: string[] = Array.from(
 //
 // 篮子（美股科技热点）标签与数据强绑定——标签永远描述「当前展示数据所属的阶段」：
 //   · 盘前/盘后 → 新浪扩展行情驱动（新鲜度 + 涨跌幅上限 + 一致性校验，盘后更严），标签=盘前/盘后；
-//   · 正式 → 仅当时钟处于正式时段且成分股行情时间戳确为今日实时盘中，标签=正式；
+//   · 盘中 → 仅当时钟处于盘中时段且成分股行情时间戳确为今日实时盘中，标签=盘中；
 //   · 休市（深夜/周末/假期，数据定格在最近收盘）→ 不打任何阶段标签（UI 不显示角标），
-//     绝不用「正式」冒充实时数据。
+//     绝不用「盘中」冒充实时数据。
 export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote>> {
   const map = new Map<string, GlobalIndexQuote>();
   for (const g of GLOBAL_INDEX_GROUPS) {
@@ -263,7 +263,7 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
     getFuturesQuotes(futuresSecids).catch(() => [] as UlistQuote[]),
     getTencentFallbackQuotes(ALL_SECIDS).catch(() => [] as UlistQuote[]),
   ]);
-  const memberTs = new Map<string, number>(); // 成分股行情时间戳（f124，秒）→「正式」标签的数据实证
+  const memberTs = new Map<string, number>(); // 成分股行情时间戳（f124，秒）→「盘中」标签的数据实证
   for (const q of [...idxQuotes, ...futQuotes, ...hkQuotes]) {
     if (!q.secid) continue;
     map.set(q.secid, {
@@ -289,7 +289,7 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
     ).catch(() => [] as SinaUsExtQuote[]);
     for (const e of ext) extMap.set(e.secid, e);
   }
-  // 「正式」标签须有数据实证：时钟在正式时段，且至少有成分股行情时间戳落在今日正式窗口内。
+  // 「盘中」标签须有数据实证：时钟在盘中时段，且至少有成分股行情时间戳落在今日盘中窗口内。
   // 假期/停盘/深夜/周末 → 不打标签（UI 隐藏角标），杜绝标签与数据脱节。
   const regularLive =
     session === "regular" &&
@@ -299,7 +299,7 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
       )
     );
   const label: GlobalSessionLabel | undefined =
-    session === "pre" ? "盘前" : session === "post" ? "盘后" : regularLive ? "正式" : undefined;
+    session === "pre" ? "盘前" : session === "post" ? "盘后" : regularLive ? "盘中" : undefined;
   for (const g of GLOBAL_INDEX_GROUPS) {
     for (const it of g.items) {
       if (!it.members) continue;
