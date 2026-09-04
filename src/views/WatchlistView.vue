@@ -97,6 +97,7 @@
             :key="row.it.code + row.it.market"
             class="tr"
             :class="{ reordering: reorderMode, dragging: dragKey === keyOf(row.it), 'alert-up': alertState[keyOf(row.it)] === 'up', 'alert-down': alertState[keyOf(row.it)] === 'down' }"
+            :style="dragKey === keyOf(row.it) ? dragStyle : undefined"
             @click="onItemClick(row.it)"
             @touchstart="onRowPressStart(row.it, $event)"
             @touchmove="onRowPressMove"
@@ -121,9 +122,6 @@
                 @touchend.stop="onDragEnd"
                 @touchcancel.stop="onDragEnd"
                 @mousedown.stop="onDragStart($event, row.it)"
-                @mousemove.stop="onDragMove"
-                @mouseup.stop="onDragEnd"
-                @mouseleave.stop="onDragEnd"
               >
                 <OutlineIcon type="grip" :size="30" :color="dragKey === keyOf(row.it) ? 'var(--primary)' : 'var(--text-3)'" />
               </view>
@@ -1007,15 +1005,42 @@ const renderRows = computed(() => {
 });
 
 // 拖拽状态（整理模式下所有视图——含"全部"——均可拖拽重排）
+// 体验关键（消除"果冻感"）：被拖行用 translateY 实时粘住手指，锚点自起拖后恒定不重置；
+// 跨过半行阈值时其余行一次性换位（干脆利落），被拖行以「残余位移」补齐视觉位置保持连续。
+// 旧实现每次换位重置锚点，被拖行瞬移半行越过手指再被追上，来回弹跳。
 const dragKey = ref<string | null>(null);
+const dragDy = ref(0); // 被拖行相对其自然槽位的位移(px) = 累计位移 - 已换位行数×行高
+const dragStyle = computed(() => ({ transform: `translateY(${dragDy.value}px)` }));
 let dragStartY = 0;
 let rowHpx = 0;
 let dragMoved = false;
+let dragFromIdx = 0; // 起拖槽位（原始数组下标，恒定）
 function dragPtY(e: any): number {
   if (e.touches && e.touches[0]) return e.touches[0].clientY;
   if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
   return e.clientY || 0;
 }
+// 鼠标拖拽期间把 move/up 挂到 window：行换位后手柄已移走，指针不必停留其上
+// （旧实现 mousemove/mouseleave 绑在手柄上，换位即触发 mouseleave 误结束、行弹回）。
+function onWinMouseMove(e: MouseEvent) {
+  onDragMove(e);
+}
+function onWinMouseUp() {
+  onDragEnd();
+}
+function bindWinDrag() {
+  try {
+    document.addEventListener("mousemove", onWinMouseMove);
+    document.addEventListener("mouseup", onWinMouseUp);
+  } catch (_) {}
+}
+function unbindWinDrag() {
+  try {
+    document.removeEventListener("mousemove", onWinMouseMove);
+    document.removeEventListener("mouseup", onWinMouseUp);
+  } catch (_) {}
+}
+onUnmounted(unbindWinDrag);
 function onDragStart(e: any, it: WatchItem) {
   if (sortKey.value) sortKey.value = ""; // 拖拽即自定义顺序，清除列排序
   dragKey.value = keyOf(it);
@@ -1023,6 +1048,8 @@ function onDragStart(e: any, it: WatchItem) {
   // 以「当前视图」展示顺序初始化拖拽缓冲，并标记所属视图——保证只影响当前视图、不串入其它分组。
   manualOrder.value = displayRows.value.map((r) => keyOf(r.it));
   manualOrderGroup.value = selectedGroup.value;
+  dragFromIdx = manualOrder.value.indexOf(dragKey.value);
+  dragDy.value = 0;
   dragMoved = false;
   try {
     const info: any = (uni as any).getWindowInfo ? (uni as any).getWindowInfo() : uni.getSystemInfoSync();
@@ -1031,6 +1058,7 @@ function onDragStart(e: any, it: WatchItem) {
   } catch (_) {
     rowHpx = 50;
   }
+  if (!(e.touches && e.touches.length)) bindWinDrag(); // 鼠标拖拽：监听挂 window（触摸事件始终派发到起拖元素，无需）
   if (e.cancelable) {
     try {
       e.preventDefault();
@@ -1039,20 +1067,22 @@ function onDragStart(e: any, it: WatchItem) {
 }
 function onDragMove(e: any) {
   if (!dragKey.value) return;
-  const dy = dragPtY(e) - dragStartY;
+  const dy = dragPtY(e) - dragStartY; // 自起拖点的累计位移
   if (Math.abs(dy) > 4) dragMoved = true;
   const arr = manualOrder.value;
-  const from = arr.indexOf(dragKey.value);
-  if (from < 0) return;
-  let to = from + Math.round(dy / rowHpx);
+  let cur = arr.indexOf(dragKey.value);
+  if (cur < 0) return;
+  let to = dragFromIdx + Math.round(dy / rowHpx);
   to = Math.max(0, Math.min(arr.length - 1, to));
-  if (to !== from) {
+  if (to !== cur) {
     const next = arr.slice();
-    const [m] = next.splice(from, 1);
+    const [m] = next.splice(cur, 1);
     next.splice(to, 0, m);
     manualOrder.value = next;
-    dragStartY = dragPtY(e); // 锚点重置，下一步以新位置为基准
+    cur = to;
   }
+  // 残余位移：自然槽位(cur) 已含换位跃迁 ±行高，补齐后被拖行视觉位置连续粘指
+  dragDy.value = dy - (cur - dragFromIdx) * rowHpx;
   if (e.cancelable) {
     try {
       e.preventDefault();
@@ -1061,7 +1091,9 @@ function onDragMove(e: any) {
 }
 function onDragEnd() {
   if (!dragKey.value) return;
+  unbindWinDrag();
   dragKey.value = null;
+  dragDy.value = 0;
   // 拖拽结束后持久化重排结果：单分组按组内 order 持久化；"全部"视图按全局 order 持久化
   // （applyGroupOrder 内部按 group 是否为 "__all__" 区分两种重排范围）。
   if (dragMoved) {
@@ -1990,6 +2022,12 @@ function removeLp() {
 }
 .tr.dragging {
   background: var(--primary-soft);
+  /* 被拖行"浮起"：跟随手指的 translateY 由内联样式逐帧驱动，这里禁止任何 transform 过渡，
+     否则每次换位补位移会与过渡叠加产生回弹（果冻感）；阴影/层级给出抬升反馈 */
+  position: relative;
+  z-index: 6;
+  box-shadow: var(--shadow-2);
+  transition: box-shadow 0.15s ease;
 }
 .tr.dragging .c-name {
   background: var(--primary-soft);
