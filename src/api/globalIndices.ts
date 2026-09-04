@@ -161,6 +161,9 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
       { secid: "90.BK1137", name: "存储芯片(中国)", flag: "cn" },
       { secid: "90.BK1128", name: "CPO(中国)", flag: "cn" },
       { secid: "90.BK1629", name: "AI应用(中国)", flag: "cn" },
+      // PCB 与 MLCC 为 AI 硬件上游核心环节（高多层板/HDI、被动元件），东财官方概念板块指数
+      { secid: "90.BK0877", name: "PCB(中国)", flag: "cn" },
+      { secid: "90.BK0890", name: "MLCC(中国)", flag: "cn" },
       { secid: "90.BK0963", name: "商业航天(中国)", flag: "cn" },
       { secid: "90.BK1090", name: "机器人(中国)", flag: "cn" },
       // 半导体(韩国)：三星电子(存储/代工/手机 SoC) + SK海力士(HBM/DRAM，全球存储双寡头)。
