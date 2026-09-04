@@ -184,6 +184,9 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
       },
       // 内存(MU/SanDisk) + 硬盘(希捷/西数)：存储两大形态全覆盖
       { secid: "bkt.us.storage", name: "存储芯片(美国)", flag: "us", members: ["105.MU", "105.SNDK", "105.STX", "105.WDC"] },
+      // 韩国半导体/存储双支柱（东财 177 = KOSPI 市场号，ulist 实测可用）：
+      // 三星电子(存储/代工/手机 SoC) + SK海力士(HBM/DRAM，全球存储双寡头之一)
+      { secid: "bkt.kr.semi", name: "半导体(韩国)", flag: "kr", members: ["177.005930", "177.000660"] },
       // 光模块/光引擎(Coherent/Lumentum/Ciena/新易盛对标 Fabrinet) + 连接/接入(AAOI/
       // Astera Labs) + 连接器/光纤(安费诺/康宁)，覆盖 CPO 产业链
       {
@@ -276,7 +279,6 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
     for (const e of ext) extMap.set(e.secid, e);
   }
   // 「正式」标签须有数据实证：时钟在正式时段，且至少有成分股行情时间戳落在今日正式窗口内。
-  // 「正式」标签须有数据实证：时钟在正式时段，且至少有成分股行情时间戳落在今日正式窗口内。
   // 假期/停盘/深夜/周末 → 不打标签（UI 隐藏角标），杜绝标签与数据脱节。
   const regularLive =
     session === "regular" &&
@@ -290,14 +292,18 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
   for (const g of GLOBAL_INDEX_GROUPS) {
     for (const it of g.items) {
       if (!it.members) continue;
-      const r = computeBasket(it, map, extMap, session, et);
+      // 韩国篮子（flag==="kr"）：KST 交易时段与美东无关，成分也不在新浪扩展行情内——
+      // 若套用美东 session，盘前/盘后时段会因 extMap 无 KR 数据而误显「暂无数据」。
+      // 故恒走常规口径（东财 ulist 等权），且不打美东阶段标签（与亚太指数一致，收盘后展示当日收盘）。
+      const kr = it.flag === "kr";
+      const r = kr ? computeBasket(it, map, extMap, "regular", null) : computeBasket(it, map, extMap, session, et);
       map.set(it.secid, {
         secid: it.secid,
         name: it.name,
         price: null,
         pct: r.pct,
         chg: r.chg,
-        session: label,
+        session: kr ? undefined : label,
       });
     }
   }
