@@ -230,13 +230,15 @@ export interface UlistQuote {
   price: number | null;
   pct: number | null; // 涨跌幅(%)，带符号
   chg: number | null; // 涨跌额，带符号
+  /** 上游最后更新时间（f124，Unix 秒）：用于校验「数据是实时盘中」还是「定格收盘」 */
+  ts?: number | null;
 }
 export async function getUlistQuotes(secids: string[]): Promise<UlistQuote[]> {
   if (!secids.length) return [];
   try {
     const { source, text } = await requestGateway("ulist", {
       secids: secids.join(","),
-      fields: "f2,f3,f4,f12,f13,f14",
+      fields: "f2,f3,f4,f12,f13,f14,f124",
     });
     if (source !== "eastmoney") return [];
     const json = JSON.parse(text);
@@ -258,6 +260,7 @@ export async function getUlistQuotes(secids: string[]): Promise<UlistQuote[]> {
         price: num("f2"),
         pct: num("f3"),
         chg: num("f4"),
+        ts: num("f124"),
       });
     }
     return out;

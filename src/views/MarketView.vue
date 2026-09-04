@@ -179,8 +179,9 @@
                       <image v-if="it.flag" class="peek-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
                       <image v-else-if="it.icon" class="peek-flag-ic" :src="COMMODITY_ICON[it.icon]" mode="aspectFit" />
                       <text class="idx-item-name">{{ it.name }}</text>
-                      <!-- 篮子状态角标：当前美股行情阶段（盘前/盘后/正式），提示数据所属时段防误读 -->
-                      <text v-if="it.members" class="idx-item-bkt">{{ qOf(it.secid)?.session || '正式' }}</text>
+                      <!-- 篮子状态角标：与数据强绑定的阶段（盘前/盘后/正式/休市）——休市时数据定格收盘，
+                           仅当时钟在正式时段且行情时间戳为今日实时才标「正式」，防止标签与数据脱节 -->
+                      <text v-if="it.members" class="idx-item-bkt">{{ qOf(it.secid)?.session || '休市' }}</text>
                     </view>
                     <view class="idx-item-right">
                       <text v-if="!it.members" class="idx-item-price" :class="[qCls(it.secid), qNa(it.secid) ? 'na' : '']">{{ qPrice(it.secid) }}</text>

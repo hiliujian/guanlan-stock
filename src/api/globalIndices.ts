@@ -33,7 +33,7 @@ interface GlobalIndexGroup {
   title: string; // 分组标题：A股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货 / 科技热点
   items: GlobalIndexItem[];
 }
-export type GlobalSessionLabel = "盘前" | "盘后" | "正式";
+export type GlobalSessionLabel = "盘前" | "盘后" | "正式" | "休市";
 export interface GlobalIndexQuote {
   secid: string;
   name: string;
@@ -230,10 +230,10 @@ const ALL_SECIDS: string[] = Array.from(
 // 两者并行拉取后合并：目录中所有标的先填入「暂无」骨架，再覆盖真实数据；
 // 任一源失败仅该部分缺数据，由上层降级为「暂无数据」。
 //
-// 篮子（美股科技热点）按美东阶段驱动：
-//   · 正式/休市 → 维持东财等权口径，session=「正式」；
-//   · 盘前/盘后 → 改用新浪扩展行情驱动，session=「盘前」/「盘后」，并施加脏数据过滤
-//     （新鲜度 + 涨跌幅上限 + 涨跌幅/价格一致性校验），盘后阈值比盘前更严。
+// 篮子（美股科技热点）标签与数据强绑定——标签永远描述「当前展示数据所属的阶段」：
+//   · 盘前/盘后 → 新浪扩展行情驱动（新鲜度 + 涨跌幅上限 + 一致性校验，盘后更严），标签=盘前/盘后；
+//   · 正式 → 仅当时钟处于正式时段且成分股行情时间戳确为今日实时盘中，标签=正式；
+//   · 休市 → 深夜/周末/假期（数据定格在最近收盘），标签=休市——绝不用「正式」冒充实时数据。
 export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote>> {
   const map = new Map<string, GlobalIndexQuote>();
   for (const g of GLOBAL_INDEX_GROUPS) {
@@ -248,6 +248,7 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
     getFuturesQuotes(futuresSecids).catch(() => [] as UlistQuote[]),
     getTencentFallbackQuotes(ALL_SECIDS).catch(() => [] as UlistQuote[]),
   ]);
+  const memberTs = new Map<string, number>(); // 成分股行情时间戳（f124，秒）→「正式」标签的数据实证
   for (const q of [...idxQuotes, ...futQuotes, ...hkQuotes]) {
     if (!q.secid) continue;
     map.set(q.secid, {
@@ -257,14 +258,15 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
       pct: q.pct,
       chg: q.chg,
     });
+    if (q.ts != null) memberTs.set(q.secid, q.ts);
   }
 
   // 篮子合成指数：成分股等权。涨跌幅/涨跌额=成员等权平均；个别成员缺行情自动跳过，
   // 全缺则该项降级「暂无数据」。注意：不合成伪「点位」——成分股股价量纲不同，等权平均
   // 出的数值无指数含义，故 price 置 null，UI 仅展示涨跌幅（与 A 股官方板块指数区分）。
   const session = usSession();
+  const et = etNow();
   const extended = session === "pre" || session === "post";
-  const et = extended ? etNow() : null;
   const extMap = new Map<string, SinaUsExtQuote>();
   if (extended) {
     const ext = await getSinaUsExtQuotes(
@@ -272,6 +274,17 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
     ).catch(() => [] as SinaUsExtQuote[]);
     for (const e of ext) extMap.set(e.secid, e);
   }
+  // 「正式」标签须有数据实证：时钟在正式时段，且至少有成分股行情时间戳落在今日正式窗口内。
+  // 假期/停盘（时钟在正式时段但数据定格昨日收盘）自动判为「休市」，杜绝标签与数据脱节。
+  const regularLive =
+    session === "regular" &&
+    GLOBAL_INDEX_GROUPS.some((g) =>
+      g.items.some((i) =>
+        (i.members ?? []).some((m) => tsInRegularWindow(memberTs.get(m), et))
+      )
+    );
+  const label: GlobalSessionLabel =
+    session === "pre" ? "盘前" : session === "post" ? "盘后" : regularLive ? "正式" : "休市";
   for (const g of GLOBAL_INDEX_GROUPS) {
     for (const it of g.items) {
       if (!it.members) continue;
@@ -282,11 +295,18 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
         price: null,
         pct: r.pct,
         chg: r.chg,
-        session: session === "pre" ? "盘前" : session === "post" ? "盘后" : "正式",
+        session: label,
       });
     }
   }
   return map;
+}
+
+/** 行情时间戳是否落在美东今日正式时段窗口（09:30–16:00，容忍收盘整点秒级余量）。 */
+function tsInRegularWindow(ts: number | undefined, et: EtNow): boolean {
+  if (!ts) return false;
+  const t = etNow(new Date(ts * 1000));
+  return t.month === et.month && t.day === et.day && t.minutes >= 570 && t.minutes <= 965;
 }
 
 /** 扩展时段数据新鲜度：成交时间须为美东「今天」且落在当前阶段窗口内（防旧盘后/假期/隔日脏数据）。 */
