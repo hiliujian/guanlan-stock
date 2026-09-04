@@ -82,7 +82,7 @@
         <view class="lv subsection">
           <text class="lv-k">支撑位</text>
           <view class="lv-right">
-            <PriceText :value="a.support" :neutral="true" :size="28" :weight="400" :class="supPriceCls" />
+            <PriceText :value="a.support" :neutral="true" :size="24" :weight="400" :class="supPriceCls" />
             <text v-if="a.breakdown" class="lv-tag bad">已跌破</text>
             <text v-else-if="a.nearSup" class="lv-tag warn">临近</text>
           </view>
@@ -94,7 +94,7 @@
         <view class="lv subsection">
           <text class="lv-k">压力位</text>
           <view class="lv-right">
-            <PriceText :value="a.resistance" :neutral="true" :size="28" :weight="400" :class="resPriceCls" />
+            <PriceText :value="a.resistance" :neutral="true" :size="24" :weight="400" :class="resPriceCls" />
             <text v-if="a.breakout" class="lv-tag ok">已突破</text>
             <text v-else-if="a.nearRes" class="lv-tag warn">临近</text>
           </view>
@@ -1187,11 +1187,11 @@ function openNews(it: NewsItem) {
   font-size: var(--font-sm);
 }
 .lv-v {
-  font-size: var(--font-md);
+  font-size: var(--font-sm);
   color: var(--r-ink);
 }
-/* 关键价位三个数值统一口径：字号 28（--font-md）+ 墨色 --r-ink（支撑/压力经
-   .price-text 覆盖 PriceText 默认平盘色，与建议买入区间完全一致）；
+/* 关键价位三个数值统一口径：字号与左侧标题一致（--font-sm 24rpx）+ 墨色 --r-ink
+   （支撑/压力经 .price-text 覆盖 PriceText 默认平盘色，与建议买入区间完全一致）；
    出现状态（已突破/买入区间成立/临近/已跌破）时数值换语义色，强化状态可读性 */
 .lv-right .price-text {
   color: var(--r-ink);
