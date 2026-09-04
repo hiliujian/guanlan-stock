@@ -47,12 +47,15 @@ const CN_BOARDS = {
 
 // 目录中的美股成员（与 src/api/globalIndices.ts 保持一致）
 const US_BASKETS = {
-  "bkt.us.semi": { display: "半导体(美国)", members: ["105.NVDA", "105.AMD", "105.INTC", "105.QCOM", "105.TXN", "105.ADI", "105.MRVL"] },
-  "bkt.us.storage": { display: "存储芯片(美国)", members: ["105.MU", "105.STX", "105.SNDK"] },
-  "bkt.us.cpo": { display: "CPO(美国)", members: ["106.COHR", "105.LITE", "106.CIEN", "105.AAOI"] },
-  "bkt.us.aiapp": { display: "AI应用(美国)", members: ["105.PLTR", "105.MSFT", "105.GOOG", "105.META"] },
-  "bkt.us.space": { display: "商业航天(美国)", members: ["105.RKLB", "105.ASTS", "105.LUNR"] },
-  "bkt.us.robot": { display: "机器人(美国)", members: ["105.ISRG", "105.TER", "106.ROK", "105.SYM", "105.SERV", "105.TSLA"] },
+  "bkt.us.semi": {
+    display: "半导体(美国)",
+    members: ["105.NVDA", "105.AVGO", "105.AMD", "106.TSM", "105.ASML", "105.INTC", "105.QCOM", "105.TXN", "105.ADI", "105.MRVL", "105.AMAT", "105.LRCX"],
+  },
+  "bkt.us.storage": { display: "存储芯片(美国)", members: ["105.MU", "105.SNDK", "105.STX", "105.WDC"] },
+  "bkt.us.cpo": { display: "CPO(美国)", members: ["106.COHR", "105.LITE", "106.CIEN", "106.FN", "105.AAOI", "105.ALAB", "106.APH", "106.GLW"] },
+  "bkt.us.aiapp": { display: "AI应用(美国)", members: ["105.PLTR", "105.MSFT", "105.GOOG", "105.META", "105.AMZN", "106.NOW", "106.CRM", "105.ADBE", "105.APP"] },
+  "bkt.us.space": { display: "商业航天(美国)", members: ["105.RKLB", "105.ASTS", "105.LUNR", "106.RDW", "106.PL", "106.SPCE"] },
+  "bkt.us.robot": { display: "机器人(美国)", members: ["105.ISRG", "105.TER", "106.ROK", "105.SYM", "105.SERV", "105.TSLA", "105.NVDA"] },
 };
 
 function flipPrefix(secid) {

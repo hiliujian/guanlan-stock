@@ -95,6 +95,10 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     // A 股项直接引用东财概念板块指数（官方市值加权指数，返回真实点位）；
     // 美股东财无 SOX 等主题指数覆盖，按同思路自建等权合成指数：每主题取一篮子代表性
     // 美股（全部经网关 ulist 有实时行情），涨跌幅由成分股等权平均。
+    // 篮子覆盖原则：覆盖该主题市场公认的主线环节（如半导体含 GPU/ASIC/代工/设备/模拟，
+    // CPO 含光模块/光引擎/连接器/交换芯片，机器人含人形/手术/仓储/协作/自动化），
+    // 每只均为对应环节的代表性公司，避免单点偏差；全部成员经 scripts/verify-tech-hotspots.mjs
+    // 实测在东财网关可达。新增/更换成员后必须重跑该脚本核对前缀与名称。
     // 东财美股 secid 规则（实测确认）：NASDAQ 上市用 105. 前缀，NYSE 上市用 106. 前缀。
     // COHR / CIEN / ROK 均为 NYSE 上市，必须用 106.；曾误把它们统一成 105. 导致静默取不到
     // 数据、篮子口径失真，故此处显式用 106.。
@@ -108,20 +112,54 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
       { secid: "90.BK0963", name: "商业航天(中国)", flag: "cn" },
       { secid: "90.BK1090", name: "机器人(中国)", flag: "cn" },
       {
+        // GPU/ASIC(英伟达/博通/AMD) + 代工/设备(台积电/阿斯麦/应用材料/泛林) +
+        // CPU/模拟/连接(英特尔/高通/德仪/ADI/迈威尔)，覆盖半导体主线环节
         secid: "bkt.us.semi",
         name: "半导体(美国)",
         flag: "us",
-        members: ["105.NVDA", "105.AMD", "105.INTC", "105.QCOM", "105.TXN", "105.ADI", "105.MRVL"],
+        members: [
+          "105.NVDA",
+          "105.AVGO",
+          "105.AMD",
+          "106.TSM",
+          "105.ASML",
+          "105.INTC",
+          "105.QCOM",
+          "105.TXN",
+          "105.ADI",
+          "105.MRVL",
+          "105.AMAT",
+          "105.LRCX",
+        ],
       },
-      { secid: "bkt.us.storage", name: "存储芯片(美国)", flag: "us", members: ["105.MU", "105.STX", "105.SNDK"] },
-      { secid: "bkt.us.cpo", name: "CPO(美国)", flag: "us", members: ["106.COHR", "105.LITE", "106.CIEN", "105.AAOI"] },
-      { secid: "bkt.us.aiapp", name: "AI应用(美国)", flag: "us", members: ["105.PLTR", "105.MSFT", "105.GOOG", "105.META"] },
-      { secid: "bkt.us.space", name: "商业航天(美国)", flag: "us", members: ["105.RKLB", "105.ASTS", "105.LUNR"] },
+      // 内存(MU/SanDisk) + 硬盘(希捷/西数)：存储两大形态全覆盖
+      { secid: "bkt.us.storage", name: "存储芯片(美国)", flag: "us", members: ["105.MU", "105.SNDK", "105.STX", "105.WDC"] },
+      // 光模块/光引擎(Coherent/Lumentum/Ciena/新易盛对标 Fabrinet) + 连接/接入(AAOI/
+      // Astera Labs) + 连接器/光纤(安费诺/康宁)，覆盖 CPO 产业链
       {
+        secid: "bkt.us.cpo",
+        name: "CPO(美国)",
+        flag: "us",
+        members: ["106.COHR", "105.LITE", "106.CIEN", "106.FN", "105.AAOI", "105.ALAB", "106.APH", "106.GLW"],
+      },
+      // 云与大模型平台(微软/谷歌/Meta/亚马逊) + AI 软件应用(Palantir/ServiceNow/
+      // 赛富时/Adobe/AppLovin)，平台与行业应用兼顾
+      {
+        secid: "bkt.us.aiapp",
+        name: "AI应用(美国)",
+        flag: "us",
+        members: ["105.PLTR", "105.MSFT", "105.GOOG", "105.META", "105.AMZN", "106.NOW", "106.CRM", "105.ADBE", "105.APP"],
+      },
+      // 火箭复用(Rocket Lab) + 低轨星座(AST) + 月球任务(Intuitive Machines) +
+      // 空间基础设施(Redwire) + 卫星遥感(Planet) + 亚轨道旅游(维珍银河)
+      { secid: "bkt.us.space", name: "商业航天(美国)", flag: "us", members: ["105.RKLB", "105.ASTS", "105.LUNR", "106.RDW", "106.PL", "106.SPCE"] },
+      {
+        // 人形/具身智能(特斯拉 Optimus + 英伟达 GR00T 平台) + 手术(直觉外科) +
+        // 协作/半导体测试(泰瑞达) + 工业自动化(罗克韦尔) + 仓储(Symbotic) + 配送(Serve)
         secid: "bkt.us.robot",
         name: "机器人(美国)",
         flag: "us",
-        members: ["105.ISRG", "105.TER", "106.ROK", "105.SYM", "105.SERV", "105.TSLA"],
+        members: ["105.ISRG", "105.TER", "106.ROK", "105.SYM", "105.SERV", "105.TSLA", "105.NVDA"],
       },
     ],
   },

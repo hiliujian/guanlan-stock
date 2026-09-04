@@ -19,6 +19,8 @@
   --danger-dark: #c93b40;
   --up: #ef232a;
   --down: #09b07a;
+  /* 中性警示橙（涨跌之外的第 3 态：放量/中风险/变盘信号），浅深主题同值 */
+  --warn: #ff9f1c;
   --text: #16202e;
   --text-2: #5b6677;
   --text-3: #97a1b0;
@@ -92,6 +94,7 @@
   --danger-dark: #c93b40;
   --up: #ef232a;
   --down: #09b07a;
+  --warn: #ff9f1c;
   --text: #eaf0fb;
   --text-2: #aab4c8;
   --text-3: #6b7689;

@@ -1,148 +1,129 @@
-# 股票智能分析 · 跨端版（H5 网页 + 微信小程序）
+# 观澜 · A 股智能行情与投资社区
 
-一套代码同时运行在 **Web 网页（H5）** 与 **微信小程序**，基于 **uni-app (Vue 3 + TypeScript)**
-+ **Supabase**（PostgreSQL / Auth / Storage / Realtime / Edge Functions）+ **KLineCharts** + **uni-icons**。
+一套基于 **uni-app (Vue 3 + TypeScript)** 的跨端行情应用：专业 K 线图表、全指标智能分析报告、
+自选异动提醒、全球市场指数面板，以及内置的**投资社区**（发帖 / 关注 / 私信 / 等级成长体系）。
+后端由 **Supabase**（PostgreSQL / Auth / Edge Functions / Realtime）承载，前端可静态托管，无需自建服务器。
 
-> 设计目标：Web 端与微信小程序端视觉 / 交互 / 业务逻辑完全一致，后续接入小程序为「编译」而非「重写」。
+> 构建目标：**H5 网页**（主端）+ 微信小程序 / App（同一套代码编译产出）。
 
 ---
 
-## ✨ 特性
+## ✨ 功能总览
 
-- **统一 Outline 线条图标**：H5 端用内联 SVG（无字体依赖，绝不会出现「图标不显示」），微信小程序端回退到 `uni-icons` 字体图标，风格简洁一致。
-- **丰富动效**：卡片自下淡入、列表依次进场、弹窗底部滑入、底部导航切换淡入淡出、按钮按压回弹、价格变色等，纯 CSS 实现，无 Web-only API。
-- **智能分析**：趋势 / 支撑压力 / 主力建仓区 / 量能 / 资金 / 筹码 / MACD / KDJ / RSI，输出白话报告（当前状态、关注 / 建仓 / 加仓 / 减仓、买入区间、风险提示）。
-- **多周期**：分时 / 日 K / 周 K / 月 K / 年 K。
-- **打开即用**：默认游客模式，行情分析与本地自选立即可用；点击头像弹窗登录 / 注册（Supabase），登录后自选与资料云端同步。
-- **跨端行情**：统一 `fetchQuote` 入口，**多源冗余 + 通道降级**（详见下方「行情数据源」）。数据源优先级与菜单显隐**可配置**（Supabase `app_config` 远程下发，改库即生效、无需发版）。
-- **前后端分离**：登录 / 自选 / 社区 / 公告 / 系统配置全部落在 Supabase（PostgreSQL + Auth + Storage + Edge Functions）；行情与资金流经 **Edge Function 服务端转发**（东财已验证可访问），彻底移除本地 Node 后端。
+### 📈 行情与图表
+- **多周期 K 线**：分时 / 日 / 周 / 月 / 年，量能、MACD 副图可独立开关，量均线 MA5/10/20 各自独立显示。
+- **智能标注**：系统按行情自动绘制结构支撑 / 压力、交易参考 S/B、趋势线（虚线锁定，与手绘实线区分），多周期独立配置、分时自动禁用防误导。
+- **手绘画线**：横线 / 趋势线 / 黄金分割，按股票本地持久化，重进自动恢复；价位磁吸到 K 线高低开收。
+- **右侧标签防重叠**：价格轴标签统一错位布局，多条价位接近的线自动上下接着排，永不叠字。
+
+### 🌍 全球市场指数面板
+- 六组并排：**A 股指数 / 亚太市场 / 美股市场 / 欧洲市场 / 商品期货 / 科技热点**。
+- **科技热点**中美成对：A 股引用东财官方概念板块指数（半导体 / 存储芯片 / CPO / AI 应用 / 商业航天 / 机器人）；
+  美股自建**等权篮子**（英伟达、博通、台积电、阿斯麦、美光、Coherent、Palantir、Rocket Lab、
+  特斯拉等 46 只代表股，覆盖 GPU/代工/设备、内存/硬盘、光模块/连接器、云与 AI 软件、
+  火箭/星座/月球、人形/手术/仓储机器人等主线环节），
+  只展示涨跌幅、不合成伪点位，并以「篮子」角标明示口径。
+- **期指持仓**：中金所官方持仓排名（中信席位 / 前 20 机构加多加空），客观数据中性着色。
+
+### ⭐ 自选与异动
+- 自选分组管理、显示列自定义、长按快捷操作。
+- **今日最热**榜单 + **今日异动**提醒：封涨停 / 封跌停 / 快速拉升下跌 / 大笔买卖 / 放量突破，
+  涨红绿跌统一语义，跌停开板 / 炸板展示「较跌停 +x.xx%」距板幅度。
+
+### 🧠 智能分析报告
+- 覆盖 MACD / KDJ / RSI / ADX(DMI) / BIAS / 布林带宽 / 量比 / 资金流 / 筹码分布 / OBV / 最大回撤 / VaR 等全指标，白话解读。
+- **综合技术评分**与风险等级：每项加减分明示理由（如「RSI偏高 −6」），资讯情绪 ±12 分纳入。
+- 形态信号卡：金叉死叉、超买超卖、乖离、变盘信号等，文案与阈值同源一致，缺数据一律降级「暂无数据」不误导。
+- 附带简单回测（信号胜率 / 平均收益，样本不足自动隐藏）。
+
+### 👥 投资社区
+- 帖子流 / 点赞 / 评论与回复展开；发帖可附**持仓卡片**（单张或多张包）。
+- 用户名片、用户名模糊搜索、关注体系、**私信**（对方未开启则显式提示）。
+- 消息中心（通知 + 会话）、公告弹窗。
+
+### 👤 用户与成长
+- 游客即用：行情分析与本地自选无需登录；登录后自选 / 资料 / 关注云端同步。
+- **等级体系**：经验自动累积（后端只升不降），全等级徽章可见可点，等级页展示进度与权益。
+- **VIP 会员**：黑金昵称 / 金冠徽章，与等级徽章一套视觉体系。
+- 公开资料页：他人可查看简介 / 注册时间 / 公开自选 / 动态；头像框、资料编辑、账号安全、自助注销。
+
+---
+
+## 📡 行情数据链路（多源冗余）
+
+```
+交易所 → 数据商 Web API → Edge Function 服务端转发 → 前端解析
+```
+
+- **三级冗余 + 熔断自愈**：东方财富 → 腾讯证券 → 新浪财经，单源连续失败熔断 60s，恢复自动切回；单家故障不影响整页。
+- **数据源优先级可配置**：Supabase `app_config` 表远程下发（菜单显隐 / 各类数据源顺序），改库即生效、无需发版。
+- **通道自动降级**：Edge Function 代理（规避 CORS 与小程序白名单）→ 直连(UA/Referer) → JSONP → 公共 CORS 代理。
+- **多市场覆盖**：A 股 / 港股 / 美股 / 指数走东财-腾讯-新浪；商品期货（沪金沪银沪铜 / 原油 / COMEX）走新浪期货接口；期指持仓走中金所官方 CSV。
+- 输入代码或名称自动识别市场（沪 / 深 / 港 / 京），无需手动切换。
+
+## 🔧 工程亮点
+
+- **业务与 UI 分离**：`src/utils/` 全部纯函数（分析引擎、周期解析、形态识别），零平台依赖，跨端复用。
+- **设计系统 token 化**：颜色（涨跌 / 警示 / 淡黑规范）、字号梯度、阴影 / 圆角 / 动效全部 CSS 变量收敛，`npm run lint:font` 守护字号纪律。
+- **组件化底部窗体**：`PeekSheet` 统一折叠 / 半屏 / 铺满三态手势，切页自动收起；消息中心 / 发帖 / 关注列表 / 指数面板 / 热榜同一套交互。
+- **路由与权限守卫**：`useAuthGuard` + `usePageGuard` 双保险，游客可达页白名单化管理。
+- **浅 / 深主题**：跟随系统切换，K 线等 canvas 场景统一解析真实色值兜底。
+- **上线即体检**：`vue-tsc` strict 全量类型检查；无 console 调试残留、无未使用导出 / 组件 / 死样式（发布前扫描清零）。
 
 ---
 
 ## 📁 目录结构
 
 ```
-stock-analyzer-uni/
-├─ src/
-│  ├─ config/app.ts          # 运行期配置：Supabase URL/KEY、USE_EDGE_FUNCTIONS、本地默认菜单/数据源
-│  ├─ config/remote.ts       # 从 Supabase app_config 表拉取远程配置（菜单显隐 / 数据源顺序）
-│  ├─ utils/                 # 纯业务逻辑（跨端，零平台依赖）
-│  │  ├─ analyzer.ts         #   分析引擎（指标 + 综合研判 + 白话报告）
-│  │  ├─ period.ts           #   周期配置 + 代码解析 + 行情行解析
-│  │  └─ colors.ts / format.ts
-│  ├─ api/                   # 数据 / 服务隔离层
-│  │  ├─ supabase.ts         #   Supabase 客户端（H5 原生 / 小程序 uni.request 垫片）
-│  │  ├─ quote.ts            #   跨端行情统一入口
-│  │  ├─ sources/            #   数据源层：多源注册表 + 并发首胜 + 熔断降级
-│  │  │  ├─ index.ts         #     注册表（东财/腾讯/新浪/代理）按配置组装取数链
-│  │  │  ├─ eastmoney.ts / tencent.ts / sina.ts / proxy.ts
-│  │  │  ├─ transport.ts     #     传输层降级（直连/JSONP/Edge Function/公共代理）
-│  │  ├─ announcement.ts     #   公告（Supabase announcements 表）
-│  │  ├─ auth.ts             #   登录 / 注册 / 资料更新 / 头像上传
-│  ├─ store/                 # 响应式状态（Vue reactive，跨端通用）
-│  │  ├─ appConfig.ts        #   运行时配置合成（本地默认 + 远程覆盖）
-│  │  ├─ user.ts             #   用户态 + 资料 + 会话订阅
-│  │  ├─ watchlist.ts        #   自选股（云端 / 本地降级 + Realtime）
-│  │  ├─ nav.ts              #   UI 桥接（底部导航 key、登录弹窗、跳转行情）
-│  ├─ components/            # 跨端 UI 组件
-│  │  ├─ OutlineIcon.vue     #   线条图标封装（uni-icons）
-│  │  ├─ PriceText.vue / AnalysisCard.vue / StockChart.vue（行情图引擎）
-│  │  ├─ ReportView.vue / AuthShell.vue / AppTabBar.vue（tabs 由系统配置下发）
-│  ├─ views/                 # 四个页面视图（Market / Watchlist / Community / Profile）
-│  ├─ pages/index/index.vue  # 壳页：底部导航（按配置显隐）+ 视图切换 + 认证弹窗
-│  ├─ styles/global.css      # 全局设计系统（颜色 / 间距 / 圆角 / 动效）
-│  ├─ App.vue / main.ts
-├─ uni_modules/              # 跨端组件（uni-icons，已 vendored）
-├─ supabase/
-│  ├─ deploy.sql            # 建表 / RLS / 存储桶 / Realtime（公告、系统配置、社区等）
-│  ├─ DEPLOY.md             # Supabase 部署指引（SQL + Edge Function + 环境变量）
-│  └─ functions/guanlan-quote-proxy/  # Edge Function：行情 / 资金流服务端转发
-└─ manifest.json / pages.json / vite.config.ts
+src/
+├─ api/                     # 数据层：多源注册表 + 并发首胜 + 熔断降级
+│  ├─ sources/              #   eastmoney / tencent / sina 解析器 + transport 通道降级
+│  ├─ globalIndices.ts      #   全球指数 + 科技热点篮子合成
+│  ├─ quote.ts / community.ts / auth.ts / user.ts / cffex.ts ...
+├─ components/              # 跨端组件
+│  ├─ StockChart.vue        #   K 线引擎（klinecharts 定制：智能标注 / 手绘 / 磁吸 / 标签布局）
+│  ├─ ReportView.vue        #   智能分析报告
+│  ├─ MarketView / WatchlistView / CommunityView / ProfileView / RankView → src/views/
+│  ├─ PeekSheet / BottomSheet / MessageCenter / PostComposer / UserAvatar / LevelTag ...
+├─ store/                   # 轻量响应式状态（user / watchlist / level / community / anomaly ...）
+├─ composables/             # useAuthGuard / usePreventPageScroll
+├─ utils/                   # 纯业务逻辑：analyzer / autoLevels / period / marketStatus ...
+├─ pages/                   # 登录注册 / 资料编辑 / 等级 / VIP / 设置 / 法务 等二级页
+├─ styles/global.css        # 设计系统 token + 深色主题
+├─ config/                  # 运行期配置 + app_config 远程合成
+supabase/
+├─ deploy.sql               # 建表 / RLS / Realtime（幂等）
+├─ functions/               # Edge Functions：guanlan-quote-proxy（行情转发）/ login-geo / delete-account
+└─ DEPLOY.md                # 部署指引
+scripts/                    # 校准与验证脚本（MACD 对拍 / 科技热点实测 / 字号检查 ...）
 ```
-
----
-
-## 📡 行情数据源（多源冗余，可配置）
-
-**数据链路**：交易所（上交所 / 深交所 / 港交所）是行情的源头 → 数据商（东方财富、腾讯、新浪等）通过授权行情源 / 镜像拿到数据 → 再以各自的 **web API** 对外提供。本项目对每类数据接入多家相互独立的上游源，做 **并发首胜 + 自动降级**（某源连续失败 3 次熔断 60s 后自愈），单家源故障不影响整页。
-
-**默认优先级（可在 Supabase `app_config` 的 `sources` 字段改，无需发版）**：
-
-| 数据 | 首选 | 次选 | 兜底 | 说明 |
-| --- | --- | --- | --- | --- |
-| 实时行情 | 东方财富 | 腾讯证券 | 新浪财经 | 三级冗余 |
-| K 线 | 东方财富 | 腾讯证券 | 新浪财经(日K) | 东财额外提供换手率(f61)，采用时优先 |
-| 分时 | 东方财富 | 腾讯证券 | 新浪财经 | 三级冗余 |
-| 资金流 | 东方财富 | Edge 代理(新浪) | — | 主力净流入仅东财免费开放；东财不可达经 Edge Function 转发新浪 |
-| 搜索 | 东方财富 | 腾讯证券 | 新浪财经 | 三级冗余 |
-| 资讯 | 东方财富 | — | — | 结构化资讯独一家，不可达则返回空列表 |
-
-**请求通道（自动选择，按优先级）**：
-1. **Supabase Edge Function**（`guanlan-quote-proxy`）服务端转发（东财已验证可访问），H5 与小程序统一走此通道，规避 CORS 与小程序域名白名单；
-2. 直连（带 UA/Referer）→ JSONP → 公共 CORS 代理，逐级回退；
-3. 本地开发另有 Vite 同源代理 `/rt /em /search` 直连东财调试用。
-
-> 东方财富接口返回 UTF-8；新浪资金流返回 GBK（已由 Edge Function 转码）。实时行情价格按市场精度缩放（A 股×100、港股×1000），已在 `sources/eastmoney.ts` 的 `emPriceScale` 中处理。
-
-> **前端无需手动选择沪/深/港/京**：输入股票代码（或名称）即按规则自动识别市场（`period.ts` 的 `resolveSecid` auto 模式）并立即开始分析；同时提供东方财富搜索接口的代码/名称联想。自选股以 `secid` 反推的 `code`/`market` 存储。
-
-## ⚙️ 系统配置（菜单 / 数据源远程下发）
-
-所有业务级配置存在 Supabase `app_config` 表（key/value jsonb，RLS 公开读 / 仅 service_role 可写）。前端启动时拉取并与本地默认合并，组件自动响应。
-
-| 字段 | 类型 | 作用 |
-| --- | --- | --- |
-| `menus` | `{market,watch,community,profile: boolean}` | 底部导航显隐（关闭则入口一并隐藏） |
-| `sources` | `{realtime,kline,trend,flow,search,news: SourceId[]}` | 每类数据的数据源优先级列表 |
-
-新增配置项（如 `features` / `theme`）无需改表，直接在 `app_config` 加 key 即可。
 
 ---
 
 ## 🚀 运行
 
-> 要求 Node ≥ 18（本仓库推荐用 Node 20/22）。
+> 要求 Node ≥ 18（推荐 20/22）。
 
 ```bash
 npm install
 
-# H5 网页开发
-npm run dev:h5        # http://localhost:5173
-# H5 网页构建
-npm run build:h5      # 产物在 dist/build/h5，可直接静态托管
+# H5 开发 / 构建（产物 dist/build/h5，可静态托管）
+npm run dev:h5
+npm run build:h5
 
-# 微信小程序
-npm run dev:mp-weixin     # 产物在 dist/dev/mp-weixin
-npm run build:mp-weixin   # 产物在 dist/build/mp-weixin
-# 用「微信开发者工具」导入上述目录即可预览（需填小程序 appid，见 manifest.json）
+# 微信小程序 / App（可选）
+npm run dev:mp-weixin && npm run build:mp-weixin
+npm run dev:app && npm run build:app
 
-# App（可选）
-npm run dev:app / npm run build:app
+# 质量检查
+npm run type-check    # vue-tsc strict 全量类型检查
+npm run lint:font     # 字号 token 纪律检查
 ```
 
-> 后端（登录 / 自选云同步 / 社区 / 公告 / 配置）与行情代理均由 **Supabase** 承载，
-> 前端可静态托管在任意平台（Vercel / Netlify / 对象存储等），无需自建服务器。
+## ⚙️ Supabase 配置（不配也能分析，配了功能完整）
 
-> 注：在受限沙箱环境里 `vite` 依赖优化 / `uni` 清理产物时会触发批量删除被拦截而中断，
-> 属环境限制；在本地普通机器上 `npm run dev:h5` 可正常运行。生产构建（`build:h5`）不受影响。
+1. `.env` 填入 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_ANON_KEY`。
+2. SQL Editor 执行 `supabase/deploy.sql`（幂等）。
+3. 部署 Edge Functions：`npx supabase functions deploy guanlan-quote-proxy`（详见 `supabase/DEPLOY.md`）。
 
----
-
-## 🔧 Supabase 配置（不配也能分析，配了功能完整）
-
-1. 在 `.env`（或 `.env.local`）填入 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_ANON_KEY`。
-2. 在 Supabase 控制台 SQL Editor 执行 `supabase/deploy.sql`（幂等，可重复执行）。
-3. 部署行情/资金流 Edge Function：`npx supabase functions deploy guanlan-quote-proxy`
-   （更多细节见 `supabase/DEPLOY.md`）。
-
-未配置时：登录 / 自选云同步 / 社区 / 公告不可用，但行情分析（本地默认配置）与本地自选完全可用。
-
----
-
-## 🎨 跨端设计要点
-
-- **业务逻辑与 UI 分离**：`utils/` 为纯函数，H5 / 小程序零改动复用。
-- **图表用 KLineCharts**：H5 端专用 K 线框架（蜡烛 / 量 / MACD / 分时 / 筹码 / 预置画线），专业且无水印。
-- **图标用字体图标**：小程序不支持内联 SVG，统一走 `uni-icons` 字体方案。
-- **避免 Web-only API**：不依赖 `window` / `document`（仅在 `isH5()` 守卫内使用），动效纯 CSS。
-- **响应式布局**：以 `rpx` 为单位自适应屏宽；H5 桌面端用 `.app-shell` 居中成手机宽度，保证两端视觉一致。
+未配置时：登录 / 云同步 / 社区不可用，但行情分析（本地默认配置）与本地自选完全可用。

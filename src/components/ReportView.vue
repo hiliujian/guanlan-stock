@@ -388,7 +388,7 @@
     <!-- 风险提示 -->
     <view class="risks anim-fade-up" :style="{ animationDelay: '200ms' }">
       <view class="risks-title">
-        <OutlineIcon type="flag" :size="28" color="#ff9f1c" />
+        <OutlineIcon type="flag" :size="28" color="var(--warn)" />
         <text>风险提示</text>
       </view>
       <view v-for="(r, i) in a.risks" :key="i" class="risk-item">
@@ -432,14 +432,14 @@ const signalCls = computed(() => {
 const scoreColor = computed(() => {
   const s = a.value.score;
   if (s >= 70) return "var(--up)";
-  if (s >= 45) return "#ff9f1c";
+  if (s >= 45) return "var(--warn)";
   return "var(--down)";
 });
 // 风险等级着色（A股约定：低风险=利好=红、高风险=利空=绿、中风险橙）
 const riskColor = computed(() => {
   const r = a.value.riskLevel;
   if (r === "低") return "var(--up)";
-  if (r === "中") return "#ff9f1c";
+  if (r === "中") return "var(--warn)";
   return "var(--down)";
 });
 
@@ -623,7 +623,7 @@ const volState = computed(() => {
 // 不占红绿多空语义；缩量/温和中性灰
 const volColor = computed(() => {
   const v = a.value.volRatio;
-  if (v > 1.15) return "#ff9f1c";
+  if (v > 1.15) return "var(--warn)";
   return "var(--r-ink)";
 });
 // 主力资金净流入（近5/10/20日）：同一口径生成文本与着色，避免三份重复实现。
@@ -683,7 +683,7 @@ const bollColor = computed(() => {
 const volAnnText = computed(() => (a.value.volAnn * 100).toFixed(2) + "%");
 const mddText = computed(() => (a.value.maxDrawdown * 100).toFixed(2) + "%");
 const mddColor = computed(() =>
-  a.value.maxDrawdown > 0.35 ? "var(--down)" : a.value.maxDrawdown > 0.2 ? "#ff9f1c" : "var(--r-ink)"
+  a.value.maxDrawdown > 0.35 ? "var(--down)" : a.value.maxDrawdown > 0.2 ? "var(--warn)" : "var(--r-ink)"
 );
 const atrPctText = computed(() => a.value.atrPct.toFixed(2) + "%");
 const turnText = computed(() => {
@@ -711,7 +711,7 @@ const divColor = computed(() =>
 // ---------------- VaR / 区间位置派生（风险=偏空=绿，低位机会=偏多=红，与回撤/风险等级同口径） ----------------
 const var95Text = computed(() => a.value.var95.toFixed(2) + "%");
 const var95Color = computed(() =>
-  a.value.var95 <= -5 ? "var(--down)" : a.value.var95 <= -3 ? "#ff9f1c" : "var(--r-ink)"
+  a.value.var95 <= -5 ? "var(--down)" : a.value.var95 <= -3 ? "var(--warn)" : "var(--r-ink)"
 );
 const rangePosText = computed(() => `${a.value.rangePos.toFixed(0)}%（距高点 ${a.value.distHigh120.toFixed(1)}%）`);
 const rangePosColor = computed(() =>
@@ -754,7 +754,7 @@ const bollBwText = computed(() => {
   return `带宽常态 · 波动正常`;
 });
 const bollBwColor = computed(() => {
-  if (a.value.bollSqueeze) return "#ff9f1c";                              // 变盘信号（无方向警示）→ 橙
+  if (a.value.bollSqueeze) return "var(--warn)";                              // 变盘信号（无方向警示）→ 橙
   if (a.value.bollBwNow > 2.2) return "var(--down)";                      // 极度扩张=波动风险 → 绿（评分 -2 同号）
   return "var(--r-ink)";                                                  // 偏窄蓄势/常态均无方向 → 灰
 });
@@ -1221,7 +1221,7 @@ function openNews(it: NewsItem) {
 .signal-card.buy { border-left: 8rpx solid var(--up); }
 .signal-card.sell { border-left: 8rpx solid var(--down); }
 .signal-card.hold { border-left: 8rpx solid #3b82f6; }
-.signal-card.watch { border-left: 8rpx solid #ff9f1c; }
+.signal-card.watch { border-left: 8rpx solid var(--warn); }
 .signal-card.wait { border-left: 8rpx solid var(--border); }
 .signal {
   display: flex;
