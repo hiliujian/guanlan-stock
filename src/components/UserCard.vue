@@ -88,7 +88,12 @@ async function onToggleFollow() {
 }
 
 function goProfile() {
-  // 点击名片跳公开资料页（本人也会进入自己的资料页，内含「编辑资料」入口）
+  // 跳转对齐 PostCard/FollowListView 同款口径：本人 → 个人资料页（可编辑），
+  // 他人 → 公开资料页（detail?uid=）
+  if (isSelf.value) {
+    uni.navigateTo({ url: "/pages/profile/edit" });
+    return;
+  }
   uni.navigateTo({ url: `/pages/profile/detail?uid=${encodeURIComponent(props.user.id)}` });
 }
 </script>
