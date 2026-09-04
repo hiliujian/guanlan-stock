@@ -43,7 +43,9 @@
 
         <!-- 自选股表格：全屏铺满 + 固定表头 + 名称列固定(横滑不丢) + 横向滚动 -->
         <view v-if="rows.length" class="wl-wrap">
-        <scroll-view class="wl-grid" scroll-x scroll-y>
+        <!-- 拖拽行期间动态关闭 scroll-x/scroll-y：iOS 上滚动容器自身的触摸平移不受行内
+             preventDefault 约束，会拖着整张表一起跑；拖拽中锁定滚动、结束即恢复 -->
+        <scroll-view class="wl-grid" :scroll-x="!dragKey" :scroll-y="!dragKey">
           <view class="wl-rows">
           <view class="wl-thead">
             <!-- 名称列表头：仅占位(固定列左上角)。排序/列设置按钮已移至滚动容器外的 .wl-cols-overlay，避免横滑 scroll-view 吞掉点击 -->
@@ -1499,6 +1501,8 @@ function removeLp() {
   min-height: 0;
   width: 100%;
   background: var(--bg-2);
+  /* 拖拽排序时滚动由 :scroll-x/:scroll-y 动态锁定；这里抑制 iOS 的滚动链回弹 */
+  overscroll-behavior: contain;
 }
 /* 表格外层：相对定位容器，承载滚动表格 + 列控制浮层；列控制按钮已移出 scroll-x 容器 */
 .wl-wrap {
