@@ -527,10 +527,8 @@ interface PeekRow {
 const peek = ref<PeekRow | null>(null);
 async function loadPeek() {
   const heat = await fetchStockHeat(20, true);
-  if (!heat.length) {
-    peek.value = null;
-    return;
-  }
+  // 刷新容错：热度接口读失败会伪装成空数组——已有旧内容时保留（允许数据延迟），首次为空正常
+  if (!heat.length) return;
   const top = heat[0];
   const secid = resolveSecid(top.code, top.market as any);
   try {
@@ -818,14 +816,20 @@ async function loadQuotes() {
   if (userState.supabaseEnabled && !userState.loggedIn) return;
   const tasks = list.value.map(async (it) => {
     const k = keyOf(it);
-    quotes[k] = { ...EMPTY, loading: true };
+    // 刷新容错：已有旧快照时不重置为 loading 骨架（避免刷新期间整行数字变 --），
+    // 仅置 loading 标记；无旧值时才显示骨架
+    const old = quotes[k];
+    if (!old || !old.price) quotes[k] = { ...EMPTY, loading: true };
+    else quotes[k] = { ...old, loading: true };
     try {
       const secid = resolveSecid(it.code, it.market as any);
       const snap = await fetchSnapshot(secid);
       quotes[k] = { ...snap, loading: false };
       detectAlert(it, snap.price);
     } catch {
-      quotes[k] = { ...EMPTY, loading: false, error: true };
+      // 刷新容错：读失败保留旧快照（允许数据延迟），仅首次无旧值时才显示错误态
+      if (!old || !old.price) quotes[k] = { ...EMPTY, loading: false, error: true };
+      else quotes[k] = { ...old, loading: false };
     }
   });
   await Promise.allSettled(tasks);

@@ -475,7 +475,10 @@ const focused = ref(false);
 // 空态卡片「热门搜索」标签：后端当日真实搜索行为统计，最多 9 个（名称随榜返回，免二次解析）
 const hotList = ref<HotStock[]>([]);
 async function loadHot() {
-  hotList.value = await fetchHotSearches(9);
+  const list = await fetchHotSearches(9);
+  // 刷新容错：读失败伪装成空数组——已有热门搜索时保留旧数据（允许数据延迟），首次为空正常
+  if (list.length === 0 && hotList.value.length > 0) return;
+  hotList.value = list;
 }
 
 // 最近搜索历史：本地存储、去重、上限 10、可清除；空输入聚焦时作为联想展示
@@ -664,6 +667,13 @@ async function refreshFull() {
   // 经「多维严格关联（代码/全称/核心词/简称；板块资讯按行业名验证）+ 时效（最近3天）」过滤后注入情绪量化。
   const n = await fetchNews(secid.value, name.value, b.industry || "").catch(() => [] as NewsItem[]);
   const filtered = filterNews(n, { code: curCode.value, name: name.value, industry: b.industry || "" });
+  // 刷新容错：同股轮询读失败会伪装成空数组——已有资讯时保留旧资讯（允许数据延迟），
+  // 避免「有资讯 → 暂无数据」突兀跳变；换股场景走 run()，不在此路径，无串股风险
+  if (filtered.length === 0 && news.value.length > 0) {
+    newsSig.value = scoreNews(news.value);
+    applyPeriod(period.value);
+    return;
+  }
   news.value = filtered;
   newsSig.value = scoreNews(filtered);
   applyPeriod(period.value);

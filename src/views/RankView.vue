@@ -90,6 +90,12 @@ async function load() {
   // 二者后端各自独立聚合；today 为空时本组件显示「暂无数据」，不会兜底完整榜单。
   const today = props.mode === "today";
   const heat = await fetchStockHeat(props.mode === "all" ? 100 : 20, today);
+  // 刷新容错：热度接口读失败会伪装成空数组——已有榜单时保留旧榜单（允许数据延迟），
+  // 首次为空正常显示「暂无数据」
+  if (!heat.length && rows.value.length) {
+    loading.value = false;
+    return;
+  }
   const tasks = heat.map(async (h) => {
     const secid = resolveSecid(h.code, h.market as any);
     try {

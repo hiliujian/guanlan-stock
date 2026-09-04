@@ -41,6 +41,10 @@ export function useCommunity() {
     loading.value = true;
     try {
       const res = await communityRepo.list({ limit: FEED_PAGE_SIZE });
+      // 刷新容错：repo 读失败会以空数组伪装成功。已有内容时，空结果按失败处理——
+      // 保留旧信息流（posts/feedDone/cursor 原样），避免「有帖子 → 还没有动态」的突兀跳变；
+      // 首次加载的空结果不受影响，仍正常显示空态。
+      if (res.length === 0 && posts.value.length > 0) return;
       const hasMore = res.length > FEED_PAGE_SIZE;
       const page = hasMore ? res.slice(0, FEED_PAGE_SIZE) : res;
       posts.value = page;
@@ -59,6 +63,9 @@ export function useCommunity() {
       const res = await communityRepo.list({ limit: FEED_PAGE_SIZE, cursor: feedCursor.value ?? undefined });
       const hasMore = res.length > FEED_PAGE_SIZE;
       const page = hasMore ? res.slice(0, FEED_PAGE_SIZE) : res;
+      // 续拉容错：空页可能是读失败伪装成功——已有内容时不动 feedDone（保持可重试），
+      // 避免一次网络抖动就把信息流误判为「已经到底了」。
+      if (page.length === 0 && posts.value.length > 0) return;
       posts.value = [...posts.value, ...page];
       feedDone.value = !hasMore;
       if (page.length) feedCursor.value = page[page.length - 1].createdAt;
@@ -210,6 +217,7 @@ const convLoading = ref(false);
 const unreadDm = ref(0);
 const activeThread = ref<DmMessage[]>([]); // 当前会话消息流
 const threadLoading = ref(false);
+let dmThreadPeer = ""; // 当前会话流归属的对方 userId（openThread 容错判据）
 
 // 通知「已读基线」：按消息类型（点赞 / 评论）分别持久化的时间戳。后端 NotificationItem
 // 无 read 标记，故以「通知创建时间晚于该类型基线」判定为该类型未读（社媒通行的「最后查看
@@ -286,7 +294,10 @@ async function loadNotifications() {
     // 重新登录 / 登出再进：内存基线可能被 reset 清 0，先从本地读回当前用户已读基线，
     // 避免把已读历史重新标红。
     ensureSeenLoaded();
-    notifications.value = await communityRepo.myNotifications();
+    const list = await communityRepo.myNotifications();
+    // 刷新容错：读失败伪装成空数组——已有通知时保留旧列表（未读角标不误清），首次为空正常
+    if (list.length === 0 && notifications.value.length > 0) return;
+    notifications.value = list;
     // 校准「已读基线」：仅当本用户从未有过基线（首次进入消息中心）时，把基线设为「此刻」，
     // 使所有历史通知视为已读；之后新到达的通知（晚于此刻）才计未读。
     // 若已有基线（含重新登录从本地读回），保持原值，避免把已读历史重新标红。
@@ -306,7 +317,10 @@ async function loadNotifications() {
 async function loadConversations() {
   convLoading.value = true;
   try {
-    conversations.value = await communityRepo.listConversations();
+    const list = await communityRepo.listConversations();
+    // 刷新容错：读失败伪装成空数组——已有会话时保留旧列表（私信角标不误清），首次为空正常
+    if (list.length === 0 && conversations.value.length > 0) return;
+    conversations.value = list;
     // 会话未读之和即为私信角标数
     unreadDm.value = conversations.value.reduce((s, c) => s + c.unreadCount, 0);
   } finally {
@@ -379,14 +393,22 @@ function stopMessageRealtime() {
 export function useMessageCenter() {
   /** 单独刷私信未读数（轻量，供顶部栏角标用） */
   async function loadUnreadDm() {
-    unreadDm.value = await communityRepo.unreadDmCount();
+    const n = await communityRepo.unreadDmCount();
+    // 刷新容错：读失败伪装成 0——已有未读时保留旧值（真正的已读清零走 openThread→loadConversations）
+    if (n === 0 && unreadDm.value > 0) return;
+    unreadDm.value = n;
   }
 
   /** 打开与某人的会话：拉取消息流并顺带标记已读 → 重新聚合未读 */
   async function openThread(otherId: string) {
     threadLoading.value = true;
     try {
-      activeThread.value = await communityRepo.getDmThread(otherId);
+      const list = await communityRepo.getDmThread(otherId);
+      // 刷新容错：读失败伪装成空数组——同一会话已有消息时保留旧消息流；
+      // 切换到新会话（peer 变化）的空结果仍正常显示空态
+      if (list.length === 0 && activeThread.value.length > 0 && dmThreadPeer === otherId) return;
+      activeThread.value = list;
+      dmThreadPeer = otherId;
       await loadConversations();
     } finally {
       threadLoading.value = false;
@@ -420,6 +442,7 @@ export function useMessageCenter() {
     conversations.value = [];
     unreadDm.value = 0;
     activeThread.value = [];
+    dmThreadPeer = "";
     dismissedNotifIds.value = [];
     // 重置基线，使下次加载按「首次加载」逻辑重新校准（适配切换账号）。
     seenLikeAt.value = 0;

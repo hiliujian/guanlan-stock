@@ -296,7 +296,8 @@ const registerText = computed(() => {
 async function loadProfile() {
   loading.value = true;
   notFound.value = false;
-  profile.value = null;
+  // 刷新容错：不预先清空旧 profile（页面实例与 uid 一一对应，旧数据必属同一用户），
+  // 拉取失败时保留旧资料而非跳「用户不存在」，避免网络抖动误报
   try {
     const sb = getSupabase();
     if (!sb || !uid.value) {
@@ -308,7 +309,12 @@ async function loadProfile() {
       .select("id, display_name, username, avatar_url, avatar_frame, level, exp, vip, vip_expires_at, signature, created_at, allow_dm, public_watchlist")
       .eq("id", uid.value)
       .single();
-    if (error || !data) {
+    // 无此用户（PGRST116）→ 明确的「不存在」错误页；其它查询错误 → 有旧资料则保留，否则降级错误页
+    if (error) {
+      if ((error as any).code === "PGRST116" || !profile.value) notFound.value = true;
+      return;
+    }
+    if (!data) {
       notFound.value = true;
       return;
     }
@@ -336,7 +342,8 @@ async function loadProfile() {
     // 拉取 TA 的最新动态（最多 5 条），与自选股相互独立
     loadRecentPosts();
   } catch {
-    notFound.value = true;
+    // 刷新容错：异常时保留旧资料（若有），避免网络抖动误报「用户不存在」
+    if (!profile.value) notFound.value = true;
   } finally {
     loading.value = false;
   }
@@ -387,10 +394,12 @@ async function loadRecentPosts() {
   recentLoading.value = true;
   try {
     const res = await communityRepo.listByUser(uid.value, { limit: 5 });
-    // 后端多取 1 条探测下一页，这里只需前 5 条作为内联预览
+    // 刷新容错：读失败伪装成空数组——已有动态时保留旧列表（允许数据延迟），
+    // 首次为空正常显示「暂无动态」；页面实例与 uid 一一对应，无串用户风险
+    if (res.length === 0 && recentPosts.value.length > 0) return;
     recentPosts.value = res.slice(0, 5);
   } catch {
-    recentPosts.value = [];
+    // 异常时保留旧动态，不主动清空
   } finally {
     recentLoading.value = false;
   }
