@@ -1099,7 +1099,9 @@ export function analyze(
       reason: `价格接近压力 ${resistance.toFixed(2)}，且出现${rNow > 70 ? "RSI超买" : macdCross === "dead" ? "MACD死叉" : "资金净流出"}等滞涨信号`,
       confirm: "若放量强势突破压力则转强可持有；否则易遇阻回落，应减仓",
     };
-  } else if (nearSup && (rNow < 40 || macdCross === "gold" || build || (f5.has && f5.sum > 0))) {
+  } else if (nearSup && !reduce && (rNow < 40 || macdCross === "gold" || build || (f5.has && f5.sum > 0))) {
+    // !reduce：窄幅箱体内 nearTop(7%) 与 nearSup(5%) 可同时成立，若不排除 reduce，
+    // 会出现信号卡「买点」与决策「建议减仓」同屏矛盾（历史回归实测出现过）。
     signal = {
       level: "buy",
       label: "买点",
