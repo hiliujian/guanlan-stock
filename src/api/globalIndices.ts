@@ -313,7 +313,28 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
       });
     }
   }
-  return map;
+  return mergeWithLastGood(map);
+}
+
+// 刷新容错：源级失败在 fetchGlobalIndices 内被降级为「空数据」（对应条目 price/pct 全 null）。
+// 若把这种结果直接覆盖到 UI，行情页会从「有数据」突变为「暂无数据」，体验突兀。
+// 因此保留最近一次含有效数据的合并结果 lastGoodGlobal：
+//   · 新结果整体无任何有效数据 → 整体沿用上次快照；
+//   · 新结果部分缺失 → 仅对缺失条目用旧值补位（允许数据延迟，正常条目仍用新值）；
+//   · 首次拉取（无旧快照）→ 原样返回，UI 正常显示「暂无数据」。
+let lastGoodGlobal: Map<string, GlobalIndexQuote> | null = null;
+function mergeWithLastGood(fresh: Map<string, GlobalIndexQuote>): Map<string, GlobalIndexQuote> {
+  const hasData = (q: GlobalIndexQuote) => q.price != null || q.pct != null;
+  if (![...fresh.values()].some(hasData)) return lastGoodGlobal ?? fresh;
+  if (lastGoodGlobal) {
+    for (const [secid, q] of fresh) {
+      if (hasData(q)) continue;
+      const old = lastGoodGlobal.get(secid);
+      if (old && hasData(old)) fresh.set(secid, old);
+    }
+  }
+  lastGoodGlobal = fresh;
+  return fresh;
 }
 
 /** 行情时间戳是否落在美东今日正式时段窗口（09:30–16:00，容忍收盘整点秒级余量）。 */
