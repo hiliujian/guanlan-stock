@@ -421,7 +421,7 @@ const props = withDefaults(
     /** 当前 K线周期（m=分时/d/w/M），用于各周期默认缩放与智能标注多周期隔离；不传默认日K */
     period?: PeriodKey;
   }>(),
-  { height: 440, showMA: true, macdDif: true, macdDea: true, volumeMa5: true, volumeMa10: true, volumeMa20: true, showTools: false, autoDraw: false, persist: true }
+  { height: 380, showMA: true, macdDif: true, macdDea: true, volumeMa5: true, volumeMa10: true, volumeMa20: true, showTools: false, autoDraw: false, persist: true }
 );
 
 // ---- 类型别名（klinecharts 运行时实例）----

@@ -436,7 +436,7 @@ const CARD_RENDERERS: Record<CardId, { comp: Component; props: () => Record<stri
       trends: trends.value,
       preClose: preClose.value,
       klines: klines.value,
-      height: 460,
+      height: 380,
       loading: switching.value,
       // 实时最新价/昨收（与头部同源 5s 实时快照）：分时模式同步到走势图最后一根，
       // 确保「股票卡片头部」与「实时走势图」显示的最新净值完全同步、同源、实时更新。
