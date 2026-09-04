@@ -815,11 +815,10 @@ export function analyze(
   let score = 50;
   const trendDelta =
     trend === "up" ? 18 : trend === "shake_up" ? 8 : trend === "shake_down" ? -8 : trend === "down" ? -18 : 0;
+  // 评分依据的趋势标签直接复用 judgeTrend 的 trendText（上涨趋势/下跌趋势/震荡偏强…），
+  // 与「技术面评分→当前趋势」「多维研判→趋势方向」同一话术，不再另写「多头趋势/空头趋势」。
   score += trendDelta;
-  addReason(
-    trend === "up" ? "多头趋势" : trend === "shake_up" ? "震荡偏强" : trend === "shake_down" ? "震荡偏弱" : trend === "down" ? "空头趋势" : "横向整理",
-    trendDelta
-  );
+  addReason(trendText, trendDelta);
   // 位置因子：「价格相对 20 周期均线的偏离」做均值回归倾斜。
   // A 股主板有 ±10% 涨跌停（科创板 ±20%），15% 偏离在主板永远达不到，
   // 改为 8% 触发：偏离 >8% 视为超买回撤风险（轻微扣），<-8% 视为超卖反弹机会（轻微加）。
@@ -994,7 +993,9 @@ export function analyze(
   if (rNow > 70) risks.push(`RSI(12) 已达 ${rNow.toFixed(2)}，处于超买区，追高需谨慎。`);
   if (macdCross === "dead") risks.push("MACD 近期出现死叉，短线动能转弱。");
   if (nearRes) risks.push(`上方压力位在 ${resistance.toFixed(2)} 附近，若无量能配合可能遇阻。`);
-  if (trend === "down") risks.push("均线空头排列，整体处于下跌趋势，抄底需严格控制仓位。");
+  // 话术注意：trend 由 DMI/ADX 判定，「多头排列/空头排列」是 MA 排列专属术语（见 maState），
+  // trend=down 时均线系统可能是「均线纠缠」，此处不得声称「均线空头排列」以免与研判格矛盾。
+  if (trend === "down") risks.push("整体处于下跌趋势，抄底需严格控制仓位。");
   if (Math.abs(bias6) > 10) risks.push(`短期乖离率 BIAS(6) 达 ${bias6.toFixed(2)}%，价格偏离短期均线过远，存在均值回归压力。`);
   if (divergence === "top") risks.push("价格创阶段新高但量能/OBV 未同步（顶背离），上涨动能衰减，注意冲高回落。");
   if (elevatedVol) risks.push(`平均真实波幅(ATR)约 ${atrPct.toFixed(2)}%，日内波动偏大，需放宽止损空间。`);
@@ -1135,7 +1136,7 @@ export function analyze(
       level: "hold",
       label: "持有",
       text: "趋势向上，可持有跟随，回调即加仓点",
-      reason: "均线多头排列 + 主力资金流入，动能未衰减",
+      reason: "上涨趋势 + 主力资金流入，动能未衰减",
       confirm: "跌破 MA20 或放量大阴线则警惕转弱，考虑减仓",
     };
   } else if (trend === "up" || trend === "shake_up") {
@@ -1151,7 +1152,7 @@ export function analyze(
       level: "wait",
       label: "观望",
       text: "处于下跌趋势，暂不参与",
-      reason: "均线空头排列，弱势未改",
+      reason: "下跌趋势未改，弱势运行",
       confirm: "放量站上 MA20 并企稳后再考虑介入",
     };
   } else {

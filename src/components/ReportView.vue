@@ -614,6 +614,8 @@ const rsiColor = computed(() => {
   return "var(--r-ink)";
 });
 const volState = computed(() => {
+  // 档位阈值 1.15/0.85 仅描述「活跃度形态」；突破/跌破的有效性确认用的是 1.0/0.9（analyzer），
+  // 两处阈值差异是有意为之（确认门槛更宽松），勿「统一」掉。
   const v = a.value.volRatio;
   if (v > 1.15) return "放量";
   if (v < 0.85) return "缩量";
@@ -749,7 +751,7 @@ const biasColor = computed(() => {
 });
 const bollBwText = computed(() => {
   const bw = a.value.bollBwNow;
-  if (a.value.bollSqueeze) return `带宽收缩 · 即将变盘`;
+  if (a.value.bollSqueeze) return `带宽极度收敛 · 即将变盘`; // 与风险提示「布林带进入极度收敛区间」同一话术
   if (bw > 2.2) return `带宽极度扩张 · 波动剧烈`; // 与评分依据「布林带宽极度扩张」同一话术（同一 bollBwNow>2.2 条件）
   if (bw < 0.6) return `带宽偏窄 · 蓄势中`;
   return `带宽常态 · 波动正常`;
