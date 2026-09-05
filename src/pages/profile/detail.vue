@@ -519,6 +519,7 @@ function startDm() {
     otherName: nameText.value,
     otherAvatarUrl: profile.value.avatar_url || "",
     otherFrame: vipGatedFrame(profile.value.avatar_frame, isVip.value),
+    otherVip: isVip.value,
   });
   goTab("community");
   uni.navigateBack({

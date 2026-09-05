@@ -519,9 +519,11 @@ $$;
 grant execute on function public.get_user_watchlist(uuid) to anon, authenticated;
 
 -- 会话列表（按对方聚合：最近一条 + 未读数）
+-- other_vip / other_vip_expires_at：对方 VIP 生效态由前端 vipActive 判定，供会员金框收口
 create or replace function public.get_my_conversations()
 returns table (
   other_id uuid, other_name text, other_avatar text, other_frame text,
+  other_vip boolean, other_vip_expires_at timestamptz,
   last_content text, last_at timestamptz, unread_count bigint, last_sender_me boolean
 )
 language sql security definer set search_path = public as $$
@@ -551,6 +553,8 @@ language sql security definer set search_path = public as $$
          coalesce(p.display_name, p.username, '用户') as other_name,
          p.avatar_url as other_avatar,
          p.avatar_frame as other_frame,
+         p.vip as other_vip,
+         p.vip_expires_at as other_vip_expires_at,
          l.last_content, l.last_at, coalesce(u.uc,0)::bigint, l.last_sender_me
   from latest l
   left join unread u on u.other_id = l.other_id
@@ -587,6 +591,7 @@ $$;
 create or replace function public.get_my_notifications()
 returns table (
   id uuid, kind text, actor_id uuid, actor_name text, actor_avatar text, actor_frame text,
+  actor_vip boolean, actor_vip_expires_at timestamptz,
   post_id uuid, post_snippet text, comment_content text, created_at timestamptz
 )
 language sql security definer set search_path = public as $$
@@ -622,6 +627,8 @@ language sql security definer set search_path = public as $$
          coalesce(pr.display_name, pr.username, '用户') as actor_name,
          pr.avatar_url as actor_avatar,
          pr.avatar_frame as actor_frame,
+         pr.vip as actor_vip,
+         pr.vip_expires_at as actor_vip_expires_at,
          m.post_id,
          coalesce(p2.content, '分享了持仓卡片') as post_snippet,
          m.comment_content, m.created_at

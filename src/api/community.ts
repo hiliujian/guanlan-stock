@@ -113,6 +113,8 @@ export interface NotificationItem {
   actorName: string;
   actorAvatarUrl: string;
   actorFrame: string;
+  /** 触发者 VIP 生效态（过期自动 false）；undefined = 旧版 RPC 未返回该字段，展示端不据此回收金框 */
+  actorVip?: boolean;
   postId: string; // 关联的我的帖子
   postSnippet: string; // 帖子摘要（文字内容 / 卡片一句话）
   commentContent?: string; // 仅 comment 类型有值
@@ -125,6 +127,8 @@ export interface Conversation {
   otherName: string;
   otherAvatarUrl: string;
   otherFrame: string;
+  /** 对方 VIP 生效态（过期自动 false）；undefined = 旧版 RPC 未返回该字段，展示端不据此回收金框 */
+  otherVip?: boolean;
   lastContent: string; // 最近一条消息内容
   lastAt: number;
   unreadCount: number;
@@ -697,6 +701,8 @@ async function notificationsRemote(): Promise<NotificationItem[]> {
     actorName: r.actor_name || "用户",
     actorAvatarUrl: r.actor_avatar || "",
     actorFrame: r.actor_frame || "",
+    // 旧版 RPC 无 actor_vip 字段时保持 undefined（未知不回收）；新版按有效期实时判定
+    actorVip: typeof r.actor_vip === "boolean" ? vipActive(r.actor_vip, r.actor_vip_expires_at) : undefined,
     postId: r.post_id,
     postSnippet: r.post_snippet || "",
     commentContent: r.comment_content || undefined,
@@ -751,6 +757,8 @@ async function listConversationsRemote(): Promise<Conversation[]> {
     otherName: r.other_name || "用户",
     otherAvatarUrl: r.other_avatar || "",
     otherFrame: r.other_frame || "",
+    // 旧版 RPC 无 other_vip 字段时保持 undefined（未知不回收）；新版按有效期实时判定
+    otherVip: typeof r.other_vip === "boolean" ? vipActive(r.other_vip, r.other_vip_expires_at) : undefined,
     lastContent: r.last_content || "",
     lastAt: new Date(r.last_at).getTime(),
     unreadCount: Number(r.unread_count) || 0,

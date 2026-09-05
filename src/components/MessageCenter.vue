@@ -51,7 +51,7 @@
               class="mc-conv"
               @click="openConv(c)"
             >
-              <UserAvatar :url="c.otherAvatarUrl" :seed="c.otherName" :size="84" :frame="c.otherFrame" />
+              <UserAvatar :url="c.otherAvatarUrl" :seed="c.otherName" :size="84" :frame="vipGatedFrame(c.otherFrame, c.otherVip)" />
               <view class="mc-conv-mid">
                 <text class="mc-conv-name truncate">{{ c.otherName }}</text>
                 <text class="mc-conv-last truncate">{{ c.lastContent || "还没有消息" }}</text>
@@ -78,7 +78,7 @@
               :key="n.id"
               class="mc-notif"
             >
-              <UserAvatar :url="n.actorAvatarUrl" :seed="n.actorName" :size="72" :frame="n.actorFrame" />
+              <UserAvatar :url="n.actorAvatarUrl" :seed="n.actorName" :size="72" :frame="vipGatedFrame(n.actorFrame, n.actorVip)" />
               <view class="mc-notif-mid">
                 <view class="mc-notif-line">
                   <text class="mc-notif-name">{{ n.actorName }}</text>
@@ -139,6 +139,7 @@ import PeekSheet from "./PeekSheet.vue";
 import { formatRelative, type Conversation, type NotificationItem } from "@/api/community";
 import { useMessageCenter, useDmTarget } from "@/store/community";
 import { userState } from "@/store/user";
+import { vipGatedFrame } from "@/utils/avatarFrame";
 
 withDefaults(defineProps<{ modelValue: boolean; zIndex?: number }>(), { modelValue: false, zIndex: 40 });
 const emit = defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
@@ -216,6 +217,7 @@ onMounted(async () => {
       otherName: t.otherName,
       otherAvatarUrl: t.otherAvatarUrl,
       otherFrame: t.otherFrame,
+      otherVip: t.otherVip,
       lastContent: "",
       lastAt: 0,
       unreadCount: 0,

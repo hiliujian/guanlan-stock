@@ -165,6 +165,7 @@ interface DmTarget {
   otherName: string;
   otherAvatarUrl: string;
   otherFrame: string;
+  otherVip: boolean; // 对方 VIP 生效态（深链进会话时头像框金框收口用）
 }
 
 const dmTarget = ref<DmTarget | null>(null);

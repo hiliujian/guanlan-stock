@@ -200,7 +200,46 @@ function detect(it: { code: string; market: string; name: string }, secid: strin
 
 let polling = false;
 let timer: any = null;
+let visibilityBound = false;
 const POLL_MS = 15000;
+
+function startTick() {
+  if (timer) return;
+  timer = setInterval(() => {
+    if (polling) return;
+    polling = true;
+    monitorTick().finally(() => {
+      polling = false;
+    });
+  }, POLL_MS);
+}
+function stopTick() {
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+}
+// 页面可见性门控（与 presence 心跳同思路）：后台标签页停表，省流量/电量，
+// 回前台立即补跑一轮并恢复心跳，隐藏期间错过的监测轮次不丢
+function onVisibility() {
+  if (typeof document !== "undefined" && document.hidden) {
+    stopTick();
+  } else {
+    startTick();
+    monitorTick();
+  }
+}
+
+// 应用级心跳：开市期间每 15s 跑一轮（行情快照 20s TTL，与其他页面共享缓存）
+export function startAnomalyMonitor() {
+  if (timer) return;
+  startTick();
+  monitorTick(); // 启动即跑一次
+  if (typeof document !== "undefined" && !visibilityBound) {
+    visibilityBound = true;
+    document.addEventListener("visibilitychange", onVisibility);
+  }
+}
 
 // 一轮监测：一次批量拉取全部自选快照（原逐只 fetchSnapshot 在 N 只自选时每轮 N 个并发
 // 请求），再逐只检测；批量源未覆盖的标的在 fetchSnapshots 内部自动回退多源竞速
@@ -222,16 +261,3 @@ async function monitorTick() {
 export const anomalies = computed(() =>
   state.list.slice().sort((a, b) => (a.time < b.time ? 1 : a.time > b.time ? -1 : 0))
 );
-
-// 应用级心跳：开市期间每 15s 跑一轮（fetchSnapshot 自带 20s TTL 限流）
-export function startAnomalyMonitor() {
-  if (timer) return;
-  timer = setInterval(() => {
-    if (polling) return;
-    polling = true;
-    monitorTick().finally(() => {
-      polling = false;
-    });
-  }, POLL_MS);
-  monitorTick(); // 启动即跑一次
-}
