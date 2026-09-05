@@ -41,6 +41,8 @@
         <view class="kct-btn" :class="{ active: activeAction === 'trend' }" role="button" @click="drawLine('trend')">趋势</view>
         <view class="kct-btn" :class="{ active: activeAction === 'fib' }" role="button" @click="drawLine('fib')">分割</view>
         <view class="kct-btn kct-clear" role="button" @click="clearUserOverlays">清空</view>
+        <view v-if="selectedOverlayId" class="kct-btn kct-del" role="button" @click="removeSelectedOverlay">删除</view>
+        <text class="kct-hint">点线选中：拖动圆点调整 · 选中后可删除</text>
       </view>
     </Transition>
     <!-- 智能标注悬浮提示：跟随十字光标显示每条线的类型/价位/区间/触及次数/方向 -->
@@ -880,6 +882,9 @@ function destroyChart() {
   }
   chart = null;
   overlayIds.length = 0;
+  selectedOverlayId.value = null;
+  armedId = null;
+  activeAction.value = "";
 }
 
 // ---- 看盘画线工具：用户在图上拖拽绘制支撑/压力/趋势/黄金分割线 ----
@@ -899,7 +904,11 @@ function persistSave() {
     .map((id) => {
       const o: any = chart!.getOverlayById(id);
       if (!o || !o.points || !o.points.length) return null;
-      return { id, type: o.name ?? o.type, points: o.points, styles: o.styles };
+      // 选中态线宽（2.6）不落盘：持久化统一归一为基准线宽，恢复后外观一致
+      const styles = o.styles
+        ? { ...o.styles, line: { ...(o.styles.line || {}), size: BASE_LINE_SIZE } }
+        : o.styles;
+      return { id, type: o.name ?? o.type, points: o.points, styles };
     })
     .filter(Boolean) as any[];
   try {
@@ -908,13 +917,75 @@ function persistSave() {
     /* noop */
   }
 }
-// 自定义画线工具：点击工具后保持激活，可连续画多条；再次点击同一工具才关闭。
+// 自定义画线工具：点击工具后进入绘制，画完一笔（或取消）即自动退出绘制，
+// 让点击画布回到「选中已有线」交互——这是拖动调整的前提（绘制流程会拦截所有点击）。
 type DrawAction = "support" | "pressure" | "trend" | "fib";
 const activeAction = ref<DrawAction | "">("");
-// 当前已"装填"、等待下一次点击落线的进度 overlay id（连续绘制模式）
+// 当前已"装填"、等待下一次点击落线的进度 overlay id
 let armedId: string | null = null;
 // 关闭/清空过程中的守卫：避免 removeOverlay 触发的 onRemoved 又去重新装填
 let disarming = false;
+
+// ---- 选中已有线（点线选中 → 拖动圆点调整 / 删除）----
+// klinecharts 对已完成 overlay：按住点位圆点即可拖动（onPressedMove），拖完 onPressedEnd。
+// 选中态仅负责「加粗高亮 + 工具栏出现删除按钮」，拖动本身由图表引擎原生处理。
+const selectedOverlayId = ref<string | null>(null);
+// 触摸友好：点位圆点加大（默认 radius 约 4~5px，手指很难点中）
+const TOUCH_POINT_STYLES = { radius: 7, activeRadius: 10, color: "#ffffff", borderSize: 2 };
+// 用户手绘线的基准线宽（选中态加粗到 2.6，取消/持久化时回到基准）
+const BASE_LINE_SIZE = 1.4;
+function overlayLineColor(id: string): string | undefined {
+  const o: any = chart?.getOverlayById(id);
+  return o?.styles?.line?.color;
+}
+function setSelectedStyle(id: string, on: boolean) {
+  if (!chart) return;
+  try {
+    const o: any = chart.getOverlayById(id);
+    const base = o?.styles || {};
+    const lineColor = base.line?.color;
+    chart.overrideOverlay({
+      id,
+      styles: {
+        line: { ...(base.line || {}), size: on ? 2.6 : BASE_LINE_SIZE },
+        point: { ...TOUCH_POINT_STYLES, borderColor: lineColor },
+      },
+    } as never);
+  } catch {
+    /* noop */
+  }
+}
+function clearSelection() {
+  const prev = selectedOverlayId.value;
+  if (prev) {
+    selectedOverlayId.value = null;
+    setSelectedStyle(prev, false);
+  }
+}
+// 点击某条已完成的线：选中 / 再点取消 / 点另一条切换
+function selectOverlay(id: string) {
+  if (disarming) return;
+  const prev = selectedOverlayId.value;
+  if (prev === id) {
+    clearSelection();
+    return;
+  }
+  if (prev) setSelectedStyle(prev, false);
+  selectedOverlayId.value = id;
+  setSelectedStyle(id, true);
+}
+// 删除选中的线（工具栏「删除」按钮）：只删这一条，其余线与本地存储同步更新
+function removeSelectedOverlay() {
+  const id = selectedOverlayId.value;
+  if (!id || !chart) return;
+  clearSelection();
+  disarming = true;
+  try { chart.removeOverlay(id); } catch { /* noop */ }
+  disarming = false;
+  const i = overlayIds.indexOf(id);
+  if (i >= 0) overlayIds.splice(i, 1);
+  persistSave();
+}
 
 // 动作 → 自定义 overlay 名 + 线色 + 标签前缀（不再用内置名，避免「都绿/互斥」）
 function mapDrawAction(a: DrawAction): { name: string; color?: string; tag: string } {
@@ -924,8 +995,7 @@ function mapDrawAction(a: DrawAction): { name: string; color?: string; tag: stri
   return { name: "kcFib", color: undefined, tag: "" };
 }
 
-// 工具仍处于激活态时，立即装填下一条待绘制的线（连续绘制）。
-// 用 setTimeout 让上一次鼠标落线事件彻底结束后，再进入下一次绘制，避免复用同一次点击。
+// 工具仍处于激活态时，装填一条待绘制的线（单发模式：画完/取消即退出激活）
 function reArm() {
   if (disarming || !activeAction.value || !chart) return;
   const { name, color, tag } = mapDrawAction(activeAction.value);
@@ -936,18 +1006,27 @@ function reArm() {
     id,
     name,
     extendData: { tag },
-    styles: color ? { line: { color, style: "solid", size: 1.4 } } : undefined,
+    styles: {
+      line: color ? { color, style: "solid", size: 1.4 } : undefined,
+      // 触摸友好：点位圆点加大，手指才能点中拖动
+      point: { ...TOUCH_POINT_STYLES, borderColor: color },
+    },
+    // 点击已完成的线 → 选中（拖动圆点调整 / 工具栏删除）
+    onClick: () => selectOverlay(id),
+    // 拖动结束 → 同步本地存储，否则刷新后弹回旧位置
+    onPressedMoveEnd: () => persistSave(),
     onDrawEnd: () => {
       armedId = null;
       persistSave();
-      // 完成一笔后继续保持激活，装填下一笔（下一帧，避免复用当前鼠标事件）
-      setTimeout(reArm, 0);
+      // 单发：完成一笔即退出绘制模式，让点击画布回到「选中/拖动已有线」
+      activeAction.value = "";
     },
     onRemoved: () => {
-      // 取消（ESC/右键删）半截线：若仍处于激活态则重新装填，保持连续绘制
-      if (disarming) return;
-      armedId = null;
-      if (activeAction.value && chart) setTimeout(reArm, 0);
+      // 半截线被取消（ESC/右键/删除）：退出绘制模式，不再自动装填
+      const i = overlayIds.indexOf(id);
+      if (i >= 0) overlayIds.splice(i, 1);
+      if (armedId === id) armedId = null;
+      if (!disarming) activeAction.value = "";
     },
   } as never);
   if (!created) {
@@ -967,10 +1046,9 @@ function disarm() {
   activeAction.value = "";
 }
 
-// 点击工具按钮：激活 / 切换 / 关闭。再次点击同一工具 = 关闭。
+// 点击工具按钮：进入该工具的绘制（单发）；绘制中再次点击同一工具 = 取消半截线。
 function drawLine(action: DrawAction) {
   if (!chart) return;
-  // 已是同一工具 → 关闭
   if (activeAction.value === action) {
     disarm();
     return;
@@ -982,6 +1060,7 @@ function drawLine(action: DrawAction) {
     armedId = null;
     disarming = false;
   }
+  clearSelection(); // 开始画新线前取消选中，避免视觉混乱
   activeAction.value = action;
   reArm();
 }
@@ -993,6 +1072,7 @@ function clearUserOverlays() {
   overlayIds.length = 0;
   armedId = null;
   activeAction.value = "";
+  selectedOverlayId.value = null;
   const key = persistKey();
   if (key) {
     try {
@@ -1650,7 +1730,17 @@ function restoreOverlays() {
     try {
       const id = it.id || genOverlayId();
       const { name, extendData } = mapRestoreType(it);
-      chart.createOverlay({ id, name, extendData, points: it.points, styles: it.styles } as never);
+      const base = it.styles || {};
+      chart.createOverlay({
+        id, name, extendData, points: it.points,
+        styles: {
+          ...base,
+          // 旧存档无 point 尺寸 → 统一补触摸友好的点位圆点
+          point: { ...TOUCH_POINT_STYLES, borderColor: base?.line?.color },
+        },
+        onClick: () => selectOverlay(id),
+        onPressedMoveEnd: () => persistSave(),
+      } as never);
       if (!overlayIds.includes(id)) overlayIds.push(id);
     } catch {
       /* noop */
@@ -2071,19 +2161,30 @@ onBeforeUnmount(() => {
 .kc-ov--cyq {
   z-index: 2;
 }
-/* 看盘画线工具栏：浮于图表右上角，玻璃药丸 */
+/* 看盘画线工具栏：浮于图表右上角，玻璃药丸；含操作提示行（可换行） */
 .kc-tools {
   position: absolute;
   top: 12rpx;
   right: 12rpx;
   z-index: 6;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8rpx;
   padding: 6rpx;
   background: var(--card);
   border: 1rpx solid var(--border);
-  border-radius: 999rpx;
+  border-radius: 24rpx;
   box-shadow: var(--shadow-1);
+}
+/* 操作提示：占满第二行，小字不抢戏 */
+.kct-hint {
+  flex-basis: 100%;
+  padding: 0 10rpx 2rpx;
+  font-size: 20rpx;
+  line-height: 1.4;
+  color: var(--text-3);
+  text-align: right;
 }
 /* 工具栏淡入/淡出（由画板图标控制 toolsOpen） */
 .kct-enter-active,
@@ -2122,6 +2223,14 @@ onBeforeUnmount(() => {
 }
 .kct-clear:active {
   background: rgba(229, 72, 77, 0.12);
+}
+/* 选中线的删除按钮：与「清空」同 danger 色但实底更醒目（出现即有可删对象） */
+.kct-del {
+  color: #fff;
+  background: var(--danger);
+}
+.kct-del:active {
+  opacity: 0.85;
 }
 /* 智能标注悬浮提示框：跟随十字光标，玻璃卡片，不拦截指针 */
 .kc-tip {
