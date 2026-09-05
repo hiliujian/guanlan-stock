@@ -485,7 +485,7 @@ import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, delete
 import { userState } from "@/store/user";
 import { goTab, openInMarket } from "@/store/nav";
 import { usePageGuard } from "@/store/guard";
-import { fetchSnapshot, type SnapResult } from "@/api/quote";
+import { fetchSnapshot, fetchSnapshots, type SnapResult } from "@/api/quote";
 import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
 import { getMarketStatus } from "@/utils/marketStatus";
@@ -575,6 +575,10 @@ function activeAnomaly(now: number): AnomalyRecord | null {
 }
 function syncAnomReminder() {
   const rec = activeAnomaly(Date.now());
+  // 同值跳过：500ms 心跳仅在提醒条目实际变化时才赋值（activeAnomaly 返回的 rec 引用稳定，
+  // 「今日」态比较 kind），避免每拍新建对象驱动含大表格的整棵组件树重渲染
+  const cur = curSlide.value;
+  if (rec ? cur.kind === "anom" && cur.rec === rec : cur.kind === "today") return;
   curSlide.value = rec ? { kind: "anom", rec } : { kind: "today" };
 }
 let anomTimer: any = null;
@@ -811,28 +815,36 @@ const keyOf = (it: WatchItem) => `${it.code}|${it.market}`;
 const prevPrices = reactive<Record<string, number>>({});
 const alertState = ref<Record<string, "up" | "down">>({});
 
-// 自选股实时行情：批量拉取快照（与行情页同口径），填充现价与涨跌幅，并检测价格预警穿越
+// 自选股实时行情：一次批量拉取全部快照（fetchSnapshots 单请求 + 20s TTL 跨页共享，
+// 替代逐只 fetchSnapshot 的 N 并发），填充现价与涨跌幅，并检测价格预警穿越
 async function loadQuotes() {
   if (userState.supabaseEnabled && !userState.loggedIn) return;
-  const tasks = list.value.map(async (it) => {
-    const k = keyOf(it);
-    // 刷新容错：已有旧快照时不重置为 loading 骨架（避免刷新期间整行数字变 --），
-    // 仅置 loading 标记；无旧值时才显示骨架
+  const items = list.value;
+  if (!items.length) return;
+  const secids = items.map((it) => resolveSecid(it.code, it.market as any));
+  // 刷新容错：已有旧快照时不重置为 loading 骨架（避免刷新期间整行数字变 --），
+  // 仅置 loading 标记；无旧值时才显示骨架
+  for (let i = 0; i < items.length; i++) {
+    const k = keyOf(items[i]);
     const old = quotes[k];
     if (!old || !old.price) quotes[k] = { ...EMPTY, loading: true };
     else quotes[k] = { ...old, loading: true };
-    try {
-      const secid = resolveSecid(it.code, it.market as any);
-      const snap = await fetchSnapshot(secid);
+  }
+  const snaps = await fetchSnapshots(secids);
+  for (let i = 0; i < items.length; i++) {
+    const k = keyOf(items[i]);
+    const old = quotes[k];
+    const snap = snaps[secids[i]];
+    if (snap) {
       quotes[k] = { ...snap, loading: false };
-      detectAlert(it, snap.price);
-    } catch {
+      detectAlert(items[i], snap.price);
+    } else if (!old || !old.price) {
       // 刷新容错：读失败保留旧快照（允许数据延迟），仅首次无旧值时才显示错误态
-      if (!old || !old.price) quotes[k] = { ...EMPTY, loading: false, error: true };
-      else quotes[k] = { ...old, loading: false };
+      quotes[k] = { ...EMPTY, loading: false, error: true };
+    } else {
+      quotes[k] = { ...old, loading: false };
     }
-  });
-  await Promise.allSettled(tasks);
+  }
   refreshAlertHits();
 }
 

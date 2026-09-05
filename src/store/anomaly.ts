@@ -11,7 +11,7 @@
 // 其余类型均基于真实可得字段。
 // =====================================================================
 import { reactive, computed } from "vue";
-import { fetchSnapshot, type SnapResult } from "@/api/quote";
+import { fetchSnapshots, type SnapResult } from "@/api/quote";
 import { useWatchlist } from "./watchlist";
 import { getMarketStatus } from "@/utils/marketStatus";
 import { resolveSecid } from "@/utils/period";
@@ -202,24 +202,20 @@ let polling = false;
 let timer: any = null;
 const POLL_MS = 15000;
 
-// 一轮监测：遍历自选股快照，逐只检测（单只失败不影响其余）
+// 一轮监测：一次批量拉取全部自选快照（原逐只 fetchSnapshot 在 N 只自选时每轮 N 个并发
+// 请求），再逐只检测；批量源未覆盖的标的在 fetchSnapshots 内部自动回退多源竞速
 async function monitorTick() {
   clearIfNewDay();
   if (!getMarketStatus().open) return; // 休市不监测
   const wl = useWatchlist();
   const items = wl.items.map((it) => ({ code: it.code, market: it.market, name: it.name }));
   if (!items.length) return;
-  await Promise.allSettled(
-    items.map(async (it) => {
-      try {
-        const secid = resolveSecid(it.code, it.market as any);
-        const s = await fetchSnapshot(secid);
-        detect(it, secid, s);
-      } catch {
-        /* 单只失败忽略，下一轮重试 */
-      }
-    })
-  );
+  const secids = items.map((it) => resolveSecid(it.code, it.market as any));
+  const snaps = await fetchSnapshots(secids);
+  for (let i = 0; i < items.length; i++) {
+    const s = snaps[secids[i]];
+    if (s) detect(items[i], secids[i], s);
+  }
 }
 
 // 派生：按异动时间倒序（最新在前）

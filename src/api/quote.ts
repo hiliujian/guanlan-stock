@@ -14,7 +14,7 @@
 import { codeFromSecid } from "@/utils/period";
 import type { Kline, Trend, PeriodKey } from "@/utils/period";
 import type { RawRealtime, SearchHit, FlowMap } from "@/api/sources/types";
-import { getRealtime, getKline, getTrend, getFlow, getSearch, getNews, getIndexBreadth, getStockIndustry, getIndustryBoards, fetchTurnoverAnchor, type IndustryBoard } from "@/api/sources";
+import { getRealtime, getKline, getTrend, getFlow, getSearch, getNews, getIndexBreadth, getStockIndustry, getIndustryBoards, getUlistQuotes, fetchTurnoverAnchor, type IndustryBoard } from "@/api/sources";
 import { withTimeout } from "@/api/transport";
 import type { NewsItem } from "@/utils/newsSentiment";
 
@@ -195,6 +195,57 @@ export async function fetchSnapshot(secid: string): Promise<SnapResult> {
   const snap: SnapResult = { ...rt, chg, pct };
   cset(ck, snap);
   return snap;
+}
+
+// 批量实时快照：一次 ulist 请求取全部 secid（自选列表 / 异动监测 / 持仓卡共用），
+// 替代「每只各发一次 fetchSnapshot」的 N 并发模式。结果写入与 fetchSnapshot 相同的
+// "snap:" 20s TTL 缓存，跨消费方共享；批量源未覆盖的标的（停牌 / 源降级）逐只回退
+// fetchSnapshot 多源竞速，可用性不低于单只模式。
+export async function fetchSnapshots(secids: string[]): Promise<Record<string, SnapResult>> {
+  const out: Record<string, SnapResult> = {};
+  const missed: string[] = [];
+  for (const s of secids) {
+    if (out[s]) continue;
+    const hit = cget<SnapResult>("snap:" + s, 20_000);
+    if (hit) out[s] = hit;
+    else missed.push(s);
+  }
+  const uniq = Array.from(new Set(missed));
+  if (!uniq.length) return out;
+  const ul = await getUlistQuotes(uniq);
+  const got = new Set<string>();
+  for (const q of ul) {
+    if (!q.secid || q.price == null || got.has(q.secid)) continue;
+    got.add(q.secid);
+    const snap: SnapResult = {
+      name: q.name || "",
+      code: codeFromSecid(q.secid),
+      price: q.price,
+      preClose: q.preClose ?? 0,
+      open: q.open ?? 0,
+      high: q.high ?? 0,
+      low: q.low ?? 0,
+      vol: q.vol ?? 0,
+      amount: q.amount ?? 0,
+      time: q.ts ? new Date(q.ts * 1000).toISOString() : "",
+      chg: q.chg ?? (q.preClose ? +(q.price - q.preClose).toFixed(4) : 0),
+      pct: q.pct ?? 0,
+    };
+    cset("snap:" + q.secid, snap);
+    out[q.secid] = snap;
+  }
+  await Promise.allSettled(
+    uniq
+      .filter((s) => !got.has(s))
+      .map(async (s) => {
+        try {
+          out[s] = await fetchSnapshot(s);
+        } catch {
+          /* 调用方按缺失处理（保留旧快照 / 忽略该只） */
+        }
+      })
+  );
+  return out;
 }
 
 // 换手率补齐：东财 K 线自带 f61 换手率，无需处理；当东财不可达、日 K 降级到腾讯/新浪

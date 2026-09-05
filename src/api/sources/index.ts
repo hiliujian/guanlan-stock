@@ -232,13 +232,21 @@ export interface UlistQuote {
   chg: number | null; // 涨跌额，带符号
   /** 上游最后更新时间（f124，Unix 秒）：用于校验「数据是实时盘中」还是「定格收盘」 */
   ts?: number | null;
+  // ---- 以下字段供批量快照（quote.fetchSnapshots）补齐 SnapResult 完整形态；
+  //      期货/腾讯兜底等其他 UlistQuote 生产方不提供，消费方须按可空处理 ----
+  vol?: number | null; // 成交量（手，f5）
+  amount?: number | null; // 成交额（元，f6）
+  high?: number | null; // 最高（f15）
+  low?: number | null; // 最低（f16）
+  open?: number | null; // 今开（f17）
+  preClose?: number | null; // 昨收（f18）
 }
 export async function getUlistQuotes(secids: string[]): Promise<UlistQuote[]> {
   if (!secids.length) return [];
   try {
     const { source, text } = await requestGateway("ulist", {
       secids: secids.join(","),
-      fields: "f2,f3,f4,f12,f13,f14,f124",
+      fields: "f2,f3,f4,f5,f6,f12,f13,f14,f15,f16,f17,f18,f124",
     });
     if (source !== "eastmoney") return [];
     const json = JSON.parse(text);
@@ -261,6 +269,12 @@ export async function getUlistQuotes(secids: string[]): Promise<UlistQuote[]> {
         pct: num("f3"),
         chg: num("f4"),
         ts: num("f124"),
+        vol: num("f5"),
+        amount: num("f6"),
+        high: num("f15"),
+        low: num("f16"),
+        open: num("f17"),
+        preClose: num("f18"),
       });
     }
     return out;
