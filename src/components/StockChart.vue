@@ -42,7 +42,6 @@
         <view class="kct-btn" :class="{ active: activeAction === 'fib' }" role="button" @click="drawLine('fib')">分割</view>
         <view class="kct-btn kct-clear" role="button" @click="clearUserOverlays">清空</view>
         <view v-if="selectedOverlayId" class="kct-btn kct-del" role="button" @click="removeSelectedOverlay">删除</view>
-        <text class="kct-hint">点线选中：拖动圆点调整 · 选中后可删除</text>
       </view>
     </Transition>
     <!-- 智能标注悬浮提示：跟随十字光标显示每条线的类型/价位/区间/触及次数/方向 -->
@@ -2195,15 +2194,6 @@ onBeforeUnmount(() => {
   border: 1rpx solid var(--border);
   border-radius: 24rpx;
   box-shadow: var(--shadow-1);
-}
-/* 操作提示：占满第二行，小字不抢戏 */
-.kct-hint {
-  flex-basis: 100%;
-  padding: 0 10rpx 2rpx;
-  font-size: 20rpx;
-  line-height: 1.4;
-  color: var(--text-3);
-  text-align: right;
 }
 /* 工具栏淡入/淡出（由画板图标控制 toolsOpen） */
 .kct-enter-active,
