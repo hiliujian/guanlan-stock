@@ -8,7 +8,7 @@
       <view class="lg-row" :style="{ top: legendOffsets.price + 'px' }">
         <text class="lg-sec">主图</text>
         <text class="lg-time">{{ legend.time }}</text>
-        <view class="lg-price"><text class="lg-k">价格:</text><text class="lg-v" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ fmtPrice(legend.c) }}</text><text class="lg-chg" :class="legend.chgPct != null && legend.chgPct >= 0 ? 'up' : 'down'">{{ legend.chgPct != null ? (legend.chgPct >= 0 ? '+' : '') + legend.chgPct.toFixed(2) + '%' : '' }}</text></view>
+        <view class="lg-price"><text class="lg-k">价格:</text><text class="lg-v" :class="chgCls">{{ fmtPrice(legend.c) }}</text><text class="lg-chg" :class="chgCls">{{ legend.chgPct != null ? (legend.chgPct >= 0 ? '+' : '') + legend.chgPct.toFixed(2) + '%' : '' }}</text></view>
         <text v-if="props.mode !== 'kline'" class="lg-k">开:</text><text v-if="props.mode !== 'kline'" class="lg-v">{{ fmtPrice(legend.o) }}</text>
         <text v-if="props.mode !== 'kline'" class="lg-k">高:</text><text v-if="props.mode !== 'kline'" class="lg-v">{{ fmtPrice(legend.h) }}</text>
         <text v-if="props.mode !== 'kline'" class="lg-k">低:</text><text v-if="props.mode !== 'kline'" class="lg-v">{{ fmtPrice(legend.l) }}</text>
@@ -717,17 +717,18 @@ function drawCyq() {
   ctx.lineTo(xLeft, h);
   ctx.stroke();
   const n = prices.length;
-  const yFirst = chart.convertToPixel({ price: prices[0] } as any, { paneId: "candle_pane" }) as any;
-  const yLast = chart.convertToPixel({ price: prices[n - 1] } as any, { paneId: "candle_pane" }) as any;
-  if (!yFirst || !yLast || typeof yFirst.y !== "number" || typeof yLast.y !== "number") return;
-  const span = Math.abs(yLast.y - yFirst.y) || 1;
+  // 价格 → y 像素统一走 toPaneY（convertToPixel 只认 {value} 键，传 {price} 拿不到 y）
+  const yFirst = toPaneY(prices[0]);
+  const yLast = toPaneY(prices[n - 1]);
+  if (yFirst == null || yLast == null) return;
+  const span = Math.abs(yLast - yFirst) || 1;
   const barH = Math.max(1, span / n);
   for (let i = 0; i < n; i++) {
-    const yp = chart.convertToPixel({ price: prices[i] } as any, { paneId: "candle_pane" }) as any;
-    if (!yp || typeof yp.y !== "number") continue;
+    const yp = toPaneY(prices[i]);
+    if (yp == null) continue;
     const bw = (chip.vals[i] / maxV) * regionW;
     ctx.fillStyle = chip.colors[i] || NO_CHANGE;
-    ctx.fillRect(xLeft, yp.y - barH / 2, bw, barH);
+    ctx.fillRect(xLeft, yp - barH / 2, bw, barH);
   }
 }
 
@@ -934,10 +935,6 @@ const selectedOverlayId = ref<string | null>(null);
 const TOUCH_POINT_STYLES = { radius: 7, activeRadius: 10, color: "#ffffff", borderSize: 2 };
 // 用户手绘线的基准线宽（选中态加粗到 2.6，取消/持久化时回到基准）
 const BASE_LINE_SIZE = 1.4;
-function overlayLineColor(id: string): string | undefined {
-  const o: any = chart?.getOverlayById(id);
-  return o?.styles?.line?.color;
-}
 function setSelectedStyle(id: string, on: boolean) {
   if (!chart) return;
   try {
@@ -1064,8 +1061,8 @@ function drawLine(action: DrawAction) {
   activeAction.value = action;
   reArm();
 }
-// 清空用户手动画的线（不影响系统智能标注），并清本地存储
-function clearUserOverlays() {
+// 从图表摘除全部用户手绘线并复位画线/选中状态（不动本地存储）
+function detachOverlays() {
   disarming = true;
   if (chart) overlayIds.forEach((id) => { try { chart!.removeOverlay(id); } catch { /* noop */ } });
   disarming = false;
@@ -1073,6 +1070,10 @@ function clearUserOverlays() {
   armedId = null;
   activeAction.value = "";
   selectedOverlayId.value = null;
+}
+// 清空用户手动画的线（不影响系统智能标注），并清本地存储
+function clearUserOverlays() {
+  detachOverlays();
   const key = persistKey();
   if (key) {
     try {
@@ -1499,6 +1500,8 @@ const legend = reactive<{
   show: false, time: "", o: null, h: null, l: null, c: null, chgPct: null,
   main: [], vol: [], macd: [],
 });
+// 图例涨跌着色：涨红/跌绿，平盘 0 与无基准(null)均为中性色（与 MarketView 头部 pctColor 口径一致）
+const chgCls = computed(() => (legend.chgPct == null || legend.chgPct === 0 ? "" : legend.chgPct > 0 ? "up" : "down"));
 // 图例分组对齐到各自面板顶部：直接读取 klinecharts 渲染后的真实面板顶边（getSize(paneId).top）。
 // 为什么不用「同算法估算」：klinecharts 把 x 轴高度扣在容器最底部，蜡烛面板实际高度 = 总高 − x轴高，
 // 公式估算不含 x 轴偏移，会让成交量/MACD 图例标题比真实面板顶低约一个 x 轴高度（即用户看到的 GAP）。
@@ -1591,7 +1594,9 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
     : (idx && idx > 0 ? dataList[idx - 1]?.close || kl.open || 0 : kl.open || 0);
   legend.chgPct = base ? ((legend.c! - base) / base) * 100 : null;
   // 主图指标：分时=A VP均价；K线=各周期 MA（仅 maConfig 开启的）。
-  // 颜色与图表画线一致：按「可见 MA 顺序」取调色板（MA5橙/MA10蓝/MA20紫/MA60绿）；AVP 取首色。
+  // 颜色必须与图线一致：ensureMaIndicators 注册时按 MA_PERIODS 绝对下标烤死线色
+  // （MA5橙/MA10蓝/MA20紫/MA60绿/MA250品红），图例也按同一绝对下标取色——
+  // 若按「可见顺序」重排，关闭任一前序 MA 后图例颜色即与图线错位。
   const candle = paneMap("candle_pane", cross, idx);
   legend.main = [];
   if (props.mode === "intraday") {
@@ -1600,13 +1605,13 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
   } else {
     const cfg = props.maConfig;
     const vis = (k: string) => props.showMA !== false && (cfg ? cfg[k as keyof ChartMaConfig] : true);
-    let mi = 0;
-    for (const def of MA_PERIODS) {
+    for (let i = 0; i < MA_PERIODS.length; i++) {
+      const def = MA_PERIODS[i];
       if (!vis(def.key)) continue;
       // 指标结果是一个对象（如 {ma5: 值}），取子键才得到数值；直接取会拿到对象导致 fmtPrice 显示 "--"
       const obj = candle["MA" + def.period] as Record<string, any> | undefined;
       const v = obj ? obj[def.key] : null;
-      if (v != null) { legend.main.push({ label: "MA" + def.period, value: fmtPrice(v), color: INDICATOR_LINE_COLORS[mi] }); mi++; }
+      if (v != null) legend.main.push({ label: "MA" + def.period, value: fmtPrice(v), color: INDICATOR_LINE_COLORS[i % INDICATOR_LINE_COLORS.length] });
     }
   }
   // 量图：分时量/成交量 + 量 MA5/10/20（量 MA 取调色板前三位）
@@ -1673,7 +1678,10 @@ function onCrosshair(c: any) {
   const items: TipItem[] = [];
   for (const lv of autoLevels) {
     if (lv.kind === "trend" && lv.points && c.kLineData) {
-      const [p1, p2] = lv.points;
+      // 线段几何 = 首个→末个摆动点（autoTrendLine 只画 coordinates[0]→coordinates[last]），
+      // 悬浮插值必须用同两端点；若用前两点，末段提示会在线外触发、线上反而不触发
+      const p1 = lv.points[0];
+      const p2 = lv.points[lv.points.length - 1];
       const tMin = Math.min(p1.timestamp, p2.timestamp);
       const tMax = Math.max(p1.timestamp, p2.timestamp);
       const ts = c.kLineData.timestamp as number;
@@ -2004,6 +2012,17 @@ onMounted(async () => {
 watch(
   () => [props.klines, props.trends, props.preClose],
   () => refreshData()
+);
+// 换股（code 变化）：引擎 applyNewData 不清理 overlay（跨数据残留），上一只股的手绘线会
+// 留在新股图上，且随后的拖动/画线 persistSave 会以新股 key 落盘（跨股污染存档）。
+// 故先摘除旧线再按新股存档恢复；此时代码已切，严禁再把旧线 persistSave。
+watch(
+  () => props.code,
+  () => {
+    if (!chart) return; // 图未建时由 buildChart 的 drawOverlays 统一走 restoreOverlays
+    detachOverlays();
+    restoreOverlays();
+  }
 );
 watch(
   () => [props.mode, props.showMA, props.macdDif, props.macdDea, props.volumeMa5, props.volumeMa10, props.volumeMa20, props.maConfig?.ma5, props.maConfig?.ma10, props.maConfig?.ma20, props.maConfig?.ma60, props.maConfig?.ma250],

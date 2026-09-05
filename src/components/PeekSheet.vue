@@ -253,7 +253,11 @@ defineExpose({ expand, collapse });
   border-top: 1rpx solid var(--border);
   box-shadow: var(--shadow-sheet);
   transition: height var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
-  animation: peekIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* fill-mode 必须用 backwards 而非 both：both 会在动画结束后把 to 关键帧的 transform
+     永久钉在级联最高优先级，拖拽下拉时注入的内联 translateY 永不生效（下拉预览死）。
+     backwards 仅在延迟期保留 from 态，结束后 transform 归还基础规则 translateX(-50%)，
+     与 to 帧视觉效果一致，且不遮挡手势。 */
+  animation: peekIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 .peek-card.expanded {
   /* 展开态总占屏 = 卡片高度 + 底部菜单偏移(110rpx+安全区) = 恰好半屏：

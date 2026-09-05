@@ -12,17 +12,18 @@
 import { UP, DOWN, TREND } from "@/utils/colors";
 
 // 全局常量（画线规则总表）—— 与图表 StockChart.vue 完全同步，杜绝两套参数分歧
-export const BAND_WIN = 30;      // 波段观测窗口：结构支撑/压力计算，滚动右移，移出窗口价位剔除
-export const TRADE_WIN = 20;     // 短线观测窗口：交易参考支撑/压力计算，滚动右移
+// （仅 TOL_PCT/MIN_TOTAL_SCORE 被 scripts 测试引用需保留 export，其余为模块内私有）
+const BAND_WIN = 30;      // 波段观测窗口：结构支撑/压力计算，滚动右移，移出窗口价位剔除
+const TRADE_WIN = 20;     // 短线观测窗口：交易参考支撑/压力计算，滚动右移
 export const TOL_PCT = 0.008;    // 价格聚类容差：abs(p1-p2)/max(p1,p2) ≤0.008 视为同一价格簇，一簇仅输出 1 条线
-export const SWING_WIN = 2;      // 摆动点左右确认 K 线：左右各 2 根验证；靠近首尾不足则不生成摆动点
-export const SWING_FREQ_MAX = 40;// 触碰频次满分
-export const SWING_REV_MAX = 35; // 反转反应满分
-export const SWING_SWAP_MAX = 25;// 角色互换满分
-export const MIN_TOUCH_COUNT = 2;   // S/B 最低触碰次数（价格簇摆动点个数）：单根插针脉冲（仅 1 个摆动点）不生成 S/B
+const SWING_WIN = 2;      // 摆动点左右确认 K 线：左右各 2 根验证；靠近首尾不足则不生成摆动点
+const SWING_FREQ_MAX = 40;// 触碰频次满分
+const SWING_REV_MAX = 35; // 反转反应满分
+const SWING_SWAP_MAX = 25;// 角色互换满分
+const MIN_TOUCH_COUNT = 2;   // S/B 最低触碰次数（价格簇摆动点个数）：单根插针脉冲（仅 1 个摆动点）不生成 S/B
 export const MIN_TOTAL_SCORE = 30;  // S/B 总分最低合格门槛：综合打分 < 30 不渲染（杜绝弱位错出买卖信号）
-export const BREAK_CONFIRM_CNT = 2; // 连续 N 根实体收盘击穿判定价位失效（仅尾部连续计入；单根影线/历史破位已收回不计）
-export const VOL_MULTIPLE = 1.3;    // 放量阈值（相对 VMA20）：触碰时量能 > VMA20*1.3 视为放量确认
+const BREAK_CONFIRM_CNT = 2; // 连续 N 根实体收盘击穿判定价位失效（仅尾部连续计入；单根影线/历史破位已收回不计）
+const VOL_MULTIPLE = 1.3;    // 放量阈值（相对 VMA20）：触碰时量能 > VMA20*1.3 视为放量确认
 
 // 颜色（与图表涨跌色一致：A 股红涨绿跌）。图表中 UP/DOWN 经 cssColor 解析，
 // 而 --up/--down 为主题不变量（浅/深主题值相同），这里直接复用 colors 常量即得等价色。
@@ -33,7 +34,7 @@ const TRADE_PRESSURE_COLOR = DOWN; // 交易参考压力 B（绿，卖出信号�
 
 // 摆动点（pivot）：以 win 根为窗口取严格局部极值；窗口天然把相邻极值隔开 ≥win 根，无需额外 gap 过滤
 // 全局强制约束：K 线靠近图表首尾不足 win 根则不生成摆动点（findSwings 循环边界已保证）。
-export type SwingPt = { idx: number; t: number; value: number; k: any };
+type SwingPt = { idx: number; t: number; value: number; k: any };
 function findSwings(series: any[], win: number): { highs: SwingPt[]; lows: SwingPt[] } {
   const highs: SwingPt[] = [];
   const lows: SwingPt[] = [];
@@ -60,7 +61,7 @@ function median(arr: number[]): number {
 }
 
 // ── 波段类型（5 类）──
-export type BandType = "uptrend" | "downtrend" | "pullback" | "bounce" | "box";
+type BandType = "uptrend" | "downtrend" | "pullback" | "bounce" | "box";
 
 // 判定当前所处波段类型（5 类），输入 highs/lows 来自 30 根波段窗口。
 // breakDown：箱体/上涨结构但现价跌破前摆动低点→结构已破坏，统一判定支撑失效（结构支撑 + 交易S 全部隐藏），压力线保留。
@@ -125,7 +126,7 @@ function detectBandType(highs: SwingPt[], lows: SwingPt[], series: any[], curren
 }
 
 // 价格簇：把相近摆动点（≤TOL_PCT）合并为一簇，簇中枢取价位中位数（筹码密集中枢）
-export interface PriceCluster { center: number; members: SwingPt[]; }
+interface PriceCluster { center: number; members: SwingPt[]; }
 function clusterSwings(pts: SwingPt[], tol: number): PriceCluster[] {
   if (!pts.length) return [];
   const sorted = [...pts].sort((a, b) => a.value - b.value);
@@ -158,7 +159,7 @@ export interface LevelCtx {
 // 价格簇三维打分：触碰频次(40) + 反转反应(35) + 角色互换(25)，叠加四维权重修正。
 // baseScore = 未叠加四维修正的基准分（图表/报告共用，保证两侧选簇与门槛 100% 一致）；
 // score = baseScore + 量能/筹码/DMI 修正（仅报告用于强弱评级展示，不参与选簇与门槛）。
-export interface ClusterScore {
+interface ClusterScore {
   touches: number; reversal: number; swap: number; score: number; baseScore: number; broken: boolean;
   volBoost?: number; chipBoost?: number; dmiBoost?: number;
 }
@@ -296,7 +297,7 @@ const BAND_LABELS: Record<BandType, {
 //   · M（月 K）：bandWin=80，禁用交易参考线 + 趋势线（仅长期结构线）
 //   · m（分时）：复用日线数据计算，但仅展示交易参考线 S/B，隐藏结构支撑/压力 + 趋势线
 // 纯函数：不再依赖组件 props，由调用方传入 period。
-export interface PeriodGuard {
+interface PeriodGuard {
   bandWin: number;
   tradeWin: number;
   disableTrade: boolean;
@@ -328,14 +329,14 @@ export function resolvePeriodGuard(period: string = "d"): PeriodGuard {
 // 报告 / 图表共用的「价位选择」核心：返回 4 组价位的原始选择结果（含失效标记、分数、箱体），
 // 由 computePriceLevels（报告）与 computeAutoLevelsFromSeries（图表）各自映射，保证同源。
 // =====================================================================
-export interface RawLevel {
+interface RawLevel {
   price: number | null;
   cluster: PriceCluster | null;
   sc: ClusterScore | null;
   broken: boolean;  // 原始破位（连续实体击穿）
   invalid: boolean; // 实际失效应隐藏：结构线 = broken||breakDown；交易线 = 同上 || 总分<门槛
 }
-export interface RawLevels {
+interface RawLevels {
   band: BandType;
   breakDown: boolean;
   boxBottom: number | null;
@@ -575,7 +576,7 @@ export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard, d
 // =====================================================================
 // 报告映射：把 RawLevels 转成分层 PriceLevelGroup（带强弱评级 / 量能·筹码佐证 / 对应图表标签）
 // =====================================================================
-export interface PriceLevelItem {
+interface PriceLevelItem {
   price: number;          // 价位
   totalScore: number;     // 综合总分（量价·筹码·趋势加权后，0-100 量级）
   touchCount: number;     // 触碰次数

@@ -188,7 +188,7 @@
             <text class="m-v" :style="{ color: btSellColor }">{{ btSellText }}</text>
           </view>
         </view>
-        <text class="base-note">口径：仅统计「MA5/20 交叉 + 放量确认」单一规则（近 {{ a.backtest.bars }} 根日线 · 20 日前瞻）的历史胜率，不代表对综合评分与买卖信号的验证；历史参考，非未来保证。</text>
+        <text class="base-note">口径：仅统计「MA5/20 交叉」单一规则（买入信号另需放量确认，卖出仅看交叉；近 {{ a.backtest.bars }} 根日线 · 20 日前瞻）的历史胜率，不代表对综合评分与买卖信号的验证；历史参考，非未来保证。</text>
       </template>
       <view v-else class="news-empty">
         <text>样本不足</text>
@@ -683,7 +683,7 @@ const var95Text = computed(() => a.value.var95.toFixed(2) + "%");
 const var95Color = computed(() =>
   a.value.var95 <= -5 ? "var(--down)" : a.value.var95 <= -3 ? "var(--warn)" : "var(--r-ink)"
 );
-const rangePosText = computed(() => `${a.value.rangePos.toFixed(0)}%（距高点 ${a.value.distHigh120.toFixed(1)}%）`);
+const rangePosText = computed(() => `${a.value.rangePos.toFixed(0)}%（距高点 ${Math.abs(a.value.distHigh120).toFixed(1)}%）`);
 const rangePosColor = computed(() =>
   a.value.rangePos > 80 ? "var(--down)" : a.value.rangePos < 20 ? "var(--up)" : "var(--r-ink)"
 );
@@ -692,15 +692,25 @@ const rangePosColor = computed(() =>
 const bt = computed(() => a.value.backtest);
 const btValid = computed(() => bt.value.bars >= 80 && bt.value.buyCount + bt.value.sellCount >= 3);
 const fmtBtRet = (v: number) => (v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%";
+// 单边零样本降级：analyzer 对零样本侧返回 0 胜率/0 均收，直接渲染会被误读为「历史全败」——
+// 实为该方向无任何样本（如常年多头交叉被放量条件挡掉的股票），显示「暂无数据」。
 const btBuyText = computed(() =>
-  `${bt.value.buyCount}次 · ${bt.value.horizon}日胜率 ${(bt.value.buyWinRate * 100).toFixed(0)}% · 均收 ${fmtBtRet(bt.value.buyAvgRet)}`
+  bt.value.buyCount
+    ? `${bt.value.buyCount}次 · ${bt.value.horizon}日胜率 ${(bt.value.buyWinRate * 100).toFixed(0)}% · 均收 ${fmtBtRet(bt.value.buyAvgRet)}`
+    : "暂无数据"
 );
 const btSellText = computed(() =>
-  `${bt.value.sellCount}次 · ${bt.value.horizon}日胜率 ${(bt.value.sellWinRate * 100).toFixed(0)}% · 均收 ${fmtBtRet(bt.value.sellAvgRet)}`
+  bt.value.sellCount
+    ? `${bt.value.sellCount}次 · ${bt.value.horizon}日胜率 ${(bt.value.sellWinRate * 100).toFixed(0)}% · 均收 ${fmtBtRet(bt.value.sellAvgRet)}`
+    : "暂无数据"
 );
-// 均收为正=该方向有效=红；均收为负=失效=绿（A股约定）
-const btBuyColor = computed(() => (bt.value.buyAvgRet > 0 ? "var(--up)" : bt.value.buyAvgRet < 0 ? "var(--down)" : "var(--r-ink)"));
-const btSellColor = computed(() => (bt.value.sellAvgRet > 0 ? "var(--up)" : bt.value.sellAvgRet < 0 ? "var(--down)" : "var(--r-ink)"));
+// 均收为正=该方向有效=红；均收为负=失效=绿（A股约定）；零样本=中性
+const btBuyColor = computed(() =>
+  !bt.value.buyCount ? "var(--r-ink)" : bt.value.buyAvgRet > 0 ? "var(--up)" : bt.value.buyAvgRet < 0 ? "var(--down)" : "var(--r-ink)"
+);
+const btSellColor = computed(() =>
+  !bt.value.sellCount ? "var(--r-ink)" : bt.value.sellAvgRet > 0 ? "var(--up)" : bt.value.sellAvgRet < 0 ? "var(--down)" : "var(--r-ink)"
+);
 
 // ---------------- 乖离率 BIAS · 布林带宽（均值回归 + 波动率挤压）派生 ----------------
 const biasText = computed(() => {

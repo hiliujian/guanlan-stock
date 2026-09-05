@@ -33,7 +33,7 @@ async function getMyUid(sb: any): Promise<string | null> {
 }
 
 /** 从服务端拉取「我关注的用户」列表，填充 follows 集合。 */
-export async function loadFollows() {
+async function loadFollows() {
   const sb = getSupabase();
   if (!sb) return;
   const uid = await getMyUid(sb);

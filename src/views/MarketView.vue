@@ -86,7 +86,7 @@
                 :name="h.name"
               />
             </view>
-            <text v-if="!hotList.length" class="hot-in-empty">今日暂无搜索热点</text>
+            <text v-if="hotLoaded && !hotList.length" class="hot-in-empty">今日暂无搜索热点</text>
           </view>
         </view>
       </view>
@@ -182,7 +182,7 @@
                       <!-- 篮子状态角标：与数据强绑定的阶段（盘前/盘中/盘后）；深夜/周末/假期等
                            非交易阶段（数据定格收盘）不打标签，仅当时钟在盘中时段且行情时间戳
                            为今日实时才标「盘中」，防止标签与数据脱节 -->
-                      <text v-if="it.members && qOf(it.secid)?.views" class="idx-item-bkt bkt-switch" @click.stop="cycleBkt(it)">{{ BKT_LABEL[bktSel(it)] }}</text>
+                      <text v-if="it.members && qOf(it.secid)?.views" class="idx-item-bkt bkt-switch" @click.stop="cycleBkt(it)">{{ bktLabel(it) }}</text>
                       <text v-else-if="it.members && qOf(it.secid)?.session" class="idx-item-bkt">{{ qOf(it.secid)?.session }}</text>
                     </view>
                     <view class="idx-item-right">
@@ -312,6 +312,7 @@ const DEFAULT_INDEX = { secid: "1.000001", name: "上证指数" };
 const idxSecid = ref(DEFAULT_INDEX.secid);
 const idxName = ref(DEFAULT_INDEX.name);
 const idxSnap = ref<{ price: number; preClose: number; pct: number; chg: number } | null>(null);
+let idxGen = 0; // 指数快照请求代际（见 refreshIndex）
 // 依据当前股票代码匹配对应大盘指数（无股票 → 默认上证指数）；沿用 quote.ts 既有判定，避免重复逻辑。
 function resolveIdx() {
   const r = curCode.value ? resolveIndexForStock(curCode.value) : null;
@@ -321,8 +322,10 @@ function resolveIdx() {
 }
 // 轻量拉取当前匹配指数的实时快照（复用 fetchSnapshot，20s 缓存；失败保留上次值）
 async function refreshIndex() {
+  const gen = ++idxGen; // 最后发出的请求胜出：换股后晚归的旧指数快照按代际丢弃
   try {
     const s = await fetchSnapshot(idxSecid.value);
+    if (gen !== idxGen) return;
     idxSnap.value = { price: s.price, preClose: s.preClose, pct: s.pct, chg: s.chg };
   } catch {
     /* 保留上次快照，下一拍重试 */
@@ -423,6 +426,17 @@ function bktSel(it: { secid: string }): BktView {
   if (ok(q?.views?.pre)) return 'pre';
   return 'regular';
 }
+// 角标文案与展示时段分离：bktSel 只决定展示哪个时段的数据，文案须诚实标注数据所属阶段——
+// 休市/深夜（globalIndices 的 session 无标签）时数据定格在最近成交/收盘，按其契约
+// 「绝不用『盘中』冒充实时数据」，默认标注「盘后」（最近成交容忍期内）或「收盘」；
+// 用户手动切换的时段仍按所选时段标注。
+function bktLabel(it: { secid: string }): string {
+  const override = bktView.value[it.secid];
+  if (override) return BKT_LABEL[override];
+  const q = qOf(it.secid);
+  if (q?.session) return q.session; // 盘前/盘后/盘中（globalIndices 已做时钟+数据双实证）
+  return bktSel(it) === 'post' ? '盘后' : '收盘';
+}
 function onItemCardClick(it: { secid: string }) {
   if (qOf(it.secid)?.views) cycleBkt(it); // 仅美股篮子可切换，其余行点击无操作
 }
@@ -518,8 +532,10 @@ const focused = ref(false);
 
 // 空态卡片「热门搜索」标签：后端当日真实搜索行为统计，最多 9 个（名称随榜返回，免二次解析）
 const hotList = ref<HotStock[]>([]);
+const hotLoaded = ref(false); // 区分「加载中」与「当日确实无热点」，避免首帧闪现空态文案
 async function loadHot() {
   const list = await fetchHotSearches(9);
+  hotLoaded.value = true;
   // 刷新容错：读失败伪装成空数组——已有热门搜索时保留旧数据（允许数据延迟），首次为空正常
   if (list.length === 0 && hotList.value.length > 0) return;
   hotList.value = list;
@@ -617,6 +633,10 @@ const status = ref(getMarketStatus(curMarket.value));
 const refreshing = ref(false);
 let tickTimer: any = null;
 let tickCount = 0;
+// 请求代际：run() 换股时递增。各异步刷新（refreshLight/refreshFull/refreshIndex）发出请求时
+// 记下当前代际，晚到的旧股数据按代际丢弃——否则旧请求晚归会覆盖新股的 bundle/realtime/preClose，
+// 出现「新代码 + 旧数据」的拼接页面；同股轮询的并发重叠则「最后发出的请求胜出」，天然正确。
+let fetchGen = 0;
 
 function updateStatus() {
   status.value = getMarketStatus(curMarket.value);
@@ -655,7 +675,9 @@ function loadLastViewed(): boolean {
 // 轻量刷新：仅更新头部实时价/昨收（每 5s，交易时段）
 async function refreshLight() {
   if (!secid.value) return;
+  const gen = fetchGen;
   const snap = await fetchSnapshot(secid.value);
+  if (gen !== fetchGen) return; // 期间已换股：旧股快照丢弃，防止覆盖新股头部
   setRealtime({ price: snap.price, preClose: snap.preClose, open: snap.open, high: snap.high, low: snap.low, time: snap.time });
   preClose.value = snap.preClose;
 }
@@ -700,7 +722,9 @@ function applyPeriod(p: PeriodKey) {
 // 全量刷新：重新预取并覆盖缓存（每 ~60s，交易时段），随后从新缓存刷新当前视图
 async function refreshFull() {
   if (!secid.value) return;
+  const gen = fetchGen; // 快照当前代际：期间 run() 换股会使代际前移，旧股结果整体丢弃
   const b = await fetchBundle(secid.value);
+  if (gen !== fetchGen) return;
   bundle.value = b;
   name.value = b.name || chosen.value?.name || name.value || curCode.value;
   preClose.value = b.preClose;
@@ -710,6 +734,7 @@ async function refreshFull() {
   // 关联资讯：先取行情拿到确切公司名与行业名，再按「代码 + 公司名 + 所属板块」三路关键词抓取，
   // 经「多维严格关联（代码/全称/核心词/简称；板块资讯按行业名验证）+ 时效（最近3天）」过滤后注入情绪量化。
   const n = await fetchNews(secid.value, name.value, b.industry || "").catch(() => [] as NewsItem[]);
+  if (gen !== fetchGen) return;
   const filtered = filterNews(n, { code: curCode.value, name: name.value, industry: b.industry || "" });
   // 刷新容错：同股轮询读失败会伪装成空数组——已有资讯时保留旧资讯（允许数据延迟），
   // 避免「有资讯 → 暂无数据」突兀跳变；换股场景走 run()，不在此路径，无串股风险
@@ -780,7 +805,11 @@ async function run(forceMarket?: Market, track = true) {
     uni.showToast({ title: "请输入股票代码或名称", icon: "none" });
     return;
   }
+  const gen = ++fetchGen; // 新请求接管：在途的旧股刷新（refreshLight/refreshFull/refreshIndex）按代际失效
   loading.value = true;
+  const prevSecid = secid.value;
+  const prevCode = code.value;
+  const prevChosen = chosen.value;
   try {
     let sid = "";
     if (chosen.value) {
@@ -808,14 +837,15 @@ async function run(forceMarket?: Market, track = true) {
       }
     }
     secid.value = sid;
+    // 行情包先取：成功后才清旧股实时价并整体换装；失败则完整回滚 secid/code/chosen，
+    // 避免残留「新代码 + 旧数据」的拼接页（头部名称/价格是旧股、代码行/自选星标却是新股）。
+    const b = await fetchBundle(sid);
+    if (gen !== fetchGen) return; // 期间已有更新的换股请求接管，丢弃本次结果
     // 换股/重新搜索：清空上一只股票的实时价缓存。lastLivePrice 设计为同股快照偶发
     // 失败时的兜底，跨股必须重置——否则新股票在实时快照到达前会短暂显示上一只的
     // 实时价，与新昨收计算出的涨跌幅完全错误、严重误导。
     realtime.value = null;
     lastLivePrice.value = null;
-    // 行情包与关联资讯：先取行情拿到确切公司名，再按「代码 + 公司名」双关键词抓取资讯，
-    // 经量化情绪得分后注入 analyze，与量价/资金协同研判。
-    const b = await fetchBundle(sid);
     bundle.value = b;
     // 优先用接口返回的名字；实时接口降级（push2 不可用）时名字为空，回退到
     // 联想选择/历史记录/代码，避免头部股票名变空白。
@@ -829,20 +859,32 @@ async function run(forceMarket?: Market, track = true) {
     // 仅在有有效实时价时才覆盖（见 setRealtime），避免把实时快照偶发失败得到的 null 写回，
     // 导致非分时模式头部回落到静态日线收盘而「冻结」。
     setRealtime(b.realtime);
-    // 关联资讯：先做「多维严格关联 + 时效（最近3天）」过滤（板块资讯按行业名验证关联），
-    // 确保展示与情绪量化因子都只基于「对当前股票相关的近期资讯」；过滤后再计算情绪信号。
+    // 同一同步批次内换装 klines/trends/preClose/realtime：StockChart 的数据 watch 在同一
+    // flush 只触发一次，图表不会出现「新昨收 × 旧走势」的数秒错乱中间态（此前 applyPeriod
+    // 被放在资讯网络往返之后，该中间态每次换股必然出现）。
+    applyPeriod(period.value); // 从缓存装配当前周期，切换无需再等联网
+    saveLastViewed();
+    // 关联资讯不阻塞图表换装：先取行情拿到确切公司名，再按「代码 + 公司名」双关键词抓取资讯，
+    // 经「多维严格关联 + 时效（最近3天）」过滤（板块资讯按行业名验证关联）后计算情绪信号注入 analyze。
     const n = await fetchNews(sid, name.value, b.industry || "").catch(() => [] as NewsItem[]);
+    if (gen !== fetchGen) return;
     const filtered = filterNews(n, { code: curCode.value, name: name.value, industry: b.industry || "" });
     news.value = filtered;
     newsSig.value = scoreNews(filtered);
-    applyPeriod(period.value); // 从缓存装配当前周期，切换无需再等联网
-    saveLastViewed();
   } catch (e: any) {
-    uni.showToast({ title: e?.message || "请求失败", icon: "none" });
+    if (gen === fetchGen) {
+      // 仅当没有更新的请求接管时才回滚：回滚会改写 secid，若后续 run 已换股则绝不能覆盖
+      secid.value = prevSecid;
+      code.value = prevCode;
+      chosen.value = prevChosen;
+      uni.showToast({ title: e?.message || "请求失败", icon: "none" });
+    }
   } finally {
-    loading.value = false;
-    suggestions.value = [];
-    showSuggest.value = false;
+    if (gen === fetchGen) {
+      loading.value = false;
+      suggestions.value = [];
+      showSuggest.value = false;
+    }
   }
 }
 
@@ -960,11 +1002,15 @@ function clearInput() {
   showSuggest.value = false;
 }
 
-// 从「自选」页点击某只股票跳转过来时，自动带入代码开始分析
+// 从「自选」页点击某只股票跳转过来时，自动带入代码开始分析。
+// 必须消费后立即清空 pendingCode：否则「点自选股 A → 行情页搜索 B → 回自选再点 A」时
+// pendingCode 值不变（仍是 A），watch 不触发，页面停留 B——二次点击同股完全失效。
+// 清空回 "" 自身会再触发一次 watch，但 c 为空串被守卫忽略，无副作用。
 watch(
   () => navState.pendingCode,
   (c) => {
     if (c) {
+      navState.pendingCode = "";
       code.value = c;
       chosen.value = null;
       run(navState.pendingMarket);
@@ -981,7 +1027,9 @@ onMounted(() => {
   // 仅当从「自选」页跳转过来（带 pendingCode）时才自动搜索；
   // 否则若本地有最近查看记录则恢复该股票，保证切回行情页不丢数据、冷启动也能恢复。
   if (navState.pendingCode) {
-    code.value = navState.pendingCode;
+    const c = navState.pendingCode;
+    navState.pendingCode = ""; // 同 watch：消费即清空，保证同股二次点击仍能触发
+    code.value = c;
     chosen.value = null;
     run(navState.pendingMarket);
   } else if (!result.value) {
@@ -1531,12 +1579,6 @@ defineExpose({ refresh: () => refreshFull() });
 }
 .idx-item-price.down,
 .idx-item-pct.down {
-  color: var(--down);
-}
-.idx-item-pct-reg.up {
-  color: var(--up);
-}
-.idx-item-pct-reg.down {
   color: var(--down);
 }
 /* 缺失报价的指数：价格列降级为「暂无数据」并采用次级文字色（复用项目空态规范 --text-2） */

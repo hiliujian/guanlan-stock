@@ -81,7 +81,7 @@ export async function ensureTradingCalendar(secid: string, cutoffMinute: number)
   }
 }
 
-export interface DayInfo {
+interface DayInfo {
   known: boolean; // 是否能确定今天是否交易日
   trading: boolean; // known=true 时生效
 }

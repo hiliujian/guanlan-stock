@@ -457,8 +457,9 @@ export async function getIndustryBoards(): Promise<IndustryBoard[]> {
   return boards || [];
 }
 
-export type { NewsItem } from "@/utils/newsSentiment";
-export type { IndexBreadth, IndustryBoard } from "./eastmoney";
+// IndustryBoard 供 @/api/quote 消费；NewsItem/IndexBreadth 无 barrel 消费者（各自从
+// newsSentiment/eastmoney 原始模块导入），不再经此 re-export。
+export type { IndustryBoard } from "./eastmoney";
 
 // 关联资讯：并行取「代码 / 公司名」（个股）与「所属行业名」（板块）三路关键词，
 // 合并去重（按底层文章 id，同一篇经多路取回只保留首个——个股批优先）并按时间倒序。

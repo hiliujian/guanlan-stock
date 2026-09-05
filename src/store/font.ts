@@ -10,7 +10,7 @@
 import { reactive } from "vue";
 import { loadConfig, watchPersist } from "@/utils/storageConfig";
 
-export interface FontOption {
+interface FontOption {
   key: string;
   label: string; // 设置页分段控件文案
   en: string[]; // 英文/数字字体（栈首）
