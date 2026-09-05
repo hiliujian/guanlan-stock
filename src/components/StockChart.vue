@@ -704,14 +704,32 @@ function drawCyq() {
   if (!chip || !chip.cats || !chip.cats.length) return;
   const prices = chip.cats.map(Number);
   const maxV = Math.max(1, ...chip.vals);
+  // 直方图右缘必须收在主图绘图区内（不含 y 轴刻度条）：叠加层 canvas 覆盖整个容器，
+  // 若画到容器右缘会压在 y 轴价格刻度上，看起来像轴区冒出红绿柱。
+  // getSize(paneId,"main") 返回主图绘图区边界（引擎 9.8 公开 API），取其 right 为绘图区右缘。
+  let plotRight = w - 2;
+  let plotTop = 0;
+  let plotBottom = h;
+  try {
+    const main = (chart as any).getSize?.("candle_pane", "main") as any;
+    if (main && typeof main.right === "number" && main.right > 0) {
+      plotRight = main.right - 2;
+      if (typeof main.top === "number" && typeof main.bottom === "number") {
+        plotTop = main.top;
+        plotBottom = main.bottom;
+      }
+    }
+  } catch {
+    /* 引擎无该 API 时退回容器右缘兜底 */
+  }
   const regionW = Math.min(w * 0.26, 120);
-  const xRight = w - 2;
+  const xRight = plotRight;
   const xLeft = xRight - regionW;
   ctx.strokeStyle = isDark.value ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(xLeft, 0);
-  ctx.lineTo(xLeft, h);
+  ctx.moveTo(xLeft, plotTop);
+  ctx.lineTo(xLeft, plotBottom);
   ctx.stroke();
   const n = prices.length;
   // 价格 → y 像素统一走 toPaneY（convertToPixel 只认 {value} 键，传 {price} 拿不到 y）
@@ -720,6 +738,8 @@ function drawCyq() {
   if (yFirst == null || yLast == null) return;
   const span = Math.abs(yLast - yFirst) || 1;
   const barH = Math.max(1, span / n);
+  // 半透明填充：筹码直方图是背景信息，不能遮挡蜡烛与右侧价位标签
+  ctx.globalAlpha = 0.45;
   for (let i = 0; i < n; i++) {
     const yp = toPaneY(prices[i]);
     if (yp == null) continue;
@@ -727,6 +747,7 @@ function drawCyq() {
     ctx.fillStyle = chip.colors[i] || NO_CHANGE;
     ctx.fillRect(xLeft, yp - barH / 2, bw, barH);
   }
+  ctx.globalAlpha = 1;
 }
 
 // ---- 实时价同步（仅分时）----
