@@ -582,6 +582,9 @@ export function analyze(
     else obvArr[i] = obvArr[i - 1];
   }
   const obvMa = ma(obvArr, 20);
+  // OBV 与自身 20 日均线比较：仅描述 OBV 自身强弱（注意：并非严格「背离」，
+  // 背离需价格与 OBV 反向；也不得称「量价配合」——OBV>MA20 并未验证价格方向，
+  // 下跌途中 OBV 仍可在均线上方，见下方文案注释）。
   const obvUp = obvArr[len - 1] > (obvMa[len - 1] || obvArr[len - 1]);
   // 近 20 日平均换手率（A 股特有，反映活跃度 / 筹码松动）+ 相对 60 日状态。
   // 统一用日 K 序列（dailyKlines）计算，避免周/月 K 视图下口径错乱。
@@ -595,7 +598,9 @@ export function analyze(
   else if (turn60 > 0 && turnAvg < turn60 * 0.6) turnState = "交投清淡";
   // OBV 与自身 20 日均线比较：上行=量能配合价格，下行=量能走弱（注意：并非严格「背离」，
   // 背离需价格与 OBV 反向，这里仅表达 OBV 相对自身均线的强弱）。
-  const obvTrend = obvUp ? "量能配合(OBV上行)" : "量能走弱(OBV下行)";
+  // 文案只断言 OBV 自身强弱，不断言「量价配合」：OBV 相对自身均线上行不代表与价格同向，
+  // 缩量阴跌中 OBV 也可在均线上方，「配合」会让用户误以为量价关系健康（着色端按「上行/下行」判断）。
+  const obvTrend = obvUp ? "量能活跃(OBV上行)" : "量能走弱(OBV下行)";
   // 量价背离（严格版）：价格与 OBV 方向矛盾。区别于上方 obvTrend 仅对比 OBV 自身均线，
   // 这里检测「价创近 60 日新高而 OBV 未创新高（顶背离）」「价创新低而 OBV 未创新低（底背离）」
   // ——经典动能衰减/积聚信号；OBV 偏离窗口极值 2% 以上才算「未同步」。
@@ -766,7 +771,9 @@ export function analyze(
   let stageText: string;
   // 注：阶段判断基于价/量/资金的技术形态识别，仅描述「当前形态特征」，
   // 不确认背后是否存在真实的主力吸筹/派发行为（后者无法仅凭价量序列证明）。
-  if (nearTop && (rNow > 72 || f10.sum < 0)) {
+  // 「滞涨」= 涨不动；趋势向上且放量（VMA5/20>1.1）+ 资金净流入的加速形态不得标「高位滞涨」
+  //（否则主升浪加速段被描述成停滞，与「多头加速」形态矛盾；高位/超买风险仍由 risks 与决策层提示）
+  if (nearTop && (rNow > 72 || f10.sum < 0) && !(trend === "up" && volRatio > 1.1 && f5.sum > 0)) {
     stageText = "高位滞涨";
   } else if (nearBottom && f5.sum > 0 && rNow < 55 && volRatio > 0.85) {
     stageText = "低位蓄势";
@@ -824,15 +831,15 @@ export function analyze(
   // 计分延后至下方「动量·乖离簇」统一封顶（同源去重），不再单独加分。
   const dif = m.dif[len - 1] as number;
   const dea = m.dea[len - 1] as number;
-  const macdBar = dif - dea; // 柱状图值（注意：原始 MACD 定义是 (dif-dea)×2，这里符号判断即可）
   let macdDelta = 0;
   // 话术与「多维技术研判」MACD 格统一（红柱·多头/绿柱·空头）；「多头排列/空头排列」
   // 是均线系统专属术语，不得用于 MACD（DIF vs DEA），避免同词两义。
   let macdReasonLabel = "MACD持平";
   if (macdCross === "gold") { macdDelta = 6; macdReasonLabel = "MACD金叉"; }
   else if (macdCross === "dead") { macdDelta = -6; macdReasonLabel = "MACD死叉"; }
-  else if (dif > dea) { macdDelta = macdBar > 0 ? 3 : 2; macdReasonLabel = "MACD红柱·多头"; }
-  else if (dif < dea) { macdDelta = macdBar < 0 ? -3 : -2; macdReasonLabel = "MACD绿柱·空头"; }
+  // dif>dea ⇔ 柱值 (dif-dea)×2>0 恒成立（红柱），无需再判符号
+  else if (dif > dea) { macdDelta = 3; macdReasonLabel = "MACD红柱·多头"; }
+  else if (dif < dea) { macdDelta = -3; macdReasonLabel = "MACD绿柱·空头"; }
 
   // ---------------- 乖离率 BIAS（均值回归因子：价格偏离均线过远必然回归） ----------------
   // A 股有涨跌停限制，偏离度阈值与成熟市场不同；按三周期分档：
@@ -875,8 +882,10 @@ export function analyze(
   // ---------------- 筹码结构（CYQ）评分：成本分布是 A 股主力行为与支撑压力的核心参考 ----------------
   // 三大独立维度叠加，每项上限 ±5：
   //   · 获利盘：>85% 多数人浮盈易获利回吐（扣 5）；<20% 割肉盘出清抛压轻（加 5）
-  //   · 相对密集峰：现价低于密集峰 >8% → 下方是成本密集区强支撑（加 3）；
-  //                 现价高于密集峰 >8% → 上方是套牢密集区强压力（扣 3）；
+  //   · 相对密集峰：现价低于密集峰 >8% → 超跌（峰区在上方，存在向峰回归的反弹动能，加 3）；
+  //                 现价高于密集峰 >8% → 乖离偏大（峰区在下方为支撑锚，回归压力显现，扣 3）。
+  //                 注意语义：峰在现价下方=支撑、上方=套牢压力（与报告「筹码密集峰」格同一语义），
+  //                 此处 ±3 是均值回归因子，标签只描述超跌/乖离形态，不得声称「强支撑/强压力」。
   //   · 相对成本重心：高于成本重心（+8% 以上）扣 2；低于（-8% 以上）加 2
   if (chipR) {
     let chipDelta = 0;
@@ -885,8 +894,8 @@ export function analyze(
     if (pr > 0.85) { chipDelta -= 5; chipLabels.push("获利盘过高"); }
     else if (pr < 0.20) { chipDelta += 5; chipLabels.push("获利盘稀少"); }
     const distPeak = chipR.peakPrice ? (price - chipR.peakPrice) / chipR.peakPrice : 0;
-    if (distPeak < -0.08) { chipDelta += 3; chipLabels.push("密集峰强支撑"); }
-    else if (distPeak > 0.08) { chipDelta -= 3; chipLabels.push("密集峰强压力"); }
+    if (distPeak < -0.08) { chipDelta += 3; chipLabels.push("低于密集峰·超跌"); }
+    else if (distPeak > 0.08) { chipDelta -= 3; chipLabels.push("高于密集峰·乖离"); }
     const distAvg = chipR.avgCost ? (price - chipR.avgCost) / chipR.avgCost : 0;
     if (distAvg < -0.08) { chipDelta += 2; chipLabels.push("低于成本重心"); }
     else if (distAvg > 0.08) { chipDelta -= 2; chipLabels.push("高于成本重心"); }
@@ -994,10 +1003,11 @@ export function analyze(
   for (const r of newsRisks.slice(0, 2)) risks.push("资讯面：" + r);
   // 资讯整体偏空（情绪分 ≤ -30）：原由顶部横幅承载的「消息面风险」在此承接，横幅移除后不丢信息
   if (news && news.score <= -30) risks.push("近期相关资讯整体偏空，注意消息面风险。");
-  // 筹码结构风险：获利盘过高 → 获利回吐压力；现价远高于密集峰 → 套牢盘密集抛压
+  // 筹码结构风险：获利盘过高 → 获利回吐压力；现价远高于密集峰 → 乖离偏大、向峰回归压力
+  //（峰在现价下方是支撑锚，不是「上方套牢盘」，旧文案与报告「现价下方支撑」表述矛盾）
   if (chipR) {
     if (chipR.profitRatio > 0.9) risks.push(`筹码获利盘高达 ${(chipR.profitRatio * 100).toFixed(0)}%，浮盈盘集中易引发获利回吐。`);
-    if (chipR.peakPrice && price > chipR.peakPrice * 1.1) risks.push(`现价已远离筹码密集峰（${chipR.peakPrice.toFixed(2)}），上方套牢盘抛压逐步显现。`);
+    if (chipR.peakPrice && price > chipR.peakPrice * 1.1) risks.push(`现价已远离筹码密集峰（${chipR.peakPrice.toFixed(2)}），乖离偏大，获利回吐与向峰回归的压力逐步显现。`);
   }
   // 智能标注联动风险（与图表同源）：破位支撑 / 弱势支撑 / 放量压力
   if (priceLevels.structSupport?.isBroken || priceLevels.tradeSupportS?.isBroken) {

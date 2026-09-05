@@ -500,8 +500,9 @@ const intradaySub = computed(() => {
   if (m.isLimitDown) return "弱势封板";
   if (m.isBrokenLimitUp) return "曾封涨停后打开";
   if (m.isBrokenLimitDown) return "跌停打开·恐慌释放";
-  if (m.isBigUp) return "放量大涨，短线动能强";
-  if (m.isBigDown) return "放量急跌，注意风险";
+  // isBigUp/Down 仅按涨跌幅判定（≥60% 涨跌停阈值），无量能条件，文案不得声称「放量」
+  if (m.isBigUp) return "大幅上涨，短线动能强";
+  if (m.isBigDown) return "大幅下跌，注意风险";
   return "";
 });
 // 异动数值展示文本：
@@ -663,7 +664,7 @@ const turnText = computed(() => {
   return v.toFixed(2) + "% · " + a.value.turnState;
 });
 const obvColor = computed(() =>
-  a.value.obvTrend.indexOf("配合") >= 0 ? "var(--up)" : "var(--down)"
+  a.value.obvTrend.indexOf("上行") >= 0 ? "var(--up)" : "var(--down)"
 );
 
 // ---------------- 量价背离（严格版）派生（A股约定：顶背离=偏空=绿，底背离=偏多=红） ----------------
@@ -809,7 +810,7 @@ const conclusion = computed(() => {
   }
   // 极端超买/超卖属结论级状态（追高/抄底风险），仅极端时提示；RSI 无效数据不参与
   if (r.rsiValid && (r.rNow > 78 || r.bias24 > 20)) parts.push("短期超买明显，追高需防回撤。");
-  else if (r.rsiValid && !r.reduce && (r.rNow < 22 || r.bias24 < -20)) parts.push("短期超卖明显，随时可能出现技术性反弹。");
+  else if (r.rsiValid && !r.reduce && (r.rNow < 22 || r.bias24 < -20)) parts.push("超卖明显，随时可能出现技术性反弹。");
   // 量价背离属防误判关键信号：顶背离警示动能衰减、底背离提示下跌动能减弱
   if (r.divergence === "top") parts.push("量价顶背离，上涨动能衰减，追高需防冲高回落。");
   else if (r.divergence === "bottom") parts.push("量价底背离，下跌动能减弱，关注企稳信号。");
