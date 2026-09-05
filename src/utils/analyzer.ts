@@ -1204,8 +1204,10 @@ export function analyze(
   // 盘中异动与操作决策对齐：涨跌停/炸板是当日最强信号，决策标签不得与之相悖
   // （封涨停仍显示「建议减仓」、封跌停/炸板却显示「可加仓/建仓/关注」都会误导）。
   // 封涨停：reduce → watch（可持有观察，不催卖也不追高）；封跌停/炸板：偏多决策一律压回 reduce。
+  // 跌停开板：信号为「关注」，催加仓/建仓与恐慌未消的现状不符，压回 watch。
   if (intraday.isLimitUp && decision === "reduce") decision = "watch";
   else if ((intraday.isLimitDown || intraday.isBrokenLimitUp) && (decision === "add" || decision === "build" || decision === "watch")) decision = "reduce";
+  else if (intraday.isBrokenLimitDown && (decision === "add" || decision === "build")) decision = "watch";
 
   const intradayMove: AnalysisResult["intradayMove"] = {
     pct: intraday.pct,
