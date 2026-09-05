@@ -752,6 +752,49 @@ function fitViewAll() {
   if (space >= 1) chart.setBarSpace(space);
 }
 
+// ---- 移动端无交互回弹 ----
+// 触摸查看历史 / 平移 / 捏合变形后，抬手无触摸停留数秒即自动回弹：清十字光标、图例回最新、
+// 视口滚回最新并恢复默认柱宽布局。桌面不受影响（mouseleave 已回弹图例；滚轮缩放停留历史合法）。
+// 注意 setBarSpace 值相同会直接 return 不重算可见范围，故纯平移场景必须先 scrollToRealTime 归位
+// （fitViewAll 的 setBarSpace 以最右为锚，仅在柱宽实际变化时生效），两步组合才能覆盖
+// 「只平移」「只捏合」「平移+捏合」全部情况。
+const IDLE_REBOUND_MS = 5000;
+let idleReboundTimer: any = null;
+function idleRebound() {
+  if (!chart || !chartEl.value) return;
+  // 派发合成 mouseleave 完整复用桌面移开路径：引擎 mouseLeaveEvent 重置十字光标线（公开 API
+  // 无 setCrosshair，内部 TooltipStore 才有），chartLeaveCb（onChartLeave）复位图例与浮层
+  chartEl.value.dispatchEvent(new MouseEvent("mouseleave"));
+  try {
+    chart.scrollToRealTime();
+  } catch {
+    /* noop */
+  }
+  fitViewAll();
+}
+function disarmIdleRebound() {
+  if (idleReboundTimer) {
+    clearTimeout(idleReboundTimer);
+    idleReboundTimer = null;
+  }
+}
+function armIdleRebound() {
+  // 画线模式 / 画线被选中（待删除）时不回弹：避免打断绘制与编辑流程；完成/取消后下次触摸重新计拍
+  if (activeAction.value || selectedOverlayId.value) return;
+  disarmIdleRebound();
+  idleReboundTimer = setTimeout(() => {
+    idleReboundTimer = null;
+    idleRebound();
+  }, IDLE_REBOUND_MS);
+}
+// 触摸手势生命周期：按下即取消待回弹（长按/拖动中不触发），抬手后重新计拍
+function onTouchStart() {
+  disarmIdleRebound();
+}
+function onTouchEnd() {
+  armIdleRebound();
+}
+
 // 数据就绪回调：每次数据变化（首载 / 刷新 / 实时末根）后保持「铺满全貌」+ 刷新图例（所有模式通用）
 function onDataReady() {
   // 数据就绪后再次确认布局尺寸正确（某些情况下 applyNewData 异步解析后内部尺寸可能漂移）
@@ -774,6 +817,16 @@ function destroyChart() {
     chartEl.value.removeEventListener("mouseleave", chartLeaveCb);
     chartLeaveCb = null;
   }
+  if (chartEl.value) {
+    for (const [t, h] of [
+      ["touchstart", onTouchStart],
+      ["touchend", onTouchEnd],
+      ["touchcancel", onTouchEnd],
+    ] as const) {
+      chartEl.value.removeEventListener(t, h as EventListener);
+    }
+  }
+  disarmIdleRebound();
   if (crosshairCb && chart) {
     try {
       chart.unsubscribeAction(ActionType.OnCrosshairChange, crosshairCb);
@@ -1833,6 +1886,14 @@ function buildChart() {
   // 鼠标移出图表容器：图例回弹最新数据（引擎不派发离开事件，自行监听，见 onChartLeave 注释）
   chartLeaveCb = onChartLeave;
   el.addEventListener("mouseleave", chartLeaveCb);
+  // 触摸手势生命周期监听：抬手后延时回弹（移动端无 mouseleave，触摸查看历史/变形后不回弹问题）
+  for (const [t, h] of [
+    ["touchstart", onTouchStart],
+    ["touchend", onTouchEnd],
+    ["touchcancel", onTouchEnd],
+  ] as const) {
+    el.addEventListener(t, h as EventListener, { passive: true });
+  }
   // 数据就绪订阅：分时模式首载/刷新/实时末根后保持「整日全貌」铺满视图
   dataReadyCb = onDataReady;
   try {
