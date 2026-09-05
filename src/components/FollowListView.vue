@@ -28,7 +28,7 @@
           >
             <!-- 点击头像 / 昵称 → 进入该用户资料页 -->
             <view class="fl-item-info" hover-class="fl-item-info-hover" @click="openProfile(f.id)">
-              <UserAvatar :url="f.avatar_url" :seed="f.display_name || f.username" :size="84" :frame="f.avatar_frame" />
+              <UserAvatar :url="f.avatar_url" :seed="f.display_name || f.username" :size="84" :frame="vipGatedFrame(f.avatar_frame, vipActive(f.vip, f.vip_expires_at))" />
               <view class="fl-item-mid">
                 <text class="fl-item-name truncate">{{ f.display_name || f.username }}</text>
               </view>
@@ -55,7 +55,9 @@ import UserAvatar from "./UserAvatar.vue";
 import PeekSheet from "./PeekSheet.vue";
 import { useFollow } from "@/store/follow";
 import { userState } from "@/store/user";
+import { vipActive } from "@/store/level";
 import { getSupabase } from "@/api/supabase";
+import { vipGatedFrame } from "@/utils/avatarFrame";
 
 withDefaults(defineProps<{ modelValue: boolean; zIndex?: number }>(), { modelValue: false, zIndex: 40 });
 const emit = defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
@@ -70,6 +72,8 @@ interface FollowedUser {
   username: string;
   avatar_url: string;
   avatar_frame: string;
+  vip: boolean;
+  vip_expires_at: string | null;
 }
 const followedUsers = ref<FollowedUser[]>([]);
 async function loadFollowedUsers() {
@@ -82,7 +86,7 @@ async function loadFollowedUsers() {
   if (!sb) return;
   const { data } = await sb
     .from("profiles")
-    .select("id, display_name, username, avatar_url, avatar_frame")
+    .select("id, display_name, username, avatar_url, avatar_frame, vip, vip_expires_at")
     .in("id", ids);
   followedUsers.value = (data || []) as FollowedUser[];
 }

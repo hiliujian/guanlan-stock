@@ -180,7 +180,9 @@ import { useFollow, useFollowPanel } from "@/store/follow";
 import { useReplyExpansion } from "@/store/replyExpansion";
 import { getMyName } from "@/store/identity";
 import { userState } from "@/store/user";
+import { vipActive } from "@/store/level";
 import { avatarSeed } from "@/utils/avatar";
+import { vipGatedFrame } from "@/utils/avatarFrame";
 import { communityRepo, type CommunityPost, type PostCard as PostCardData, type Topic } from "@/api/community";
 import { searchUsersByUsername, type UsernameLookup } from "@/api/user";
 
@@ -261,9 +263,11 @@ const mySeed = computed(() =>
 const myAvatarUrl = computed(() =>
   userState.loggedIn ? userState.profile?.avatar_url || "" : ""
 );
-// 自己的头像框：已登录读 profiles.avatar_frame；未登录无边框
+// 自己的头像框：已登录读 profiles.avatar_frame（会员金框按 VIP 收口，过期自动回收）；未登录无边框
 const myFrame = computed(() =>
-  userState.loggedIn ? userState.profile?.avatar_frame || "" : ""
+  userState.loggedIn
+    ? vipGatedFrame(userState.profile?.avatar_frame, vipActive(userState.profile?.vip, userState.profile?.vip_expires_at))
+    : ""
 );
 
 // 删除自己的动态：先弹主题化确认弹层（与公告弹窗同一套设计语言，替代样式不符的原生

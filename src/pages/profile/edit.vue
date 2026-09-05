@@ -13,7 +13,7 @@
       <!-- 头像（点击弹出操作菜单：上传头像 / 设置头像框）：居中展示 -->
       <view class="ep-hero">
         <view class="ep-avatar" hover-class="ep-av-hover" @click="openAvatarMenu" role="button" aria-label="头像设置">
-          <UserAvatar :url="avatarUrl" :seed="seedName" :size="148" :frame="frame" />
+          <UserAvatar :url="avatarUrl" :seed="seedName" :size="148" :frame="vipGatedFrame(frame, isVipSelf)" />
           <view class="ep-cam">
             <OutlineIcon v-if="!uploading" type="camera" :size="20" color="#fff" />
             <view v-else class="ep-spin" />
@@ -90,12 +90,13 @@
       </view>
 
       <!-- 头像框选择弹窗：从「头像设置」菜单点「设置头像框」进入，横向展示全部可选框
-           （头像预览 + 名称），选中即写入并自动关闭；选中态用主色高亮 + 对勾标记。 -->
+           （头像预览 + 名称；会员金框仅 VIP 可选，非会员自动隐藏），选中即写入并自动关闭；
+           选中态用主色高亮 + 对勾标记。 -->
       <BottomSheet v-model="frameSheetVisible" title="选择头像框">
         <scroll-view class="af-scroll" scroll-x :show-scrollbar="false">
           <view class="af-row">
             <view
-              v-for="f in AVATAR_FRAMES"
+              v-for="f in frameOptions"
               :key="f.id || 'none'"
               class="af-opt"
               :class="{ on: frame === f.id }"
@@ -147,7 +148,8 @@ import { useUser, refreshProfile } from "@/store/user";
 import { BIO_MAX, BIO_PLACEHOLDER } from "@/store/bio";
 import { updateProfile, uploadAvatar } from "@/api/auth";
 import { avatarSeed } from "@/utils/avatar";
-import { AVATAR_FRAMES, type AvatarFrameDef } from "@/utils/avatarFrame";
+import { AVATAR_FRAMES, vipGatedFrame, type AvatarFrameDef } from "@/utils/avatarFrame";
+import { vipActive } from "@/store/level";
 import { usePageGuard } from "@/store/guard";
 
 const user = useUser();
@@ -181,6 +183,10 @@ const saving = ref(false);
 const avatarUrl = ref("");
 const uploading = ref(false);
 const frame = ref(""); // 头像框 id（'' = 无边框）
+// VIP 有效态：会员金框（member）为 VIP 专属，过期 / 未开通在选框器中隐藏并自动回退已有选择
+const isVipSelf = computed(() => vipActive(user.profile?.vip, user.profile?.vip_expires_at));
+// 选框器选项：非 VIP 过滤掉会员金框，其余框全部可选
+const frameOptions = computed(() => AVATAR_FRAMES.filter((f) => f.id !== "member" || isVipSelf.value));
 
 // 裁剪弹窗状态
 const cropperVisible = ref(false);
@@ -235,6 +241,8 @@ watch(
       signatureDraft.value = user.profile.signature || "";
       avatarUrl.value = user.profile.avatar_url || "";
       frame.value = user.profile.avatar_frame || "";
+      // 非 VIP 残留的会员金框选择自动回退为无框（展示端另有 vipGatedFrame 收口，此处避免保存时再写回）
+      if (frame.value === "member" && !isVipSelf.value) frame.value = "";
     } else {
       avatarUrl.value = "";
       frame.value = "";

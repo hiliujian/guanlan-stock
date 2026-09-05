@@ -9,7 +9,7 @@
         :url="user.avatar_url"
         :seed="user.display_name || user.username"
         :size="60"
-        :frame="user.avatar_frame"
+        :frame="vipGatedFrame(user.avatar_frame, isVip)"
       />
       <view class="uc-meta">
         <view class="uc-namerow">
@@ -57,6 +57,7 @@ import { communityRepo } from "@/api/community";
 import { useFollow } from "@/store/follow";
 import { userState } from "@/store/user";
 import { vipActive } from "@/store/level";
+import { vipGatedFrame } from "@/utils/avatarFrame";
 
 const props = defineProps<{ user: UsernameLookup }>();
 

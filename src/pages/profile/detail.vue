@@ -31,7 +31,7 @@
               :url="profile.avatar_url"
               :seed="profile.display_name || profile.username"
               :size="150"
-              :frame="profile.avatar_frame"
+              :frame="vipGatedFrame(profile.avatar_frame, isVip)"
             />
           </view>
 
@@ -181,6 +181,7 @@ import { fetchSnapshot } from "@/api/quote";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
 import { useUser, userState } from "@/store/user";
 import { vipActive } from "@/store/level";
+import { vipGatedFrame } from "@/utils/avatarFrame";
 import { useDmTarget, useCommunityUserTarget } from "@/store/community";
 import { useFollow } from "@/store/follow";
 import { goTab, openAuth, openInMarket } from "@/store/nav";
@@ -517,7 +518,7 @@ function startDm() {
     otherId: profile.value.id,
     otherName: nameText.value,
     otherAvatarUrl: profile.value.avatar_url || "",
-    otherFrame: profile.value.avatar_frame || "",
+    otherFrame: vipGatedFrame(profile.value.avatar_frame, isVip.value),
   });
   goTab("community");
   uni.navigateBack({

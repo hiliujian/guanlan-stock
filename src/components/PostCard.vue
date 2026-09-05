@@ -9,7 +9,7 @@
         role="button"
         :aria-label="isSelf ? '查看我的资料' : '查看用户资料'"
       >
-        <UserAvatar :url="post.authorAvatarUrl || ''" :seed="post.author || post.authorUsername" :size="60" :frame="post.authorFrame" />
+        <UserAvatar :url="post.authorAvatarUrl || ''" :seed="post.author || post.authorUsername" :size="60" :frame="vipGatedFrame(post.authorFrame, post.authorVip)" />
       </view>
       <view class="p-meta">
         <view class="p-namerow">
@@ -155,6 +155,7 @@ import UserAvatar from "./UserAvatar.vue";
 import { formatRelative, unpackCards, communityRepo, type CommunityPost, type HoldingCard, type Reply } from "@/api/community";
 import { fetchSnapshot } from "@/api/quote";
 import { topicColor } from "@/utils/avatar";
+import { vipGatedFrame } from "@/utils/avatarFrame";
 import { marketCharFor, resolveSecid } from "@/utils/period";
 import { openInMarket, goTab } from "@/store/nav";
 import { useFollow } from "@/store/follow";

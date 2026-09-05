@@ -12,7 +12,7 @@
         @click="onHeaderTap"
       >
         <view class="pf-avatar" @click.stop="previewAvatar">
-          <UserAvatar :url="avatarUrl" :seed="avatarName" :size="116" :frame="user.profile?.avatar_frame" />
+          <UserAvatar :url="avatarUrl" :seed="avatarName" :size="116" :frame="vipGatedFrame(user.profile?.avatar_frame, isVip)" />
         </view>
         <view class="pf-id">
           <view class="pf-name-row">
@@ -181,6 +181,7 @@ import { useFollow, useFollowPanel } from "@/store/follow";
 import { isTabEnabled } from "@/store/appConfig";
 import { getMyName } from "@/store/identity";
 import { avatarSeed } from "@/utils/avatar";
+import { vipGatedFrame } from "@/utils/avatarFrame";
 import { isDark } from "@/utils/theme";
 import UserAvatar from "@/components/UserAvatar.vue";
 import { signOut } from "@/api/auth";

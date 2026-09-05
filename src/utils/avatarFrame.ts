@@ -32,3 +32,14 @@ export function frameClass(id?: string | null): string {
   if (!id) return "";
   return AVATAR_FRAMES.find((f) => f.id === id)?.cls ?? "";
 }
+
+/**
+ * 会员金框（member）为 VIP 专属视觉：过期 / 未开通自动回收为无边框，其余框不受 VIP 约束。
+ * 所有 UserAvatar 的 frame 传参统一经此收口，保证「已过期」用户在任意展示位不再保留金框
+ * （昵称金色列 / 金冠 / LevelTag 均已按 vipActive 判定，此处补齐头像框这一环）。
+ * isVip 传 undefined（如数据源缺 VIP 字段）视为未知、不做回收，避免误伤。
+ */
+export function vipGatedFrame(frame: string | null | undefined, isVip?: boolean): string {
+  if (frame === "member" && isVip === false) return "";
+  return frame || "";
+}
