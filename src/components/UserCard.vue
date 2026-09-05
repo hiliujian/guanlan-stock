@@ -49,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from "vue";
+import { ref, computed, watch, onActivated } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import UserAvatar from "./UserAvatar.vue";
 import type { UsernameLookup } from "@/api/user";
@@ -69,7 +69,8 @@ const isSelf = computed(() => !!userState.loggedIn && !!userState.userId && prop
 // VIP 有效态（过期自动退回普通视觉）
 const isVip = computed(() => vipActive(props.user.vip, props.user.vip_expires_at));
 
-// 粉丝数 / 动态数：每次名片指向的用户变化时重新拉取（均公开可读）
+// 粉丝数 / 动态数：指向用户变化时重拉（immediate 含首次挂载）；
+// tab 为 keep-alive 常驻，激活时再拉一次，保证发帖 / 被关注后计数即时更新。
 const followerCount = ref(0);
 const postCount = ref(0);
 async function loadStats() {
@@ -78,7 +79,7 @@ async function loadStats() {
   postCount.value = await communityRepo.countPosts(uid);
 }
 watch(() => props.user.id, loadStats, { immediate: true });
-onMounted(loadStats);
+onActivated(loadStats);
 
 async function onToggleFollow() {
   if (!userState.loggedIn) {

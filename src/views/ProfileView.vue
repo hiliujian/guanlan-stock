@@ -166,7 +166,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onActivated } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import ConfirmDialog from "@/components/ConfirmDialog.vue";
 import LevelTag from "@/components/LevelTag.vue";
@@ -287,6 +287,12 @@ const likedCount = computed(() => communityPosts.value.filter((p) => p.likedByMe
 // 登录后主动拉一次社区，让「我的帖子 / 赞过」计数准确（社区 store 为单例，顺带预热社区页）
 onMounted(() => {
   if (user.loggedIn) loadCommunity();
+});
+
+// tab 为 keep-alive 常驻：切回「我的」时重拉云端资料，
+// 保证社区行为新增的经验 / 等级、官方调整的 VIP 态即时反映（帖子列表不重拉，避免闪烁丢滚动位）。
+onActivated(() => {
+  if (user.loggedIn) refreshProfile();
 });
 
 // 下拉刷新（由 pages/index 的 onPullDownRefresh 路由到本方法）：
