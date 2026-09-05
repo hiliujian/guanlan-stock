@@ -179,10 +179,8 @@
                       <image v-if="it.flag" class="peek-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
                       <image v-else-if="it.icon" class="peek-flag-ic" :src="COMMODITY_ICON[it.icon]" mode="aspectFit" />
                       <text class="idx-item-name">{{ it.name }}</text>
-                      <!-- 篮子状态角标：与数据强绑定的阶段（盘前/盘中/盘后）；深夜/周末/假期等
-                           非交易阶段（数据定格收盘）不打标签，仅当时钟在盘中时段且行情时间戳
-                           为今日实时才标「盘中」，防止标签与数据脱节 -->
-                      <text v-if="it.members && qOf(it.secid)?.views" class="idx-item-bkt bkt-switch" @click.stop="cycleBkt(it)">{{ bktLabel(it) }}</text>
+                      <!-- 篮子时段角标：标注当前展示数据所属阶段（盘前/盘中/盘后），点击在三个时段间循环切换 -->
+                      <text v-if="it.members && qOf(it.secid)?.views" class="idx-item-bkt bkt-switch" @click.stop="cycleBkt(it)">{{ BKT_LABEL[bktSel(it)] }}</text>
                       <text v-else-if="it.members && qOf(it.secid)?.session" class="idx-item-bkt">{{ qOf(it.secid)?.session }}</text>
                     </view>
                     <view class="idx-item-right">
@@ -425,17 +423,6 @@ function bktSel(it: { secid: string }): BktView {
   if (ok(q?.views?.regular)) return 'regular';
   if (ok(q?.views?.pre)) return 'pre';
   return 'regular';
-}
-// 角标文案与展示时段分离：bktSel 只决定展示哪个时段的数据，文案须诚实标注数据所属阶段——
-// 休市/深夜（globalIndices 的 session 无标签）时数据定格在最近成交/收盘，按其契约
-// 「绝不用『盘中』冒充实时数据」，默认标注「盘后」（最近成交容忍期内）或「收盘」；
-// 用户手动切换的时段仍按所选时段标注。
-function bktLabel(it: { secid: string }): string {
-  const override = bktView.value[it.secid];
-  if (override) return BKT_LABEL[override];
-  const q = qOf(it.secid);
-  if (q?.session) return q.session; // 盘前/盘后/盘中（globalIndices 已做时钟+数据双实证）
-  return bktSel(it) === 'post' ? '盘后' : '收盘';
 }
 function onItemCardClick(it: { secid: string }) {
   if (qOf(it.secid)?.views) cycleBkt(it); // 仅美股篮子可切换，其余行点击无操作
