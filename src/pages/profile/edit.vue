@@ -145,6 +145,7 @@ import AvatarCropper from "@/components/AvatarCropper.vue";
 import UserAvatar from "@/components/UserAvatar.vue";
 import BottomSheet from "@/components/BottomSheet.vue";
 import { useUser, refreshProfile } from "@/store/user";
+import { useCommunity } from "@/store/community";
 import { BIO_MAX, BIO_PLACEHOLDER } from "@/store/bio";
 import { updateProfile, uploadAvatar } from "@/api/auth";
 import { avatarSeed } from "@/utils/avatar";
@@ -153,6 +154,8 @@ import { vipActive } from "@/store/level";
 import { usePageGuard } from "@/store/guard";
 
 const user = useUser();
+// 社区缓存帖同步：换头像 / 头像框后就地更新缓存中「我的」帖子作者字段，免刷新即时生效
+const { updateMyAuthorAssets } = useCommunity();
 // 全局页面守卫：个人资料页未对游客开放 + 未登录 → 跳转登录页
 usePageGuard("/pages/profile/edit");
 
@@ -226,6 +229,7 @@ async function selectFrame(f: AvatarFrameDef) {
       return;
     }
     await refreshProfile();
+    updateMyAuthorAssets({ frame: f.id });
     uni.showToast({ title: "头像框已设置", icon: "success" });
   } finally {
     frameSaving.value = false;
@@ -292,6 +296,7 @@ async function onCropped(payload: { dataURL: string }) {
         return;
       }
       await refreshProfile();
+      updateMyAuthorAssets({ avatarUrl: r.url });
       uni.showToast({ title: "头像已更新", icon: "success" });
     } else {
       uni.showToast({ title: r.error || "上传失败", icon: "none" });
@@ -319,6 +324,7 @@ async function save() {
       return;
     }
     await refreshProfile();
+    updateMyAuthorAssets({ frame: frame.value });
     uni.showToast({ title: "已保存", icon: "success" });
   } finally {
     saving.value = false;

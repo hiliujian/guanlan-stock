@@ -114,6 +114,25 @@ export function useCommunity() {
     posts.value = posts.value.filter((x) => x.id !== id);
   }
 
+  /**
+   * 本人换头像 / 头像框后就地同步缓存中的「我的」帖子（信息流 + 搜索结果）：
+   * 模块级 posts 为跨页缓存，资料页改框回来若无此补丁会一直显示旧框（需整页刷新才更新）。
+   * 只 patch 本人帖子（userId 匹配）；他人帖子由 refetch 时 currentAuthorFrame/Avatar 实时优先兜底。
+   */
+  function updateMyAuthorAssets(assets: { avatarUrl?: string; frame?: string }) {
+    const uid = userState.userId;
+    if (!uid) return;
+    const patch = (list: CommunityPost[]) => {
+      for (const p of list) {
+        if (p.userId !== uid) continue;
+        if (assets.avatarUrl !== undefined) p.authorAvatarUrl = assets.avatarUrl;
+        if (assets.frame !== undefined) p.authorFrame = assets.frame;
+      }
+    };
+    patch(posts.value);
+    patch(searchResults.value);
+  }
+
   /** 搜索帖子（关键字 / 股票代码 / 股票名称）；空查询清空结果。结果写入 searchResults。 */
   async function search(query: string): Promise<void> {
     const q = query.trim();
@@ -129,7 +148,7 @@ export function useCommunity() {
     }
   }
 
-  return { posts, loading, searchResults, load, loadMore, feedDone, publish, like, reply, remove, search };
+  return { posts, loading, searchResults, load, loadMore, feedDone, publish, like, reply, remove, updateMyAuthorAssets, search };
 }
 
 // =====================================================================

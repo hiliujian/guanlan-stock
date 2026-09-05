@@ -304,10 +304,10 @@ function mapRowToPost(
     // 回退发布时冗余快照 r.author（旧帖 / 游客帖 / profiles 未取到时）。
     author: currentAuthorName(r.user_id, r.author),
     userId: r.user_id || null,
-    // 作者展示字段：优先用帖子冗余快照（发布时写入，不依赖 profiles RLS），
-    // 旧帖（迁移前）无快照则回退 profiles 联表结果（profiles 现已公开可读）。
-    authorAvatarUrl: r.author_avatar_url || ai.avatar_url || "",
-    authorFrame: r.author_frame || ai.avatar_frame || "",
+    // 作者展示字段：profiles 实时值优先（换头像 / 头像框后历史帖展示即时同步，与昵称同款语义），
+    // 未取到 profile（游客帖 / 旧数据）才回退发布时冗余快照。
+    authorAvatarUrl: currentAuthorAvatar(r.user_id, r.author_avatar_url || ""),
+    authorFrame: currentAuthorFrame(r.user_id, r.author_frame || ""),
     authorUsername: r.author_username || "",
     authorVip: vipActive(ai.vip, ai.vip_expires_at),
     topic: r.topic || undefined,
@@ -466,6 +466,21 @@ function currentAuthorName(userId: string | null | undefined, fallback: string):
   return live || fallback;
 }
 
+/**
+ * 取作者当前头像框 / 头像：优先用 profiles 实时值（换头像框 / 换头像后历史帖展示即时同步），
+ * 仅当 profile 未取到（游客帖 / 旧数据 / 极端情况）才回退发布时冗余快照。
+ * 与 currentAuthorName 同款「实时优先」语义；注意 profile 存在但值为空时返回空
+ * （换框为无框 / 清空头像同样要同步，不能回退旧快照把旧框「复活」）。
+ */
+function currentAuthorFrame(userId: string | null | undefined, fallback: string): string {
+  if (userId && profileCache && profileCache.has(userId)) return profileCache.get(userId)!.avatar_frame || "";
+  return fallback;
+}
+function currentAuthorAvatar(userId: string | null | undefined, fallback: string): string {
+  if (userId && profileCache && profileCache.has(userId)) return profileCache.get(userId)!.avatar_url || "";
+  return fallback;
+}
+
 async function createRemote(input: {
   content?: string;
   card?: PostCard;
@@ -547,8 +562,8 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
     type: f.type,
     author: currentAuthorName(f.user_id, f.author),
     userId: f.user_id || null,
-    authorAvatarUrl: f.author_avatar_url || ai.avatar_url || "",
-    authorFrame: f.author_frame || ai.avatar_frame || "",
+    authorAvatarUrl: currentAuthorAvatar(f.user_id, f.author_avatar_url || ""),
+    authorFrame: currentAuthorFrame(f.user_id, f.author_frame || ""),
     authorUsername: f.author_username || "",
     authorVip: vipActive(ai.vip, ai.vip_expires_at),
     topic: f.topic || undefined,
@@ -615,8 +630,8 @@ async function addReplyRemote(
     type: d.type,
     author: currentAuthorName(d.user_id, d.author),
     userId: d.user_id || null,
-    authorAvatarUrl: d.author_avatar_url || ai.avatar_url || "",
-    authorFrame: d.author_frame || ai.avatar_frame || "",
+    authorAvatarUrl: currentAuthorAvatar(d.user_id, d.author_avatar_url || ""),
+    authorFrame: currentAuthorFrame(d.user_id, d.author_frame || ""),
     authorUsername: d.author_username || "",
     authorVip: vipActive(ai.vip, ai.vip_expires_at),
     topic: d.topic || undefined,
