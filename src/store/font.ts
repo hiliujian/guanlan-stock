@@ -24,21 +24,21 @@ export const FONT_OPTIONS: FontOption[] = [
     label: "系统",
     en: [],
     cn: [],
-    desc: "跟随系统默认（iOS 苹方/SF · Windows 雅黑/Segoe），零加载最稳定。",
+    desc: "跟随系统默认。",
   },
   {
     key: "sans",
     label: "无衬线",
     en: ["MiSans", "HarmonyOS Sans SC", "SF Pro Text", "Segoe UI"],
     cn: ["MiSans", "HarmonyOS Sans SC", "PingFang SC", "Noto Sans SC", "Microsoft YaHei"],
-    desc: "现代圆润黑体：优先 MiSans / HarmonyOS Sans，未安装自动回退苹方/雅黑。",
+    desc: "现代圆润黑体。",
   },
   {
     key: "serif",
     label: "衬线",
     en: ["Georgia", "Times New Roman"],
     cn: ["Songti SC", "STSong", "SimSun", "Noto Serif SC"],
-    desc: "经典书卷感：英文 Georgia / 数字衬线，中文宋体，长文阅读更有纸感。",
+    desc: "经典书卷感。",
   },
 ];
 
