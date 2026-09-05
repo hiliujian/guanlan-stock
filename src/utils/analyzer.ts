@@ -341,29 +341,13 @@ export interface ChipResult {
 export interface AnalysisResult {
   price: number;
   last: Kline;
-  ma5: (number | null)[];
-  ma10: (number | null)[];
-  ma20: (number | null)[];
-  ma60: (number | null)[];
-  vol: number[];
-  vma5: (number | null)[];
-  vma20: (number | null)[];
   macd: { dif: number[]; dea: number[]; macd: number[] };
-  kd: { K: number[]; D: number[]; J: number[] };
-  r6: (number | null)[];
-  r12: (number | null)[];
-  r24: (number | null)[];
   trend: string;
   trendText: string;
   strength: string;
   maState: string;
   support: number;
   resistance: number;
-  priceLevels: PriceLevelGroup; // 分层价位（结构支撑 sS / 结构压力 sP / 交易支撑 S / 交易压力 B + 箱体上下沿），与图表智能标注 100% 同源
-  mainSupport: number;   // 主支撑（最强有效支撑，箱体下沿兜底）
-  mainResistance: number; // 主压力（最强有效压力，箱体上沿兜底）
-  nearBottom: boolean;
-  nearTop: boolean;
   nearSup: boolean;
   nearRes: boolean;
   f5: FlowSummary;
@@ -376,7 +360,6 @@ export interface AnalysisResult {
   rNow: number;
   rsiValid: boolean; // RSI 是否有真实数据（K 线不足时为 false，UI 应显示"暂无数据"）
   scoreReasons: { label: string; delta: number }[];
-  stage: string;
   stageText: string;
   score: number;
   riskLevel: string;
@@ -398,13 +381,8 @@ export interface AnalysisResult {
   adx: number[];
   pDI: number[];
   mDI: number[];
-  atr: number[];
   adxState: string;
-  bollMid: (number | null)[];
-  bollUpper: (number | null)[];
-  bollLower: (number | null)[];
   bollPctB: (number | null)[];
-  bollBw: (number | null)[];
   bollBwNow: number;       // 当前带宽值（近 20 日中位数归一化后 0~1 相对位置，简化展示用）
   bollSqueeze: boolean;    // 带宽挤压：当前 < 近 120 日 15% 分位，预示即将变盘
   bias6: number;
@@ -445,13 +423,6 @@ export interface AnalysisResult {
     reason: string; // 触发条件
     confirm: string; // 确认信号（如何验证，避免绝对化）
   };
-  // ---- 资讯情绪因子（量化新闻/行业/市场事件后协同参与研判）----
-  newsScore: number; // -100 ~ 100
-  newsLabel: string; // 利好偏多 / 中性 / 利空偏空
-  newsBull: number; // 偏多条目数
-  newsBear: number; // 偏空条目数
-  newsCatalysts: string[]; // 命中利好关键词
-  newsRisks: string[]; // 命中利空关键词
   // ---- 大盘 · 市场环境（beta 感知：个股信号胜率随大盘环境显著变化）----
   marketEnv: {
     indexName: string; // 大盘名称（上证/深证/创业板指，按板块匹配）
@@ -556,9 +527,7 @@ export function analyze(
   const vma20 = ma(vol, 20);
   const m = macd(close);
   const kd = kdj(klines);
-  const r6 = rsi(close, 6);
   const r12 = rsi(close, 12);
-  const r24 = rsi(close, 24);
   const last = klines[len - 1];
   const price = last.close;
 
@@ -636,8 +605,14 @@ export function analyze(
   const divOMax = Math.max(...obvArr.slice(len - divWin));
   const divOMin = Math.min(...obvArr.slice(len - divWin));
   let divergence: "top" | "bottom" | null = null;
-  if (price >= divCMax && obvArr[len - 1] < divOMax * 0.98) divergence = "top";
-  else if (price <= divCMin && obvArr[len - 1] > divOMin * 1.02) divergence = "bottom";
+  // 符号感知容差：OBV 是成交量累积值，完全可能为负（长期下跌股）。负值下「×0.98 / ×1.02」
+  // 会反转比较方向（负数乘 <1 的系数绝对值反而变小），窗口 OBV 整体为负时顶/底背离双向误判。
+  // 改为度量「当前 OBV 与窗口极值的差」，用极值绝对值的 2% 做容差，方向只看差值符号，
+  // 与 OBV 正负无关（注释口径「偏离 2% 以上才算未同步」不变）。
+  const topGap = divOMax - obvArr[len - 1]; // >0：价创新高而 OBV 低于窗口极值（未同步）
+  const botGap = obvArr[len - 1] - divOMin; // >0：价创新低而 OBV 高于窗口极值（未同步）
+  if (price >= divCMax && topGap > Math.abs(divOMax) * 0.02) divergence = "top";
+  else if (price <= divCMin && botGap > Math.abs(divOMin) * 0.02) divergence = "bottom";
 
   // 筹码分布 · 成本结构（CYQ）：用近 120 交易日的成交量做 Volume-Profile 近似，
   // 得到平均成本、密集峰、获利盘比例三个核心维度，是支撑/压力和主力行为的重要参考。
@@ -788,27 +763,20 @@ export function analyze(
   const rsiValid = typeof rNowRaw === "number" && isFinite(rNowRaw);
   const rNow = rsiValid ? (rNowRaw as number) : 50;
 
-  let stage: string;
   let stageText: string;
   // 注：阶段判断基于价/量/资金的技术形态识别，仅描述「当前形态特征」，
   // 不确认背后是否存在真实的主力吸筹/派发行为（后者无法仅凭价量序列证明）。
   if (nearTop && (rNow > 72 || f10.sum < 0)) {
-    stage = "dist";
     stageText = "高位滞涨";
   } else if (nearBottom && f5.sum > 0 && rNow < 55 && volRatio > 0.85) {
-    stage = "acc";
     stageText = "低位蓄势";
   } else if (trend === "up" && volRatio > 1.1 && f5.sum > 0) {
-    stage = "pull";
     stageText = "多头加速";
   } else if (trend === "down" && volRatio < 0.95) {
-    stage = "wash";
     stageText = "弱势整理";
   } else if (trend === "shake" || trend === "shake_up" || trend === "shake_down") {
-    stage = "range";
     stageText = "箱体整理"; // 阶段维度用「箱体整理」，与走势预测维度 sigType 的「区间震荡」区分开，避免同名不同义
   } else {
-    stage = "mid";
     stageText = "趋势运行";
   }
 
@@ -947,18 +915,8 @@ export function analyze(
   // ---------------- 资讯情绪因子（协同参与综合评分） ----------------
   // 情绪分 -100~100 映射到 ±12 分：与趋势(±18)、资金(±12) 同量级，作为「协同因子」
   // 而非主导项，避免单条新闻左右结论；权重经词库分级 + 时效衰减已在 scoreNews 完成。
-  let newsScore = 0;
-  let newsLabel = "—";
-  let newsBull = 0;
-  let newsBear = 0;
-  let newsCatalysts: string[] = [];
   let newsRisks: string[] = [];
   if (news && news.items.length) {
-    newsScore = news.score;
-    newsLabel = news.label;
-    newsBull = news.bullItems;
-    newsBear = news.bearItems;
-    newsCatalysts = news.catalysts;
     newsRisks = news.risks;
     const newsDelta = Math.max(-12, Math.min(12, Math.round((news.score / 100) * 12)));
     score += newsDelta;
@@ -977,14 +935,46 @@ export function analyze(
   if (elevatedVol || deepDd || nearTop) riskLevel = riskLevel === "低" ? "中" : riskLevel;
   if ((elevatedVol && deepDd) || (deepDd && nearTop)) riskLevel = riskLevel === "中" ? "高" : riskLevel;
 
-  const watch = !(nearTop && rNow > 75) && trend !== "down";
+  // ---------------- 突破 / 跌破 + 买入区间判定 ----------------
+  // 必须先于操作决策（watch/build/add/reduce）计算：已确认放量突破压力位时，
+  // 「临近阶段高位 / RSI 超买」是强势特征而非减仓理由（突破意味着箱体上沿失效），
+  // 若不前移并抑制，会出现信号卡「买点·放量突破」与决策「建议减仓」同屏矛盾。
+  // 仅当支撑/压力来自明确的 pivot 拐点（非近60日极值兜底）才判定，
+  // 避免创阶段新高/新低时把"极值"误判为被突破/跌破。
+  // 量能确认：A 股假突破/假跌破频发，无量突破可靠性极低。
+  //   · 突破要求 VMA5/VMA20 > 1.0（近期放量，确认资金真实参与）
+  //   · 跌破要求 VMA5/VMA20 > 0.9（至少接近均量，排除无量假跌破）
+  const supportFromPivot = !!(
+    (priceLevels.structSupport && !priceLevels.structSupport.isBroken && priceLevels.structSupport.price < price) ||
+    (priceLevels.tradeSupportS && !priceLevels.tradeSupportS.isBroken && priceLevels.tradeSupportS.price < price)
+  );
+  const resistanceFromPivot = !!(
+    (priceLevels.structPressure && !priceLevels.structPressure.isBroken && priceLevels.structPressure.price > price) ||
+    (priceLevels.tradePressureB && !priceLevels.tradePressureB.isBroken && priceLevels.tradePressureB.price > price)
+  );
+  const breakdown = supportFromPivot && price < support * 0.985 && volRatio > 0.9;
+  const breakout = resistanceFromPivot && price > resistance * 1.015 && volRatio > 1.0;
+
+  // 买入区间仅在价格接近支撑（或距支撑 8% 内）时有意义；远离支撑的上涨趋势中
+  // 给出围绕支撑的买点会误导，故置 NaN，由 UI 显示「—」。
+  // 关键：必须排除已破位（breakdown）——否则会出现「支撑已被有效跌破、应止损离场」
+  // 与「建议买入区间 x~y」同屏并存的矛盾（distSup 在破位后为负，天然满足 <0.08）。
+  const nearBuyZone = !breakdown && (nearSup || distSup < 0.08);
+  const buyLow = nearBuyZone ? +(support * 0.985).toFixed(2) : NaN;
+  const buyHigh = nearBuyZone
+    ? +Math.max(buyLow + 0.01, Math.min(support * 1.03, resistance)).toFixed(2)
+    : NaN;
+
+  // !breakout 抑制：放量突破压力后「价格临近高位 / RSI 超买」不再触发减仓；
+  // ma60 拉高出货条件（大幅偏离 MA60 + 主力资金净流出）与突破方向相悖，保留不抑制。
+  const watch = (!(nearTop && rNow > 75) || breakout) && trend !== "down";
   const build = (nearBottom || (trend === "up" && price <= ma20[len - 1]! * 1.02)) && rNow < 70 && !nearTop;
-  const reduce = nearTop || rNow > 78 || (ma60Last != null && price > ma60Last * 1.5 && f10.sum < 0);
-  // add 必须排除 reduce 条件（nearTop / RSI超买 / 远离MA60+资金流出），
+  const reduce = ((nearTop || rNow > 78) && !breakout) || (ma60Last != null && price > ma60Last * 1.5 && f10.sum < 0);
+  // add 必须排除 reduce 条件（高位 / RSI超买 / 远离MA60+资金流出），
   // 否则「可加仓」与「建议减仓」同时亮起，给用户矛盾信号。
   const add = !reduce && trend === "up" && Math.abs(price - ma20[len - 1]!) / ma20[len - 1]! < 0.03 && f5.sum > 0 && rNow < 75;
   // 操作结论唯一取值：单链优先级，UI（决策标签 + 分析结论）一律读它，不再各自排序
-  const decision: AnalysisResult["decision"] =
+  let decision: AnalysisResult["decision"] =
     reduce ? "reduce" : add ? "add" : build ? "build" : watch ? "watch" : "wait";
 
   const risks: string[] = [];
@@ -1033,35 +1023,6 @@ export function analyze(
   // 已全部落在风险提示里：高位风险见 nearTop 行、布林收敛见 bollSqueeze 行、
   // 资讯偏空见下方 news.score 行。
 
-  // ---------------- 突破 / 跌破 判定 ----------------
-  // 仅当支撑/压力来自明确的 pivot 拐点（非近60日极值兜底）才判定，
-  // 避免创阶段新高/新低时把"极值"误判为被突破/跌破。
-  // 量能确认：A 股假突破/假跌破频发，无量突破可靠性极低。
-  //   · 突破要求 VMA5/VMA20 > 1.0（近期放量，确认资金真实参与）
-  //   · 跌破要求 VMA5/VMA20 > 0.9（至少接近均量，排除无量假跌破）
-  // 支撑/压力是否来自明确的 pivot 拐点（非近60日极值兜底 / 箱体兜底）。
-  // 仅当存在有效（未破位、同侧）的结构/交易线时，才视为来自真实拐点。
-  const supportFromPivot = !!(
-    (priceLevels.structSupport && !priceLevels.structSupport.isBroken && priceLevels.structSupport.price < price) ||
-    (priceLevels.tradeSupportS && !priceLevels.tradeSupportS.isBroken && priceLevels.tradeSupportS.price < price)
-  );
-  const resistanceFromPivot = !!(
-    (priceLevels.structPressure && !priceLevels.structPressure.isBroken && priceLevels.structPressure.price > price) ||
-    (priceLevels.tradePressureB && !priceLevels.tradePressureB.isBroken && priceLevels.tradePressureB.price > price)
-  );
-  const breakdown = supportFromPivot && price < support * 0.985 && volRatio > 0.9;
-  const breakout = resistanceFromPivot && price > resistance * 1.015 && volRatio > 1.0;
-
-  // 买入区间仅在价格接近支撑（或距支撑 8% 内）时有意义；远离支撑的上涨趋势中
-  // 给出围绕支撑的买点会误导，故置 NaN，由 UI 显示「—」。
-  // 关键：必须排除已破位（breakdown）——否则会出现「支撑已被有效跌破、应止损离场」
-  // 与「建议买入区间 x~y」同屏并存的矛盾（distSup 在破位后为负，天然满足 <0.08）。
-  const nearBuyZone = !breakdown && (nearSup || distSup < 0.08);
-  const buyLow = nearBuyZone ? +(support * 0.985).toFixed(2) : NaN;
-  const buyHigh = nearBuyZone
-    ? +Math.max(buyLow + 0.01, Math.min(support * 1.03, resistance)).toFixed(2)
-    : NaN;
-
   // 走势预测（基于当前位置 + 趋势 + 量能的形态判断，非确定性预测）
   let sigType = "区间震荡";
   if (breakout) sigType = "突破上攻";
@@ -1083,6 +1044,22 @@ export function analyze(
       reason: `现价 ${price.toFixed(2)} 已跌破支撑 ${support.toFixed(2)}，技术形态转弱`,
       confirm: "若 3 日内不能收回支撑上方，下行空间进一步打开，应果断降低仓位",
     };
+  } else if (reduce) {
+    // 决策-信号同向兜底：reduce 已成立（临近高位 / RSI 超买 / 远离 MA60+资金流出）但
+    // 未命中上方任何信号分支时，信号卡不得回落为「关注/持有」与决策「建议减仓」同屏打架。
+    // 置于 breakout 之前：拉高出货（大幅偏离 MA60 + 主力资金净流出）即使伴随放量突破，
+    // 资金流向警示也优先于技术形态，宁可不追。
+    signal = {
+      level: "sell",
+      label: "卖点",
+      text: "高位风险积聚，建议逢高减仓",
+      reason: nearTop
+        ? `价格接近阶段高位（约 ${topZone.toFixed(2)}），追高风险大`
+        : rNow > 78
+          ? `RSI(12) 达 ${rNow.toFixed(2)}，超买明显`
+          : "股价大幅偏离 MA60 且主力资金净流出，警惕拉高出货",
+      confirm: "放量滞涨或跌破 MA5/MA10 时果断减仓；缩量回踩 MA20 不破可继续持有",
+    };
   } else if (breakout) {
     signal = {
       level: "buy",
@@ -1091,7 +1068,7 @@ export function analyze(
       reason: `现价 ${price.toFixed(2)} 已站上压力 ${resistance.toFixed(2)}，打开上行空间`,
       confirm: "回踩不破该压力位且量能维持，则确认有效突破，可顺势加仓",
     };
-  } else if (nearRes && (rNow > 72 || macdCross === "dead" || reduce || (f10.has && f10.sum < 0))) {
+  } else if (nearRes && (rNow > 72 || macdCross === "dead" || (f10.has && f10.sum < 0))) {
     signal = {
       level: "sell",
       label: "卖点",
@@ -1099,9 +1076,9 @@ export function analyze(
       reason: `价格接近压力 ${resistance.toFixed(2)}，且出现${rNow > 70 ? "RSI超买" : macdCross === "dead" ? "MACD死叉" : "资金净流出"}等滞涨信号`,
       confirm: "若放量强势突破压力则转强可持有；否则易遇阻回落，应减仓",
     };
-  } else if (nearSup && !reduce && (rNow < 40 || macdCross === "gold" || build || (f5.has && f5.sum > 0))) {
-    // !reduce：窄幅箱体内 nearTop(7%) 与 nearSup(5%) 可同时成立，若不排除 reduce，
-    // 会出现信号卡「买点」与决策「建议减仓」同屏矛盾（历史回归实测出现过）。
+  } else if (nearSup && (rNow < 40 || macdCross === "gold" || build || (f5.has && f5.sum > 0))) {
+    // reduce 已在上方分支先行拦截（卖点兜底），走到这里必然 !reduce，
+    // 窄幅箱体内 nearTop(7%) 与 nearSup(5%) 同时成立时不会再出现「买点 vs 减仓」矛盾。
     signal = {
       level: "buy",
       label: "买点",
@@ -1146,7 +1123,10 @@ export function analyze(
   // ---------------- 今日盘中走势（A 股特有：涨停/跌停/炸板实时反映当日异动）----------------
   // 涨跌停是 A 股最强的短线方向信号：封涨停=多头极强、封跌停=空头极强、
   // 炸板=多空分歧剧烈、跌停开板=恐慌释放。这些当日异动应直接覆盖短线操作建议。
-  const intraday = detectLimitMove(klines, stockCode);
+  // 「今日」异动判定必须基于日 K：周/月视图下第一参 klines 是周线/月线，拿「本周/本月
+  // 涨跌幅」判「今日封涨停/大涨」会系统性误报（周涨 6% 很常见、月线碰涨停价纯属巧合）。
+  // 与换手率/筹码/回测同口径：恒用 dailyKlines（缺失时回退当前周期）。
+  const intraday = detectLimitMove(dailyKlines && dailyKlines.length >= 2 ? dailyKlines : klines, stockCode);
   let moveLabel = "";
   if (intraday.isLimitUp) moveLabel = "今日封涨停";
   else if (intraday.isBrokenLimitUp) moveLabel = "今日炸板";
@@ -1211,6 +1191,12 @@ export function analyze(
     };
   }
 
+  // 盘中异动与操作决策对齐：涨跌停/炸板是当日最强信号，决策标签不得与之相悖
+  // （封涨停仍显示「建议减仓」、封跌停/炸板却显示「可加仓/建仓/关注」都会误导）。
+  // 封涨停：reduce → watch（可持有观察，不催卖也不追高）；封跌停/炸板：偏多决策一律压回 reduce。
+  if (intraday.isLimitUp && decision === "reduce") decision = "watch";
+  else if ((intraday.isLimitDown || intraday.isBrokenLimitUp) && (decision === "add" || decision === "build" || decision === "watch")) decision = "reduce";
+
   const intradayMove: AnalysisResult["intradayMove"] = {
     pct: intraday.pct,
     isLimitUp: intraday.isLimitUp,
@@ -1247,7 +1233,9 @@ export function analyze(
       if (adx >= 25) return { trend: "up", text: "上涨趋势", strength: adx >= 40 ? "强" : "中" };
       return { trend: "shake_up", text: "震荡偏强", strength: "偏强" };
     }
-    if (adx >= 25) return { trend: "down", text: "下跌趋势", strength: adx >= 40 ? "弱" : "中" };
+    // ADX 度量趋势强度，与方向无关：下跌 + ADX≥40 同样是「强」趋势（此前误写「弱」，
+    // 与上涨分支不对称，报告会显示「下跌趋势（弱）」误导用户低估空头动能）
+    if (adx >= 25) return { trend: "down", text: "下跌趋势", strength: adx >= 40 ? "强" : "中" };
     return { trend: "shake_down", text: "震荡偏弱", strength: "偏弱" };
   }
 
@@ -1572,29 +1560,13 @@ export function analyze(
   return {
     price,
     last,
-    ma5,
-    ma10,
-    ma20,
-    ma60,
-    vol,
-    vma5,
-    vma20,
     macd: m,
-    kd,
-    r6,
-    r12,
-    r24,
     trend,
     trendText,
     strength,
     maState,
     support,
     resistance,
-    priceLevels,
-    mainSupport,
-    mainResistance,
-    nearBottom,
-    nearTop,
     nearSup,
     nearRes,
     f5,
@@ -1607,7 +1579,6 @@ export function analyze(
     rNow,
     rsiValid,
     scoreReasons,
-    stage,
     stageText,
     score,
     riskLevel,
@@ -1622,13 +1593,8 @@ export function analyze(
     adx,
     pDI,
     mDI,
-    atr,
     adxState,
-    bollMid: bo.mid,
-    bollUpper: bo.upper,
-    bollLower: bo.lower,
     bollPctB: bo.pctB,
-    bollBw: bo.bandwidth,
     bollBwNow,
     bollSqueeze,
     bias6,
@@ -1650,12 +1616,6 @@ export function analyze(
     sigType,
     signal,
     backtest,
-    newsScore,
-    newsLabel,
-    newsBull,
-    newsBear,
-    newsCatalysts,
-    newsRisks,
     marketEnv,
     intradayMove,
   };

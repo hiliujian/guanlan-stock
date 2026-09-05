@@ -429,7 +429,7 @@ const marketIdxStrength = computed(() => {
   if (adx >= 40) return "强趋势(ADX " + adx.toFixed(0) + ")";
   if (adx >= 25) return "明显趋势(ADX " + adx.toFixed(0) + ")";
   if (adx >= 20) return "趋势初现(ADX " + adx.toFixed(0) + ")";
-  return "震荡(ADX " + adx.toFixed(0) + ")";
+  return "无趋势(ADX " + adx.toFixed(0) + ")";
 });
 const alignColor = computed(() => {
   const env = a.value.marketEnv;
