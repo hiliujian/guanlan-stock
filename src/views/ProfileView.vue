@@ -28,19 +28,19 @@
       </view>
 
       <!-- VIP 会员 Banner（金色调通栏，浅色米金 / 深色黑金随主题，贴边全宽）：三态——
-           有效会员 → 权益展示位（永久有效 / 有效期至某日，带擦亮动效）；已过期 → 灰调续费引导；
+           有效会员 → 权益展示位（永久有效 / 有效期至某日，带擦亮动效）；已过期 → 续费引导；
            未开通 → 广告位。点击均可进会员页，右上角都有 × 可关闭（统一进入 1 天冷却，冷却结束自动恢复展示） -->
       <view
         v-if="user.loggedIn && !vipBannerClosed"
         class="pf-vip-banner"
-        :class="{ 'pf-vip-shine': isVip, 'pf-vip-expired': vipExpired }"
+        :class="{ 'pf-vip-shine': isVip }"
         hover-class="pf-vip-hover"
         role="button"
         :aria-label="vipBanner.aria"
         @click="goVip"
       >
         <view class="pf-vip-crown" :style="vipCrownStyle">
-          <OutlineIcon type="crown" :size="26" :color="vipCrownIconColor" />
+          <OutlineIcon type="crown" :size="26" :color="VIP_BADGE.fg" />
         </view>
         <view class="pf-vip-t">
           <text class="pf-vip-title">{{ vipBanner.title }}</text>
@@ -221,7 +221,7 @@ const userLevel = computed(() => {
   return typeof l === "number" && l >= 0 ? l : 0;
 });
 // VIP 会员：有效期用 vipActive 实时判定；Banner 三态——有效会员=权益展示位、
-// 已过期=灰调续费引导（vip 标志仍在但有效期已过）、未开通=推广广告位，
+// 已过期=续费引导（vip 标志仍在但有效期已过）、未开通=推广广告位，
 // 均可用右上角 × 关闭，进入 1 天冷却后自动恢复展示；金冠配色取自 VIP_BADGE（与徽章同一金色来源）
 const isVip = computed(() => vipActive(user.profile?.vip, user.profile?.vip_expires_at));
 // 已过期：曾授予 VIP（vip=true）但有效期已过 —— 与「从未开通」区分，走续费引导而非新客推广
@@ -264,13 +264,10 @@ const vipBanner = computed(() => {
     aria: "了解 VIP 会员",
   };
 });
-// 金冠底色随状态：有效=尊贵金；过期=降饱和灰（弱化尊贵感，突出续费引导）
-const vipCrownStyle = computed(() =>
-  vipExpired.value
-    ? { background: "linear-gradient(135deg, #cfccc4, #949087)", boxShadow: "0 0 0 4rpx rgba(0, 0, 0, 0.06)" }
-    : { background: `linear-gradient(135deg, ${VIP_BADGE.from}, ${VIP_BADGE.to})`, boxShadow: "0 0 0 4rpx rgba(192, 142, 14, 0.22)" }
-);
-const vipCrownIconColor = computed(() => (vipExpired.value ? "#4a463f" : VIP_BADGE.fg));
+const vipCrownStyle = {
+  background: `linear-gradient(135deg, ${VIP_BADGE.from}, ${VIP_BADGE.to})`,
+  boxShadow: "0 0 0 4rpx rgba(192, 142, 14, 0.22)",
+};
 function closeVipBanner() {
   vipBannerClosedAt.value = Date.now();
   uni.setStorageSync(VIP_BANNER_CLOSED_KEY, String(vipBannerClosedAt.value));
@@ -494,7 +491,7 @@ function onMenu(act: MenuItem["act"]) {
 }
 
 /* VIP 会员 Banner：金色尊贵风通栏（贴边全宽），浅色米金暖底 / 深色经典黑金，随主题切换。
-   有效会员=权益展示位（带擦亮）；已过期=灰调续费引导（见 .pf-vip-expired）；未开通=广告位（CTA，可关闭）。
+   有效会员=权益展示位（带擦亮）；已过期=续费引导；未开通=广告位（CTA，可关闭）。
    配色统一走本组件 CSS 变量，避免每条规则重复写两套渐变 */
 .pf-vip-banner {
   /* 浅色默认：米金暖底 + 深金字 */
@@ -544,24 +541,6 @@ function onMenu(act: MenuItem["act"]) {
   --vip-hover: linear-gradient(120deg, #35280c, #1d1507 55%, #2c2009);
   --vip-title: linear-gradient(120deg, #f7e3a1, #e8c558 50%, #c08e0e);
   --vip-sub: rgba(240, 205, 110, 0.72);
-  --vip-close-hover: rgba(255, 255, 255, 0.1);
-}
-/* 已过期：整体降饱和转灰（金冠转灰由脚本内联样式处理），弱化尊贵感；
-   「续费会员」CTA 仍保留金色按钮，让行动入口在灰调底上更突出 */
-.pf-vip-banner.pf-vip-expired {
-  --vip-bg: linear-gradient(120deg, #f2f0eb, #eae8e2 55%, #f0eee8);
-  --vip-line: rgba(0, 0, 0, 0.08);
-  --vip-hover: linear-gradient(120deg, #ebe9e3, #e2e0d9 55%, #e9e7e0);
-  --vip-title: #8d887c;
-  --vip-sub: rgba(93, 89, 80, 0.72);
-  --vip-close-hover: rgba(0, 0, 0, 0.1);
-}
-.theme-dark .pf-vip-banner.pf-vip-expired {
-  --vip-bg: linear-gradient(120deg, #232327, #161619 55%, #1f1f23);
-  --vip-line: rgba(255, 255, 255, 0.09);
-  --vip-hover: linear-gradient(120deg, #2c2c31, #1c1c20 55%, #26262b);
-  --vip-title: #a5a19a;
-  --vip-sub: rgba(255, 255, 255, 0.45);
   --vip-close-hover: rgba(255, 255, 255, 0.1);
 }
 .pf-vip-hover {
