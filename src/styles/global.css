@@ -415,10 +415,7 @@ textarea {
   opacity: 0.85;
 }
 
-/* 骨架/加载旋转 */
-.anim-spin {
-  animation: spin 0.9s linear infinite;
-}
+/* 加载旋转关键帧（.cl-spin 引用） */
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -435,29 +432,6 @@ textarea {
   animation: spin 0.8s linear infinite;
 }
 
-/* 价格跳动高亮 */
-.anim-flash-up {
-  animation: flashUp 0.6s ease;
-}
-.anim-flash-down {
-  animation: flashDown 0.6s ease;
-}
-@keyframes flashUp {
-  0% {
-    background: rgba(239, 35, 42, 0.20);
-  }
-  100% {
-    background: transparent;
-  }
-}
-@keyframes flashDown {
-  0% {
-    background: rgba(9, 176, 122, 0.20);
-  }
-  100% {
-    background: transparent;
-  }
-}
 
 /* ============ 玻璃拟态工具类 ============ */
 .glass {
@@ -784,12 +758,8 @@ textarea {
 /* ============ 布局工具类 ============ */
 /* Flex 基础：最高频的布局模式，覆盖全站 80%+ 的 flex 声明 */
 .flex { display: flex; }
-.flex-col { display: flex; flex-direction: column; }
 .flex-center { display: flex; align-items: center; justify-content: center; }
 .flex-between { display: flex; align-items: center; justify-content: space-between; }
-/* flex-1 + min-width:0：允许子项收缩到内容宽度以下，防止被挤出 */
-.flex-1 { flex: 1; min-width: 0; }
-.flex-none { flex: none; }
 
 /* ============ 文字工具类 ============ */
 /* 单行截断：超长文本省略号（全站出现 20+ 处） */

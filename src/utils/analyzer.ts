@@ -4,7 +4,7 @@
 // =====================================================================
 import type { Kline, PeriodKey } from "./period";
 import { UP, DOWN } from "./colors";
-import { computePriceLevels, resolvePeriodGuard, type PriceLevelGroup, type LevelCtx } from "@/utils/autoLevels";
+import { computePriceLevels, resolvePeriodGuard, type LevelCtx } from "@/utils/autoLevels";
 import type { NewsSignal } from "./newsSentiment";
 
 // ---------------- 指标计算 ----------------
@@ -326,7 +326,7 @@ interface FlowSummary {
   sum: number; // 亿元
   has: boolean;
 }
-export interface ChipResult {
+interface ChipResult {
   cats: string[];
   vals: number[];
   colors: string[];

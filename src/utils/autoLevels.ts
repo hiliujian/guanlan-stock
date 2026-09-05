@@ -622,7 +622,6 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
     else if (finalScore >= 60) level = "强";
     else if (finalScore >= 40) level = "中";
     const volBoost = rl.sc.volBoost ?? 0;
-    const chipBoost = rl.sc.chipBoost ?? 0;
     const volDesc = volBoost > 0 ? "放量确认（量能配合，可靠性高）" : "缩量/无量触碰（可靠性一般）";
     return {
       price: rl.price,
