@@ -153,7 +153,7 @@ import OutlineIcon from "./OutlineIcon.vue";
 import StockText from "./StockText.vue";
 import UserAvatar from "./UserAvatar.vue";
 import { formatRelative, unpackCards, communityRepo, type CommunityPost, type HoldingCard, type Reply } from "@/api/community";
-import { fetchSnapshot } from "@/api/quote";
+import { fetchSnapshots } from "@/api/quote";
 import { topicColor } from "@/utils/avatar";
 import { vipGatedFrame } from "@/utils/avatarFrame";
 import { marketCharFor, resolveSecid } from "@/utils/period";
@@ -317,40 +317,75 @@ const cards = computed<HoldingCard[]>(() => unpackCards(props.post.card));
 // 按「代码」维度维护实时行情：一张帖可含多张持仓，各自独立刷新；30s 轮询
 // （快照接口自带 20s 缓存）。无代码旧数据或行情失败时回退发布时点值，展示不中断。
 const livePrices = ref<Record<string, number>>({});
-let priceTimer: any = null;
-async function refreshPrices() {
-  const list = cards.value.filter((x) => x.code);
-  if (!list.length) return;
-  await Promise.all(
-    list.map(async (x) => {
-      try {
-        const snap = await fetchSnapshot(resolveSecid(x.code!, "auto"));
-        if (snap.price) livePrices.value = { ...livePrices.value, [x.code!]: snap.price };
-      } catch {
-        /* 行情不可得 → 该卡回退发布时点值 */
-      }
-    })
-  );
-}
-function stopPricePoll() {
-  if (priceTimer) {
-    clearInterval(priceTimer);
-    priceTimer = null;
+// ---- 持仓卡行情刷新：模块级单例聚合 ----
+// 信息流无限滚动 append + 外层 keep-alive 常驻：若每张持仓卡各挂一个 setInterval，
+// 定时器会随浏览无限累积且永不停。改为模块级 30s 单心跳：各卡按 code 注册回调，
+// 每轮一次批量取数（fetchSnapshots 单请求）后分发；最后一张卡注销时停表。
+const LIVE_POLL_MS = 30000;
+const liveCards = new Map<string, Set<(price: number) => void>>(); // code -> 回调集合（同 code 多卡共享一次取数）
+let liveTimer: any = null;
+async function liveTick() {
+  const codes = Array.from(liveCards.keys());
+  if (!codes.length) return;
+  const snaps = await fetchSnapshots(codes.map((c) => resolveSecid(c, "auto")));
+  for (const [code, fns] of liveCards) {
+    const price = snaps[resolveSecid(code, "auto")]?.price;
+    if (!price) continue;
+    for (const fn of Array.from(fns)) fn(price);
   }
 }
-function startPricePoll() {
-  stopPricePoll();
-  livePrices.value = {};
-  if (!cards.value.some((x) => x.code)) return;
-  refreshPrices();
-  priceTimer = setInterval(refreshPrices, 30000);
+function registerLiveCard(code: string, fn: (price: number) => void) {
+  let set = liveCards.get(code);
+  if (!set) {
+    set = new Set();
+    liveCards.set(code, set);
+  }
+  const first = liveCards.size === 1 && !liveTimer;
+  set.add(fn);
+  if (!liveTimer) liveTimer = setInterval(liveTick, LIVE_POLL_MS);
+  if (first) liveTick(); // 首张卡注册即拉一轮，新卡无需等 30s 才有现价
 }
-watch(
-  () => props.post.card,
-  () => startPricePoll()
-);
-onMounted(startPricePoll);
-onUnmounted(stopPricePoll);
+function unregisterLiveCard(code: string, fn: (price: number) => void) {
+  const set = liveCards.get(code);
+  if (!set) return;
+  set.delete(fn);
+  if (!set.size) liveCards.delete(code);
+  if (!liveCards.size && liveTimer) {
+    clearInterval(liveTimer);
+    liveTimer = null;
+  }
+}
+
+// 本卡注册表：code → 现价回调（props.post.card 变化时增量同步注册/注销）
+const myFns = new Map<string, (price: number) => void>();
+function syncLiveRegistrations() {
+  const want = new Set(cards.value.filter((x) => x.code).map((x) => x.code!));
+  let added = false;
+  for (const code of Array.from(myFns.keys())) {
+    if (!want.has(code)) {
+      unregisterLiveCard(code, myFns.get(code)!);
+      myFns.delete(code);
+    }
+  }
+  for (const code of want) {
+    if (!myFns.has(code)) {
+      const fn = (price: number) => {
+        livePrices.value = { ...livePrices.value, [code]: price };
+      };
+      myFns.set(code, fn);
+      registerLiveCard(code, fn);
+      added = true;
+    }
+  }
+  // 模块心跳已在跑时新增的卡立即拉一轮（fetchSnapshots 带 TTL，开销可忽略），无需等下一拍
+  if (added && liveTimer) liveTick();
+}
+watch(() => props.post.card, syncLiveRegistrations);
+onMounted(syncLiveRegistrations);
+onUnmounted(() => {
+  for (const [code, fn] of myFns) unregisterLiveCard(code, fn);
+  myFns.clear();
+});
 
 /** 单张持仓的展示视图：现价（实时优先）→ 收益率 → 浮动盈亏，逐卡独立计算 */
 interface HoldingView {

@@ -782,6 +782,11 @@ function destroyChart() {
     }
     crosshairCb = null;
   }
+  // 取消挂起的十字光标合帧回调，避免 dispose 后 rAF 触发触碰已释放的图表
+  if (crossRafId) {
+    cancelAnimationFrame(crossRafId);
+    crossRafId = 0;
+  }
   if (dataReadyCb && chart) {
     try {
       chart.unsubscribeAction(ActionType.OnDataReady, dataReadyCb);
@@ -1462,6 +1467,50 @@ function paneMap(paneId: string, cross?: Record<string, Record<string, any>>, id
   if (Object.keys(byIdx).length) return byIdx;
   return readIndicatorResults(paneId);
 }
+// 分时全天高/低缓存：buildLegend 随十字光标移动高频调用，避免每次都全量扫描 dataList
+// （约 240 根）。以「数组引用 + 末根柱引用及其 high/low/close」为失效键——数据整体重装
+// （toKLineData 重新赋值）或实时 tick 原地更新末根柱高低点时自动失效重算。
+let intradayHLCache: {
+  src: any[];
+  last: any;
+  lastHigh: any;
+  lastLow: any;
+  lastClose: any;
+  hh: number | null;
+  ll: number | null;
+} | null = null;
+function intradayHighLow(): { hh: number | null; ll: number | null } {
+  const last = dataList[dataList.length - 1];
+  const c = intradayHLCache;
+  if (
+    c &&
+    c.src === dataList &&
+    c.last === last &&
+    c.lastHigh === (last ? last.high : undefined) &&
+    c.lastLow === (last ? last.low : undefined) &&
+    c.lastClose === (last ? last.close : undefined)
+  ) {
+    return { hh: c.hh, ll: c.ll };
+  }
+  let hh = -Infinity, ll = Infinity;
+  for (const b of dataList) {
+    if (!b) continue;
+    const hi = Math.max(b.high, b.close); // high 缺失/异常时用收盘价兜底，保证极值有效
+    const lo = Math.min(b.low, b.close);
+    if (hi > hh) hh = hi;
+    if (lo < ll) ll = lo;
+  }
+  intradayHLCache = {
+    src: dataList,
+    last,
+    lastHigh: last ? last.high : undefined,
+    lastLow: last ? last.low : undefined,
+    lastClose: last ? last.close : undefined,
+    hh: Number.isFinite(hh) ? hh : null,
+    ll: Number.isFinite(ll) ? ll : null,
+  };
+  return { hh: intradayHLCache.hh, ll: intradayHLCache.ll };
+}
 function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?: number) {
   if (!kl) return;
   const d = new Date(kl.timestamp);
@@ -1476,16 +1525,10 @@ function buildLegend(kl: any, cross?: Record<string, Record<string, any>>, idx?:
     legend.o = dataList.length ? (dataList[0].close ?? props.preClose ?? null) : (props.preClose ?? null);
     // 分时图「高/低」= 当日（全天）最高/最低价，固定不变，不随光标变化（与同花顺一致）。
     // 直接取全部分时柱 high/low 的极值（high/low 缺失/异常时用收盘价兜底），即真正的全天最高/最低。
-    let hh = -Infinity, ll = Infinity;
-    for (const b of dataList) {
-      if (!b) continue;
-      const hi = Math.max(b.high, b.close); // high 缺失/异常时用收盘价兜底，保证极值有效
-      const lo = Math.min(b.low, b.close);
-      if (hi > hh) hh = hi;
-      if (lo < ll) ll = lo;
-    }
-    legend.h = Number.isFinite(hh) ? hh : null;
-    legend.l = Number.isFinite(ll) ? ll : null;
+    // 全量扫描走 intradayHighLow 缓存（见上），十字光标高频移动时不再逐帧重算
+    const { hh, ll } = intradayHighLow();
+    legend.h = hh;
+    legend.l = ll;
   } else {
     legend.o = kl.open ?? null;
     legend.h = kl.high ?? null; legend.l = kl.low ?? null;
@@ -1555,7 +1598,19 @@ function onChartLeave() {
   tip.show = false;
   updateLegendLatest();
 }
+// 十字光标回调 rAF 合帧：mousemove 触发频率远高于渲染帧率，图例重建（含指标读取）与
+// 悬浮检测每帧至多执行一次、取最后一帧事件，拖动十字线时不再逐帧全量重算
+let crossRafId = 0;
+let lastCrossEvent: any = null;
 function onCrosshair(c: any) {
+  lastCrossEvent = c;
+  if (crossRafId) return;
+  crossRafId = requestAnimationFrame(() => {
+    crossRafId = 0;
+    handleCrosshair(lastCrossEvent);
+  });
+}
+function handleCrosshair(c: any) {
   // 图例跟随十字光标：主图/成交量/MACD 任一面板悬浮都显示当前选中 K 线的 OHLC + 各面板指标值。
   // 此前仅在 candle_pane 才更新，导致在成交量/MACD 面板选柱时图例不跟随（始终显示最新值）。
   if (!c || c.kLineData == null || c.x == null || c.y == null) {
