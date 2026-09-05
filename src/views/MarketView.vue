@@ -358,6 +358,9 @@ function toggleGrp(key: string) {
 }
 const globalQuotes = ref<Map<string, GlobalIndexQuote>>(new Map());
 let globalTimer: any = null;
+// 面板展开态跟踪：keep-alive 切走时 stopTimers 会同步停掉指数面板刷新，
+// 切回（onActivated → syncTimers）按此恢复展开态的轮询；浏览器后台门控（syncTimers）同用
+const sheetExpanded = ref(false);
 async function refreshGlobal() {
   try {
     globalQuotes.value = await fetchGlobalIndices();
@@ -366,9 +369,8 @@ async function refreshGlobal() {
   }
 }
 function startGlobalTimer() {
-  refreshGlobal(); // 展开即立即拉取一次（不 await，避免阻塞手势回调）
-  loadCffex(); // 期指持仓为日频数据，展开时拉取一次即可，失败留待下次展开重试
-  if (globalTimer) return;
+  if (globalTimer) return; // 已在跑则不动（重复调用不重复立即拉取）
+  refreshGlobal(); // 展开/恢复即立即拉取一次（不 await，避免阻塞手势回调）
   globalTimer = setInterval(refreshGlobal, 15000); // 展开态 15s 刷新
 }
 function stopGlobalTimer() {
@@ -378,9 +380,12 @@ function stopGlobalTimer() {
   }
 }
 function onSheetExpand() {
-  startGlobalTimer();
+  sheetExpanded.value = true;
+  startGlobalTimer(); // 幂等：已在跑则跳过，未跑（切 tab 回来恢复）则立即拉取
+  loadCffex(); // 期指持仓为日频数据，展开时拉取一次即可，失败留待下次展开重试
 }
 function onSheetCollapse() {
+  sheetExpanded.value = false;
   stopGlobalTimer();
 }
 // 展开面板渲染辅助：按 secid 取报价并格式化；缺失/异常 → 价格「暂无数据」、涨跌中性色
@@ -775,6 +780,18 @@ function stopTimers() {
   stopGlobalTimer(); // 离开行情页（切 Tab / 卸载）时同步停掉指数面板刷新
 }
 
+// 浏览器后台标签页统一门控：hidden 停掉全部心跳（主行情 + 指数面板），回前台按需恢复。
+// 切 tab 场景走 onActivated/onDeactivated → syncTimers（stopTimers 内部已同步停指数面板），
+// 切回时若面板仍处展开态（sheetExpanded）则恢复轮询并立即拉取一次，修复此前切回数据冻结。
+function syncTimers() {
+  if (typeof document !== "undefined" && document.hidden) {
+    stopTimers();
+  } else {
+    startTimers(); // 主行情心跳（幂等）
+    if (sheetExpanded.value) startGlobalTimer(); // 恢复面板轮询（含立即拉取，补回后台期间停更的数据）
+  }
+}
+
 // 行情图卡片标题固定为「行情图」；具体周期（分时/日K/周K…）由卡片内分段控件展示，
 // 不再在标题与分段控件间重复表达。
 function cardTitle(c: MarketCardMeta): string {
@@ -1023,20 +1040,23 @@ onMounted(() => {
     loadLastViewed();
   }
   // 关键修复：启动实时刷新心跳。onActivated 在 transition+keep-alive 包裹下
-  // 首次激活不一定可靠触发，故在 onMounted 也启动（startTimers 幂等，不会重复建定时器）。
-  startTimers();
+  // 首次激活不一定可靠触发，故在 onMounted 也启动（syncTimers 幂等，不会重复建定时器）。
+  syncTimers();
+  // 浏览器后台/前台切换统一门控：hidden 停全部心跳、可见按需恢复，onUnmounted 注销
+  if (typeof document !== "undefined") document.addEventListener("visibilitychange", syncTimers);
 });
 
 // <keep-alive> 缓存：切到自选/我的再返回时组件不销毁，状态天然保留；
 // 仅在「行情」为当前可见页时跑心跳（刷新行情 + 状态标识），离开即暂停，省请求。
 onActivated(() => {
-  startTimers();
+  syncTimers(); // 含按面板展开态恢复指数面板轮询（此前仅重启主心跳，切回后面板数据冻结）
 });
 onDeactivated(() => {
   stopTimers();
 });
 onUnmounted(() => {
   stopTimers();
+  if (typeof document !== "undefined") document.removeEventListener("visibilitychange", syncTimers);
 });
 
 // 暴露给页面级下拉刷新（index.vue onPullDownRefresh 路由到此）：全量刷新图表与资讯

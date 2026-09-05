@@ -302,14 +302,12 @@ export const FUTURES_SECIDS = Object.keys(FUTURES_SINA);
 //   [1]正式收盘价 [2]正式涨跌幅% [21]扩展时段(盘前或盘后)最新价
 //   [22]扩展涨跌幅%（相对正式收盘价，已验算 [22]=( [21]-[1] )/[1]*100）
 //   [24]扩展时段最后成交时间（如 "Sep 03 08:01PM EDT"；盘前时段则为 AM）
-//   [25]正式时段最后成交时间 [26]昨收
 // 复用网关 futures kind（即 hq.sinajs.cn/list= 通用批量接口，仅 URL 语义复用），零后端改动。
 export interface SinaUsExtQuote {
   secid: string;
   close: number | null; // [1] 正式收盘价（扩展涨跌幅基准 + chg 计算基准）
   extPrice: number | null; // [21] 盘前/盘后最新价
   extPct: number | null; // [22] 扩展涨跌幅%（相对正式收盘价）
-  preClose: number | null; // [26] 昨收
   extTime: string; // [24] 扩展时段最后成交时间原始串（新鲜度校验用）
 }
 
@@ -368,7 +366,6 @@ export async function getSinaUsExtQuotes(secids: string[]): Promise<SinaUsExtQuo
         close: pos(a[1]),
         extPrice: pos(a[21]),
         extPct: num(a[22]),
-        preClose: pos(a[26]),
         extTime: (a[24] || "").trim(),
       });
     }
