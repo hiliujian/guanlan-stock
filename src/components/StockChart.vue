@@ -413,16 +413,14 @@ const props = withDefaults(
     toolsOpen?: boolean;
     /** 是否启用「智能标注」：系统按行情自动标注支撑/压力/趋势/黄金分割（半透明虚线、锁定不可拖拽）；默认关，仅看盘主图开启。手动绘制仍可用。 */
     autoDraw?: boolean;
-    /** 是否把用户画的线持久化到本地（按 code 区分），默认开 */
-    persist?: boolean;
-    /** 当前股票代码，用于持久化 key；不传则不持久化（仅当前会话有效） */
+    /** 当前股票代码：换股/重新搜索时用于清空已画线 */
     code?: string;
     /** 辅助线显示配置（总开关 + 压力/支撑/趋势逐线开关）；不传则按组件默认全开 */
     auxConfig?: ChartAuxConfig;
     /** 当前 K线周期（m=分时/d/w/M），用于各周期默认缩放与智能标注多周期隔离；不传默认日K */
     period?: PeriodKey;
   }>(),
-  { height: 380, showMA: true, macdDif: true, macdDea: true, volumeMa5: true, volumeMa10: true, volumeMa20: true, showTools: false, autoDraw: false, persist: true }
+  { height: 380, showMA: true, macdDif: true, macdDea: true, volumeMa5: true, volumeMa10: true, volumeMa20: true, showTools: false, autoDraw: false }
 );
 
 // ---- 类型别名（klinecharts 运行时实例）----
@@ -888,34 +886,27 @@ function destroyChart() {
 }
 
 // ---- 看盘画线工具：用户在图上拖拽绘制支撑/压力/趋势/黄金分割线 ----
-// 绘制的线按股票 code 持久化到本地（localStorage），重进自动恢复；不传 code 则仅当前会话。
+// 绘制的线仅存于内存快照（不落盘缓存）：换股/重新搜索即清空；切周期/开关指标等整图重建
+// 时从快照恢复，当前画的线不丢；应用重开即消失。
 const overlayIds: string[] = [];
+let sessionLines: any[] = []; // 当前股票已画线的内存快照（换股清空，整图重建后据此恢复）
 function genOverlayId(): string {
   return `ol_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
-function persistKey(): string {
-  return props.code ? `kc_ol_${props.code}` : "";
-}
-// 把当前所有已画线同步进本地存储（绘制完成 / 清除时调用）
-function persistSave() {
-  const key = persistKey();
-  if (!props.persist || !key || !chart) return;
-  const list = overlayIds
+// 把当前所有已画线快照进内存（画完一笔 / 拖动结束 / 删除 / 恢复后调用）
+function snapshotLines() {
+  if (!chart) return;
+  sessionLines = overlayIds
     .map((id) => {
       const o: any = chart!.getOverlayById(id);
       if (!o || !o.points || !o.points.length) return null;
-      // 选中态线宽（2.6）不落盘：持久化统一归一为基准线宽，恢复后外观一致
+      // 选中态线宽（2.6）不入快照：统一归一为基准线宽，恢复后外观一致
       const styles = o.styles
         ? { ...o.styles, line: { ...(o.styles.line || {}), size: BASE_LINE_SIZE } }
         : o.styles;
-      return { id, type: o.name ?? o.type, points: o.points, styles };
+      return { id, type: o.name ?? o.type, points: o.points, styles, extendData: o.extendData };
     })
     .filter(Boolean) as any[];
-  try {
-    uni.setStorageSync(key, list);
-  } catch {
-    /* noop */
-  }
 }
 // 自定义画线工具：点击工具后进入绘制，画完一笔（或取消）即自动退出绘制，
 // 让点击画布回到「选中已有线」交互——这是拖动调整的前提（绘制流程会拦截所有点击）。
@@ -980,7 +971,7 @@ function removeSelectedOverlay() {
   disarming = false;
   const i = overlayIds.indexOf(id);
   if (i >= 0) overlayIds.splice(i, 1);
-  persistSave();
+  snapshotLines();
 }
 
 // 动作 → 自定义 overlay 名 + 线色 + 标签前缀（不再用内置名，避免「都绿/互斥」）
@@ -1009,11 +1000,11 @@ function reArm() {
     },
     // 点击已完成的线 → 选中（拖动圆点调整 / 工具栏删除）
     onClick: () => selectOverlay(id),
-    // 拖动结束 → 同步本地存储，否则刷新后弹回旧位置
-    onPressedMoveEnd: () => persistSave(),
+    // 拖动结束 → 同步内存快照，否则整图重建后弹回旧位置
+    onPressedMoveEnd: () => snapshotLines(),
     onDrawEnd: () => {
       armedId = null;
-      persistSave();
+      snapshotLines();
       // 单发：完成一笔即退出绘制模式，让点击画布回到「选中/拖动已有线」
       activeAction.value = "";
     },
@@ -1060,7 +1051,7 @@ function drawLine(action: DrawAction) {
   activeAction.value = action;
   reArm();
 }
-// 从图表摘除全部用户手绘线并复位画线/选中状态（不动本地存储）
+// 从图表摘除全部用户手绘线并复位画线/选中状态（不动内存快照，由调用方决定是否清）
 function detachOverlays() {
   disarming = true;
   if (chart) overlayIds.forEach((id) => { try { chart!.removeOverlay(id); } catch { /* noop */ } });
@@ -1070,17 +1061,10 @@ function detachOverlays() {
   activeAction.value = "";
   selectedOverlayId.value = null;
 }
-// 清空用户手动画的线（不影响系统智能标注），并清本地存储
+// 清空用户手动画的线（不影响系统智能标注），并清内存快照
 function clearUserOverlays() {
   detachOverlays();
-  const key = persistKey();
-  if (key) {
-    try {
-      uni.removeStorageSync(key);
-    } catch {
-      /* noop */
-    }
-  }
+  sessionLines = [];
 }
 // ---- 智能标注（小白友好）：系统按行情自动标注支撑/压力/趋势 ----
 // 半透明虚线 + 锁定（不可拖拽编辑），与用户手绘的浓实线明显区分；不持久化，随数据刷新。
@@ -1705,48 +1689,23 @@ function onCrosshair(c: any) {
   tip.y = c.y;
   tip.show = true;
 }
-// 旧版 localStorage 存的是内置 overlay 名，统一映射到自定义名（保留线色/样式，横线据线色补「支/压」标签）
-const DRAW_TYPE_MAP: Record<string, string> = {
-  horizontalStraightLine: "kcHLine",
-  straightLine: "kcTrend",
-  fibonacciLine: "kcFib",
-};
-function mapRestoreType(it: any): { name: string; extendData: any } {
-  const name = DRAW_TYPE_MAP[it.type] || it.type;
-  const extendData: any = {};
-  if (name === "kcHLine") {
-    const col = it.styles?.line?.color;
-    // 旧版支撑=DOW(绿)、压力=UP(红)；线色即可区分，补标签前缀
-    extendData.tag = col === UP ? "压" : "支";
-  }
-  return { name, extendData };
-}
-// 从本地存储恢复已画线（在 applyNewData 之后调用，依赖数据坐标系）
+// 从内存快照恢复已画线（在 applyNewData 之后调用，依赖数据坐标系；换股后快照已清空即无恢复）
 function restoreOverlays() {
-  const key = persistKey();
-  if (!props.persist || !key || !chart) return;
-  let saved: any[] = [];
-  try {
-    saved = uni.getStorageSync(key) || [];
-  } catch {
-    saved = [];
-  }
-  if (!Array.isArray(saved)) return;
-  for (const it of saved) {
+  if (!chart || !sessionLines.length) return;
+  for (const it of sessionLines) {
     if (!it || !it.type || !Array.isArray(it.points) || !it.points.length) continue;
     try {
       const id = it.id || genOverlayId();
-      const { name, extendData } = mapRestoreType(it);
       const base = it.styles || {};
       chart.createOverlay({
-        id, name, extendData, points: it.points,
+        id, name: it.type, extendData: it.extendData, points: it.points,
         styles: {
           ...base,
-          // 旧存档无 point 尺寸 → 统一补触摸友好的点位圆点
+          // 统一补触摸友好的点位圆点
           point: { ...TOUCH_POINT_STYLES, borderColor: base?.line?.color },
         },
         onClick: () => selectOverlay(id),
-        onPressedMoveEnd: () => persistSave(),
+        onPressedMoveEnd: () => snapshotLines(),
       } as never);
       if (!overlayIds.includes(id)) overlayIds.push(id);
     } catch {
@@ -2012,15 +1971,14 @@ watch(
   () => [props.klines, props.trends, props.preClose],
   () => refreshData()
 );
-// 换股（code 变化）：引擎 applyNewData 不清理 overlay（跨数据残留），上一只股的手绘线会
-// 留在新股图上，且随后的拖动/画线 persistSave 会以新股 key 落盘（跨股污染存档）。
-// 故先摘除旧线再按新股存档恢复；此时代码已切，严禁再把旧线 persistSave。
+// 换股/重新搜索（code 变化）：已画线全部清空（仅限当前股票会话，不跨股保留）。
+// 图未建时无需处理——重建后快照已随上次换股清空。
 watch(
   () => props.code,
   () => {
-    if (!chart) return; // 图未建时由 buildChart 的 drawOverlays 统一走 restoreOverlays
+    sessionLines = [];
+    if (!chart) return;
     detachOverlays();
-    restoreOverlays();
   }
 );
 watch(

@@ -26,7 +26,7 @@ const props = defineProps<{
   loading?: boolean;
   /** 实时最新价（与头部同源 5s 快照），分时模式同步到走势图最后一根，确保与卡片一致 */
   livePrice?: number;
-  /** 当前股票代码：透传给 StockChart 用于看盘画线按股票持久化 */
+  /** 当前股票代码：透传给 StockChart，换股/重新搜索时清空已画线 */
   code?: string;
   /** 是否显示看盘画线工具栏（仅行情页主图启用） */
   showTools?: boolean;
