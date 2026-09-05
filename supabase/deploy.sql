@@ -520,6 +520,9 @@ grant execute on function public.get_user_watchlist(uuid) to anon, authenticated
 
 -- 会话列表（按对方聚合：最近一条 + 未读数）
 -- other_vip / other_vip_expires_at：对方 VIP 生效态由前端 vipActive 判定，供会员金框收口
+-- 注：RETURNS TABLE 增列属返回类型变更，PostgreSQL 不允许用 create or replace 直接改，
+-- 故先 drop（幂等 if exists）再建；在全新库上 drop 为 no-op，旧库上可避免 42P13 报错。
+drop function if exists public.get_my_conversations();
 create or replace function public.get_my_conversations()
 returns table (
   other_id uuid, other_name text, other_avatar text, other_frame text,
@@ -588,6 +591,8 @@ returns integer language sql security definer set search_path = public as $$
 $$;
 
 -- 消息中心：点赞 / 评论通知（从我自己的帖子实时派生，无需独立通知表）
+-- 同上：RETURNS TABLE 增列需先 drop 再建，避免 42P13 返回类型变更报错。
+drop function if exists public.get_my_notifications();
 create or replace function public.get_my_notifications()
 returns table (
   id uuid, kind text, actor_id uuid, actor_name text, actor_avatar text, actor_frame text,
