@@ -182,12 +182,12 @@
                       <!-- 篮子状态角标：与数据强绑定的阶段（盘前/盘中/盘后）；深夜/周末/假期等
                            非交易阶段（数据定格收盘）不打标签，仅当时钟在盘中时段且行情时间戳
                            为今日实时才标「盘中」，防止标签与数据脱节 -->
-                      <text v-if="it.members && qOf(it.secid)?.session" class="idx-item-bkt">{{ qOf(it.secid)?.session }}</text>
+                      <text v-if="it.members && qOf(it.secid)?.views" class="idx-item-bkt bkt-switch" @click.stop="cycleBkt(it)">{{ BKT_LABEL[bktSel(it)] }}</text>
+                      <text v-else-if="it.members && qOf(it.secid)?.session" class="idx-item-bkt">{{ qOf(it.secid)?.session }}</text>
                     </view>
                     <view class="idx-item-right">
                       <text v-if="!it.members" class="idx-item-price" :class="[qCls(it.secid), qNa(it.secid) ? 'na' : '']">{{ qPrice(it.secid) }}</text>
-                      <text v-if="!hasRegPct(it)" class="idx-item-pct" :class="qCls(it.secid)">{{ qPct(it.secid) }}</text>
-                      <text v-else class="idx-item-pct" :class="qCls(it.secid)">{{ qPct(it.secid) }}<text class="idx-item-pct-reg" :class="regCls(it)">{{ regPctText(it) }}</text></text>
+                      <text class="idx-item-pct" :class="bktCls(it)">{{ bktPct(it) }}</text>
                     </view>
                   </view>
                 </view>
@@ -406,20 +406,40 @@ function qNa(secid: string): boolean {
 }
 
 
-// 美股篮子盘前/盘后：小字并列展示「扩展时段涨跌幅 + 正式涨跌幅」（如 -0.18% +5.80%）
-// 正式涨跌幅来自新浪扩展行情的 (正式收盘-昨收)/昨收，仅盘前/盘后阶段有值
-function hasRegPct(it: { secid: string }): boolean {
+// 美股篮子时段切换：点击角标在 盘前→盘中→盘后 间循环，展示所选时段的等权涨跌幅；
+// 所选时段无数据（如非该时段窗口）则显示「暂无数据」，不误导。默认展示实际所处阶段。
+type BktView = 'pre' | 'regular' | 'post';
+const BKT_CYCLE: BktView[] = ['pre', 'regular', 'post'];
+const BKT_LABEL: Record<BktView, string> = { pre: '盘前', regular: '盘中', post: '盘后' };
+const bktView = ref<Record<string, BktView>>({});
+function bktSel(it: { secid: string }): BktView {
+  const override = bktView.value[it.secid];
+  if (override) return override;
   const q = qOf(it.secid);
-  const r = q?.regPct;
-  return !!q && (q.session === '盘前' || q.session === '盘后') && r != null && Number.isFinite(r);
+  if (q?.session === '盘前') return 'pre';
+  if (q?.session === '盘后') return 'post';
+  return 'regular';
 }
-function regPctText(it: { secid: string }): string {
-  const r = qOf(it.secid)?.regPct ?? 0;
-  return (r >= 0 ? '+' : '') + r.toFixed(2) + '%';
+function cycleBkt(it: { secid: string }) {
+  const cur = bktSel(it);
+  const next = BKT_CYCLE[(BKT_CYCLE.indexOf(cur) + 1) % BKT_CYCLE.length];
+  bktView.value = { ...bktView.value, [it.secid]: next };
 }
-function regCls(it: { secid: string }): string {
-  const r = qOf(it.secid)?.regPct ?? 0;
-  return r > 0 ? 'up' : r < 0 ? 'down' : 'flat';
+function bktData(it: { secid: string }): { pct: number | null; chg: number | null } | null {
+  const q = qOf(it.secid);
+  if (!q) return null;
+  if (!q.views) return { pct: q.pct, chg: q.chg }; // 非美股篮子（指数/日韩/商品）走原口径
+  return q.views[bktSel(it)] ?? null;
+}
+function bktPct(it: { secid: string }): string {
+  const d = bktData(it);
+  if (!d || d.pct == null || !Number.isFinite(d.pct)) return '暂无数据';
+  return (d.pct >= 0 ? '+' : '') + d.pct.toFixed(2) + '%';
+}
+function bktCls(it: { secid: string }): string {
+  const d = bktData(it);
+  if (!d || d.pct == null || !Number.isFinite(d.pct)) return '';
+  return d.pct > 0 ? 'up' : d.pct < 0 ? 'down' : 'flat';
 }
 
 // ---------------- 期指持仓（中金所官方，最近已发布交易日） ----------------
@@ -1479,9 +1499,9 @@ defineExpose({ refresh: () => refreshFull() });
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-.idx-item-pct-reg {
-  margin-left: 10rpx;
-  color: var(--text-2);
+/* 可点击的时段角标：指针提示可切换（盘前/盘中/盘后循环） */
+.bkt-switch {
+  cursor: pointer;
 }
 
 .idx-item-pct {
