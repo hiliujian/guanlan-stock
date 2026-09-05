@@ -174,7 +174,7 @@
                   <OutlineIcon type="chevron-up" :size="20" color="var(--text-3)" class="idx-caret" :class="{ closed: collapsedGrps.has(g.title) }" />
                 </view>
                 <view v-show="!collapsedGrps.has(g.title)" class="idx-grp-list">
-                  <view v-for="it in g.items" :key="it.secid" class="idx-item">
+                  <view v-for="it in g.items" :key="it.secid" class="idx-item" :class="{ 'bkt-clickable': !!qOf(it.secid)?.views }" @click="onItemCardClick(it)">
                     <view class="idx-item-head">
                       <image v-if="it.flag" class="peek-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
                       <image v-else-if="it.icon" class="peek-flag-ic" :src="COMMODITY_ICON[it.icon]" mode="aspectFit" />
@@ -416,9 +416,19 @@ function bktSel(it: { secid: string }): BktView {
   const override = bktView.value[it.secid];
   if (override) return override;
   const q = qOf(it.secid);
-  if (q?.session === '盘前') return 'pre';
-  if (q?.session === '盘后') return 'post';
+  const ok = (v?: { pct: number | null } | null) => !!v && v.pct != null && Number.isFinite(v.pct);
+  // 默认展示实际所处阶段；休市/深夜（session 无标签）按数据新鲜度回退：
+  // 盘后数据在 21:00 容忍期内视为最新成交优先展示，其后回落正式收盘（盘中），盘前仅手动查看
+  if (q?.session === '盘前' && ok(q.views?.pre)) return 'pre';
+  if (q?.session === '盘后' && ok(q.views?.post)) return 'post';
+  if (q?.session === '盘中' && ok(q.views?.regular)) return 'regular';
+  if (ok(q?.views?.post)) return 'post';
+  if (ok(q?.views?.regular)) return 'regular';
+  if (ok(q?.views?.pre)) return 'pre';
   return 'regular';
+}
+function onItemCardClick(it: { secid: string }) {
+  if (qOf(it.secid)?.views) cycleBkt(it); // 仅美股篮子可切换，其余行点击无操作
 }
 function cycleBkt(it: { secid: string }) {
   const cur = bktSel(it);
@@ -1499,8 +1509,11 @@ defineExpose({ refresh: () => refreshFull() });
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-/* 可点击的时段角标：指针提示可切换（盘前/盘中/盘后循环） */
+/* 可点击的时段角标与整卡：指针提示可切换（盘前/盘中/盘后循环） */
 .bkt-switch {
+  cursor: pointer;
+}
+.idx-item.bkt-clickable {
   cursor: pointer;
 }
 
