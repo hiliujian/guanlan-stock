@@ -115,18 +115,26 @@ export function useCommunity() {
   }
 
   /**
-   * 本人换头像 / 头像框后就地同步缓存中的「我的」帖子（信息流 + 搜索结果）：
-   * 模块级 posts 为跨页缓存，资料页改框回来若无此补丁会一直显示旧框（需整页刷新才更新）。
-   * 只 patch 本人帖子（userId 匹配）；他人帖子由 refetch 时 currentAuthorFrame/Avatar 实时优先兜底。
+   * 本人改昵称 / 换头像 / 头像框后就地同步缓存中的「我的」帖子与评论（信息流 + 搜索结果）：
+   * 模块级 posts 为跨页缓存，资料页改完回来若无此补丁会一直显示旧值（需整页刷新才更新）。
+   * 昵称另需覆盖本人评论（在他人帖子下的评论也展示昵称）；头像 / 头像框只有帖子作者位使用。
+   * 他人帖子由 refetch 时 currentAuthorName/Frame/Avatar 实时优先兜底。
    */
-  function updateMyAuthorAssets(assets: { avatarUrl?: string; frame?: string }) {
+  function updateMyAuthorAssets(assets: { name?: string; avatarUrl?: string; frame?: string }) {
     const uid = userState.userId;
     if (!uid) return;
     const patch = (list: CommunityPost[]) => {
       for (const p of list) {
-        if (p.userId !== uid) continue;
-        if (assets.avatarUrl !== undefined) p.authorAvatarUrl = assets.avatarUrl;
-        if (assets.frame !== undefined) p.authorFrame = assets.frame;
+        if (p.userId === uid) {
+          if (assets.name !== undefined) p.author = assets.name;
+          if (assets.avatarUrl !== undefined) p.authorAvatarUrl = assets.avatarUrl;
+          if (assets.frame !== undefined) p.authorFrame = assets.frame;
+        }
+        if (assets.name !== undefined) {
+          for (const r of p.replies) {
+            if (r.userId === uid) r.author = assets.name;
+          }
+        }
       }
     };
     patch(posts.value);

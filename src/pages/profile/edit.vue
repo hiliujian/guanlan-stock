@@ -324,7 +324,7 @@ async function save() {
       return;
     }
     await refreshProfile();
-    updateMyAuthorAssets({ frame: frame.value });
+    updateMyAuthorAssets({ name: dn, frame: frame.value });
     uni.showToast({ title: "已保存", icon: "success" });
   } finally {
     saving.value = false;
