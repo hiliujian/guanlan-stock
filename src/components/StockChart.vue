@@ -1,6 +1,6 @@
 <template>
   <!-- 专用 K 线行情图（KLineCharts 引擎）：单实例多面板（主图蜡烛/分时 + 成交量 + MACD），
-       通过 layout 自动分面并控制高度；筹码分布叠加层默认绘制。 -->
+       通过 layout 自动分面并控制高度。 -->
   <div class="kc">
     <!-- 自定义图例：提取到图表上方独立区域（替代 klinecharts 内置覆盖在图内的图例），按「主图/成交量/MACD」
          分三组各自成行（组内单行流动、屏宽不足才换行），组间及与图表之间用分割线隔开。随十字光标/数据更新。 -->
@@ -24,14 +24,6 @@
       </view>
     </view>
     <div ref="chartEl" class="kc-chart" :style="{ height: props.height + 'px' }"></div>
-    <!-- 筹码分布叠加层（右侧横向直方图，与蜡烛同坐标系），默认不拦截指针。
-         外层 wrap 必须是绝对定位容器：uni-app H5 的 <canvas> 编译为 <uni-canvas>，
-         框架默认样式给根元素 position:relative（width:300/height:150），一旦该默认/内联
-         样式压过 .kc-ov 的 absolute（部分运行时还会内联 relative），叠加层就落入文档流，
-         在图表下方顶出约 150px 空白。wrap 兜底保证任何情况下都不占文档流高度。 -->
-    <view class="kc-ov-wrap">
-      <canvas ref="cyqEl" class="kc-ov kc-ov--cyq"></canvas>
-    </view>
     <!-- 看盘画线工具栏：点击后在图上点击/拖拽绘制；支撑=绿、压力=红、趋势/分割=主色绿。
          由外部画板图标控制 toolsOpen 淡入/淡出（<Transition> 处理进出场动画）。 -->
     <Transition name="kct">
@@ -60,7 +52,6 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } 
 import { init, dispose, registerIndicator, registerOverlay, ActionType } from "klinecharts";
 import { isDark } from "@/utils/theme";
 import { UP as UP_FALLBACK, DOWN as DOWN_FALLBACK, NO_CHANGE, TREND, INDICATOR_LINE_COLORS, cssColor } from "@/utils/colors";
-import { computeChip, type ChipResult } from "@/utils/analyzer";
 import { computeAutoLevelsFromSeries, resolvePeriodGuard, type AutoLevel } from "@/utils/autoLevels";
 import type { Kline, Trend, PeriodKey } from "@/utils/period";
 import type { ChartAuxConfig } from "@/store/chartAux";
@@ -428,16 +419,12 @@ type KC = ReturnType<typeof init>;
 
 // ---- 容器 / 实例 ----
 const chartEl = ref<HTMLElement | null>(null);
-// uni-app H5 下 <canvas> 是内置组件（渲染为 <uni-canvas><canvas class="uni-canvas-canvas"/>），
-// 模板 ref 拿到的是组件实例而非原生元素，取元素必须走 cyqCanvas() 解析。
-const cyqEl = ref<any>(null);
 let chart: KC | null = null;
 let ro: ResizeObserver | null = null;
 
 // ---- 数据（KLineData，timestamp 为毫秒）----
 let dataList: any[] = [];
 let lastTs = 0; // 末根时间戳，用于实时价同步
-let chipData: ChipResult | null = null;
 
 function toKLineData(): any[] {
   const out: any[] = [];
@@ -659,95 +646,6 @@ function buildLayout(): any[] {
   // MACD 面板常驻。
   layout.push({ type: "indicator", content: [props.mode === "intraday" ? "MACDFS" : "MACD"], options: { id: "macd_pane", height: macdH, minHeight: 60, dragEnabled: false } });
   return layout;
-}
-
-// ---- 叠加层：筹码分布 ----
-/**
- * 解析出真实的原生 canvas 元素。
- * uni-app H5 的 <canvas> 是内置组件：ref 得到组件实例（没有 style/getContext，
- * 直接用会抛 "Cannot set properties of undefined"），真实 DOM 在其 $el 内的原生 canvas 上。
- * 这里兼容三种形态：已是原生元素 / 组件实例（取 $el 再向内查）/ 宿主元素。
- */
-function cyqCanvas(): HTMLCanvasElement | null {
-  const r: any = cyqEl.value;
-  if (!r) return null;
-  const isCanvas = (v: any): v is HTMLCanvasElement =>
-    typeof HTMLCanvasElement !== "undefined" && v instanceof HTMLCanvasElement;
-  if (isCanvas(r)) return r;
-  const host: any = r.$el || r;
-  if (isCanvas(host)) return host;
-  const inner = host?.querySelector ? host.querySelector("canvas") : null;
-  return isCanvas(inner) ? inner : null;
-}
-function sizeCanvas(c: HTMLCanvasElement, w: number, h: number): CanvasRenderingContext2D | null {
-  if (w <= 0 || h <= 0) return null;
-  const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
-  c.width = Math.max(1, Math.round(w * dpr));
-  c.height = Math.max(1, Math.round(h * dpr));
-  c.style.width = w + "px";
-  c.style.height = h + "px";
-  const ctx = c.getContext("2d");
-  if (!ctx) return null; // 极端场景（上下文创建失败）返回 null，由调用方跳过绘制
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  return ctx;
-}
-function drawCyq() {
-  // 用解析后的原生 canvas：直接拿组件实例会在设置 style 时崩溃
-  const c = cyqCanvas();
-  if (!c || !chart || !chartEl.value) return;
-  const chip = chipData;
-  const w = chartEl.value.clientWidth;
-  const h = chartEl.value.clientHeight;
-  const ctx = sizeCanvas(c, w, h);
-  if (!ctx) return;
-  ctx.clearRect(0, 0, w, h);
-  if (!chip || !chip.cats || !chip.cats.length) return;
-  const prices = chip.cats.map(Number);
-  const maxV = Math.max(1, ...chip.vals);
-  // 直方图右缘必须收在主图绘图区内（不含 y 轴刻度条）：叠加层 canvas 覆盖整个容器，
-  // 若画到容器右缘会压在 y 轴价格刻度上，看起来像轴区冒出红绿柱。
-  // getSize(paneId,"main") 返回主图绘图区边界（引擎 9.8 公开 API），取其 right 为绘图区右缘。
-  let plotRight = w - 2;
-  let plotTop = 0;
-  let plotBottom = h;
-  try {
-    const main = (chart as any).getSize?.("candle_pane", "main") as any;
-    if (main && typeof main.right === "number" && main.right > 0) {
-      plotRight = main.right - 2;
-      if (typeof main.top === "number" && typeof main.bottom === "number") {
-        plotTop = main.top;
-        plotBottom = main.bottom;
-      }
-    }
-  } catch {
-    /* 引擎无该 API 时退回容器右缘兜底 */
-  }
-  const regionW = Math.min(w * 0.26, 120);
-  const xRight = plotRight;
-  const xLeft = xRight - regionW;
-  ctx.strokeStyle = isDark.value ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(xLeft, plotTop);
-  ctx.lineTo(xLeft, plotBottom);
-  ctx.stroke();
-  const n = prices.length;
-  // 价格 → y 像素统一走 toPaneY（convertToPixel 只认 {value} 键，传 {price} 拿不到 y）
-  const yFirst = toPaneY(prices[0]);
-  const yLast = toPaneY(prices[n - 1]);
-  if (yFirst == null || yLast == null) return;
-  const span = Math.abs(yLast - yFirst) || 1;
-  const barH = Math.max(1, span / n);
-  // 半透明填充：筹码直方图是背景信息，不能遮挡蜡烛与右侧价位标签
-  ctx.globalAlpha = 0.45;
-  for (let i = 0; i < n; i++) {
-    const yp = toPaneY(prices[i]);
-    if (yp == null) continue;
-    const bw = (chip.vals[i] / maxV) * regionW;
-    ctx.fillStyle = chip.colors[i] || NO_CHANGE;
-    ctx.fillRect(xLeft, yp - barH / 2, bw, barH);
-  }
-  ctx.globalAlpha = 1;
 }
 
 // ---- 实时价同步（仅分时）----
@@ -1830,7 +1728,6 @@ function buildChart() {
   ensureDrawOverlays();
   dataList = toKLineData();
   if (dataList.length) lastTs = dataList[dataList.length - 1].timestamp;
-  chipData = props.klines && props.klines.length ? computeChip(props.klines) : null;
 
   try {
     chart = init(chartEl.value, {
@@ -1913,7 +1810,6 @@ function buildChart() {
       // 首载兜底：确保铺满全貌（OnDataReady 在 applyNewData 异步解析后才触发，
       // 此处保证容器尺寸确定后也对齐一次，所有模式通用）
       fitViewAll();
-      drawCyq();
       restoreOverlays();
       drawAutoLevels();
       // 图表布局稳定后刷新图例分组顶边（getSize 实测面板 top），使成交量/MACD 标题精确贴顶
@@ -1940,7 +1836,6 @@ function refreshData() {
   }
   dataList = toKLineData();
   if (dataList.length) lastTs = dataList[dataList.length - 1].timestamp;
-  chipData = props.klines && props.klines.length ? computeChip(props.klines) : null;
   try {
     chart.applyNewData(dataList);
   } catch {
@@ -1948,7 +1843,6 @@ function refreshData() {
     buildChart();
     return;
   }
-  drawCyq();
   drawAutoLevels();
 }
 
@@ -1963,7 +1857,6 @@ function resizeAll() {
   }
   // 容器尺寸变化（旋转/布局）后：重新铺满全貌，避免回到默认 barSpace 只显示末尾片段
   if (chart) fitViewAll();
-  drawCyq();
   // 尺寸变化后面板高度可能微调，刷新图例分组顶边
   legendReady.value++;
 }
@@ -1971,7 +1864,6 @@ function resizeAll() {
 function applyTheme() {
   if (!chart) return;
   chart.setStyles(buildStyles() as never);
-  drawCyq();
 }
 
 onMounted(async () => {
@@ -2022,12 +1914,6 @@ onBeforeUnmount(() => {
   if (ro) {
     ro.disconnect();
     ro = null;
-  }
-  // 同样走 cyqCanvas() 解析原生元素（组件实例上没有 getContext/width）
-  const c = cyqCanvas();
-  if (c) {
-    const ctx = c.getContext("2d");
-    if (ctx) ctx.clearRect(0, 0, c.width, c.height);
   }
   destroyChart();
 });
@@ -2134,29 +2020,6 @@ onBeforeUnmount(() => {
 }
 .down {
   color: var(--down);
-}
-/* 叠加层容器：绝对定位充满 .kc（其文档流高度=图表高），overflow:hidden 兜底——
-   即使内部 uni-canvas 因框架默认/内联样式回落为 relative，也被关在本层内，
-   不再给图表下方顶出空白（详见模板注释）。 */
-.kc-ov-wrap {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 2;
-}
-.kc-ov {
-  /* 样式表 !important 优先级高于内联样式：uni-canvas 根元素可能带内联 position:relative
-     （uni-app 框架行为），不加 !important 会被压过导致叠加层落回文档流 */
-  position: absolute !important;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 2;
-}
-.kc-ov--cyq {
-  z-index: 2;
 }
 /* 看盘画线工具栏：浮于图表右上角，玻璃药丸；含操作提示行（可换行） */
 .kc-tools {

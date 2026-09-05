@@ -1632,7 +1632,3 @@ export function analyze(
     intradayMove,
   };
 }
-
-export function computeChip(klines: Kline[], winDays = 120): ChipResult {
-  return chip(klines, winDays);
-}

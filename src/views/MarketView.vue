@@ -782,7 +782,7 @@ function cardTitle(c: MarketCardMeta): string {
   return c.title;
 }
 
-// 可见卡片直接由「设置 → 行情卡片」驱动（行情图已合并 K线/分时/量/MACD/筹码于单图，
+// 可见卡片直接由「设置 → 行情卡片」驱动（行情图已合并 K线/分时/量/MACD 于单图，
 // 分析报告独立成卡），无需再折叠。周期切换轴已并入「行情图」卡片内部（见 KlineCard）。
 const displayCards = visibleMarketCards;
 
