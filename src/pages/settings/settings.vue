@@ -21,18 +21,18 @@
           <view class="seg" role="group" aria-label="主题切换">
             <view
               class="seg-i"
-              :class="{ active: isDark }"
-              role="button"
-              :aria-pressed="isDark"
-              @click="setTheme('dark')"
-            >深色</view>
-            <view
-              class="seg-i"
               :class="{ active: !isDark }"
               role="button"
               :aria-pressed="!isDark"
               @click="setTheme('light')"
             >浅色</view>
+            <view
+              class="seg-i"
+              :class="{ active: isDark }"
+              role="button"
+              :aria-pressed="isDark"
+              @click="setTheme('dark')"
+            >深色</view>
           </view>
         </view>
         <text class="st-row-desc">深色护眼、浅色明亮；切换即时生效并记住你的选择。</text>

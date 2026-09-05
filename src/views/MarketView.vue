@@ -339,7 +339,8 @@ function fmtPct(v: number | null | undefined): string {
 }
 const idxCls = computed(() => {
   const s = idxSnap.value;
-  return s ? (s.pct >= 0 ? "up" : "down") : "";
+  // 与全局涨跌着色统一规则一致：持平(0)中性色，避免「0.00%」被误染红
+  return s ? (s.pct > 0 ? "up" : s.pct < 0 ? "down" : "") : "";
 });
 const idxPriceText = computed(() => fmtPrice(idxSnap.value?.price));
 const idxPctText = computed(() => fmtPct(idxSnap.value?.pct));
@@ -388,11 +389,6 @@ function qOf(secid: string): GlobalIndexQuote | undefined {
 function qPrice(secid: string): string {
   const q = qOf(secid);
   return q && q.price != null && Number.isFinite(q.price) ? q.price.toFixed(2) : "暂无数据";
-}
-function qPct(secid: string): string {
-  const q = qOf(secid);
-  if (!q || q.pct == null || !Number.isFinite(q.pct)) return "暂无数据";
-  return (q.pct >= 0 ? "+" : "") + q.pct.toFixed(2) + "%";
 }
 function qCls(secid: string): string {
   const q = qOf(secid);
@@ -566,7 +562,7 @@ function mktLabel(code: string): string {
   if (/^\d{5}$/.test(c)) return "港股";
   if (/^6/.test(c)) return "沪A";
   if (/^[03]/.test(c)) return "深A";
-  if (/^[48]/.test(c)) return "京A";
+  if (/^[489]/.test(c)) return "京A"; // 92 开头为北交所新代码段（与 resolveSecid 同口径）
   return "股票";
 }
 
@@ -812,6 +808,11 @@ async function run(forceMarket?: Market, track = true) {
       }
     }
     secid.value = sid;
+    // 换股/重新搜索：清空上一只股票的实时价缓存。lastLivePrice 设计为同股快照偶发
+    // 失败时的兜底，跨股必须重置——否则新股票在实时快照到达前会短暂显示上一只的
+    // 实时价，与新昨收计算出的涨跌幅完全错误、严重误导。
+    realtime.value = null;
+    lastLivePrice.value = null;
     // 行情包与关联资讯：先取行情拿到确切公司名，再按「代码 + 公司名」双关键词抓取资讯，
     // 经量化情绪得分后注入 analyze，与量价/资金协同研判。
     const b = await fetchBundle(sid);

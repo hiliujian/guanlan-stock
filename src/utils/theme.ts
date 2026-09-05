@@ -1,4 +1,4 @@
-// 主题状态：深色（默认）/ 浅色，跨端统一，持久化到 localStorage。
+// 主题状态：浅色（默认）/ 深色，跨端统一，持久化到 localStorage。
 // 通过给 <html> 加 .theme-light 类切换 CSS 变量；图表读取 isDark 做主题适配。
 import { ref, computed } from "vue";
 
