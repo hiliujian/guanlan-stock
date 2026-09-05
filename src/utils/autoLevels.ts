@@ -217,7 +217,9 @@ function scoreCluster(series: any[], cl: PriceCluster, role: "support" | "pressu
     if (volConfirmed > 0) volBoost = 6; // 放量触碰确认
     const peak = ctx.chipPeak, avg = ctx.chipAvg;
     if (peak && peak > 0 && Math.abs(center - peak) / peak < 0.03) chipBoost = 5;        // 贴近筹码密集峰：强支撑/压力
-    else if (avg && avg > 0 && center > avg * 1.1) chipBoost = -5;                        // 远离成本重心：上方套牢盘抛压
+    // 线位远高于成本重心：成本区在线下方（获利盘密集），并非「上方套牢盘」——
+    // 扣分原因是获利回吐 + 向成本回归会考验该价位的可靠性（与 analyzer「高于成本重心」同语义）
+    else if (avg && avg > 0 && center > avg * 1.1) chipBoost = -5;                        // 远离成本重心：获利回吐·回归压力
     const adx = ctx.adx ?? 0, pdi = ctx.pdi ?? 0, mdi = ctx.mdi ?? 0;
     if (adx > 25) {
       if (pdi > mdi) { if (role === "support") dmiBoost = 8; }                            // 上涨趋势：支撑可靠性 +8
@@ -581,7 +583,6 @@ export interface PriceLevelItem {
   status: "ok" | "broken" | "ref"; // 与图表状态一一对应：ok=正常 / broken=已破位 / ref=参考位（簇缺失兜底）
   level: "强" | "中" | "弱"; // 强弱评级
   volDesc: string;        // 量能描述：放量确认/缩量触碰
-  chipDesc: string;       // 筹码匹配描述
   labelTag: string;       // 对应图表标签：支/压/S/B
   desc: string;           // 行情定性：回调低吸/逢高离场等（复用 BAND_LABELS 文案）
 }
@@ -622,11 +623,6 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
     const volBoost = rl.sc.volBoost ?? 0;
     const chipBoost = rl.sc.chipBoost ?? 0;
     const volDesc = volBoost > 0 ? "放量确认（量能配合，可靠性高）" : "缩量/无量触碰（可靠性一般）";
-    const chipDesc = chipBoost > 0
-      ? "贴近筹码密集峰（成本区强支撑/压力）"
-      : chipBoost < 0
-        ? "远离成本重心（上方套牢盘抛压）"
-        : "无显著筹码匹配";
     return {
       price: rl.price,
       totalScore: Math.round(finalScore),
@@ -635,7 +631,6 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
       status: isBroken ? "broken" : "ok",
       level,
       volDesc,
-      chipDesc,
       labelTag: tag,
       desc: sub || name,
     };
@@ -656,7 +651,7 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
     return {
       price: sl.price, totalScore: 0, touchCount: 0,
       isBroken: false, status: "ref", level: "弱",
-      volDesc: "", chipDesc: "", labelTag: tag, desc: "参考位（簇缺失兜底）",
+      volDesc: "", labelTag: tag, desc: "参考位（簇缺失兜底）",
     };
   };
   const sS = structMk("structSupport", raw.structSupport, L.sS.tag, L.sS.name);
