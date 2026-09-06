@@ -794,7 +794,8 @@ begin
   if auth.uid() is null then return; end if;
   update public.profiles
      set login_current = p_info,
-         last_login    = login_current
+         last_login    = login_current,
+         location      = coalesce(nullif(trim(p_info ->> 'location'), ''), location)
    where id = auth.uid();
 end;
 $$;
@@ -1087,9 +1088,10 @@ grant execute on function public.get_stock_heat(int, boolean) to anon, authentic
 --   · 下列 ALTER/CREATE 均带 if not exists，可重复执行、幂等安全。
 -- =====================================================================
 
--- #536 个人简介列：公开可读，供「公开资料页」向他人展示。
---   生产库已通过 Management API 单独部署该列，此处仅作仓库 schema 一致性同步。
+-- #536 公开资料列：个人简介与 IP 属地，供「公开资料页」向他人展示。
+--   生产库已通过 Management API 单独部署 signature，此处仅作仓库 schema 一致性同步。
 alter table public.profiles add column if not exists signature text not null default '';
+alter table public.profiles add column if not exists location text not null default '';
 
 -- #B 私信 / 自选股权限开关（需求 B）：与上方 CREATE TABLE 声明保持一致，幂等补齐生产库。
 --   生产库已通过 Management API 单独部署，此处仅作仓库 schema 一致性同步。
