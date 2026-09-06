@@ -752,18 +752,22 @@ function fitViewAll() {
   if (space >= 1) chart.setBarSpace(space);
 }
 
-// ---- 移动端无交互回弹 ----
-// 触摸查看历史 / 平移 / 捏合变形后，抬手无触摸停留数秒即自动回弹：清十字光标、图例回最新、
-// 视口滚回最新并恢复默认柱宽布局。桌面不受影响（mouseleave 已回弹图例；滚轮缩放停留历史合法）。
+// ---- 无交互回弹（移动端触摸 + 桌面鼠标统一）----
+// 触摸/拖拽查看历史、平移、捏合(滚轮)变形后，交互结束无操作停留数秒即自动回弹：清十字光标、
+// 图例回最新、视口滚回最新并恢复默认柱宽布局。
 // 注意 setBarSpace 值相同会直接 return 不重算可见范围，故纯平移场景必须先 scrollToRealTime 归位
 // （fitViewAll 的 setBarSpace 以最右为锚，仅在柱宽实际变化时生效），两步组合才能覆盖
 // 「只平移」「只捏合」「平移+捏合」全部情况。
 const IDLE_REBOUND_MS = 3000;
 let idleReboundTimer: any = null;
+// 回弹动作本身会派发合成 mouseleave，若该事件也参与计拍会立刻重排定时器造成自触发循环，
+// 故派发前置一次性抑制标志（dispatchEvent 同步执行监听器，标志必然被同批消费）
+let suppressArmOnce = false;
 function idleRebound() {
   if (!chart || !chartEl.value) return;
   // 派发合成 mouseleave 完整复用桌面移开路径：引擎 mouseLeaveEvent 重置十字光标线（公开 API
   // 无 setCrosshair，内部 TooltipStore 才有），chartLeaveCb（onChartLeave）复位图例与浮层
+  suppressArmOnce = true;
   chartEl.value.dispatchEvent(new MouseEvent("mouseleave"));
   try {
     chart.scrollToRealTime();
@@ -779,7 +783,7 @@ function disarmIdleRebound() {
   }
 }
 function armIdleRebound() {
-  // 画线模式 / 画线被选中（待删除）时不回弹：避免打断绘制与编辑流程；完成/取消后下次触摸重新计拍
+  // 画线模式 / 画线被选中（待删除）时不回弹：避免打断绘制与编辑流程；完成/取消后下次交互重新计拍
   if (activeAction.value || selectedOverlayId.value) return;
   disarmIdleRebound();
   idleReboundTimer = setTimeout(() => {
@@ -787,13 +791,31 @@ function armIdleRebound() {
     idleRebound();
   }, IDLE_REBOUND_MS);
 }
-// 触摸手势生命周期：按下即取消待回弹（长按/拖动中不触发），抬手后重新计拍
+// 手势生命周期：按下即取消待回弹（拖动/长按中不触发），抬手、滚轮缩放、移出图表后重新计拍
+// （mouseleave 计拍覆盖「拖到图外才松手」——mouseup 不会落在图表元素上，靠移出事件兜住）
 function onTouchStart() {
   disarmIdleRebound();
 }
 function onTouchEnd() {
   armIdleRebound();
 }
+function onMouseLeaveArm() {
+  if (suppressArmOnce) {
+    suppressArmOnce = false;
+    return;
+  }
+  armIdleRebound();
+}
+// 统一手势事件表（buildChart 挂载 / destroyChart 卸载共用，避免两份清单漂移）
+const GESTURE_EVENTS = [
+  ["touchstart", onTouchStart],
+  ["touchend", onTouchEnd],
+  ["touchcancel", onTouchEnd],
+  ["mousedown", onTouchStart],
+  ["mouseup", onTouchEnd],
+  ["wheel", onTouchEnd],
+  ["mouseleave", onMouseLeaveArm],
+] as const;
 
 // 数据就绪回调：每次数据变化（首载 / 刷新 / 实时末根）后保持「铺满全貌」+ 刷新图例（所有模式通用）
 function onDataReady() {
@@ -818,11 +840,7 @@ function destroyChart() {
     chartLeaveCb = null;
   }
   if (chartEl.value) {
-    for (const [t, h] of [
-      ["touchstart", onTouchStart],
-      ["touchend", onTouchEnd],
-      ["touchcancel", onTouchEnd],
-    ] as const) {
+    for (const [t, h] of GESTURE_EVENTS) {
       chartEl.value.removeEventListener(t, h as EventListener);
     }
   }
@@ -1886,12 +1904,8 @@ function buildChart() {
   // 鼠标移出图表容器：图例回弹最新数据（引擎不派发离开事件，自行监听，见 onChartLeave 注释）
   chartLeaveCb = onChartLeave;
   el.addEventListener("mouseleave", chartLeaveCb);
-  // 触摸手势生命周期监听：抬手后延时回弹（移动端无 mouseleave，触摸查看历史/变形后不回弹问题）
-  for (const [t, h] of [
-    ["touchstart", onTouchStart],
-    ["touchend", onTouchEnd],
-    ["touchcancel", onTouchEnd],
-  ] as const) {
+  // 手势生命周期监听：触摸/拖拽/滚轮结束后延时回弹（回弹见 GESTURE_EVENTS 注释）
+  for (const [t, h] of GESTURE_EVENTS) {
     el.addEventListener(t, h as EventListener, { passive: true });
   }
   // 数据就绪订阅：分时模式首载/刷新/实时末根后保持「整日全貌」铺满视图
