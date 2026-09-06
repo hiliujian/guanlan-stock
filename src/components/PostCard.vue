@@ -1,5 +1,5 @@
 <template>
-  <view :class="['post', 'glass', 'anim-fade-up', preview ? 'as-preview' : '']" @click="onRootClick">
+  <view :class="['post', 'glass', 'anim-fade-up', preview ? 'as-preview' : '', replyEmojiOpen ? 'emoji-open' : '']" @click="onRootClick">
     <!-- 头部：头像 + 昵称 + 时间 + 话题 + 删除 -->
     <view class="p-head">
       <view
@@ -139,8 +139,8 @@
           </view>
           <view class="pr-input-line">
             <input ref="replyInputRef" class="pri-in" v-model="replyText" :placeholder="replyPlaceholder" :maxlength="200" @confirm="sendReply" />
-            <!-- 表情入口（复用 EmojiPanel：输入框右侧），点选插入到光标处；direction=up 与私信一致，面板在输入框上方展开 -->
-            <EmojiPanel v-model="replyText" :get-el="resolveReplyEl" variant="inline" direction="up" :max-length="200" />
+            <!-- 表情入口（复用 EmojiPanel：输入框右侧），点选插入到光标处；展开时卡片整体抬层（见 .post.emoji-open） -->
+            <EmojiPanel v-model="replyText" v-model:open="replyEmojiOpen" :get-el="resolveReplyEl" variant="inline" :max-length="200" />
           </view>
         </view>
         <view class="pri-send" @click="sendReply">
@@ -214,6 +214,8 @@ function openStock(code?: string) {
 const { isReplyOpen, openReply, closeReply } = useReplyExpansion();
 const showReply = computed(() => isReplyOpen(props.post.id));
 const replyText = ref("");
+// 表情面板展开态：除驱动面板外，还用于把整张卡片抬到后续卡片之上（见 .post.emoji-open）
+const replyEmojiOpen = ref(false);
 // 表情面板需原生 input 元素以定位光标插入：uni-h5 下 ref 可能是组件实例，需解析出原生元素
 const replyInputRef = ref<any>(null);
 function resolveReplyEl(): HTMLInputElement | null {
@@ -465,6 +467,13 @@ function previewImage(current: string) {
   margin: 0 18rpx 14rpx;
   padding: 20rpx;
   border-radius: var(--radius);
+}
+/* 表情面板展开时整卡抬层：卡片带 glass(backdrop-filter) + anim-fade-up(transform) 均形成
+   层叠上下文，面板 z-index 无法逃出本卡，会被 DOM 序靠后的兄弟卡片盖住；
+   后续卡片均为 auto 层级，故在宿主卡上挂 relative + z-index 即可整体置顶 */
+.post.emoji-open {
+  position: relative;
+  z-index: 40;
 }
 /* 预览态：与正式帖同卡同款，仅去掉外边距（由预览容器控制间距） */
 .post.as-preview {
