@@ -99,9 +99,9 @@
           </template>
         </scroll-view>
 
-        <!-- 私信会话详情（聊天） -->
+        <!-- 私信会话详情（聊天）：消息流更新（进入会话 / 收发消息）时自动滚到底部（见下方 watch） -->
         <template v-else>
-          <scroll-view class="mc-thread" scroll-y :scroll-into-view="threadBottomId">
+          <scroll-view ref="threadRef" class="mc-thread" scroll-y>
             <view
               v-for="m in activeThread"
               :key="m.id"
@@ -114,7 +114,6 @@
                 <text class="mc-msg-time">{{ formatRelative(m.createdAt) }}</text>
               </view>
             </view>
-            <view :id="threadBottomId" />
           </scroll-view>
           <view class="mc-input">
             <!-- 药丸输入框：输入框 + 表情入口同行（与回复输入框结构一致） -->
@@ -142,7 +141,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import EmojiPanel from "./EmojiPanel.vue";
 import UserAvatar from "./UserAvatar.vue";
@@ -201,7 +200,25 @@ function resolveDmEl(): HTMLInputElement | null {
 
 const myId = computed(() => userState.userId || "");
 const selectedOtherName = computed(() => selectedOther.value?.otherName || "");
-const threadBottomId = computed(() => `t-${activeThread.value.length}`);
+// 消息流更新（进入会话 / 收到新消息 / 发送）后自动滚到底部：
+// scroll-into-view 在 uni-h5 上初次定位不稳定，直接把滚动容器 scrollTop 拉到底最可靠
+const threadRef = ref<any>(null);
+function resolveThreadEl(): HTMLElement | null {
+  const r = threadRef.value as any;
+  if (!r) return null;
+  const root: HTMLElement | null =
+    r instanceof HTMLElement ? r : (r?.$el instanceof HTMLElement ? r.$el : null);
+  if (!root) return null;
+  // uni-h5 scroll-view 的可滚动层是内部 .uni-scroll-view（可能有嵌套包装），全部拉到底即可
+  const layers = root.querySelectorAll<HTMLElement>(".uni-scroll-view");
+  if (layers.length) return layers[layers.length - 1];
+  return root;
+}
+watch(activeThread, async () => {
+  await nextTick();
+  const el = resolveThreadEl();
+  if (el) el.scrollTop = el.scrollHeight;
+});
 const filteredNotifs = computed(() =>
   notifications.value.filter(
     (n: NotificationItem) => !dismissedNotifIds.value.includes(n.id) && n.kind === tab.value

@@ -386,20 +386,26 @@ function subscribeMessageRealtime() {
       loadNotifications();
       loadConversations();
     };
+    // 该 dms 行是否属于当前打开的会话（对方或自己为 dmThreadPeer）
+    const isPeerDmRow = (row: any) =>
+      !!(row && dmThreadPeer && (row.sender_id === dmThreadPeer || row.receiver_id === dmThreadPeer));
+    // 私信 INSERT（收到新消息）：除刷新角标外，若正开着该会话则静默重拉消息流，
+    // 使新消息无需退出重进即实时追加显示
+    const onDmInsert = (payload: any) => {
+      onEvent();
+      if (isPeerDmRow(payload?.new)) refreshThread();
+    };
     // 私信 UPDATE（接收方打开会话 → status 置 'read'）：刷新未读角标；
     // 若正开着相关会话则静默重拉消息流，使我方消息的「已读」回执实时可见
     const onDmUpdate = (payload: any) => {
       loadConversations();
-      const row = payload?.new;
-      if (row && dmThreadPeer && (row.sender_id === dmThreadPeer || row.receiver_id === dmThreadPeer)) {
-        refreshThread();
-      }
+      if (isPeerDmRow(payload?.new)) refreshThread();
     };
     msgRealtimeChannel = sb
       .channel("message-center-changes")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "community_likes" }, onEvent)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "community_replies" }, onEvent)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "community_dms" }, onEvent)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "community_dms" }, onDmInsert)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "community_dms" }, onDmUpdate)
       .subscribe();
   } catch {
