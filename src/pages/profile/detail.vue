@@ -51,6 +51,7 @@
               </view>
             </view>
             <text v-if="profile.username" class="dp-username">@{{ profile.username }}</text>
+            <text v-if="ipLocation" class="dp-location">IP 属地：{{ ipLocation }}</text>
           </view>
 
           <!-- 右侧操作区：本人→编辑资料；他人→关注 + 私信（两行，与头像垂直对齐） -->
@@ -182,6 +183,7 @@ import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
 import { useUser, userState } from "@/store/user";
 import { vipActive } from "@/store/level";
 import { vipGatedFrame } from "@/utils/avatarFrame";
+import { formatLoginCity } from "@/utils/geo";
 import { useDmTarget, useCommunityUserTarget } from "@/store/community";
 import { useFollow } from "@/store/follow";
 import { goTab, openAuth, openInMarket } from "@/store/nav";
@@ -201,6 +203,7 @@ interface ProfileDetail {
   vip: boolean;
   vip_expires_at: string | null;
   signature: string;
+  location: string;
   created_at: string;
   allow_dm: boolean; // 允许私信（需求 B，默认 true）
   public_watchlist: boolean; // 公开自选股（需求 B，默认 true）
@@ -248,6 +251,10 @@ const isSelf = computed(
 );
 // VIP 有效态（黑金昵称 / 会员金框 / 金冠徽章共用；过期自动退回普通视觉）
 const isVip = computed(() => vipActive(profile.value?.vip, profile.value?.vip_expires_at));
+const ipLocation = computed(() => {
+  const location = profile.value?.location;
+  return location ? formatLoginCity(location) : "";
+});
 // 关注态（与社区帖子关注同源：服务端 follows 表，以 uid 为键）
 const { follows, toggleFollow } = useFollow();
 const following = computed(() => !!profile.value && follows.value.has(profile.value.id));
@@ -307,7 +314,7 @@ async function loadProfile() {
     }
     const { data, error } = await sb
       .from("profiles")
-      .select("id, display_name, username, avatar_url, avatar_frame, level, exp, vip, vip_expires_at, signature, created_at, allow_dm, public_watchlist")
+      .select("id, display_name, username, avatar_url, avatar_frame, level, exp, vip, vip_expires_at, signature, location, created_at, allow_dm, public_watchlist")
       .eq("id", uid.value)
       .single();
     // 无此用户（PGRST116）→ 明确的「不存在」错误页；其它查询错误 → 有旧资料则保留，否则降级错误页
@@ -330,6 +337,7 @@ async function loadProfile() {
       vip: data.vip === true,
       vip_expires_at: typeof data.vip_expires_at === "string" ? data.vip_expires_at : null,
       signature: typeof data.signature === "string" ? data.signature : "",
+      location: typeof data.location === "string" ? data.location : "",
       created_at: typeof data.created_at === "string" ? data.created_at : "",
       allow_dm: typeof data.allow_dm === "boolean" ? data.allow_dm : true,
       public_watchlist: typeof data.public_watchlist === "boolean" ? data.public_watchlist : true,
@@ -589,6 +597,10 @@ function goUserPosts() {
 .dp-username {
   font-size: var(--font-sm);
   color: var(--text-2);
+}
+.dp-location {
+  font-size: var(--font-xs);
+  color: var(--text-3);
 }
 /* 昵称 + 等级图标同行 */
 .dp-namerow {
