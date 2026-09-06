@@ -114,6 +114,7 @@
           </scroll-view>
           <view class="mc-input">
             <input
+              ref="dmInputRef"
               class="mc-input-in"
               v-model="dmText"
               placeholder="发送私信…"
@@ -121,6 +122,8 @@
               confirm-type="send"
               @confirm="send"
             />
+            <!-- 表情入口（复用 EmojiPanel：输入框右侧），点选插入到光标处 -->
+            <EmojiPanel v-model="dmText" :get-el="resolveDmEl" variant="inline" :max-length="500" :icon-size="26" />
             <view :class="['mc-send', dmText.trim() ? '' : 'disabled']" @click="send">
               <OutlineIcon type="send" :size="30" :color="dmText.trim() ? '#fff' : 'rgba(255,255,255,0.6)'" />
             </view>
@@ -134,6 +137,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
+import EmojiPanel from "./EmojiPanel.vue";
 import UserAvatar from "./UserAvatar.vue";
 import PeekSheet from "./PeekSheet.vue";
 import { formatRelative, type Conversation, type NotificationItem } from "@/api/community";
@@ -177,6 +181,16 @@ const tabs: { key: TabKey; label: string; icon: string }[] = [
 const tab = ref<TabKey>("dm");
 const selectedOther = ref<Conversation | null>(null);
 const dmText = ref("");
+// 表情面板需原生 input 元素以定位光标插入：uni-h5 下 ref 可能是组件实例，需解析出原生元素
+const dmInputRef = ref<any>(null);
+function resolveDmEl(): HTMLInputElement | null {
+  const r = dmInputRef.value as any;
+  if (!r) return null;
+  if (r instanceof HTMLInputElement) return r;
+  const el = r?.$el;
+  if (el instanceof HTMLInputElement) return el;
+  return (el?.querySelector?.("input") as HTMLInputElement) ?? null;
+}
 
 const myId = computed(() => userState.userId || "");
 const selectedOtherName = computed(() => selectedOther.value?.otherName || "");

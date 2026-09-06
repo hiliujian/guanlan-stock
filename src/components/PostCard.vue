@@ -137,7 +137,11 @@
               <OutlineIcon type="close" :size="22" color="var(--text-3)" />
             </view>
           </view>
-          <input class="pri-in" v-model="replyText" :placeholder="replyPlaceholder" :maxlength="200" @confirm="sendReply" />
+          <view class="pr-input-line">
+            <input ref="replyInputRef" class="pri-in" v-model="replyText" :placeholder="replyPlaceholder" :maxlength="200" @confirm="sendReply" />
+            <!-- 表情入口（复用 EmojiPanel：输入框右侧），点选插入到光标处 -->
+            <EmojiPanel v-model="replyText" :get-el="resolveReplyEl" variant="inline" :max-length="200" />
+          </view>
         </view>
         <view class="pri-send" @click="sendReply">
           <OutlineIcon type="send" :size="24" color="#fff" />
@@ -150,6 +154,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
+import EmojiPanel from "./EmojiPanel.vue";
 import StockText from "./StockText.vue";
 import UserAvatar from "./UserAvatar.vue";
 import { formatRelative, unpackCards, communityRepo, type CommunityPost, type HoldingCard, type Reply } from "@/api/community";
@@ -209,6 +214,16 @@ function openStock(code?: string) {
 const { isReplyOpen, openReply, closeReply } = useReplyExpansion();
 const showReply = computed(() => isReplyOpen(props.post.id));
 const replyText = ref("");
+// 表情面板需原生 input 元素以定位光标插入：uni-h5 下 ref 可能是组件实例，需解析出原生元素
+const replyInputRef = ref<any>(null);
+function resolveReplyEl(): HTMLInputElement | null {
+  const r = replyInputRef.value as any;
+  if (!r) return null;
+  if (r instanceof HTMLInputElement) return r;
+  const el = r?.$el;
+  if (el instanceof HTMLInputElement) return el;
+  return (el?.querySelector?.("input") as HTMLInputElement) ?? null;
+}
 // 回复目标：点击某条评论后进入回复模式，占位文案变为「回复 昵称…」，
 // 并在输入框上方显示引用条明确「正在回复谁」，提交时结构化写入 meta.reply_to
 const replyTo = ref<string | null>(null);
@@ -740,12 +755,23 @@ function previewImage(current: string) {
   background: var(--card-2);
   border-radius: 999rpx;
 }
+/* 输入框 + 表情入口同行：输入框撑满，表情图标固定 48rpx 贴右 */
+.pr-input-line {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
 .pr-input-wrap.quoted {
   height: auto;
   flex-direction: column;
   align-items: stretch;
   padding: 8rpx 12rpx;
   border-radius: 20rpx;
+}
+.pr-input-wrap.quoted .pr-input-line {
+  width: 100%;
+  flex: none;
 }
 /* 引用行：输入卡片内的一枚轻量圆角条（单行、微信式）。
    底色比卡片再亮一层形成层次；去掉竖条与通栏分隔线，尽量少占纵向空间 */
@@ -807,7 +833,7 @@ function previewImage(current: string) {
 /* 卡片态（有引用）：输入框不再参与纵向 flex 分配——
    否则 flex:1 的 flex-basis:0 会压缩输入框高度与内距，导致变形、文字贴边 */
 .pr-input-wrap.quoted .pri-in {
-  flex: none;
+  flex: 1;
   width: 100%;
   padding: 0 6rpx;
 }

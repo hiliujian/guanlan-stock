@@ -16,18 +16,17 @@
           :auto-height="true"
         />
 
-        <!-- 表情入口：悬浮输入框右上角（第一行行高区间内），点亮态高亮；
-             mousedown.prevent 防止点击夺走输入框焦点丢失光标；
-             表情面板常驻文档流出现在输入框与工具栏之间，不与 morph 菜单互斥占位 -->
-        <view
-          class="cp-emoji-btn"
-          @click="toggleEmoji"
-          @mousedown.prevent
-          role="button"
-          :aria-label="emojiOpen ? '收起表情面板' : '打开表情面板'"
-        >
-          <OutlineIcon type="smile" :size="ICON_SIZE" :color="emojiOpen ? 'var(--primary)' : 'var(--text-2)'" />
-        </view>
+        <!-- 表情入口（复用 EmojiPanel：悬浮输入框右上角，点亮态高亮；
+             v-model:open 让展开表情时由 closeMenu 收起附件菜单，互斥同屏） -->
+        <EmojiPanel
+          v-model="text"
+          v-model:open="emojiOpen"
+          :get-el="nativeArea"
+          variant="float"
+          :max-length="500"
+          :icon-size="ICON_SIZE"
+          @after-insert="updateHash"
+        />
 
         <!-- # 股票联想浮层（下拉）：锚定到 # 输入位置正下方悬浮显示 -->
         <view v-if="showSuggest" class="cp-suggest" :style="suggestStyle">
@@ -90,22 +89,6 @@
          持仓录入态（forming）：同一 morph 容器状态切换为持仓录入 UI（同玻璃底/圆角/阴影/
          动画曲线），附件菜单隐藏、字数 / 发布照旧收拢让位；「返回」恢复附件菜单，
          「确认」生成持仓卡并收拢回「+」与其同级展示。 -->
-    <!-- 表情面板（类微信）：出现在输入框与工具栏之间的文档流内，点选即插入光标处；
-         mousedown.prevent 防止点面板夺走输入框焦点导致光标丢失 -->
-    <view v-if="emojiOpen" class="cp-emoji" @mousedown.prevent>
-      <scroll-view scroll-y class="cp-emoji-scroll">
-        <view class="cp-emoji-grid">
-          <text v-for="em in EMOJIS" :key="em" class="cp-emoji-item" @click="insertEmoji(em)">{{ em }}</text>
-        </view>
-      </scroll-view>
-      <view class="cp-emoji-bar">
-        <text class="cp-emoji-tip">点击插入到光标处</text>
-        <view class="cp-emoji-del" @click="backspaceEmoji" role="button" aria-label="删除一个字符">
-          <OutlineIcon type="backspace" :size="34" color="var(--text)" />
-        </view>
-      </view>
-    </view>
-
     <view :class="['cp-foot', menuOpen ? 'open' : '', editKind ? 'holding' : '']">
       <view
         ref="morphRef"
@@ -209,6 +192,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
+import EmojiPanel from "./EmojiPanel.vue";
 import PostCardView from "./PostCard.vue";
 import { packCard, type CommunityPost, type HoldingCard, type PostCard } from "@/api/community";
 import { listMyHoldings, saveHolding, dropHolding, type SavedHolding } from "@/api/holdings";
@@ -457,23 +441,10 @@ function onKeydown(e: any) {
   }
 }
 
-// ---------------- 表情面板（类微信：点选插入光标处） ----------------
+// ---------------- 表情面板 ----------------
+// 表情插入 / 退格逻辑已抽取到 composables/useEmoji，UI 复用 components/EmojiPanel。
 const areaRef = ref<any>(null);
 const emojiOpen = ref(false);
-// 常用表情精选（表情 / 手势 / 炒股常用符号），8 列网格滚动展示
-const EMOJIS: string[] = [
-  "😀","😄","😆","😂","🤣","😊","😇","🙂",
-  "😉","😍","🥰","😋","😜","🤪","😎","🥳",
-  "😏","🥺","😢","😭","😤","😠","😡","🤯",
-  "😳","😔","😞","🥱","😴","🤤","🤔","🫡",
-  "🤗","🫢","🤫","🤐","😐","😶","😷","🤒",
-  "🤕","🥴","😵","🥵","🥶","😱","👀","🙏",
-  "👍","👎","👌","✌️","🤞","🤘","🤙","👏",
-  "🙌","🫶","🤝","💪","🫰","✍️","🤳","🤲",
-  "❤️","💔","💕","💖","💯","🔥","✨","⭐",
-  "🎉","🎊","🎁","🧧","📈","📉","💰","🤑",
-];
-
 /** uni-h5 的 <textarea> ref 是组件实例，需解析为原生元素才能读/设光标（同 canvas 解析套路） */
 function nativeArea(): HTMLTextAreaElement | null {
   const r = areaRef.value as any;
@@ -482,54 +453,10 @@ function nativeArea(): HTMLTextAreaElement | null {
   const el = r?.$el as HTMLElement | undefined;
   return el?.querySelector("textarea") ?? null;
 }
-
-function toggleEmoji() {
-  emojiOpen.value = !emojiOpen.value;
-  // 打开表情面板时收起附件菜单，避免两个面板同屏挤占空间
-  if (emojiOpen.value && menuOpen.value) closeMenu();
-}
-
-/** 点选表情：插入到当前光标处并让光标落在表情之后（同步 # 联想解析） */
-function insertEmoji(em: string) {
-  const ta = nativeArea();
-  const pos = ta ? (ta.selectionStart ?? text.value.length) : text.value.length;
-  const next = text.value.slice(0, pos) + em + text.value.slice(pos);
-  if (next.length > 500) {
-    uni.showToast({ title: "最多 500 字", icon: "none" });
-    return;
-  }
-  text.value = next;
-  updateHash(next);
-  nextTick(() => {
-    const t = nativeArea();
-    if (t) {
-      t.focus();
-      const p = pos + em.length;
-      t.setSelectionRange(p, p);
-    }
-  });
-}
-
-/** 表情面板退格：按 Unicode 码点（而非 UTF-16 单元）删除光标前一个字符，emoji 不被截半 */
-function backspaceEmoji() {
-  if (!text.value.length) return;
-  const ta = nativeArea();
-  const pos = ta ? (ta.selectionStart ?? text.value.length) : text.value.length;
-  if (pos === 0) return;
-  const before = Array.from(text.value.slice(0, pos));
-  before.pop();
-  const head = before.join("");
-  const next = head + text.value.slice(pos);
-  text.value = next;
-  updateHash(next);
-  nextTick(() => {
-    const t = nativeArea();
-    if (t) {
-      t.focus();
-      t.setSelectionRange(head.length, head.length);
-    }
-  });
-}
+// 展开表情面板时收起附件菜单，避免两个面板同屏挤占空间（互斥）
+watch(emojiOpen, (v) => {
+  if (v && menuOpen.value) closeMenu();
+});
 
 // ---------------- 配图 ----------------
 const imagePaths = ref<string[]>([]);
@@ -1350,89 +1277,6 @@ watch([text, holdings], saveDraft, { deep: true });
   align-items: center;
   justify-content: space-between;
   margin-top: 16rpx;
-}
-/* 表情入口：悬浮输入框右上角（第一行行高区间内）的裸图标按钮，点亮态主色描边
-   （无底无框，克制风格）；不再占用底部工具栏位置 */
-.cp-emoji-btn {
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 22;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* 按钮盒贴合第一行行高（28×1.6≈45 + 4 padding ≈ 48）；图标 28rpx 与正文（--font-md）完全同号 */
-  width: 48rpx;
-  height: 48rpx;
-  border-radius: 999rpx;
-  transition: background var(--dur-fast) var(--ease-out);
-}
-.cp-emoji-btn:active {
-  background: var(--primary-soft);
-}
-/* 表情面板（类微信）：文档流内展开（非弹窗），铺在输入框与工具栏之间 */
-.cp-emoji {
-  margin-top: 14rpx;
-  padding: 10rpx 12rpx 8rpx;
-  border-radius: 20rpx;
-  background: var(--card-2);
-  border: 1rpx solid var(--border);
-  animation: cpEmojiIn 0.24s var(--ease-out) both;
-}
-@keyframes cpEmojiIn {
-  from {
-    opacity: 0;
-    transform: translateY(10rpx);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-.cp-emoji-scroll {
-  max-height: 320rpx;
-}
-.cp-emoji-grid {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 2rpx;
-}
-.cp-emoji-item {
-  height: 64rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* 表情字号取 --font-lg（32）：与正文（--font-md 28）紧贴一档，插入正文前后视觉比例一致；
-     点选热区仍由 64rpx 格子保证 */
-  font-size: var(--font-lg);
-  line-height: 1;
-  border-radius: 12rpx;
-  transition: background var(--dur-fast) var(--ease-out);
-}
-.cp-emoji-item:active {
-  background: var(--primary-soft);
-}
-.cp-emoji-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 6rpx;
-}
-.cp-emoji-tip {
-  font-size: var(--font-xs);
-  color: var(--text-3);
-}
-.cp-emoji-del {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 999rpx;
-}
-.cp-emoji-del:active {
-  background: var(--primary-soft);
 }
 /* 展开时字数/发布让位：宽度+透明度同步过渡（与形变同曲线同时长），避免被容器挤压产生跳变 */
 .cp-foot.open .cp-count,
