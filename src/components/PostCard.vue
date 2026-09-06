@@ -139,8 +139,8 @@
           </view>
           <view class="pr-input-line">
             <input ref="replyInputRef" class="pri-in" v-model="replyText" :placeholder="replyPlaceholder" :maxlength="200" @confirm="sendReply" />
-            <!-- 表情入口（复用 EmojiPanel：输入框右侧），点选插入到光标处 -->
-            <EmojiPanel v-model="replyText" :get-el="resolveReplyEl" variant="inline" :max-length="200" />
+            <!-- 表情入口（复用 EmojiPanel：输入框右侧），点选插入到光标处；direction=up 与私信一致，面板在输入框上方展开 -->
+            <EmojiPanel v-model="replyText" :get-el="resolveReplyEl" variant="inline" direction="up" :max-length="200" />
           </view>
         </view>
         <view class="pri-send" @click="sendReply">

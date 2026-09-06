@@ -1,5 +1,5 @@
 <template>
-  <view :class="['emoji-wrap', variant]">
+  <view ref="wrapRef" :class="['emoji-wrap', variant]">
     <!-- 表情入口：点亮态主色描边（无底无框，克制风格）；
          mousedown.prevent 防止点击夺走输入框焦点导致光标丢失 -->
     <view
@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, onUnmounted } from "vue";
 import { EMOJIS, useEmoji } from "@/composables/useEmoji";
 import OutlineIcon from "./OutlineIcon.vue";
 
@@ -87,6 +87,24 @@ watch(
   }
 );
 
+// 点击面板外任意位置自动收起：document 捕获阶段监听，目标不在本组件根内即关闭
+const wrapRef = ref<any>(null);
+function onDocPointerDown(e: Event) {
+  if (!emojiOpen.value) return;
+  const r = wrapRef.value as any;
+  const root: HTMLElement | null =
+    r instanceof HTMLElement ? r : (r?.$el instanceof HTMLElement ? r.$el : null);
+  if (root && !root.contains(e.target as Node)) {
+    emojiOpen.value = false;
+    emit("update:open", false);
+  }
+}
+watch(emojiOpen, (v) => {
+  if (v) document.addEventListener("pointerdown", onDocPointerDown, true);
+  else document.removeEventListener("pointerdown", onDocPointerDown, true);
+});
+onUnmounted(() => document.removeEventListener("pointerdown", onDocPointerDown, true));
+
 function toggle() {
   toggleEmoji();
   emit("update:open", emojiOpen.value);
@@ -119,7 +137,8 @@ function toggle() {
 .emoji-btn:active {
   background: var(--primary-soft);
 }
-/* 面板：相对入口容器定位，向下展开成浮层；up 时改向上展开（输入条贴底场景） */
+/* 面板：相对入口容器定位，向下展开成浮层；up 时改向上展开（输入条贴底场景）。
+   浮层悬浮在任意内容之上，--card-2 是近透明色需实色打底：--bg 垫底 + --card-2 薄染 */
 .emoji-panel {
   position: absolute;
   top: calc(100% + 8rpx);
@@ -128,7 +147,8 @@ function toggle() {
   width: min(420rpx, 86vw);
   padding: 10rpx 12rpx 8rpx;
   border-radius: 20rpx;
-  background: var(--card-2);
+  background-color: var(--bg);
+  background-image: linear-gradient(var(--card-2), var(--card-2));
   border: 1rpx solid var(--border);
   box-shadow: var(--shadow-2);
   animation: emojiIn 0.24s var(--ease-out) both;
