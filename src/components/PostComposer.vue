@@ -219,6 +219,7 @@ import { vipActive } from "@/store/level";
 import { getMyName } from "@/store/identity";
 import { openAuth } from "@/store/nav";
 import { uploadPostImage } from "@/api/auth";
+import { fmtNum as fmt } from "@/utils/format";
 
 // 工具栏图标尺寸：线型图标视觉占比约 70%，统一放大到能与 --font-md(28rpx) 文字视觉匹配，避免看着偏小。
 // 线宽不在此覆写：全项目 143 处图标统一走 OutlineIcon 默认的 stroke-width(2)，保持一致。
@@ -991,10 +992,6 @@ onMounted(() => {
 // 正文 / 持仓变化即落盘（deep 监听持仓 splice 等就地修改）
 watch([text, holdings], saveDraft, { deep: true });
 
-function fmt(n: number): string {
-  if (n == null || isNaN(n)) return "-";
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
-}
 </script>
 
 <style scoped>

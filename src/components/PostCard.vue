@@ -161,6 +161,7 @@ import { openInMarket, goTab } from "@/store/nav";
 import { useFollow } from "@/store/follow";
 import { useReplyExpansion } from "@/store/replyExpansion";
 import { userState } from "@/store/user";
+import { fmtNum as fmt } from "@/utils/format";
 
 const props = defineProps<{ post: CommunityPost; mine: boolean; preview?: boolean }>();
 const emit = defineEmits<{
@@ -410,10 +411,6 @@ const cardViews = computed<HoldingView[]>(() =>
   })
 );
 
-function fmt(n: number): string {
-  if (n == null || isNaN(n)) return "-";
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
-}
 function signed(n: number): string {
   if (n == null || isNaN(n)) return "-";
   return (n >= 0 ? "+" : "") + fmt(n);

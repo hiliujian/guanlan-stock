@@ -254,7 +254,7 @@ import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, reso
 import { fetchGlobalIndices, GLOBAL_INDEX_GROUPS, type GlobalIndexQuote } from "@/api/globalIndices";
 import { fetchCffexPositions, type CffexPositions } from "@/api/cffex";
 import { getMarketStatus } from "@/utils/marketStatus";
-import { fmtPrice } from "@/utils/format";
+import { fmtPrice, fmtPct } from "@/utils/format";
 import {
   resolveSecid,
   marketFromSecid,
@@ -333,10 +333,6 @@ async function refreshIndex() {
 async function loadIndex() {
   resolveIdx();
   await refreshIndex();
-}
-function fmtPct(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "--";
-  return (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
 }
 const idxCls = computed(() => {
   const s = idxSnap.value;

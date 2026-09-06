@@ -10,6 +10,13 @@ export function fmtPct(v: number | null | undefined, withSign = true): string {
   return s + v.toFixed(2) + "%";
 }
 
+// 整数感知的数字格式化（社区持仓卡片用）：缺失/非数 → "-"，整数直接显示、否则 2 位小数。
+// 从 PostCard / PostComposer 中抽取的共享实现，避免两份完全相同的 fmt() 冗余。
+export function fmtNum(n: number | null | undefined): string {
+  if (n == null || isNaN(n)) return "-";
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
 // 带正负号的绝对值（用于涨跌额）
 export function fmtSigned(v: number | null | undefined, digits = 2): string {
   if (v == null || isNaN(v)) return "--";
