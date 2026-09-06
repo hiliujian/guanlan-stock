@@ -404,7 +404,7 @@ export interface AnalysisResult {
   // ---- 突破/跌破 + 直白买卖信号（支撑产品卖点：何时买卖 / 支撑压力突破）----
   breakout: boolean; // 已有效突破压力（仅当压力来自明确 pivot 拐点）
   breakdown: boolean; // 已有效跌破支撑（仅当支撑来自明确 pivot 拐点）
-  sigType: string; // 走势预测：突破上攻 / 破位下行 / 承压回落 / 企稳反弹 / 震荡上行 / 震荡下行 / 区间震荡
+  sigType: string; // 走势预测：突破上攻 / 破位下行 / 承压回落 / 企稳反弹 / 震荡上行 / 震荡下行 / 区间震荡 / 冲高回落 / 反弹乏力（后两者仅卖点兜底改写）
   // ---- 信号历史回测（MA5/20 交叉核心规则，20 日前瞻收益的历史校准；样本不足由 UI 降级）----
   backtest: {
     horizon: number; // 前瞻窗口（交易日）
@@ -937,12 +937,8 @@ export function analyze(
 
   score = Math.max(5, Math.min(95, Math.round(score)));
   scoreReasons.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
-  // 风险等级：综合技术评分、波动率(ATR%)、最大回撤与高位
-  let riskLevel = score >= 70 ? "低" : score >= 45 ? "中" : "高";
   const elevatedVol = atrPct > 4; // 单日波动幅度偏大
   const deepDd = mdd > 0.35; // 近 120 日回撤超 35%
-  if (elevatedVol || deepDd || nearTop) riskLevel = riskLevel === "低" ? "中" : riskLevel;
-  if ((elevatedVol && deepDd) || (deepDd && nearTop)) riskLevel = riskLevel === "中" ? "高" : riskLevel;
 
   // ---------------- 突破 / 跌破 + 买入区间判定 ----------------
   // 必须先于操作决策（watch/build/add/reduce）计算：已确认放量突破压力位时，
@@ -977,11 +973,14 @@ export function analyze(
   // !breakout 抑制：放量突破压力后「价格临近高位 / RSI 超买」不再触发减仓；
   // ma60 拉高出货条件（大幅偏离 MA60 + 主力资金净流出）与突破方向相悖，保留不抑制。
   const watch = (!(nearTop && rNow > 75) || breakout) && trend !== "down";
-  const build = (nearBottom || (trend === "up" && price <= ma20[len - 1]! * 1.02)) && rNow < 70 && !nearTop;
+  // build/add 必须排除 breakdown：破位后价格贴近 120 日底部（nearBottom 天然成立），
+  // 否则决策「分批建仓/加仓」与信号卡「已跌破关键支撑，减仓回避」及结论「应止损离场」同屏矛盾
+  //（与 reduce 兜底、add 排除 reduce 同一「决策-信号同向」原则）。
+  const build = !breakdown && (nearBottom || (trend === "up" && price <= ma20[len - 1]! * 1.02)) && rNow < 70 && !nearTop;
   const reduce = ((nearTop || rNow > 78) && !breakout) || (ma60Last != null && price > ma60Last * 1.5 && f10.sum < 0);
   // add 必须排除 reduce 条件（高位 / RSI超买 / 远离MA60+资金流出），
   // 否则「可加仓」与「建议减仓」同时亮起，给用户矛盾信号。
-  const add = !reduce && trend === "up" && Math.abs(price - ma20[len - 1]!) / ma20[len - 1]! < 0.03 && f5.sum > 0 && rNow < 75;
+  const add = !reduce && !breakdown && trend === "up" && Math.abs(price - ma20[len - 1]!) / ma20[len - 1]! < 0.03 && f5.sum > 0 && rNow < 75;
   // 操作结论唯一取值：单链优先级，UI（决策标签 + 分析结论）一律读它，不再各自排序
   let decision: AnalysisResult["decision"] =
     reduce ? "reduce" : add ? "add" : build ? "build" : watch ? "watch" : "wait";
@@ -1208,6 +1207,23 @@ export function analyze(
   if (intraday.isLimitUp && decision === "reduce") decision = "watch";
   else if ((intraday.isLimitDown || intraday.isBrokenLimitUp) && (decision === "add" || decision === "build" || decision === "watch")) decision = "reduce";
   else if (intraday.isBrokenLimitDown && (decision === "add" || decision === "build")) decision = "watch";
+
+  // 决策-走势同向兜底：信号卡为「卖点」时，走势预测不得残留偏多措辞与「建议减仓」同屏打架
+  // （实证：紫金矿业 reduce 兜底 + 临近支撑 → 「卖点·高位风险积聚」+「企稳反弹」同屏矛盾；
+  // 拉高出货分支同理会出现「卖点」+「突破上攻」）。措辞保留位置维度事实：
+  // 突破后遭资金撤离/超买高位 → 冲高回落；临近支撑但高位风险压制反弹 → 反弹乏力。
+  // 必须置于涨跌停信号覆盖之后：封跌停/炸板把信号改写为「卖点」时同样生效。
+  if (signal.level === "sell") {
+    if (sigType === "突破上攻" || sigType === "震荡上行") sigType = "冲高回落";
+    else if (sigType === "企稳反弹") sigType = "反弹乏力";
+  }
+
+  // 风险等级：综合技术评分、波动率(ATR%)、最大回撤与高位。
+  // 必须后置到盘中涨跌停调分（封跌停 -10 / 封涨停 +10 等）之后计算，
+  // 否则封跌停把评分压入「中」档而风险等级仍显示「低」，与「卖点·封跌停」同屏矛盾。
+  let riskLevel = score >= 70 ? "低" : score >= 45 ? "中" : "高";
+  if (elevatedVol || deepDd || nearTop) riskLevel = riskLevel === "低" ? "中" : riskLevel;
+  if ((elevatedVol && deepDd) || (deepDd && nearTop)) riskLevel = riskLevel === "中" ? "高" : riskLevel;
 
   const intradayMove: AnalysisResult["intradayMove"] = {
     pct: intraday.pct,

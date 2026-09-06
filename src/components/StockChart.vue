@@ -758,7 +758,7 @@ function fitViewAll() {
 // 注意 setBarSpace 值相同会直接 return 不重算可见范围，故纯平移场景必须先 scrollToRealTime 归位
 // （fitViewAll 的 setBarSpace 以最右为锚，仅在柱宽实际变化时生效），两步组合才能覆盖
 // 「只平移」「只捏合」「平移+捏合」全部情况。
-const IDLE_REBOUND_MS = 5000;
+const IDLE_REBOUND_MS = 3000;
 let idleReboundTimer: any = null;
 function idleRebound() {
   if (!chart || !chartEl.value) return;
