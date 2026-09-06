@@ -108,9 +108,9 @@
               :class="['mc-msg', m.senderId === myId ? 'mine' : '']"
             >
               <view class="mc-bubble">{{ m.content }}</view>
-              <!-- 时间 + 已读回执：「已读」仅挂在我发的最后一条且已被对方读过的消息上，避免满屏噪音 -->
+              <!-- 时间 + 已读回执：我发的且已被对方读过的消息常驻显示「已读」 -->
               <view class="mc-msg-meta">
-                <text v-if="m.senderId === myId && m.id === lastMineId && m.status === 'read'" class="mc-msg-read">已读</text>
+                <text v-if="m.senderId === myId && m.status === 'read'" class="mc-msg-read">已读</text>
                 <text class="mc-msg-time">{{ formatRelative(m.createdAt) }}</text>
               </view>
             </view>
@@ -202,11 +202,6 @@ function resolveDmEl(): HTMLInputElement | null {
 const myId = computed(() => userState.userId || "");
 const selectedOtherName = computed(() => selectedOther.value?.otherName || "");
 const threadBottomId = computed(() => `t-${activeThread.value.length}`);
-// 我发的最后一条消息 id：已读回执只显示在它上面
-const lastMineId = computed(() => {
-  const mine = activeThread.value.filter((m) => m.senderId === myId.value);
-  return mine.length ? mine[mine.length - 1].id : "";
-});
 const filteredNotifs = computed(() =>
   notifications.value.filter(
     (n: NotificationItem) => !dismissedNotifIds.value.includes(n.id) && n.kind === tab.value
