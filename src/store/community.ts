@@ -356,6 +356,13 @@ async function loadConversations() {
   }
 }
 
+/** 静默重拉当前打开的私信会话（已读回执实时刷新用）：仅在有打开会话且拉到数据时更新。 */
+async function refreshThread() {
+  if (!dmThreadPeer) return;
+  const list = await communityRepo.getDmThread(dmThreadPeer);
+  if (list.length > 0) activeThread.value = list;
+}
+
 // ── 实时订阅（与 watchlist 同款保活模式）──────────────────────────────
 // 监听社区点赞 / 评论 / 私信的 INSERT，有新互动即重拉通知与会话，
 // 使顶部铃铛徽标实时刷新，无需切回社区页或手动刷新。
@@ -379,11 +386,21 @@ function subscribeMessageRealtime() {
       loadNotifications();
       loadConversations();
     };
+    // 私信 UPDATE（接收方打开会话 → status 置 'read'）：刷新未读角标；
+    // 若正开着相关会话则静默重拉消息流，使我方消息的「已读」回执实时可见
+    const onDmUpdate = (payload: any) => {
+      loadConversations();
+      const row = payload?.new;
+      if (row && dmThreadPeer && (row.sender_id === dmThreadPeer || row.receiver_id === dmThreadPeer)) {
+        refreshThread();
+      }
+    };
     msgRealtimeChannel = sb
       .channel("message-center-changes")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "community_likes" }, onEvent)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "community_replies" }, onEvent)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "community_dms" }, onEvent)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "community_dms" }, onDmUpdate)
       .subscribe();
   } catch {
     /* ignore */
