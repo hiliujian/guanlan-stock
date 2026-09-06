@@ -818,8 +818,10 @@ const conclusion = computed(() => {
   if ((r.add || r.build || r.watch) && r.f5.has && r.f5.sum <= -0.5) {
     parts.push(`但近5日主力资金净流出 ${Math.abs(r.f5.sum).toFixed(2)} 亿，介入宜轻仓试探、严控仓位。`);
   }
-  // 极端超买/超卖属结论级状态（追高/抄底风险），仅极端时提示；RSI 无效数据不参与
-  if (r.rsiValid && (r.rNow > 78 || r.bias24 > 20)) parts.push("短期超买明显，追高需防回撤。");
+  // 极端超买/超卖属结论级状态（追高/抄底风险），仅极端时提示；RSI 无效数据不参与。
+  // 措辞不带「短期/中期」前缀：触发条件含 RSI(12)（短期口径）与 BIAS(24)（中期口径，
+  // 研判格/风险提示均称「中期超买」），带周期前缀会与其中一方同屏相悖
+  if (r.rsiValid && (r.rNow > 78 || r.bias24 > 20)) parts.push("超买明显，追高需防回撤。");
   else if (r.rsiValid && !r.reduce && (r.rNow < 22 || r.bias24 < -20)) parts.push("超卖明显，随时可能出现技术性反弹。");
   // 量价背离属防误判关键信号：顶背离警示动能衰减、底背离提示下跌动能减弱
   if (r.divergence === "top") parts.push("量价顶背离，上涨动能衰减，追高需防冲高回落。");
