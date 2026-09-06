@@ -113,17 +113,20 @@
             <view :id="threadBottomId" />
           </scroll-view>
           <view class="mc-input">
-            <input
-              ref="dmInputRef"
-              class="mc-input-in"
-              v-model="dmText"
-              placeholder="发送私信…"
-              maxlength="500"
-              confirm-type="send"
-              @confirm="send"
-            />
-            <!-- 表情入口（复用 EmojiPanel：输入框右侧），点选插入到光标处 -->
-            <EmojiPanel v-model="dmText" :get-el="resolveDmEl" variant="inline" :max-length="500" :icon-size="26" />
+            <!-- 药丸输入框：输入框 + 表情入口同行（与回复输入框结构一致） -->
+            <view class="mc-input-box">
+              <input
+                ref="dmInputRef"
+                class="mc-input-in"
+                v-model="dmText"
+                placeholder="发送私信…"
+                maxlength="500"
+                confirm-type="send"
+                @confirm="send"
+              />
+              <!-- 表情入口（复用 EmojiPanel），点选插入到光标处；direction=up：输入条贴弹层底部，面板向上展开避免被裁 -->
+              <EmojiPanel v-model="dmText" :get-el="resolveDmEl" variant="inline" direction="up" :max-length="500" />
+            </view>
             <view :class="['mc-send', dmText.trim() ? '' : 'disabled']" @click="send">
               <OutlineIcon type="send" :size="30" :color="dmText.trim() ? '#fff' : 'rgba(255,255,255,0.6)'" />
             </view>
@@ -486,14 +489,25 @@ watch(
   padding: 14rpx 22rpx;
   border-top: 1rpx solid var(--border);
 }
-.mc-input-in {
+/* 药丸输入框：底色圆角在盒上，输入框透明撑满，表情图标贴右（与回复输入框同构） */
+.mc-input-box {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
   height: 72rpx;
-  padding: 0 24rpx;
-  font-size: var(--font-sm);
-  color: var(--text);
+  padding: 0 8rpx 0 24rpx;
   background: var(--card-2);
   border-radius: 999rpx;
+}
+.mc-input-in {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  font-size: var(--font-sm);
+  color: var(--text);
+  background: transparent;
 }
 .mc-send {
   flex: none;

@@ -4,26 +4,26 @@
          mousedown.prevent 防止点击夺走输入框焦点导致光标丢失 -->
     <view
       class="emoji-btn"
-      :class="{ active: open }"
+      :class="{ active: emojiOpen }"
       @click="toggle"
       @mousedown.prevent
       role="button"
-      :aria-label="open ? '收起表情面板' : '打开表情面板'"
+      :aria-label="emojiOpen ? '收起表情面板' : '打开表情面板'"
     >
-      <OutlineIcon type="smile" :size="iconSize" :color="open ? 'var(--primary)' : 'var(--text-2)'" />
+      <OutlineIcon type="smile" :size="iconSize" :color="emojiOpen ? 'var(--primary)' : 'var(--text-2)'" />
     </view>
 
     <!-- 表情面板（类微信）：点选即插入光标处；
          mousedown.prevent 防止点面板夺走输入框焦点导致光标丢失 -->
-    <view v-if="open" class="emoji-panel" @mousedown.prevent>
+    <view v-if="emojiOpen" :class="['emoji-panel', direction]" @mousedown.prevent>
       <scroll-view scroll-y class="emoji-scroll">
         <view class="emoji-grid">
-          <text v-for="em in EMOJIS" :key="em" class="emoji-item" @click="onSelect(em)">{{ em }}</text>
+          <text v-for="em in EMOJIS" :key="em" class="emoji-item" @click="insertEmoji(em)">{{ em }}</text>
         </view>
       </scroll-view>
       <view class="emoji-bar">
         <text class="emoji-tip">点击插入到光标处</text>
-        <view class="emoji-del" @click="onBackspace" role="button" aria-label="删除一个字符">
+        <view class="emoji-del" @click="backspaceEmoji" role="button" aria-label="删除一个字符">
           <OutlineIcon type="backspace" :size="34" color="var(--text)" />
         </view>
       </view>
@@ -40,16 +40,20 @@ const props = withDefaults(
   defineProps<{
     /** 双向绑定的文本，插入表情后同步回父组件 */
     modelValue: string;
-    /** 面板展开态（支持 v-model:open 受父组件控制，如发帖展开表情时收起附件菜单） */
+    /** 面板展开态（可选 v-model:open 受父组件控制，如发帖展开表情时收起附件菜单）；
+     *  未绑定时以内部 emojiOpen 为准 */
     open?: boolean;
     /** 解析出原生 input/textarea 元素，供光标定位插入 */
     getEl: () => HTMLInputElement | HTMLTextAreaElement | null;
     /** float：悬浮输入框右上角（发帖）；inline：跟随输入框行内右侧（回复 / 私信） */
     variant?: "float" | "inline";
+    /** 面板展开方向：down 向下（默认）；up 向上（输入条贴容器底部时用，如私信弹层） */
+    direction?: "down" | "up";
     maxLength?: number;
+    /** 入口图标线宽尺寸，默认 36 与发帖工具栏图标一致 */
     iconSize?: number;
   }>(),
-  { open: false, variant: "inline", maxLength: undefined, iconSize: 28 }
+  { variant: "inline", direction: "down", maxLength: undefined, iconSize: 36 }
 );
 
 const emit = defineEmits<{
@@ -67,12 +71,6 @@ watch(
   }
 );
 
-const openState = ref(props.open);
-watch(
-  () => props.open,
-  (v) => (openState.value = v)
-);
-
 const { emojiOpen, toggleEmoji, insertEmoji, backspaceEmoji } = useEmoji(props.getEl, local, {
   maxLength: props.maxLength,
   onAfterInsert: (t) => {
@@ -81,15 +79,17 @@ const { emojiOpen, toggleEmoji, insertEmoji, backspaceEmoji } = useEmoji(props.g
   },
 });
 
+// 父组件通过 v-model:open 外部控制展开态时（如发帖收起附件菜单联动），同步到内部状态
+watch(
+  () => props.open,
+  (v) => {
+    if (v !== undefined && v !== emojiOpen.value) emojiOpen.value = v;
+  }
+);
+
 function toggle() {
-  emojiOpen.value = !emojiOpen.value;
+  toggleEmoji();
   emit("update:open", emojiOpen.value);
-}
-function onSelect(em: string) {
-  insertEmoji(em);
-}
-function onBackspace() {
-  backspaceEmoji();
 }
 </script>
 
@@ -119,7 +119,7 @@ function onBackspace() {
 .emoji-btn:active {
   background: var(--primary-soft);
 }
-/* 面板：相对入口容器定位，向下展开成浮层 */
+/* 面板：相对入口容器定位，向下展开成浮层；up 时改向上展开（输入条贴底场景） */
 .emoji-panel {
   position: absolute;
   top: calc(100% + 8rpx);
@@ -132,6 +132,10 @@ function onBackspace() {
   border: 1rpx solid var(--border);
   box-shadow: var(--shadow-2);
   animation: emojiIn 0.24s var(--ease-out) both;
+}
+.emoji-panel.up {
+  top: auto;
+  bottom: calc(100% + 8rpx);
 }
 @keyframes emojiIn {
   from {
