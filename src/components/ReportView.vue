@@ -12,16 +12,16 @@
       <text class="sc-label">平均收益</text>
       <text :class="['sc-num', sigRetCls]">{{ sigRetText }}</text>
       <view class="sc-pos" @click="openPosForm" role="button" aria-label="录入持仓">
-        {{ posFormOpen ? "收起" : "持仓" }}
+        <OutlineIcon type="briefcase" :size="28" color="var(--primary)" />
       </view>
     </view>
 
-    <!-- 持仓录入弹层（买入时间/持仓成本/持仓数量）：保存后「持仓视角」与「买入以来」胜率立即生效 -->
+    <!-- 持仓录入弹层（买入时间/持仓成本/持仓数量，均必填）：保存后「持仓视角」与「买入以来」胜率立即生效 -->
     <view v-if="posFormOpen" class="pos-form">
       <view class="pf-row">
         <text class="pf-k">买入时间</text>
         <picker mode="date" :value="pfTime" @change="onPfTime">
-          <view class="pf-in pf-pick">{{ pfTime || "选择日期（选填）" }}</view>
+          <view class="pf-in pf-pick">{{ pfTime || "选择买入日期" }}</view>
         </picker>
       </view>
       <view class="pf-row">
@@ -30,7 +30,7 @@
       </view>
       <view class="pf-row">
         <text class="pf-k">持仓数量</text>
-        <input class="pf-in" type="number" :value="pfQty" placeholder="股（选填）" @input="onPfQty" />
+        <input class="pf-in" type="number" :value="pfQty" placeholder="股（必填）" @input="onPfQty" />
       </view>
       <view class="pf-actions">
         <view class="pf-btn clear" @click="clearPosition" role="button" aria-label="清除持仓">清除持仓</view>
@@ -788,17 +788,22 @@ function onPfTime(e: any) {
   pfTime.value = String(e?.detail?.value ?? "");
 }
 function savePosition() {
+  // 三项均必填：买入时间决定「买入以来」胜率窗口，成本驱动持仓视角，数量供发帖持仓卡回填
   const c = parseFloat(pfCost.value);
+  const qty = parseInt(pfQty.value, 10);
+  if (!pfTime.value) {
+    uni.showToast({ title: "请选择买入时间", icon: "none" });
+    return;
+  }
   if (!Number.isFinite(c) || c <= 0) {
     uni.showToast({ title: "请填写持仓成本", icon: "none" });
     return;
   }
-  const qty = parseInt(pfQty.value, 10);
-  emit("save-position", {
-    cost: c,
-    qty: Number.isFinite(qty) && qty > 0 ? qty : undefined,
-    time: pfTime.value || undefined,
-  });
+  if (!Number.isFinite(qty) || qty <= 0) {
+    uni.showToast({ title: "请填写持仓数量", icon: "none" });
+    return;
+  }
+  emit("save-position", { cost: c, qty, time: pfTime.value });
   posFormOpen.value = false;
 }
 function clearPosition() {
@@ -1390,15 +1395,17 @@ function openNews(it: NewsItem) {
 /* 持仓视角：浮动盈亏与动作着色（A 股红涨绿跌） */
 .pv-up { color: var(--up); }
 .pv-down { color: var(--down); }
-/* Tip 行右端「持仓」按钮：录入入口 */
+/* Tip 行右端「持仓」图标按钮：录入入口 */
 .sc-pos {
   flex: none;
   margin-left: auto;
-  font-size: var(--font-xs);
-  color: var(--primary);
-  padding: 6rpx 18rpx;
+  display: flex;
+  align-items: center;
+  padding: 6rpx;
+  border-radius: 8rpx;
+}
+.sc-pos:active {
   background: var(--primary-soft);
-  border-radius: 999rpx;
 }
 /* 持仓录入弹层：时间/成本/数量 三行 + 保存/清除 */
 .pos-form {

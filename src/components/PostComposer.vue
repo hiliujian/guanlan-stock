@@ -1199,10 +1199,10 @@ watch([text, holdings], saveDraft, { deep: true });
   align-items: center;
   gap: 12rpx;
 }
-/* 股票输入占主宽并承载联想浮层定位 */
+/* 名称/代码 · 持仓成本 · 持仓数量 三列统一等宽（flex 基准 0 均分） */
 .cp-hold-stock {
   position: relative;
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
 }
 /* 输入框：高度 / 圆角 / 行内 padding 与菜单列表项（.cp-morph-item）对齐 */
@@ -1220,8 +1220,7 @@ watch([text, holdings], saveDraft, { deep: true });
   width: 100%;
 }
 .cp-hold-num {
-  flex: none;
-  width: 176rpx;
+  flex: 1 1 0;
 }
 .cp-hold-in::placeholder {
   color: var(--text-2);

@@ -26,6 +26,30 @@
 
     <view class="wl">
 
+        <!-- 持仓信号提醒：持仓标的出现买/卖信号时展示，常驻卡片、点击行跳转个股、手动关闭才消失 -->
+        <view v-if="sigAlertList.length" class="pos-alert anim-fade-up">
+          <view class="pa-head">
+            <OutlineIcon type="flag" :size="28" color="var(--warn)" />
+            <text class="pa-title">持仓信号提醒</text>
+            <view class="pa-close" @click="dismissSigAlerts" role="button" aria-label="关闭提醒">
+              <OutlineIcon type="close" :size="26" color="var(--text-3)" />
+            </view>
+          </view>
+          <view
+            v-for="a in sigAlertList"
+            :key="a.code"
+            class="pa-row"
+            role="button"
+            :aria-label="`查看 ${a.name}`"
+            @click="openAlertStock(a)"
+          >
+            <text class="pa-name truncate">{{ a.name }}</text>
+            <text :class="['pa-lv', a.level]">{{ a.level === "buy" ? "买点" : "卖点" }}</text>
+            <text class="pa-meta">现价 {{ fmtPrice(a.price) }}</text>
+            <text :class="['pa-meta', trendCls(a.pnl)]">{{ fmtSigned(a.pnl) }}%</text>
+          </view>
+        </view>
+
         <!-- 价格预警：命中行在自选表格内闪烁红/绿提示（见 .tr.alert-up/.alert-down），
              不再使用独立横幅卡片；清除预警请在长按菜单「编辑价格预警」中操作。 -->
 
@@ -883,20 +907,39 @@ function refreshAlertHits() {
   alertState.value = next;
 }
 
-// ===== 持仓信号巡检：已填成本价（=持仓）的自选标的，产生买/卖信号时主动弹窗提醒 =====
+// ===== 持仓信号巡检：已填持仓（=持仓中）的自选标的，产生买/卖信号时在页内常驻卡片提醒 =====
 // 信号用真实 analyze() 引擎对日 K 计算（与报告页同源）；去重：记录每只上次信号档，
-// 仅信号档发生变化（含首次）才弹窗，避免每次进页重复轰炸。
+// 仅信号档发生变化（含首次）才进入提醒卡。卡片常驻展示、点击行跳转个股、手动关闭才消失
+//（替代原 uni.showModal：H5 模态观感与应用风格割裂，且易被误触关掉）。
+interface SigAlert {
+  code: string;
+  name: string;
+  level: "buy" | "sell";
+  price: number;
+  pnl: number;
+}
+const sigAlertList = ref<SigAlert[]>([]);
+function dismissSigAlerts() {
+  sigAlertList.value = [];
+}
+function openAlertStock(a: SigAlert) {
+  openInMarket(a.code, "auto");
+  goTab("market");
+}
 let scanningSig = false;
 async function scanPositionSignals() {
   if (scanningSig) return;
   const costSecids = listCostSecids();
-  if (!costSecids.length) return;
+  if (!costSecids.length) {
+    sigAlertList.value = [];
+    return;
+  }
   const nameBySecid = new Map(
     list.value.map((it) => [resolveSecid(it.code, it.market as any) as string, it.name || it.code])
   );
   scanningSig = true;
   try {
-    const alerts: string[] = [];
+    const alerts: SigAlert[] = [];
     for (const secid of costSecids) {
       try {
         const kls = await getKline(secid, "d");
@@ -906,25 +949,22 @@ async function scanPositionSignals() {
         const prev = getLastSignal(secid);
         setLastSignal(secid, lvl);
         if ((lvl === "buy" || lvl === "sell") && lvl !== prev) {
-          const name = nameBySecid.get(secid) || secid;
           const cost = getPosition(secid)?.cost;
           const pnl = cost ? ((a.price - cost) / cost) * 100 : 0;
-          alerts.push(
-            `${name} 出现${lvl === "buy" ? "买点" : "卖点"}（现价 ${a.price.toFixed(2)} · 浮动盈亏 ${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}%）`
-          );
+          alerts.push({
+            code: secid.split(".")[1] || secid,
+            name: nameBySecid.get(secid) || secid,
+            level: lvl as "buy" | "sell",
+            price: a.price,
+            pnl,
+          });
         }
       } catch {
         /* 单只失败不影响其余 */
       }
     }
-    if (alerts.length) {
-      uni.showModal({
-        title: "持仓信号提醒",
-        content: alerts.join("\n"),
-        showCancel: false,
-        confirmText: "知道了",
-      });
-    }
+    // 仅在有新提醒时替换卡片内容；无提醒且用户已手动关闭（当前为空）则不打扰
+    if (alerts.length) sigAlertList.value = alerts;
   } finally {
     scanningSig = false;
   }
@@ -1582,6 +1622,63 @@ function removeLp() {
 @keyframes rowTint {
   0%, 100% { opacity: 0; }
   50% { opacity: 1; }
+}
+
+/* ===== 持仓信号提醒卡 ===== */
+.pos-alert {
+  margin: 0 24rpx 16rpx;
+  padding: 16rpx 20rpx;
+  background: var(--card);
+  border: 1rpx solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.pa-head {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-bottom: 10rpx;
+}
+.pa-title {
+  flex: 1;
+  font-size: var(--font-sm);
+  color: var(--text);
+}
+.pa-close {
+  flex: none;
+  padding: 6rpx;
+}
+.pa-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 12rpx 4rpx;
+  border-top: 1rpx solid var(--border);
+}
+.pa-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-sm);
+  color: var(--text);
+}
+.pa-lv {
+  flex: none;
+  font-size: var(--font-xs);
+  padding: 4rpx 14rpx;
+  border-radius: 8rpx;
+}
+.pa-lv.buy {
+  color: var(--up);
+  background: rgba(239, 35, 42, 0.12);
+}
+.pa-lv.sell {
+  color: var(--down);
+  background: rgba(9, 176, 122, 0.12);
+}
+.pa-meta {
+  flex: none;
+  font-size: var(--font-xs);
+  color: var(--text-2);
 }
 
 /* ===== 空态 ===== */

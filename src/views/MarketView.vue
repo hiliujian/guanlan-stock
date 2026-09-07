@@ -293,7 +293,11 @@ const winRateOverride = computed(() => {
 function onSavePosition(p: Position) {
   setPosition(secid.value, p);
   pos.value = getPosition(secid.value);
-  uni.showToast({ title: "持仓已保存", icon: "none" });
+  // 填了持仓即视为持仓中 → 自动加入自选（已存在则跳过），保证自选页能巡检到该持仓的信号
+  if (!isWatched(curCode.value, curMarket.value)) {
+    addWatch({ code: curCode.value, market: curMarket.value, name: name.value, note: "" });
+  }
+  uni.showToast({ title: "持仓已保存并加入自选", icon: "none" });
 }
 function onClearPosition() {
   clearPosition(secid.value);
