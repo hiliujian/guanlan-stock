@@ -146,7 +146,7 @@ async function backtestStock(secid: string, name: string): Promise<Agg> {
     const ret10 = win[win.length - 1].close / base - 1;
     cuts.push({ base, win, ret10 });
     accumulate(agg, {
-      score: a.score, sig: a.signal.level, sup: a.mainSupport, res: a.mainResistance,
+      score: a.score, sig: a.signal.level, sup: a.support, res: a.resistance,
       nearSup: a.nearSup, nearRes: a.nearRes, breakdown: a.breakdown, breakout: a.breakout,
       add: a.add, reduce: a.reduce,
     }, base, win, 10);

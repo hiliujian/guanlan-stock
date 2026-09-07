@@ -1,10 +1,12 @@
 <template>
   <view class="report">
     <!-- 历史胜率提示（独立于信号卡之外，不隶属任何单一信号档）：与信号卡同一引擎在近 250 个交易日逐日回放；
-         背景色随胜率分档：高（≥60%）红=可信、中（45%~60%）黄=中性、低（≤45%）绿=偏弱（A 股红涨绿跌约定） -->
+         背景色随胜率分档：高（≥60%）红=可信、中（45%~60%）黄=中性、低（≤45%）绿=偏弱（A 股红涨绿跌约定）；
+         「平均收益」数字按符号着色：+ 红 / − 绿（与个股涨跌同约定） -->
     <view v-if="sigWinRateText" :class="['sig-confidence', sigRateCls]">
       <OutlineIcon type="check" :size="26" :color="sigRateColor" />
       <text class="sc-text">{{ sigWinRateText }}</text>
+      <text :class="['sc-ret', sigRetCls]">{{ sigRetText }}</text>
     </view>
 
     <!-- 直白操作信号：报告的操作结论以此卡为唯一来源（原顶部横幅已移除，避免两套判定相互矛盾） -->
@@ -677,8 +679,19 @@ const sigWinRateText = computed(() => {
   const wr = a.value.signalWinRate;
   // 样本 <3 次不展示：小样本胜率噪声极大，展示反而误导
   if (!wr || wr.count < 3) return "";
-  const ret = (wr.avgRet >= 0 ? "+" : "") + (wr.avgRet * 100).toFixed(2) + "%";
-  return `20 个交易日胜率 ${(wr.winRate * 100).toFixed(0)}% · 平均收益 ${ret}`;
+  return `20 个交易日胜率 ${(wr.winRate * 100).toFixed(0)}% · 平均收益`;
+});
+// 平均收益数字单独着色：+ 红 / − 绿（A 股涨跌约定，与个股涨跌色一致）
+const sigRetText = computed(() => {
+  const wr = a.value.signalWinRate;
+  if (!wr || wr.count < 3) return "";
+  const ret = Math.abs(wr.avgRet * 100).toFixed(2) + "%";
+  return (wr.avgRet >= 0 ? "+" : "-") + ret;
+});
+const sigRetCls = computed(() => {
+  const wr = a.value.signalWinRate;
+  if (!wr || wr.count < 3) return "";
+  return wr.avgRet >= 0 ? "ret-up" : "ret-down";
 });
 // 胜率分档配色：高≥60% 红（可信）、低≤45% 绿（偏弱）、中间黄（中性）——A 股红涨绿跌约定
 const sigRateCls = computed(() => {
@@ -1206,6 +1219,13 @@ function openNews(it: NewsItem) {
   line-height: 1.4;
   color: var(--r-ink);
 }
+/* 平均收益数字：+ 红 / − 绿（A 股涨跌约定），与整条背景分档色独立 */
+.sig-confidence .sc-ret {
+  flex: none;
+  font-size: var(--font-sm);
+}
+.sig-confidence .sc-ret.ret-up { color: var(--up); }
+.sig-confidence .sc-ret.ret-down { color: var(--down); }
 .signal-card.buy .signal { background: rgba(239, 35, 42, 0.1); }
 .signal-card.sell .signal { background: rgba(9, 176, 122, 0.12); }
 .signal-card.hold .signal { background: rgba(59, 130, 246, 0.1); }
