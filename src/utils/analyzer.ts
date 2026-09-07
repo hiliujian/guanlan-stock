@@ -1335,7 +1335,9 @@ export function analyze(
 
   // !breakout 抑制：放量突破压力后「价格临近高位 / RSI 超买」不再触发减仓；
   // ma60 拉高出货条件（大幅偏离 MA60 + 主力资金净流出）与突破方向相悖，保留不抑制。
-  const watch = (!(nearTop && rNow > 75) || breakout) && trend !== "down";
+  // trend 门槛与信号层「关注」同口径（up / shake_up）：shake（多空僵持）日决策必须落
+  // 「观望为主」，否则决策「可关注」与信号卡「观望」同屏矛盾（实测 5 股 220 天出现 105 次）。
+  const watch = (!(nearTop && rNow > 75) || breakout) && (trend === "up" || trend === "shake_up");
   // build/add 必须排除 breakdown：破位后价格贴近 120 日底部（nearBottom 天然成立），
   // 否则决策「分批建仓/加仓」与信号卡「已跌破关键支撑，减仓回避」及结论「应止损离场」同屏矛盾
   //（与 reduce 兜底、add 排除 reduce 同一「决策-信号同向」原则）。
@@ -1459,6 +1461,14 @@ export function analyze(
   if (intraday.isLimitUp && decision === "reduce") decision = "watch";
   else if ((intraday.isLimitDown || intraday.isBrokenLimitUp) && (decision === "add" || decision === "build" || decision === "watch")) decision = "reduce";
   else if (intraday.isBrokenLimitDown && (decision === "add" || decision === "build")) decision = "watch";
+
+  // 决策-信号同向兜底（镜像）：信号卡为「买点」时，决策不得回落为「观望为主」——
+  // 否则「买点·可逢低关注」与决策「观望为主」同屏矛盾（实测多空僵持/下跌趋势中
+  // 临近支撑企稳时出现，5 股 220 天 27 次）。买点成立即至少「可关注」。
+  if (signal.level === "buy" && decision === "wait") decision = "watch";
+  // 同向兜底（镜像）：信号卡为「卖点」时决策至少「建议减仓」（震荡市近压走弱的
+  // nearRes 卖点会落在决策「观望为主」上——减仓建议与躺平观望并存，持仓者无所适从）。
+  if (signal.level === "sell" && decision === "wait") decision = "reduce";
 
   // 决策-走势同向兜底：信号卡为「卖点」时，走势预测不得残留偏多措辞与「建议减仓」同屏打架
   // （实证：紫金矿业 reduce 兜底 + 临近支撑 → 「卖点·高位风险积聚」+「企稳反弹」同屏矛盾；
