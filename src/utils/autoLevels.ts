@@ -479,7 +479,7 @@ function ensureStructLine(
     // 也按破位降级标注，杜绝「有效支撑悬在头顶 / 有效压力坠在脚下」的视觉误导。
     const current = series[series.length - 1]?.close ?? 0;
     const wrongSide = current > 0 && (role === "support" ? current < r.price : current > r.price);
-    if (broken || wrongSide) return { price: r.price, tag: base.tag, sub: "已破位", label: base.name, src: `${srcBase}·已破位（原价位 ${r.price.toFixed(2)}）`, degraded: true };
+    if (broken || wrongSide) return { price: r.price, tag: base.tag, sub: "已破位", label: base.name, src: `${srcBase}·已破位（原价位 ${r.price.toFixed(3)}）`, degraded: true };
     return { price: r.price, tag: base.tag, sub: "", label: base.name, src: `${srcBase}·波段${role === "support" ? "低点" : "高点"}簇 No.1`, degraded: false };
   }
   // 簇缺失 → 最近摆动点；再无 → 窗口极值（前复权负价守卫：仅取正价）
@@ -534,7 +534,7 @@ export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard, d
         color: wrongSide ? fadeColor(TRADE_SUPPORT_COLOR, 0.5) : TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR,
         size: 1, dashed: true,
         tag: L.tS.tag, sub: wrongSide ? "已破位" : L.tS.sub,
-        label: L.tS.name, src: wrongSide ? `交易参考支撑·已破位（原价位 ${price.toFixed(2)}）` : "交易参考支撑·短线低点簇 No.1",
+        label: L.tS.name, src: wrongSide ? `交易参考支撑·已破位（原价位 ${price.toFixed(3)}）` : "交易参考支撑·短线低点簇 No.1",
       });
   }
   // 交易参考压力（绿细虚线，挂载 B 标签；硬性准入同上，统一由 invalid 判定；错误侧守卫同上）
@@ -548,7 +548,7 @@ export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard, d
         color: wrongSide ? fadeColor(TRADE_PRESSURE_COLOR, 0.5) : TRADE_PRESSURE_COLOR, bg: TRADE_PRESSURE_COLOR,
         size: 1, dashed: true,
         tag: L.tP.tag, sub: wrongSide ? "已破位" : L.tP.sub,
-        label: L.tP.name, src: wrongSide ? `交易参考压力·已破位（原价位 ${price.toFixed(2)}）` : "交易参考压力·短线高点簇 No.1",
+        label: L.tP.name, src: wrongSide ? `交易参考压力·已破位（原价位 ${price.toFixed(3)}）` : "交易参考压力·短线高点簇 No.1",
       });
   }
 

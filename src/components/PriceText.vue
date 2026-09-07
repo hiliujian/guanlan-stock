@@ -17,7 +17,7 @@ const props = withDefaults(
     prefix?: boolean; // 是否显示 +/- 号
     digits?: number;
   }>(),
-  { size: 32, weight: 600, prefix: false, digits: 2 }
+  { size: 32, weight: 600, prefix: false, digits: 3 } // 价格全局口径 3 位小数
 );
 
 const colorClass = computed(() => {

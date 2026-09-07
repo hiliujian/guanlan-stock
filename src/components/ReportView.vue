@@ -71,7 +71,7 @@
           <view class="sd-row">
             <text class="sd-k">持仓成本</text>
             <text class="sd-v">
-              成本 {{ posView.c.toFixed(2) }} · 现价 {{ posView.p.toFixed(2) }} · 浮动盈亏
+              成本 {{ posView.c.toFixed(3) }} · 现价 {{ posView.p.toFixed(3) }} · 浮动盈亏
               <text :class="posView.pnl >= 0 ? 'pv-up' : 'pv-down'">{{ posView.pnlText }}</text>
             </text>
           </view>
@@ -859,7 +859,7 @@ const bollBwColor = computed(() => {
 });
 
 // ---------------- 筹码分布（CYQ）派生 ----------------
-const chipAvgText = computed(() => a.value.chip ? a.value.chip.avgCost.toFixed(2) : "—");
+const chipAvgText = computed(() => a.value.chip ? a.value.chip.avgCost.toFixed(3) : "—");
 const chipDistLabel = computed(() => {
   const c = a.value.chip;
   if (!c) return "";
@@ -881,7 +881,7 @@ const chipPeakText = computed(() => {
   const d = (a.value.price - c.peakPrice) / c.peakPrice;
   // 现价高于密集峰 → 密集峰在下方形成支撑；现价低于密集峰 → 密集峰在上方形成套牢压力
   const rel = d > 0.08 ? "现价下方支撑" : d < -0.08 ? "现价上方压力" : "贴近现价";
-  return `${c.peakPrice.toFixed(2)}（${rel}）`;
+  return `${c.peakPrice.toFixed(3)}（${rel}）`;
 });
 const chipProfitText = computed(() => {
   const c = a.value.chip;
@@ -900,7 +900,7 @@ const chipProfitColor = computed(() => {
 const chipRangeText = computed(() => {
   const c = a.value.chip;
   if (!c || c.percentiles["5"] == null) return "—";
-  return `${c.percentiles["5"].toFixed(2)} ~ ${c.percentiles["95"].toFixed(2)}`;
+  return `${c.percentiles["5"].toFixed(3)} ~ ${c.percentiles["95"].toFixed(3)}`;
 });
 
 // ---------------- 资讯情绪（供分析结论综合所有量化因子） ----------------
@@ -929,9 +929,9 @@ const conclusion = computed(() => {
   };
   parts.push(advice[r.decision] ?? advice.wait);
   // 价位应对必须区分「既成事实」与「待验证假设」：已破位仍念通用止损提示会误导
-  if (r.breakdown) parts.push(`支撑 ${r.support.toFixed(2)} 已被有效跌破，原支撑或转为压力，反弹无力应止损离场。`);
-  else if (r.breakout) parts.push(`压力 ${r.resistance.toFixed(2)} 已有效突破，回踩不破可顺势持有或跟进。`);
-  else parts.push(`支撑 ${r.support.toFixed(2)}、压力 ${r.resistance.toFixed(2)}：有效跌破支撑应止损离场，放量突破压力可顺势跟进。`);
+  if (r.breakdown) parts.push(`支撑 ${r.support.toFixed(3)} 已被有效跌破，原支撑或转为压力，反弹无力应止损离场。`);
+  else if (r.breakout) parts.push(`压力 ${r.resistance.toFixed(3)} 已有效突破，回踩不破可顺势持有或跟进。`);
+  else parts.push(`支撑 ${r.support.toFixed(3)}、压力 ${r.resistance.toFixed(3)}：有效跌破支撑应止损离场，放量突破压力可顺势跟进。`);
   // 资金背离防误判：给偏多建议但主力明显净流出（analyzer 同口径 ≤ -0.5 亿）时必须点破
   if ((r.add || r.build || r.watch) && r.f5.has && r.f5.sum <= -0.5) {
     parts.push(`但近5日主力资金净流出 ${Math.abs(r.f5.sum).toFixed(2)} 亿，介入宜轻仓试探、严控仓位。`);

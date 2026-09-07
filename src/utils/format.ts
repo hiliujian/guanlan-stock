@@ -1,7 +1,8 @@
 // 纯函数：数字格式化（跨端通用，无平台依赖）
-export function fmtPrice(v: number | null | undefined): string {
+// 价格统一保留 3 位小数（全局口径）；指数点位等特殊场景显式传 digits=2
+export function fmtPrice(v: number | null | undefined, digits = 3): string {
   if (v == null || isNaN(v)) return "--";
-  return v.toFixed(2);
+  return v.toFixed(digits);
 }
 
 export function fmtPct(v: number | null | undefined, withSign = true): string {
@@ -10,11 +11,12 @@ export function fmtPct(v: number | null | undefined, withSign = true): string {
   return s + v.toFixed(2) + "%";
 }
 
-// 整数感知的数字格式化（社区持仓卡片用）：缺失/非数 → "-"，整数直接显示、否则 2 位小数。
+// 整数感知的数字格式化（社区持仓卡片用）：缺失/非数 → "-"，整数直接显示、否则 3 位小数。
+// （成本/现价均为价格量纲，随全局价格口径保留 3 位；数量为整数走整数分支不受影响。）
 // 从 PostCard / PostComposer 中抽取的共享实现，避免两份完全相同的 fmt() 冗余。
 export function fmtNum(n: number | null | undefined): string {
   if (n == null || isNaN(n)) return "-";
-  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+  return Number.isInteger(n) ? String(n) : n.toFixed(3);
 }
 
 // 带正负号的绝对值（用于涨跌额）

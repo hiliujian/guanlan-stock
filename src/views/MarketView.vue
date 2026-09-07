@@ -359,7 +359,8 @@ const idxCls = computed(() => {
   // 与全局涨跌着色统一规则一致：持平(0)中性色，避免「0.00%」被误染红
   return s ? (s.pct > 0 ? "up" : s.pct < 0 ? "down" : "") : "";
 });
-const idxPriceText = computed(() => fmtPrice(idxSnap.value?.price));
+// 指数点位保持 2 位小数（3 位为股票价格口径；指数非股票价格）
+const idxPriceText = computed(() => fmtPrice(idxSnap.value?.price, 2));
 const idxPctText = computed(() => fmtPct(idxSnap.value?.pct));
 
 // 展开态：全球重要市场指数实时面板数据（按目录分组渲染，缺失项降级「暂无数据」）

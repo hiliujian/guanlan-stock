@@ -221,7 +221,7 @@ function chip(klines: Kline[], winDays: number) {
   const colors: string[] = [];
   for (let i = 0; i < B; i++) {
     const p = minP + (i + 0.5) * step;
-    cats.push(p.toFixed(2));
+    cats.push(p.toFixed(3));
     vals.push(+(sm[i] / smTotal * 100).toFixed(2));
     colors.push(p <= cur ? DOWN : UP);
   }
@@ -240,7 +240,7 @@ function chip(klines: Kline[], winDays: number) {
       const pHi = cumulative / smTotal;
       const f = pHi !== pLo ? (t - pLo) / (pHi - pLo) : 0;
       const p = minP + (i + f) * step;
-      percentiles[String(targets[ti])] = +p.toFixed(2);
+      percentiles[String(targets[ti])] = +p.toFixed(3);
       ti++;
     }
   }
@@ -559,7 +559,7 @@ function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
       level: "sell",
       label: "卖点",
       text: "已跌破关键支撑，建议减仓回避",
-      reason: `现价 ${c.price.toFixed(2)} 已跌破支撑 ${c.support.toFixed(2)}，技术形态转弱`,
+      reason: `现价 ${c.price.toFixed(3)} 已跌破支撑 ${c.support.toFixed(3)}，技术形态转弱`,
       confirm: "若 3 日内不能收回支撑上方，下行空间进一步打开，应果断降低仓位",
     };
   }
@@ -573,7 +573,7 @@ function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
       label: "卖点",
       text: "高位风险积聚，建议逢高减仓",
       reason: c.nearTop
-        ? `价格接近阶段高位（约 ${c.topZone.toFixed(2)}），追高风险大`
+        ? `价格接近阶段高位（约 ${c.topZone.toFixed(3)}），追高风险大`
         : c.rNow > 78
           ? `RSI(12) 达 ${c.rNow.toFixed(2)}，超买明显`
           : "股价大幅偏离 MA60 且主力资金净流出，警惕拉高出货",
@@ -585,7 +585,7 @@ function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
       level: "buy",
       label: "买点",
       text: "已放量突破关键压力，可积极关注",
-      reason: `现价 ${c.price.toFixed(2)} 已站上压力 ${c.resistance.toFixed(2)}，打开上行空间`,
+      reason: `现价 ${c.price.toFixed(3)} 已站上压力 ${c.resistance.toFixed(3)}，打开上行空间`,
       confirm: "回踩不破该压力位且量能维持，则确认有效突破，可顺势加仓",
     };
   }
@@ -594,7 +594,7 @@ function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
       level: "sell",
       label: "卖点",
       text: "临近压力且动能转弱，注意逢高减仓",
-      reason: `价格接近压力 ${c.resistance.toFixed(2)}，且出现${c.rNow > 70 ? "RSI超买" : c.macdCross === "dead" ? "MACD死叉" : "资金净流出"}等滞涨信号`,
+      reason: `价格接近压力 ${c.resistance.toFixed(3)}，且出现${c.rNow > 70 ? "RSI超买" : c.macdCross === "dead" ? "MACD死叉" : "资金净流出"}等滞涨信号`,
       confirm: "若放量强势突破压力则转强可持有；否则易遇阻回落，应减仓",
     };
   }
@@ -605,7 +605,7 @@ function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
       level: "buy",
       label: "买点",
       text: "临近支撑且出现企稳信号，可逢低关注",
-      reason: `价格接近支撑 ${c.support.toFixed(2)}，且出现${c.rNow < 30 ? "RSI超卖" : c.macdCross === "gold" ? "MACD金叉" : "资金净流入"}等企稳信号`,
+      reason: `价格接近支撑 ${c.support.toFixed(3)}，且出现${c.rNow < 30 ? "RSI超卖" : c.macdCross === "gold" ? "MACD金叉" : "资金净流入"}等企稳信号`,
       confirm: "若放量站上支撑则确认止跌，可在买入区间内建仓；跌破则转弱观望",
     };
   }
@@ -1297,9 +1297,9 @@ export function analyze(
   // 关键：必须排除已破位（breakdown）——否则会出现「支撑已被有效跌破、应止损离场」
   // 与「建议买入区间 x~y」同屏并存的矛盾（distSup 在破位后为负，天然满足 <0.08）。
   const nearBuyZone = !breakdown && (nearSup || distSup < 0.08);
-  const buyLow = nearBuyZone ? +(support * 0.985).toFixed(2) : NaN;
+  const buyLow = nearBuyZone ? +(support * 0.985).toFixed(3) : NaN;
   const buyHigh = nearBuyZone
-    ? +Math.max(buyLow + 0.01, Math.min(support * 1.03, resistance)).toFixed(2)
+    ? +Math.max(buyLow + 0.01, Math.min(support * 1.03, resistance)).toFixed(3)
     : NaN;
 
   // !breakout 抑制：放量突破压力后「价格临近高位 / RSI 超买」不再触发减仓；
@@ -1318,11 +1318,11 @@ export function analyze(
     reduce ? "reduce" : add ? "add" : build ? "build" : watch ? "watch" : "wait";
 
   const risks: string[] = [];
-  if (nearTop) risks.push(`当前价格接近阶段高位（约 ${topZone.toFixed(2)}），短期回调风险较大。`);
+  if (nearTop) risks.push(`当前价格接近阶段高位（约 ${topZone.toFixed(3)}），短期回调风险较大。`);
   // 阈值与多维研判格 RSI 定义统一（>70 超买），不再用私有 78 造成「何时算超买」两处口径
   if (rNow > 70) risks.push(`RSI(12) 已达 ${rNow.toFixed(2)}，处于超买区，追高需谨慎。`);
   if (macdCross === "dead") risks.push("MACD 近期出现死叉，短线动能转弱。");
-  if (nearRes) risks.push(`上方压力位在 ${resistance.toFixed(2)} 附近，若无量能配合可能遇阻。`);
+  if (nearRes) risks.push(`上方压力位在 ${resistance.toFixed(3)} 附近，若无量能配合可能遇阻。`);
   // 话术注意：trend 由 DMI/ADX 判定，「多头排列/空头排列」是 MA 排列专属术语（见 maState），
   // trend=down 时均线系统可能是「均线纠缠」，此处不得声称「均线空头排列」以免与研判格矛盾。
   if (trend === "down") risks.push("整体处于下跌趋势，抄底需严格控制仓位。");
@@ -1338,7 +1338,7 @@ export function analyze(
   //（峰在现价下方是支撑锚，不是「上方套牢盘」，旧文案与报告「现价下方支撑」表述矛盾）
   if (chipR) {
     if (chipR.profitRatio > 0.9) risks.push(`筹码获利盘高达 ${(chipR.profitRatio * 100).toFixed(0)}%，浮盈盘集中易引发获利回吐。`);
-    if (chipR.peakPrice && price > chipR.peakPrice * 1.1) risks.push(`现价已远离筹码密集峰（${chipR.peakPrice.toFixed(2)}），乖离偏大，获利回吐与向峰回归的压力逐步显现。`);
+    if (chipR.peakPrice && price > chipR.peakPrice * 1.1) risks.push(`现价已远离筹码密集峰（${chipR.peakPrice.toFixed(3)}），乖离偏大，获利回吐与向峰回归的压力逐步显现。`);
   }
   // 智能标注联动风险（与图表同源）：破位支撑 / 弱势支撑 / 放量压力
   if (priceLevels.structSupport?.isBroken || priceLevels.tradeSupportS?.isBroken) {

@@ -1108,7 +1108,7 @@ function drawAutoLevels() {
         } as never);
       } else if (typeof lv.price === "number") {
         const t0 = dataList[0].timestamp;
-        const main = `${lv.tag ?? ""} ${lv.price.toFixed(2)}`;
+        const main = `${lv.tag ?? ""} ${lv.price.toFixed(3)}`;
         const sub = lv.sub || "";
         chart.createOverlay({
           id, name: "autoLevelLine", points: [{ timestamp: t0, value: lv.price }], lock: true,
@@ -1349,7 +1349,7 @@ function ensureDrawOverlays() {
         const col = overlay?.styles?.line?.color || "#888";
         const tag = overlay?.extendData?.tag || "";
         const price = overlay?.points?.[0]?.value;
-        const text = (tag ? tag + " " : "") + (price != null ? Number(price).toFixed(2) : "");
+        const text = (tag ? tag + " " : "") + (price != null ? Number(price).toFixed(3) : "");
         const top = buildYAxisLabelLayout(bounding.height).get(String(overlay?.id)) ?? coordinates[0].y;
         return [axisTagFig(text, top, col, bounding.width)];
       },
@@ -1395,7 +1395,7 @@ function ensureDrawOverlays() {
           const price = overlay?.points?.[i]?.value;
           if (price == null) return;
           const top = layout.get(`${overlay?.id}:${i}`) ?? c.y;
-          figs.push(axisTagFig(Number(price).toFixed(2), top, col, bounding.width));
+          figs.push(axisTagFig(Number(price).toFixed(3), top, col, bounding.width));
         });
         return figs;
       },
@@ -1420,7 +1420,7 @@ function ensureDrawOverlays() {
         const bounding = params.bounding as { width: number; height: number };
         const overlay = params.overlay as any;
         const points = overlay.points as any[];
-        const pricePrec = (params.precision && params.precision.price) ?? 2;
+        const pricePrec = (params.precision && params.precision.price) ?? 3;
         const col = overlay?.styles?.line?.color || "#888";
         const lines: any[] = [];
         const texts: any[] = [];
@@ -1726,7 +1726,7 @@ function handleCrosshair(c: any) {
     } else if (typeof lv.price === "number") {
       if (Math.abs(price - lv.price) <= tol) {
         const src = lv.src ? ` · ${lv.src}` : "";
-        items.push({ label: lv.label, color: lv.color, text: `${lv.price.toFixed(2)}${src}` });
+        items.push({ label: lv.label, color: lv.color, text: `${lv.price.toFixed(3)}${src}` });
       }
     }
   }
@@ -1864,6 +1864,7 @@ function buildChart() {
     chart = init(chartEl.value, {
       layout: buildLayout(),
       styles: buildStyles(),
+      precision: { price: 3, volume: 0 }, // 价格全局口径 3 位小数（轴标签/十字光标/图例同步）
       customApi: {
         formatDate: (_dt: Intl.DateTimeFormat, timestamp: number, format: string) => {
           const d = new Date(timestamp);
