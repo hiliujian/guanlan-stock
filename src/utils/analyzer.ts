@@ -553,6 +553,33 @@ interface SignalCascadeCtx {
   f5: FlowSummary;
   f10: FlowSummary;
 }
+/**
+ * 减仓（reduce）判定 —— 实时报告与历史回放共用的唯一实现（防两处公式漂移）。
+ * 「贴着阶段高位」本身不是卖点：强势股可以长期沿箱体上沿运行（压力位随新高上移，
+ * 价格天然经常处于 ≥压力位 93% 的位置），单凭位置高就喊卖，会让上升趋势中的报告
+ * 绝大多数天数都是卖点（基线实测：2200 样本天 73% 为卖点、其中 reduce 分支占 100%，
+ * 茅台/工行等慢牛股 90%+ 天数显示「高位风险积聚」——这就是「指标都很好为啥是卖点」的根源）。
+ * 因此高位减仓需要「位置 + 动能走弱」双重确认：
+ *   · nearTop（≥压力位 93%）且动能走弱（RSI>75 / MACD 死叉 / 主力资金净流出）——位置好但涨不动的减仓
+ *   · 或 RSI>78（不要求位置的硬超买）
+ *   · 或 大幅偏离 MA60（>1.5 倍）且主力资金净流出（拉高出货形态）
+ * 放量突破（breakout）期间位置高是强势特征，不触发前两类减仓。
+ * flowOut 由调用方按数据可得性传入（实时=f10 净流出；历史回放资金流不可得=恒 false）。
+ */
+function isReduce(o: {
+  nearTop: boolean;
+  rNow: number;
+  macdCross: "gold" | "dead" | null;
+  breakout: boolean;
+  ma60Last: number | null | undefined;
+  price: number;
+  flowOut: boolean;
+}): boolean {
+  const weaken = o.rNow > 75 || o.macdCross === "dead" || o.flowOut;
+  return (
+    ((o.nearTop && weaken) || o.rNow > 78) && !o.breakout
+  ) || (o.ma60Last != null && o.price > o.ma60Last * 1.5 && o.flowOut);
+}
 function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
   if (c.breakdown) {
     return {
@@ -564,18 +591,20 @@ function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
     };
   }
   if (c.reduce) {
-    // 决策-信号同向兜底：reduce 已成立（临近高位 / RSI 超买 / 远离 MA60+资金流出）但
+    // 决策-信号同向兜底：reduce 已成立（高位+动能走弱 / RSI 硬超买 / 远离 MA60+资金流出）但
     // 未命中上方任何信号分支时，信号卡不得回落为「关注/持有」与决策「建议减仓」同屏打架。
     // 置于 breakout 之前：拉高出货（大幅偏离 MA60 + 主力资金净流出）即使伴随放量突破，
     // 资金流向警示也优先于技术形态，宁可不追。
+    const weakenTxt =
+      c.rNow > 75 ? `RSI(12) 达 ${c.rNow.toFixed(2)} 超买` : c.macdCross === "dead" ? "MACD 死叉" : "主力资金净流出";
     return {
       level: "sell",
       label: "卖点",
-      text: "高位风险积聚，建议逢高减仓",
-      reason: c.nearTop
-        ? `价格接近阶段高位（约 ${c.topZone.toFixed(3)}），追高风险大`
-        : c.rNow > 78
-          ? `RSI(12) 达 ${c.rNow.toFixed(2)}，超买明显`
+      text: "高位滞涨风险，建议逢高减仓",
+      reason: c.rNow > 78
+        ? `RSI(12) 达 ${c.rNow.toFixed(2)}，硬超买`
+        : c.nearTop
+          ? `价格接近阶段高位（约 ${c.topZone.toFixed(3)}）且${weakenTxt}，上攻动能不足`
           : "股价大幅偏离 MA60 且主力资金净流出，警惕拉高出货",
       confirm: "放量滞涨或跌破 MA5/MA10 时果断减仓；缩量回踩 MA20 不破可继续持有",
     };
@@ -589,12 +618,14 @@ function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
       confirm: "回踩不破该压力位且量能维持，则确认有效突破，可顺势加仓",
     };
   }
-  if (c.nearRes && (c.rNow > 72 || c.macdCross === "dead" || (c.f10.has && c.f10.sum < 0))) {
+  // 与 reduce 同口径：单凭「临近压力」不算卖，动能走弱也要达到同样强度
+  // （RSI>75 / MACD 死叉 / 资金净流出任一）。此前 RSI>72 在上升趋势中过于易触发。
+  if (c.nearRes && (c.rNow > 75 || c.macdCross === "dead" || (c.f10.has && c.f10.sum < 0))) {
     return {
       level: "sell",
       label: "卖点",
       text: "临近压力且动能转弱，注意逢高减仓",
-      reason: `价格接近压力 ${c.resistance.toFixed(3)}，且出现${c.rNow > 70 ? "RSI超买" : c.macdCross === "dead" ? "MACD死叉" : "资金净流出"}等滞涨信号`,
+      reason: `价格接近压力 ${c.resistance.toFixed(3)}，且出现${c.rNow > 75 ? "RSI超买" : c.macdCross === "dead" ? "MACD死叉" : "资金净流出"}等滞涨信号`,
       confirm: "若放量强势突破压力则转强可持有；否则易遇阻回落，应减仓",
     };
   }
@@ -783,7 +814,7 @@ function replaySignalStats(daily: Kline[] | undefined, code: string | undefined)
     const breakdown = supportFromPivot && price < support * 0.985 && volRatio > 0.9;
     const breakout = resistanceFromPivot && price > resistance * 1.015 && volRatio > 1.0;
     const build = !breakdown && (nearBottom || (trend === "up" && price <= ma20Now * 1.02)) && rNow < 70 && !nearTop;
-    const reduce = ((nearTop || rNow > 78) && !breakout) || (ma60Last != null && price > ma60Last * 1.5 && noFlow.sum < 0);
+    const reduce = isReduce({ nearTop, rNow, macdCross, breakout, ma60Last, price, flowOut: false });
     const add = !reduce && !breakdown && trend === "up" && Math.abs(price - ma20Now) / ma20Now < 0.03 && noFlow.sum > 0 && rNow < 75;
     // 与实时报告同序：先 5 档级联，再涨跌停/炸板覆盖
     const intraday = detectLimitMove(prefix, code);
@@ -1309,7 +1340,7 @@ export function analyze(
   // 否则决策「分批建仓/加仓」与信号卡「已跌破关键支撑，减仓回避」及结论「应止损离场」同屏矛盾
   //（与 reduce 兜底、add 排除 reduce 同一「决策-信号同向」原则）。
   const build = !breakdown && (nearBottom || (trend === "up" && price <= ma20[len - 1]! * 1.02)) && rNow < 70 && !nearTop;
-  const reduce = ((nearTop || rNow > 78) && !breakout) || (ma60Last != null && price > ma60Last * 1.5 && f10.sum < 0);
+  const reduce = isReduce({ nearTop, rNow, macdCross, breakout, ma60Last, price, flowOut: f10.has && f10.sum < 0 });
   // add 必须排除 reduce 条件（高位 / RSI超买 / 远离MA60+资金流出），
   // 否则「可加仓」与「建议减仓」同时亮起，给用户矛盾信号。
   const add = !reduce && !breakdown && trend === "up" && Math.abs(price - ma20[len - 1]!) / ma20[len - 1]! < 0.03 && f5.sum > 0 && rNow < 75;
