@@ -1,12 +1,13 @@
 <template>
   <view class="report">
     <!-- 历史胜率提示（独立于信号卡之外，不隶属任何单一信号档）：与信号卡同一引擎在近 250 个交易日逐日回放；
-         背景色随胜率分档：高（≥60%）红=可信、中（45%~60%）黄=中性、低（≤45%）绿=偏弱（A 股红涨绿跌约定）；
-         「平均收益」数字按符号着色：+ 红 / − 绿（与个股涨跌同约定） -->
-    <view v-if="sigWinRateText" :class="['sig-confidence', sigRateCls]">
-      <OutlineIcon type="check" :size="26" :color="sigRateColor" />
-      <text class="sc-text">{{ sigWinRateText }}</text>
-      <text :class="['sc-ret', sigRetCls]">{{ sigRetText }}</text>
+         左侧胜率右侧平均收益；颜色只用涨红/跌绿：胜率 ≥50% 红（偏多）/ <50% 绿（偏弱），收益 + 红 / − 绿 -->
+    <view v-if="sigRateText" class="sig-confidence">
+      <text :class="['sc-rate', sigRateCls]">{{ sigRateText }}</text>
+      <view class="sc-side">
+        <text class="sc-label">平均收益</text>
+        <text :class="['sc-ret', sigRetCls]">{{ sigRetText }}</text>
+      </view>
     </view>
 
     <!-- 直白操作信号：报告的操作结论以此卡为唯一来源（原顶部横幅已移除，避免两套判定相互矛盾） -->
@@ -675,13 +676,19 @@ const rangePosColor = computed(() =>
 
 // ---------------- 历史胜率提示（与信号卡同一引擎的回放统计；全部信号合并、不分档） ----------------
 // 「20 个交易日」与均线 MA20 同一计数口径：都是 20 根日 K（非自然日）。
-const sigWinRateText = computed(() => {
+// 颜色只用涨红/跌绿一对：胜率 ≥50% 红（偏多）/ <50% 绿（偏弱）。
+const sigRateText = computed(() => {
   const wr = a.value.signalWinRate;
   // 样本 <3 次不展示：小样本胜率噪声极大，展示反而误导
   if (!wr || wr.count < 3) return "";
-  return `20 个交易日胜率 ${(wr.winRate * 100).toFixed(0)}% · 平均收益`;
+  return `20 个交易日胜率 ${(wr.winRate * 100).toFixed(0)}%`;
 });
-// 平均收益数字单独着色：+ 红 / − 绿（A 股涨跌约定，与个股涨跌色一致）
+const sigRateCls = computed(() => {
+  const wr = a.value.signalWinRate;
+  if (!wr || wr.count < 3) return "";
+  return wr.winRate >= 0.5 ? "rate-up" : "rate-down";
+});
+// 平均收益数字按符号着色：+ 红 / − 绿（A 股涨跌约定，与个股涨跌色一致）
 const sigRetText = computed(() => {
   const wr = a.value.signalWinRate;
   if (!wr || wr.count < 3) return "";
@@ -692,16 +699,6 @@ const sigRetCls = computed(() => {
   const wr = a.value.signalWinRate;
   if (!wr || wr.count < 3) return "";
   return wr.avgRet >= 0 ? "ret-up" : "ret-down";
-});
-// 胜率分档配色：高≥60% 红（可信）、低≤45% 绿（偏弱）、中间黄（中性）——A 股红涨绿跌约定
-const sigRateCls = computed(() => {
-  const wr = a.value.signalWinRate;
-  if (!wr) return "rate-mid";
-  return wr.winRate >= 0.6 ? "rate-high" : wr.winRate <= 0.45 ? "rate-low" : "rate-mid";
-});
-const sigRateColor = computed(() => {
-  const cls = sigRateCls.value;
-  return cls === "rate-high" ? "var(--up)" : cls === "rate-low" ? "var(--down)" : "#c87f00";
 });
 
 // ---------------- 乖离率 BIAS · 布林带宽（均值回归 + 波动率挤压）派生 ----------------
@@ -1193,39 +1190,38 @@ function openNews(it: NewsItem) {
   justify-content: space-between;
   padding: 20rpx 24rpx;
 }
-/* 历史胜率提示：独立条（置于信号卡外，不隶属任何单一信号档）；
-   背景随胜率分档（高红/中黄/低绿，A 股约定），样本不足时整条隐藏 */
+/* 历史胜率提示：独立条（置于信号卡外，不隶属任何单一信号档），左右两侧布局；
+   颜色只用涨红/跌绿一对，样本不足时整条隐藏 */
 .sig-confidence {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12rpx;
   margin-bottom: 8rpx;
   padding: 16rpx 24rpx;
+  background: var(--primary-soft);
   border-radius: var(--radius);
 }
-.sig-confidence.rate-high {
-  background: rgba(239, 35, 42, 0.1);
-}
-.sig-confidence.rate-mid {
-  background: rgba(255, 159, 28, 0.12);
-}
-.sig-confidence.rate-low {
-  background: rgba(9, 176, 122, 0.12);
-}
-.sig-confidence .sc-text {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--font-sm);
-  line-height: 1.4;
-  color: var(--r-ink);
-}
-/* 平均收益数字：+ 红 / − 绿（A 股涨跌约定），与整条背景分档色独立 */
-.sig-confidence .sc-ret {
-  flex: none;
+.sc-rate {
   font-size: var(--font-sm);
 }
-.sig-confidence .sc-ret.ret-up { color: var(--up); }
-.sig-confidence .sc-ret.ret-down { color: var(--down); }
+.sc-rate.rate-up { color: var(--up); }
+.sc-rate.rate-down { color: var(--down); }
+.sc-side {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+.sc-label {
+  font-size: var(--font-sm);
+  color: var(--text-2);
+}
+/* 平均收益数字：+ 红 / − 绿（A 股涨跌约定） */
+.sc-ret {
+  font-size: var(--font-sm);
+}
+.sc-ret.ret-up { color: var(--up); }
+.sc-ret.ret-down { color: var(--down); }
 .signal-card.buy .signal { background: rgba(239, 35, 42, 0.1); }
 .signal-card.sell .signal { background: rgba(9, 176, 122, 0.12); }
 .signal-card.hold .signal { background: rgba(59, 130, 246, 0.1); }
