@@ -115,15 +115,20 @@
           </view>
         </view>
         <!-- 持仓录入 UI：与附件菜单共用 morph 容器（同玻璃底/圆角/阴影/动画机制）；
-             名称/代码 · 成本价 · 持仓数量 同行三输入，收益率由现价实时计算自动展示，无需手填 -->
+             名称/代码 · 持仓成本 · 持仓数量 同行三输入，收益率由现价实时计算自动展示，无需手填 -->
         <view v-else class="cp-hold">
-          <!-- 一键填入：历史持仓（数据库持久化，仅保留数量>0）→ 点击即回填表单 -->
-          <view v-if="savedHoldings.length" class="cp-quick">
+          <!-- 一键填入：历史持仓（数据库持久化，仅保留数量>0）→ 点击即回填表单；
+               本地持仓（行情页 Tip 录入，costBasis）未入库的也一并提供快速关联 -->
+          <view v-if="savedHoldings.length || localPositions.length" class="cp-quick">
             <text class="cp-quick-t">一键填入</text>
             <view class="cp-quick-list">
               <view v-for="s in savedHoldings" :key="s.code" class="cp-quick-chip" @click="fillSaved(s)">
                 <text class="cp-quick-name">{{ s.name || s.code }}</text>
                 <text class="cp-quick-num">{{ fmt(s.shares) }} 股</text>
+              </view>
+              <view v-for="p in localPositions" :key="'loc-' + p.code" class="cp-quick-chip" @click="fillLocal(p)">
+                <text class="cp-quick-name">{{ p.name }}</text>
+                <text class="cp-quick-num">{{ p.qty ? fmt(p.qty) + " 股" : "持仓" }}</text>
               </view>
             </view>
           </view>
@@ -150,7 +155,7 @@
                 </view>
               </view>
             </view>
-            <input class="cp-hold-in cp-hold-num" v-model.number="h.cost" type="digit" placeholder="成本价" />
+            <input class="cp-hold-in cp-hold-num" v-model.number="h.cost" type="digit" placeholder="持仓成本" />
             <input class="cp-hold-in cp-hold-num" v-model.number="h.shares" type="number" placeholder="持仓数量" />
           </view>
 
@@ -203,6 +208,7 @@ import { vipActive } from "@/store/level";
 import { getMyName } from "@/store/identity";
 import { openAuth } from "@/store/nav";
 import { uploadPostImage } from "@/api/auth";
+import { listPositions } from "@/utils/costBasis";
 import { fmtNum as fmt } from "@/utils/format";
 
 // 工具栏图标尺寸：线型图标视觉占比约 70%，统一放大到能与 --font-md(28rpx) 文字视觉匹配，避免看着偏小。
@@ -228,8 +234,17 @@ const editKind = ref<"holding" | null>(null);
 const menuOpen = ref(false);
 
 // 卡片编辑临时数据：收益率不手填，由现价与成本实时计算（holdPrice）。
-// price 为 HoldingCard 必填字段（发布时点现价），表单值以 confirmCard 时的 holdPrice 为准
-const h = reactive<HoldingCard>({ kind: "holding", stock: "", code: "", cost: 0, shares: 0, price: 0 });
+// price 为 HoldingCard 必填字段（发布时点现价），表单值以 confirmCard 时的 holdPrice 为准。
+// cost/shares 初始为 undefined（而非 0）：输入框显示 placeholder 而非误导性的「0」，
+// confirmCard 有空值校验，不会把 undefined 带进持仓卡。
+const h = reactive<HoldingCard>({
+  kind: "holding",
+  stock: "",
+  code: "",
+  cost: undefined as unknown as number,
+  shares: undefined as unknown as number,
+  price: 0,
+});
 // 表单内选股后拉到的现价（收益率 = (现价 - 成本) / 成本）
 const holdPrice = ref(0);
 
@@ -257,6 +272,29 @@ function fillSaved(s: SavedHolding) {
   stockHits.value = [];
   holdPrice.value = 0;
   refreshHoldPrice(s.code);
+}
+
+// ---------------- 本地持仓快速关联：行情页 Tip 录入的持仓（costBasis，本地持久化） ----------------
+// 与持仓簿（user_holdings）去重：已入库的不重复展示。芯片仅按代码展示（本地无名称缓存，
+// 回填时尝试从本地股票池补名称，找不到则用户可在名称框自行修改）。
+const localPositions = computed(() => {
+  const dbCodes = new Set(savedHoldings.value.map((s) => s.code));
+  return listPositions()
+    .map((p) => {
+      const code = p.secid.split(".")[1];
+      return { code, cost: p.cost, qty: p.qty, name: LOCAL_STOCKS.find((x) => x.code === code)?.name || code };
+    })
+    .filter((p) => p.code && !dbCodes.has(p.code));
+});
+/** 点击本地持仓芯片 → 回填代码 / 持仓成本 / 数量（名称尽力补），并拉现价算收益率 */
+function fillLocal(p: { code: string; cost: number; qty?: number; name: string }) {
+  h.stock = p.name;
+  h.code = p.code;
+  h.cost = p.cost;
+  h.shares = p.qty as unknown as number;
+  stockHits.value = [];
+  holdPrice.value = 0;
+  refreshHoldPrice(p.code);
 }
 
 /** 本地持仓簿同步：确认后 upsert；移除时删行（数量为 0 由 saveHolding 内部转删除）。
@@ -698,7 +736,7 @@ async function confirmCard() {
     return;
   }
   if (!h.cost) {
-    uni.showToast({ title: "请填写成本价", icon: "none" });
+    uni.showToast({ title: "请填写持仓成本", icon: "none" });
     return;
   }
   if (!h.shares) {
@@ -855,8 +893,8 @@ async function send() {
 function resetHolding() {
   h.stock = "";
   h.code = "";
-  h.cost = 0;
-  h.shares = 0;
+  h.cost = undefined as unknown as number;
+  h.shares = undefined as unknown as number;
   h.price = 0;
   holdPrice.value = 0;
 }

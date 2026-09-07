@@ -493,7 +493,7 @@ import { fmtPrice, fmtPct, fmtSigned, fmtAmount, trendCls } from "@/utils/format
 import { anomalies, type AnomalyRecord, ANOMALY_META } from "@/store/anomaly";
 import { analyze } from "@/utils/analyzer";
 import { getKline } from "@/api/sources";
-import { listCostSecids, getCost, getLastSignal, setLastSignal } from "@/utils/costBasis";
+import { listCostSecids, getPosition, getLastSignal, setLastSignal } from "@/utils/costBasis";
 
 // 长按操作菜单目标股（统一并入 PeekSheet 面板，替代原先独立的 ActionSheet 弹层）
 const sheetExpanded = ref(false);
@@ -907,7 +907,7 @@ async function scanPositionSignals() {
         setLastSignal(secid, lvl);
         if ((lvl === "buy" || lvl === "sell") && lvl !== prev) {
           const name = nameBySecid.get(secid) || secid;
-          const cost = getCost(secid);
+          const cost = getPosition(secid)?.cost;
           const pnl = cost ? ((a.price - cost) / cost) * 100 : 0;
           alerts.push(
             `${name} 出现${lvl === "buy" ? "买点" : "卖点"}（现价 ${a.price.toFixed(2)} · 浮动盈亏 ${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}%）`

@@ -254,7 +254,7 @@ import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, reso
 import { fetchGlobalIndices, GLOBAL_INDEX_GROUPS, type GlobalIndexQuote } from "@/api/globalIndices";
 import { fetchCffexPositions, type CffexPositions } from "@/api/cffex";
 import { getMarketStatus } from "@/utils/marketStatus";
-import { getCost, setCost, clearCost } from "@/utils/costBasis";
+import { getPosition, setPosition, clearPosition, type Position } from "@/utils/costBasis";
 import { fmtPrice, fmtPct } from "@/utils/format";
 import {
   resolveSecid,
@@ -264,7 +264,7 @@ import {
   type PeriodKey,
   type Market,
 } from "@/utils/period";
-import { analyze, type AnalysisResult, type MarketContext } from "@/utils/analyzer";
+import { analyze, computeSignalWinRate, type AnalysisResult, type MarketContext } from "@/utils/analyzer";
 import { scoreNews, filterNews, type NewsSignal } from "@/utils/newsSentiment";
 import { visibleMarketCards, type MarketCardMeta, type CardId } from "@/utils/cardLayout";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
@@ -279,13 +279,26 @@ const switching = ref(false); // 仅「切换周期」使用，避免误占用�
 const name = ref("");
 const secid = ref("");
 const preClose = ref(0);
-// 持仓成本价（选填，按股持久化）：>0 视为持仓中，报告页给出「持仓视角」建议
-const costNum = ref(0);
-watch(secid, (s) => { costNum.value = getCost(s) ?? 0; }, { immediate: true });
-function onCostUpdate(v: number) {
-  costNum.value = v;
-  if (v > 0) setCost(secid.value, v);
-  else clearCost(secid.value);
+// 持仓信息（选填，按股持久化）：填了持仓成本即视为持仓中，报告页给出「持仓视角」建议；
+// 录入买入时间后，胜率提示改为「买入以来」口径（computeSignalWinRate 截窗回放）
+const pos = ref<Position | null>(null);
+watch(secid, (s) => { pos.value = getPosition(s); }, { immediate: true });
+const winRateOverride = computed(() => {
+  const t = pos.value?.time;
+  if (!t) return null;
+  const d = bundle.value?.klines?.d;
+  if (!d || !d.length) return null;
+  return computeSignalWinRate(d, curCode.value, t);
+});
+function onSavePosition(p: Position) {
+  setPosition(secid.value, p);
+  pos.value = getPosition(secid.value);
+  uni.showToast({ title: "持仓已保存", icon: "none" });
+}
+function onClearPosition() {
+  clearPosition(secid.value);
+  pos.value = null;
+  uni.showToast({ title: "已清除持仓", icon: "none" });
 }
 const klines = ref<any[]>([]);
 const trends = ref<any[]>([]);
@@ -510,9 +523,11 @@ const CARD_RENDERERS: Record<CardId, { comp: Component; props: () => Record<stri
       result: result.value,
       news: news.value,
       newsSignal: newsSig.value,
-      // 持仓成本价（按股持久化，见 costBasis）：>0 即视为持仓中，报告页展示「持仓视角」
-      cost: costNum.value,
-      "onUpdate:cost": onCostUpdate,
+      // 持仓信息（按股持久化，见 costBasis）：成本驱动「持仓视角」，买入时间驱动「买入以来」胜率
+      position: pos.value,
+      winRateOverride: winRateOverride.value,
+      onSavePosition: onSavePosition,
+      onClearPosition: onClearPosition,
     }),
   },
 };
