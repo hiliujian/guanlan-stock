@@ -131,12 +131,17 @@ function ensureAvp() {
       shortName: "",
       series: "price" as never, // 运行时即字符串 'price'，minified 枚举无值，直接传字面量
       calc: (dataList: any[]) => {
-        // 直接用数据源已正确算好的每股均价（东财 f58 / 腾讯 cumAmt÷(手×100) / 新浪兜底 close）。
+        // 直接用数据源已正确算好的每股均价（东财 f58 / 腾讯 cumAmt÷cumVol(股) / 新浪兜底 close）。
         // ⚠️ 旧逻辑 cumAmt/cumVol 自算存在单位错误：东财 vol 单位为「手」、amount 为「元」，
         // 相除得「元/手」≈ 真实价的 100 倍；而 AVP 与价格共用坐标轴，会把 y 轴撑爆、
         // 把真实价格线压成底部一条平直线（即「分时走势图变直线」的根因）。
+        // 护栏：均价(VWAP) 必在现价 0.5~2 倍之间（A股日内均价偏离极限约 ±20%），越界视为
+        // 来源单位漂移（如腾讯累计量被误当「手」算出 1/100 均价），回退收盘价兜底，
+        // 保证任何来源的单位错误都不再把 y 轴撑爆、把价格线压成直线。
         return dataList.map((d) => {
-          const v = d && Number.isFinite(d.avg) && d.avg > 0 ? d.avg : (d?.close ?? 0);
+          const c = d?.close ?? 0;
+          const a = d ? Number(d.avg) : NaN;
+          const v = Number.isFinite(a) && a > 0 && c > 0 && a > c * 0.5 && a < c * 2 ? a : c;
           return { avp: v };
         });
       },

@@ -92,30 +92,45 @@ export function parseTXTrend(text: string, sym: string): { trends: Trend[]; preC
   const rows: string[] = node.data;
   const preClose = +node.preClose || (rows.length ? parseFloat(rows[0].split(/\s+/)[1]) : 0);
   const trends: Trend[] = [];
-  let prevVolHand = 0; // 上一根累计成交量（手），用于差分还原每分钟量
+  let prevVolShare = 0; // 上一根累计成交量（股），用于差分还原每分钟量
   let prevAmt = 0; // 上一根累计成交额（元）
   for (const r of rows) {
     const a = r.split(/\s+/).filter(Boolean);
     if (a.length < 4) continue;
     const price = +a[1];
     if (!isFinite(price) || price <= 0) continue;
-    const cumVolHand = +a[2]; // 累计成交量（手）
+    const cumVolRaw = +a[2]; // 累计成交量（单位不统一，见下）
     const cumAmount = +a[3]; // 累计成交额（元）
-    // 东财/新浪分时量是「每分钟成交量(手)」。腾讯这里给的是累计量，为避免 VOL 面板画出
-    // 100 倍过大且单调向上的阶梯，差分还原成每分钟量（手），且不再 ×100 转成股。
+    // ⚠️ 腾讯 minute/query 的累计量单位不统一：实测主板/创业板等给「手」，科创板(68x)给「股」
+    //（如中微公司 0930 累计额 38527440 ÷ 现价 340 = 113316 = 原值，即股；招行同期 ratio≈100，即手）。
+    // 以前者写死「手」会把科创板均价算成真实值的 1/100（340 元股均价 3.40），AVP 均价线与
+    // 主图共轴时把 y 轴撑到 0~股价 → 正常波动的价格线被压成近似直线（「分时图变直线」根因）。
+    // 单位自适应：用「累计额 ÷ 累计量 ÷ 现价」比值自校验（≈1 → 股；≈100 → 手），不写死板块前缀。
+    const ratio = cumVolRaw ? cumAmount / cumVolRaw / price : 0;
+    const cumVolShare = ratio >= 50 ? cumVolRaw * 100 : cumVolRaw; // 统一归一为「股」
+    // 东财/新浪分时量单位是「手/分钟」：差分还原每分钟股数后 ÷100 转成手，保持跨源一致。
     // 非累计（异常/字段变动）时退回原始值，避免负量或丢量。
-    let volHand = cumVolHand - prevVolHand;
-    if (!(volHand >= 0)) volHand = cumVolHand;
-    prevVolHand = cumVolHand;
+    let volShare = cumVolShare - prevVolShare;
+    if (!(volShare >= 0)) volShare = ratio >= 50 ? cumVolRaw * 100 : cumVolRaw;
+    prevVolShare = cumVolShare;
     let amt = cumAmount - prevAmt;
     if (!(amt >= 0)) amt = cumAmount;
     prevAmt = cumAmount;
-    // 均价仍是「累计成交额 / 累计成交量」(元/股)，与东财语义一致
-    const avg = cumVolHand ? cumAmount / (cumVolHand * 100) : price;
+    // 均价 = 累计成交额 ÷ 累计成交量（股）= 元/股，与东财 f58 语义一致
+    const avg = cumVolShare ? cumAmount / cumVolShare : price;
     const hh = a[0].slice(0, 2);
     const mm = a[0].slice(2, 4);
     const t = dateStr ? `${dateStr} ${hh}:${mm}` : `${hh}:${mm}`;
-    trends.push({ t, open: price, price, high: price, low: price, vol: volHand, amount: amt, avg });
+    trends.push({
+      t,
+      open: price,
+      price,
+      high: price,
+      low: price,
+      vol: Math.round(volShare / 100),
+      amount: amt,
+      avg,
+    });
   }
   if (!trends.length) return null;
   return { trends, preClose };

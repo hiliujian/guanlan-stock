@@ -1,16 +1,14 @@
 <template>
   <view class="report">
     <!-- 历史胜率提示（独立于信号卡之外，不隶属任何单一信号档）：与信号卡同一引擎在近 250 个交易日逐日回放；
-         背景恒为提示黄不随数据变化；标签无色，仅数字按涨红/跌绿着色：胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿 -->
+         文案左对齐、· 分隔；背景恒为提示黄不随数据变化；标签无色，仅数字按涨红/跌绿着色：
+         胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿 -->
     <view v-if="sigRatePct" class="sig-confidence">
-      <view class="sc-item">
-        <text class="sc-label">20 个交易日胜率</text>
-        <text :class="['sc-num', sigRateCls]">{{ sigRatePct }}%</text>
-      </view>
-      <view class="sc-item">
-        <text class="sc-label">平均收益</text>
-        <text :class="['sc-num', sigRetCls]">{{ sigRetText }}</text>
-      </view>
+      <text class="sc-label">20 个交易日胜率</text>
+      <text :class="['sc-num', sigRateCls]">{{ sigRatePct }}%</text>
+      <text class="sc-dot">·</text>
+      <text class="sc-label">平均收益</text>
+      <text :class="['sc-num', sigRetCls]">{{ sigRetText }}</text>
     </view>
 
     <!-- 直白操作信号：报告的操作结论以此卡为唯一来源（原顶部横幅已移除，避免两套判定相互矛盾） -->
@@ -1193,29 +1191,30 @@ function openNews(it: NewsItem) {
   justify-content: space-between;
   padding: 20rpx 24rpx;
 }
-/* 历史胜率提示：独立条（置于信号卡外），整条居中；背景恒为提示黄（--warn 12% 透明度），
-   不随数据变化；标签中性色，仅数字按涨红/跌绿着色；样本不足时整条隐藏 */
+/* 历史胜率提示：独立条（置于信号卡外），文案左对齐、· 分隔；背景恒为提示黄
+   （--warn 12% 透明度）不随数据变化；标签中性色，仅数字按涨红/跌绿着色；样本不足时整条隐藏 */
 .sig-confidence {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 48rpx;
+  gap: 8rpx;
   margin-bottom: 8rpx;
   padding: 16rpx 24rpx;
   background: rgba(255, 159, 28, 0.12);
   border-radius: var(--radius);
 }
-.sc-item {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-}
 .sc-label {
   font-size: var(--font-sm);
   color: var(--text-2);
+  flex: none;
+}
+.sc-dot {
+  flex: none;
+  font-size: var(--font-sm);
+  color: var(--text-3);
 }
 /* 数字着色：胜率 ≥50% 红 / <50% 绿；收益 + 红 / − 绿（均为 A 股涨跌约定） */
 .sc-num {
+  flex: none;
   font-size: var(--font-sm);
 }
 .sc-num.rate-up { color: var(--up); }
