@@ -515,6 +515,7 @@ import { resolveSecid, marketCharFor } from "@/utils/period";
 import { getMarketStatus } from "@/utils/marketStatus";
 import { fmtPrice, fmtPct, fmtSigned, fmtAmount, trendCls } from "@/utils/format";
 import { anomalies, type AnomalyRecord, ANOMALY_META } from "@/store/anomaly";
+import { staleGet, staleSet } from "@/utils/staleCache";
 import { analyze } from "@/utils/analyzer";
 import { getKline } from "@/api/sources";
 import { listCostSecids, getPosition, getLastSignal, setLastSignal } from "@/utils/costBasis";
@@ -836,6 +837,9 @@ interface Snap {
 const EMPTY: Snap = { price: 0, chg: 0, pct: 0, loading: true };
 
 const quotes = reactive<Record<string, Snap>>({});
+// 页面切换 / 实例重建时先回填上次成功行情（stale-while-revalidate），避免短暂 "--" 空态
+const staleQ = staleGet<Record<string, Snap>>("wl:quotes");
+if (staleQ) Object.assign(quotes, staleQ);
 const keyOf = (it: WatchItem) => `${it.code}|${it.market}`;
 
 // 价格预警：上一轮成功价格（用于穿越检测）+ 当前命中行方向（up=突破阈值/红，down=跌破阈值/绿）
@@ -872,6 +876,13 @@ async function loadQuotes() {
       quotes[k] = { ...old, loading: false };
     }
   }
+  // 保留本次成功快照到 stale 缓存（排除 loading 态）：实例重建时先展示旧数据
+  const staleClean: Record<string, Snap> = {};
+  for (const k of Object.keys(quotes)) {
+    const st = quotes[k];
+    if (!st.loading && st.price) staleClean[k] = { ...st };
+  }
+  staleSet("wl:quotes", staleClean);
   refreshAlertHits();
 }
 

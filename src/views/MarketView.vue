@@ -254,6 +254,7 @@ import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, reso
 import { fetchGlobalIndices, GLOBAL_INDEX_GROUPS, type GlobalIndexQuote } from "@/api/globalIndices";
 import { fetchCffexPositions, type CffexPositions } from "@/api/cffex";
 import { getMarketStatus } from "@/utils/marketStatus";
+import { staleGet, staleSet } from "@/utils/staleCache";
 import { getPosition, setPosition, clearPosition, type Position } from "@/utils/costBasis";
 import { fmtPrice, fmtPct } from "@/utils/format";
 import {
@@ -329,7 +330,9 @@ function setRealtime(snap: { price: number; preClose: number; open?: number; hig
 const DEFAULT_INDEX = { secid: "1.000001", name: "上证指数" };
 const idxSecid = ref(DEFAULT_INDEX.secid);
 const idxName = ref(DEFAULT_INDEX.name);
-const idxSnap = ref<{ price: number; preClose: number; pct: number; chg: number } | null>(null);
+const idxSnap = ref<{ price: number; preClose: number; pct: number; chg: number } | null>(
+    staleGet("mv:idxSnap")
+  );
 let idxGen = 0; // 指数快照请求代际（见 refreshIndex）
 // 依据当前股票代码匹配对应大盘指数（无股票 → 默认上证指数）；沿用 quote.ts 既有判定，避免重复逻辑。
 function resolveIdx() {
@@ -345,6 +348,7 @@ async function refreshIndex() {
     const s = await fetchSnapshot(idxSecid.value);
     if (gen !== idxGen) return;
     idxSnap.value = { price: s.price, preClose: s.preClose, pct: s.pct, chg: s.chg };
+    staleSet("mv:idxSnap", idxSnap.value);
   } catch {
     /* 保留上次快照，下一拍重试 */
   }
@@ -373,7 +377,9 @@ function toggleGrp(key: string) {
   else s.add(key);
   collapsedGrps.value = s;
 }
-const globalQuotes = ref<Map<string, GlobalIndexQuote>>(new Map());
+const globalQuotes = ref<Map<string, GlobalIndexQuote>>(
+    staleGet<Map<string, GlobalIndexQuote>>("mv:globalQuotes") ?? new Map()
+  );
 let globalTimer: any = null;
 // 面板展开态跟踪：keep-alive 切走时 stopTimers 会同步停掉指数面板刷新，
 // 切回（onActivated → syncTimers）按此恢复展开态的轮询；浏览器后台门控（syncTimers）同用
@@ -381,6 +387,7 @@ const sheetExpanded = ref(false);
 async function refreshGlobal() {
   try {
     globalQuotes.value = await fetchGlobalIndices();
+    staleSet("mv:globalQuotes", globalQuotes.value);
   } catch {
     /* 保留上次数据，下一拍重试 */
   }
@@ -472,11 +479,12 @@ function bktCls(it: { secid: string }): string {
 }
 
 // ---------------- 期指持仓（中金所官方，最近已发布交易日） ----------------
-const cffexPos = ref<CffexPositions | null>(null);
+const cffexPos = ref<CffexPositions | null>(staleGet("mv:cffex"));
 async function loadCffex() {
   if (cffexPos.value) return;
   try {
     cffexPos.value = await fetchCffexPositions();
+    staleSet("mv:cffex", cffexPos.value);
   } catch {
     /* 失败保留 null，下次展开重试，界面降级「暂无数据」 */
   }
@@ -757,6 +765,7 @@ async function refreshFull() {
     return;
   }
   news.value = filtered;
+    staleSet("mv:news", filtered);
   newsSig.value = scoreNews(filtered);
   applyPeriod(period.value);
 }
@@ -895,6 +904,7 @@ async function run(forceMarket?: Market, track = true) {
     if (gen !== fetchGen) return;
     const filtered = filterNews(n, { code: curCode.value, name: name.value, industry: b.industry || "" });
     news.value = filtered;
+    staleSet("mv:news", filtered);
     newsSig.value = scoreNews(filtered);
   } catch (e: any) {
     if (gen === fetchGen) {

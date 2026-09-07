@@ -19,7 +19,7 @@
          teleport 到 body —— 避免被任何 transform/backdrop-filter 祖先变成「相对元素定位」，
          导致弹窗出现在页面中部、需滚动才能找到（本次 bug 根因）；无遮罩、卡片实色背景 -->
     <teleport to="body">
-      <view v-if="posFormOpen" class="pos-mask">
+      <view v-if="posFormOpen" ref="posMaskRef" class="pos-mask">
         <view class="pos-form">
           <view class="pf-head">
             <text class="pf-title">录入持仓</text>
@@ -415,7 +415,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref, watch, onUnmounted } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import PriceText from "./PriceText.vue";
 import type { AnalysisResult } from "@/utils/analyzer";
@@ -797,6 +797,20 @@ function savePosition() {
   emit("save-position", { cost: c, qty });
   posFormOpen.value = false;
 }
+// 点击卡片外部区域关闭：teleport 后弹窗在 body 下，捕获阶段判定目标不在子树内即收起
+const posMaskRef = ref<any>(null);
+function onDocPointerDown(e: Event) {
+  const r = posMaskRef.value as any;
+  const el: HTMLElement | null =
+    r instanceof HTMLElement ? r : r?.$el instanceof HTMLElement ? r.$el : null;
+  if (el && !el.contains(e.target as Node)) posFormOpen.value = false;
+}
+watch(posFormOpen, (v) => {
+  if (v) document.addEventListener("pointerdown", onDocPointerDown, true);
+  else document.removeEventListener("pointerdown", onDocPointerDown, true);
+});
+onUnmounted(() => document.removeEventListener("pointerdown", onDocPointerDown, true));
+
 function clearPosition() {
   emit("clear-position");
   pfCost.value = "";
@@ -1417,11 +1431,16 @@ function openNews(it: NewsItem) {
   flex-direction: column;
   gap: 16rpx;
   padding: 24rpx;
-  background: var(--bg);
+  background: #fff; /* 浅色主题纯白卡片；深色主题由下方 :global 覆盖 */
   border: 1rpx solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-2);
 }
+/* 深色主题（html.theme-dark）：弹窗底色跟随全局深色变量 */
+:global(.theme-dark) .pos-form {
+  background: var(--bg-2);
+}
+
 .pf-head {
   display: flex;
   align-items: center;
