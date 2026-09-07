@@ -491,6 +491,9 @@ import { resolveSecid, marketCharFor } from "@/utils/period";
 import { getMarketStatus } from "@/utils/marketStatus";
 import { fmtPrice, fmtPct, fmtSigned, fmtAmount, trendCls } from "@/utils/format";
 import { anomalies, type AnomalyRecord, ANOMALY_META } from "@/store/anomaly";
+import { analyze } from "@/utils/analyzer";
+import { getKline } from "@/api/sources";
+import { listCostSecids, getCost, getLastSignal, setLastSignal } from "@/utils/costBasis";
 
 // 长按操作菜单目标股（统一并入 PeekSheet 面板，替代原先独立的 ActionSheet 弹层）
 const sheetExpanded = ref(false);
@@ -880,6 +883,53 @@ function refreshAlertHits() {
   alertState.value = next;
 }
 
+// ===== 持仓信号巡检：已填成本价（=持仓）的自选标的，产生买/卖信号时主动弹窗提醒 =====
+// 信号用真实 analyze() 引擎对日 K 计算（与报告页同源）；去重：记录每只上次信号档，
+// 仅信号档发生变化（含首次）才弹窗，避免每次进页重复轰炸。
+let scanningSig = false;
+async function scanPositionSignals() {
+  if (scanningSig) return;
+  const costSecids = listCostSecids();
+  if (!costSecids.length) return;
+  const nameBySecid = new Map(
+    list.value.map((it) => [resolveSecid(it.code, it.market as any) as string, it.name || it.code])
+  );
+  scanningSig = true;
+  try {
+    const alerts: string[] = [];
+    for (const secid of costSecids) {
+      try {
+        const kls = await getKline(secid, "d");
+        if (!kls || kls.length < 60) continue;
+        const a = analyze(kls, {}, null, kls, null, secid.split(".")[1], "d");
+        const lvl = a.signal.level;
+        const prev = getLastSignal(secid);
+        setLastSignal(secid, lvl);
+        if ((lvl === "buy" || lvl === "sell") && lvl !== prev) {
+          const name = nameBySecid.get(secid) || secid;
+          const cost = getCost(secid);
+          const pnl = cost ? ((a.price - cost) / cost) * 100 : 0;
+          alerts.push(
+            `${name} 出现${lvl === "buy" ? "买点" : "卖点"}（现价 ${a.price.toFixed(2)} · 浮动盈亏 ${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}%）`
+          );
+        }
+      } catch {
+        /* 单只失败不影响其余 */
+      }
+    }
+    if (alerts.length) {
+      uni.showModal({
+        title: "持仓信号提醒",
+        content: alerts.join("\n"),
+        showCancel: false,
+        confirmText: "知道了",
+      });
+    }
+  } finally {
+    scanningSig = false;
+  }
+}
+
 
 // 空态按钮：跳转到行情 tab 选股
 function goPickMarket() {
@@ -1245,6 +1295,7 @@ onMounted(() => {
   loadCols();
   if (!needLogin.value) loadQuotesSafe();
   loadPeek();
+  scanPositionSignals(); // 持仓信号巡检：进入自选页即检测一次
 });
 onActivated(() => {
   loadQuotesSafe();
@@ -1252,6 +1303,7 @@ onActivated(() => {
   loadPeek(); // 回到本页即刷新「今日最热」预览，避免展示过期的空态
   // onDeactivated 已停提醒对齐：回页后须重启，否则窗口内的异动提醒不再展示
   if (anomalyList.value.length > 0) startAnomSync();
+  scanPositionSignals(); // 回页再巡检一次（kline 缓存命中，开销可忽略）
 });
 onDeactivated(stopPolling);
 onDeactivated(stopAnomSync);

@@ -1,9 +1,10 @@
 <template>
   <view class="report">
     <!-- 历史胜率提示（独立于信号卡之外，不隶属任何单一信号档）：与信号卡同一引擎在近 250 个交易日逐日回放；
-         文案左对齐、· 分隔；背景恒为提示黄不随数据变化；标签无色，仅数字按涨红/跌绿着色：
+         无背景，Tip 图标 + 文案左对齐 · 分隔；标签无色，仅数字按涨红/跌绿着色：
          胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿 -->
     <view v-if="sigRatePct" class="sig-confidence">
+      <OutlineIcon type="tip" :size="26" color="var(--warn)" />
       <text class="sc-label">20 个交易日胜率</text>
       <text :class="['sc-num', sigRateCls]">{{ sigRatePct }}%</text>
       <text class="sc-dot">·</text>
@@ -13,6 +14,20 @@
 
     <!-- 直白操作信号：报告的操作结论以此卡为唯一来源（原顶部横幅已移除，避免两套判定相互矛盾） -->
     <view :class="['signal-card', signalCls]">
+      <!-- 买入成本价（选填）：持久化存储（按股），填入后信号卡给出「持仓视角」建议，
+           抑制「今天买点、明天卖点」的频繁交易误导 -->
+      <view class="cost-row">
+        <input
+          class="cost-in"
+          type="digit"
+          :value="costText"
+          placeholder="买入成本价（选填，填入后按持仓视角解读信号）"
+          placeholder-class="cost-ph"
+          @input="onCostInput"
+        />
+        <view class="cost-act" @click="fillCost" role="button" aria-label="填入当前价格">填入现价</view>
+        <view v-if="costText" class="cost-act clear" @click="clearCost" role="button" aria-label="清除成本价">清除</view>
+      </view>
       <view class="signal">
         <view class="sig-main">
           <text class="sig-label">{{ a.signal.label }}</text>
@@ -37,6 +52,23 @@
           <text class="sd-k">确认信号</text>
           <text class="sd-v">{{ a.signal.confirm }}</text>
         </view>
+        <!-- 持仓视角：填入成本价后展示（浮动盈亏 + 依据成本翻译后的持仓动作） -->
+        <template v-if="posView">
+          <view class="sd-row">
+            <text class="sd-k">持仓成本</text>
+            <text class="sd-v">
+              成本 {{ posView.c.toFixed(2) }} · 现价 {{ posView.p.toFixed(2) }} · 浮动盈亏
+              <text :class="posView.pnl >= 0 ? 'pv-up' : 'pv-down'">{{ posView.pnlText }}</text>
+            </text>
+          </view>
+          <view class="sd-row">
+            <text class="sd-k">持仓视角</text>
+            <text class="sd-v">
+              <text :class="posView.pnl >= 0 ? 'pv-up' : 'pv-down'">{{ posView.label }}</text>
+              ：{{ posView.text }}
+            </text>
+          </view>
+        </template>
       </view>
     </view>
 
@@ -366,13 +398,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import PriceText from "./PriceText.vue";
 import type { AnalysisResult } from "@/utils/analyzer";
 import { tagNewsItem, type NewsItem, type NewsSignal } from "@/utils/newsSentiment";
 
-const props = defineProps<{ result: AnalysisResult; news?: NewsItem[]; newsSignal?: NewsSignal | null }>();
+const props = defineProps<{ result: AnalysisResult; news?: NewsItem[]; newsSignal?: NewsSignal | null; cost?: number }>();
+const emit = defineEmits<{ (e: "update:cost", v: number): void }>();
 // 关键：必须用 computed（不要立即 .value），否则 a 会变成 setup 时刻的静态快照，
 // 切换股票时 props.result 变了但 a 不变 → 报告不刷新。
 const a = computed(() => props.result);
@@ -700,6 +733,62 @@ const sigRetCls = computed(() => {
   const wr = a.value.signalWinRate;
   if (!wr || wr.count < 3) return "";
   return wr.avgRet >= 0 ? "ret-up" : "ret-down";
+});
+
+// ---------------- 持仓视角（成本感知）：输入买入成本价后，把引擎信号翻译成持仓动作 ----------------
+// 引擎信号（decideSignal 级联）本身不感知用户成本（胜率回放也无成本概念），故成本感知做成
+// UI 层覆盖：盈利中出现卖点→止盈、亏损中出现卖点→止损、持仓中出现买点→持有勿追（抑制频繁交易）。
+const costText = ref("");
+watch(
+  () => props.cost,
+  (v) => {
+    costText.value = v && v > 0 ? String(v) : "";
+  },
+  { immediate: true }
+);
+function onCostInput(e: any) {
+  const raw = String(e?.detail?.value ?? "").trim();
+  costText.value = raw;
+  const n = parseFloat(raw);
+  if (!raw) emit("update:cost", 0);
+  else if (Number.isFinite(n) && n > 0) emit("update:cost", n);
+}
+function fillCost() {
+  const p = a.value.price;
+  if (p > 0) {
+    costText.value = p.toFixed(2);
+    emit("update:cost", p);
+  }
+}
+function clearCost() {
+  costText.value = "";
+  emit("update:cost", 0);
+}
+const posView = computed(() => {
+  const c = props.cost;
+  if (!c || c <= 0) return null;
+  const p = a.value.price;
+  const pnl = ((p - c) / c) * 100;
+  const pnlText = (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + "%";
+  const lvl = a.value.signal.level;
+  let label = "";
+  let text = "";
+  if (pnl >= 1) {
+    if (lvl === "sell") { label = "止盈减仓"; text = `已盈利 ${pnlText}，出现卖出信号，建议分批止盈锁定收益`; }
+    else if (lvl === "buy") { label = "持有勿追"; text = `已持仓盈利 ${pnlText}，出现买点但不宜追高加仓，持有为主`; }
+    else if (lvl === "hold") { label = "继续持有"; text = `盈利 ${pnlText}，趋势未破继续持有，回落至成本价附近可止盈`; }
+    else if (lvl === "watch") { label = "持有观察"; text = `盈利 ${pnlText}，偏强运行，持有观察即可`; }
+    else { label = "减仓保盈"; text = `盈利回吐中（现价仍高于成本 ${pnlText}），趋势转弱，可先减仓保住利润`; }
+  } else if (pnl <= -1) {
+    if (lvl === "sell") { label = "止损减仓"; text = `已亏损 ${pnlText}，出现卖出信号，建议严格执行止损`; }
+    else if (lvl === "buy") { label = "谨慎补仓"; text = `亏损 ${pnlText}，出现买点可小仓补仓摊薄成本，破位须止损`; }
+    else if (lvl === "hold" || lvl === "watch") { label = "持有观察"; text = `亏损 ${pnlText}，暂无明确转强信号，等待修复`; }
+    else { label = "观望等待"; text = `亏损 ${pnlText} 且趋势偏弱，勿盲目补仓，等待企稳信号`; }
+  } else {
+    label = a.value.signal.label;
+    text = "已持仓（成本≈现价），按上方信号操作即可";
+  }
+  return { c, p, pnl, pnlText, label, text };
 });
 
 // ---------------- 乖离率 BIAS · 布林带宽（均值回归 + 波动率挤压）派生 ----------------
@@ -1196,11 +1285,10 @@ function openNews(it: NewsItem) {
 .sig-confidence {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8rpx;
   margin-bottom: 8rpx;
-  padding: 16rpx 24rpx;
-  background: rgba(255, 159, 28, 0.12);
-  border-radius: var(--radius);
+  padding: 8rpx 4rpx;
 }
 .sc-label {
   font-size: var(--font-sm);
@@ -1252,6 +1340,40 @@ function openNews(it: NewsItem) {
 .sd-row { display: flex; gap: 16rpx; padding: 8rpx 0; }
 .sd-k { flex: none; font-size: var(--font-sm); color: var(--text-2); width: 128rpx; }
 .sd-v { flex: 1; font-size: var(--font-sm); color: var(--r-ink); line-height: 1.6; }
+/* 持仓视角：浮动盈亏与动作着色（A 股红涨绿跌） */
+.pv-up { color: var(--up); }
+.pv-down { color: var(--down); }
+/* 买入成本价输入行：置于信号元素上方，药丸输入框 + 填入现价/清除快捷键 */
+.cost-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin: 16rpx 16rpx 0;
+  padding: 8rpx 8rpx 8rpx 20rpx;
+  background: var(--r-panel);
+  border: 1rpx solid var(--border);
+  border-radius: 999rpx;
+}
+.cost-in {
+  flex: 1;
+  min-width: 0;
+  height: 56rpx;
+  font-size: var(--font-sm);
+  color: var(--r-ink);
+}
+.cost-ph { color: var(--text-3); }
+.cost-act {
+  flex: none;
+  font-size: var(--font-xs);
+  color: var(--primary);
+  padding: 8rpx 18rpx;
+  background: var(--primary-soft);
+  border-radius: 999rpx;
+}
+.cost-act.clear {
+  color: var(--text-2);
+  background: var(--card-2);
+}
 
 /* 关键价位状态徽标（A股约定：已突破/上涨=红 var(--up)、已跌破/下跌=绿 var(--down)） */
 .lv-right { display: flex; align-items: center; gap: 12rpx; }

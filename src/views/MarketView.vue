@@ -254,6 +254,7 @@ import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, reso
 import { fetchGlobalIndices, GLOBAL_INDEX_GROUPS, type GlobalIndexQuote } from "@/api/globalIndices";
 import { fetchCffexPositions, type CffexPositions } from "@/api/cffex";
 import { getMarketStatus } from "@/utils/marketStatus";
+import { getCost, setCost, clearCost } from "@/utils/costBasis";
 import { fmtPrice, fmtPct } from "@/utils/format";
 import {
   resolveSecid,
@@ -278,6 +279,14 @@ const switching = ref(false); // 仅「切换周期」使用，避免误占用�
 const name = ref("");
 const secid = ref("");
 const preClose = ref(0);
+// 持仓成本价（选填，按股持久化）：>0 视为持仓中，报告页给出「持仓视角」建议
+const costNum = ref(0);
+watch(secid, (s) => { costNum.value = getCost(s) ?? 0; }, { immediate: true });
+function onCostUpdate(v: number) {
+  costNum.value = v;
+  if (v > 0) setCost(secid.value, v);
+  else clearCost(secid.value);
+}
 const klines = ref<any[]>([]);
 const trends = ref<any[]>([]);
 // 预取缓存：一次联网拿全部分时/K线/资金流，切换周期直接读缓存，不再重复请求
@@ -501,6 +510,9 @@ const CARD_RENDERERS: Record<CardId, { comp: Component; props: () => Record<stri
       result: result.value,
       news: news.value,
       newsSignal: newsSig.value,
+      // 持仓成本价（按股持久化，见 costBasis）：>0 即视为持仓中，报告页展示「持仓视角」
+      cost: costNum.value,
+      "onUpdate:cost": onCostUpdate,
     }),
   },
 };
