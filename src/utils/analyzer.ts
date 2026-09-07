@@ -703,20 +703,17 @@ export interface SignalWinRateResult {
   winRate: number; // 0~1：方向正确占比（全部信号合并统计，不分档）
   avgRet: number; // 平均前瞻收益（小数，如 0.042 = +4.2%）
 }
-// 各档信号的方向正确定义（与建议方向一致）：买点/持有/关注=偏多（20 日后上涨为胜）；
-// 卖点/观望=规避（20 日后下跌为胜）。口径在报告 UI 注明。
-const SIGNAL_WIN_RULE: Record<AnalysisResult["signal"]["level"], "up" | "down"> = {
-  buy: "up",
-  hold: "up",
-  watch: "up",
-  sell: "down",
-  wait: "down",
-};
 function replaySignalStats(daily: Kline[] | undefined, code: string | undefined): SignalWinRateResult | null {
   const H = 20; // 前瞻评估窗口：20 根日 K（收盘→收盘），与均线 MA20 同一计数口径（交易日，非自然日）
   const WINDOW = 250; // 回放范围（交易日）
   const WARMUP = 80; // 单日指标预热下限（MA60/RSI/DMI/pivot）
   const PREFIX_CAP = 260; // 单日回看最多取多少根（控耗；覆盖 MA60/pivot/RSI 窗口）
+  // 单次往返摩擦成本（贴近实盘）：佣金 万2.5×2 + 印花税 0.05%（卖出）+ 滑点 0.1%×2 ≈ 0.3%。
+  // 交易类信号（买点/持有/卖点）的方向收益须先扣摩擦再判胜负，避免把「毛利为正但净利为负」的信号算作胜。
+  const FRICTION = 0.003;
+  // 观望（不交易）的「踏空」门槛：20 日内上涨不足 3% 视为躺对——不交易天然不亏钱，
+  // 唯一的错误是错过像样的行情；3% ≈ 主板一个涨停的一半，超过它才算踏空。
+  const WAIT_MISS = 0.03;
   if (!daily || daily.length < WARMUP + H + 5) return null;
   const n = daily.length;
   const from = Math.max(WARMUP, n - WINDOW);
@@ -789,19 +786,48 @@ function replaySignalStats(daily: Kline[] | undefined, code: string | undefined)
     const reduce = ((nearTop || rNow > 78) && !breakout) || (ma60Last != null && price > ma60Last * 1.5 && noFlow.sum < 0);
     const add = !reduce && !breakdown && trend === "up" && Math.abs(price - ma20Now) / ma20Now < 0.03 && noFlow.sum > 0 && rNow < 75;
     // 与实时报告同序：先 5 档级联，再涨跌停/炸板覆盖
+    const intraday = detectLimitMove(prefix, code);
     const signal = applyIntradayOverride(
       decideSignal({
         price, support, resistance, topZone: resistance,
         nearTop, nearSup, nearRes, breakout, breakdown, reduce, build, add,
         trend, rNow, macdCross, f5: noFlow, f10: noFlow,
       }),
-      detectLimitMove(prefix, code)
+      intraday
     );
     const fwd = daily[i + H].close / price - 1;
-    // 全部信号合并统计（不分档）：每条建议按自身方向判定对错，汇总为整体准确率
+    // 可成交性过滤：一字板发出的交易信号实际无法成交（一字涨停买不进 / 一字跌停卖不出），
+    // 不计入统计——否则会把「看得对但做不了」的信号算进胜率，虚高真实可用性。
+    const kBar = prefix[plen - 1];
+    const preClose = prefix[plen - 2] ? prefix[plen - 2].close : 0;
+    const limitPct = intraday.limitPct || 0.1;
+    const limitUpPrice = Math.round(preClose * (1 + limitPct) * 100) / 100;
+    const limitDownPrice = Math.round(preClose * (1 - limitPct) * 100) / 100;
+    const oneWordUp = kBar.low >= limitUpPrice - 0.011; // 全天无低于涨停价的价格 → 买不进
+    const oneWordDown = kBar.high <= limitDownPrice + 0.011; // 全天无高于跌停价的价格 → 卖不出
+    if ((signal.level === "buy" || signal.level === "hold") && oneWordUp) continue;
+    if (signal.level === "sell" && oneWordDown) continue;
+    // 胜负与执行收益（贴近实盘）：
+    //   · 买点/持有（做多）：方向收益 fwd 扣双边摩擦后 > 0 为胜
+    //   · 卖点（清仓规避）：规避的下跌 -fwd 扣摩擦后 > 0 为胜
+    //   · 关注（偏多判断、未实际介入）：方向判断 fwd > 0 为胜，执行收益记 0
+    //   · 观望（躺平不交易）：不交易天然不亏钱，20 日内未踏空（fwd < 3%）即正确，执行收益记 0
+    let payoff = 0;
+    let isWin = false;
+    if (signal.level === "buy" || signal.level === "hold") {
+      payoff = fwd - FRICTION;
+      isWin = payoff > 0;
+    } else if (signal.level === "sell") {
+      payoff = -fwd - FRICTION;
+      isWin = payoff > 0;
+    } else if (signal.level === "watch") {
+      isWin = fwd > 0;
+    } else {
+      isWin = fwd < WAIT_MISS;
+    }
     count++;
-    retSum += fwd;
-    if (SIGNAL_WIN_RULE[signal.level] === "up" ? fwd > 0 : fwd < 0) win++;
+    retSum += payoff;
+    if (isWin) win++;
     days++;
   }
   if (!count) return null;

@@ -1,8 +1,9 @@
 <template>
   <view class="report">
-    <!-- 历史胜率提示（独立于信号卡之外，不隶属任何单一信号档）：与信号卡同一引擎在近 250 个交易日逐日回放 -->
-    <view v-if="sigWinRateText" class="sig-confidence">
-      <OutlineIcon type="check" :size="26" color="var(--primary)" />
+    <!-- 历史胜率提示（独立于信号卡之外，不隶属任何单一信号档）：与信号卡同一引擎在近 250 个交易日逐日回放；
+         背景色随胜率分档：高（≥60%）红=可信、中（45%~60%）黄=中性、低（≤45%）绿=偏弱（A 股红涨绿跌约定） -->
+    <view v-if="sigWinRateText" :class="['sig-confidence', sigRateCls]">
+      <OutlineIcon type="check" :size="26" :color="sigRateColor" />
       <text class="sc-text">{{ sigWinRateText }}</text>
     </view>
 
@@ -679,6 +680,16 @@ const sigWinRateText = computed(() => {
   const ret = (wr.avgRet >= 0 ? "+" : "") + (wr.avgRet * 100).toFixed(2) + "%";
   return `20 个交易日胜率 ${(wr.winRate * 100).toFixed(0)}% · 平均收益 ${ret}`;
 });
+// 胜率分档配色：高≥60% 红（可信）、低≤45% 绿（偏弱）、中间黄（中性）——A 股红涨绿跌约定
+const sigRateCls = computed(() => {
+  const wr = a.value.signalWinRate;
+  if (!wr) return "rate-mid";
+  return wr.winRate >= 0.6 ? "rate-high" : wr.winRate <= 0.45 ? "rate-low" : "rate-mid";
+});
+const sigRateColor = computed(() => {
+  const cls = sigRateCls.value;
+  return cls === "rate-high" ? "var(--up)" : cls === "rate-low" ? "var(--down)" : "#c87f00";
+});
 
 // ---------------- 乖离率 BIAS · 布林带宽（均值回归 + 波动率挤压）派生 ----------------
 const biasText = computed(() => {
@@ -1169,23 +1180,31 @@ function openNews(it: NewsItem) {
   justify-content: space-between;
   padding: 20rpx 24rpx;
 }
-/* 历史胜率提示：独立条（置于信号卡外，不隶属任何单一信号档），primary-soft 薄染
-   复用主题 token 不新增色；样本不足时整条隐藏 */
+/* 历史胜率提示：独立条（置于信号卡外，不隶属任何单一信号档）；
+   背景随胜率分档（高红/中黄/低绿，A 股约定），样本不足时整条隐藏 */
 .sig-confidence {
   display: flex;
   align-items: center;
   gap: 12rpx;
   margin-bottom: 8rpx;
   padding: 16rpx 24rpx;
-  background: var(--primary-soft);
   border-radius: var(--radius);
+}
+.sig-confidence.rate-high {
+  background: rgba(239, 35, 42, 0.1);
+}
+.sig-confidence.rate-mid {
+  background: rgba(255, 159, 28, 0.12);
+}
+.sig-confidence.rate-low {
+  background: rgba(9, 176, 122, 0.12);
 }
 .sig-confidence .sc-text {
   flex: 1;
   min-width: 0;
   font-size: var(--font-sm);
   line-height: 1.4;
-  color: var(--primary);
+  color: var(--r-ink);
 }
 .signal-card.buy .signal { background: rgba(239, 35, 42, 0.1); }
 .signal-card.sell .signal { background: rgba(9, 176, 122, 0.12); }
