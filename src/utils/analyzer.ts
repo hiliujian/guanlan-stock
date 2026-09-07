@@ -696,17 +696,14 @@ function applyIntradayOverride(
 // 与实时报告缺这些数据时的行为完全一致。
 // 评估窗口 20 个交易日（约 1 个月，主流量化工具对短线 swing 信号的常用前瞻周期）；
 // 回放范围近 250 个交易日（约一年）；样本不足（日线缺失）返回 null，UI 不展示。
-export interface SignalWinBucket {
-  n: number; // 信号出现次数
-  winRate: number; // 0~1：方向正确占比
-  avgRet: number; // 平均前瞻收益（小数，如 0.042 = +4.2%）
-}
 export interface SignalWinRateResult {
   horizon: number; // 前瞻评估窗口（交易日）
   days: number; // 实际回放的交易日数
-  buckets: Partial<Record<AnalysisResult["signal"]["level"], SignalWinBucket>>;
+  count: number; // 回放产生的信号总数
+  winRate: number; // 0~1：方向正确占比（全部信号合并统计，不分档）
+  avgRet: number; // 平均前瞻收益（小数，如 0.042 = +4.2%）
 }
-// 方向正确定义（与各档信号的建议方向一致）：买点/持有/关注=偏多（20 日后上涨为胜）；
+// 各档信号的方向正确定义（与建议方向一致）：买点/持有/关注=偏多（20 日后上涨为胜）；
 // 卖点/观望=规避（20 日后下跌为胜）。口径在报告 UI 注明。
 const SIGNAL_WIN_RULE: Record<AnalysisResult["signal"]["level"], "up" | "down"> = {
   buy: "up",
@@ -723,8 +720,10 @@ function replaySignalStats(daily: Kline[] | undefined, code: string | undefined)
   if (!daily || daily.length < WARMUP + H + 5) return null;
   const n = daily.length;
   const from = Math.max(WARMUP, n - WINDOW);
-  const raw: Record<string, { n: number; win: number; ret: number }> = {};
   let days = 0;
+  let count = 0;
+  let win = 0;
+  let retSum = 0;
   const noFlow: FlowSummary = { sum: 0, has: false }; // 历史日资金流不可得=无数据（与实时缺数据同语义）
   for (let i = from; i < n - H; i++) {
     const prefix = daily.slice(Math.max(0, i - PREFIX_CAP + 1), i + 1);
@@ -799,19 +798,14 @@ function replaySignalStats(daily: Kline[] | undefined, code: string | undefined)
       detectLimitMove(prefix, code)
     );
     const fwd = daily[i + H].close / price - 1;
-    const b = (raw[signal.level] ||= { n: 0, win: 0, ret: 0 });
-    b.n++;
-    b.ret += fwd;
-    if (SIGNAL_WIN_RULE[signal.level] === "up" ? fwd > 0 : fwd < 0) b.win++;
+    // 全部信号合并统计（不分档）：每条建议按自身方向判定对错，汇总为整体准确率
+    count++;
+    retSum += fwd;
+    if (SIGNAL_WIN_RULE[signal.level] === "up" ? fwd > 0 : fwd < 0) win++;
     days++;
   }
-  if (!days) return null;
-  const buckets: SignalWinRateResult["buckets"] = {};
-  for (const k of Object.keys(raw) as (keyof typeof SIGNAL_WIN_RULE)[]) {
-    const b = raw[k];
-    buckets[k] = { n: b.n, winRate: b.n ? b.win / b.n : 0, avgRet: b.n ? b.ret / b.n : 0 };
-  }
-  return { horizon: H, days, buckets };
+  if (!count) return null;
+  return { horizon: H, days, count, winRate: win / count, avgRet: retSum / count };
 }
 
 // 大盘 · 市场环境上下文：由调用方（行情页 / 报告页）获取相关指数日 K 后传入，
