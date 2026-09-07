@@ -16,29 +16,32 @@
     </view>
 
     <!-- 持仓录入弹窗（持仓成本/持仓数量均必填，字段与社区发帖持仓卡对齐）：
-         保存后「持仓视角」建议立即生效 -->
-    <view v-if="posFormOpen" class="pos-mask" @click.self="posFormOpen = false">
-      <view class="pos-form">
-        <view class="pf-head">
-          <text class="pf-title">录入持仓</text>
-          <view class="pf-close" @click="posFormOpen = false" role="button" aria-label="关闭">
-            <OutlineIcon type="close" :size="26" color="var(--text-3)" />
+         teleport 到 body —— 避免被任何 transform/backdrop-filter 祖先变成「相对元素定位」，
+         导致弹窗出现在页面中部、需滚动才能找到（本次 bug 根因）；无遮罩、卡片实色背景 -->
+    <teleport to="body">
+      <view v-if="posFormOpen" class="pos-mask">
+        <view class="pos-form">
+          <view class="pf-head">
+            <text class="pf-title">录入持仓</text>
+            <view class="pf-close" @click="posFormOpen = false" role="button" aria-label="关闭">
+              <OutlineIcon type="close" :size="26" color="var(--text-3)" />
+            </view>
+          </view>
+          <view class="pf-row">
+            <text class="pf-k">持仓成本</text>
+            <input class="pf-in" type="digit" :value="pfCost" placeholder="元/股（必填）" @input="onPfCost" />
+          </view>
+          <view class="pf-row">
+            <text class="pf-k">持仓数量</text>
+            <input class="pf-in" type="number" :value="pfQty" placeholder="股（必填）" @input="onPfQty" />
+          </view>
+          <view class="pf-actions">
+            <view class="pf-btn clear" @click="clearPosition" role="button" aria-label="清除持仓">清除持仓</view>
+            <view class="pf-btn ok" @click="savePosition" role="button" aria-label="保存持仓">保存</view>
           </view>
         </view>
-        <view class="pf-row">
-          <text class="pf-k">持仓成本</text>
-          <input class="pf-in" type="digit" :value="pfCost" placeholder="元/股（必填）" @input="onPfCost" />
-        </view>
-        <view class="pf-row">
-          <text class="pf-k">持仓数量</text>
-          <input class="pf-in" type="number" :value="pfQty" placeholder="股（必填）" @input="onPfQty" />
-        </view>
-        <view class="pf-actions">
-          <view class="pf-btn clear" @click="clearPosition" role="button" aria-label="清除持仓">清除持仓</view>
-          <view class="pf-btn ok" @click="savePosition" role="button" aria-label="保存持仓">保存</view>
-        </view>
       </view>
-    </view>
+    </teleport>
 
     <!-- 直白操作信号：报告的操作结论以此卡为唯一来源（原顶部横幅已移除，避免两套判定相互矛盾） -->
     <view :class="['signal-card', signalCls]">
@@ -1394,23 +1397,27 @@ function openNews(it: NewsItem) {
 .sc-pos:active {
   background: var(--primary-soft);
 }
-/* 持仓录入弹窗：遮罩 + 居中卡片（点击遮罩空白处关闭） */
+/* 持仓录入弹窗：teleport 到 body，相对「可视区域」居中（teleport 脱离 transform/
+   backdrop-filter 祖先的包含块，修复「相对某元素居中、要滚动才能找到」的 bug）。
+   无遮罩：wrapper 点击穿透（pointer-events:none），仅卡片本身可交互；
+   背景实色（--bg），杜绝半透明底透出底下内容 */
 .pos-mask {
   position: fixed;
   inset: 0;
-  z-index: 999;
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.4);
+  pointer-events: none;
 }
 .pos-form {
+  pointer-events: auto;
   width: min(600rpx, 86vw);
   display: flex;
   flex-direction: column;
   gap: 16rpx;
   padding: 24rpx;
-  background: var(--card);
+  background: var(--bg);
   border: 1rpx solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-2);
