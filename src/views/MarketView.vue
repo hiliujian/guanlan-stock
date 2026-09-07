@@ -264,7 +264,7 @@ import {
   type PeriodKey,
   type Market,
 } from "@/utils/period";
-import { analyze, computeSignalWinRate, type AnalysisResult, type MarketContext } from "@/utils/analyzer";
+import { analyze, type AnalysisResult, type MarketContext } from "@/utils/analyzer";
 import { scoreNews, filterNews, type NewsSignal } from "@/utils/newsSentiment";
 import { visibleMarketCards, type MarketCardMeta, type CardId } from "@/utils/cardLayout";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
@@ -279,25 +279,19 @@ const switching = ref(false); // 仅「切换周期」使用，避免误占用�
 const name = ref("");
 const secid = ref("");
 const preClose = ref(0);
-// 持仓信息（选填，按股持久化）：填了持仓成本即视为持仓中，报告页给出「持仓视角」建议；
-// 录入买入时间后，胜率提示改为「买入以来」口径（computeSignalWinRate 截窗回放）
+// 持仓信息（选填，按股持久化）：填了持仓成本即视为持仓中，报告页给出「持仓视角」建议
 const pos = ref<Position | null>(null);
 watch(secid, (s) => { pos.value = getPosition(s); }, { immediate: true });
-const winRateOverride = computed(() => {
-  const t = pos.value?.time;
-  if (!t) return null;
-  const d = bundle.value?.klines?.d;
-  if (!d || !d.length) return null;
-  return computeSignalWinRate(d, curCode.value, t);
-});
-function onSavePosition(p: Position) {
+async function onSavePosition(p: Position) {
   setPosition(secid.value, p);
   pos.value = getPosition(secid.value);
   // 填了持仓即视为持仓中 → 自动加入自选（已存在则跳过），保证自选页能巡检到该持仓的信号
   if (!isWatched(curCode.value, curMarket.value)) {
-    addWatch({ code: curCode.value, market: curMarket.value, name: name.value, note: "" });
+    const r = await addWatch({ code: curCode.value, market: curMarket.value, name: name.value || curCode.value, note: "" });
+    uni.showToast({ title: r.ok ? "持仓已保存并加入自选" : "持仓已保存，但加入自选失败", icon: "none" });
+    return;
   }
-  uni.showToast({ title: "持仓已保存并加入自选", icon: "none" });
+  uni.showToast({ title: "持仓已保存", icon: "none" });
 }
 function onClearPosition() {
   clearPosition(secid.value);
@@ -527,9 +521,8 @@ const CARD_RENDERERS: Record<CardId, { comp: Component; props: () => Record<stri
       result: result.value,
       news: news.value,
       newsSignal: newsSig.value,
-      // 持仓信息（按股持久化，见 costBasis）：成本驱动「持仓视角」，买入时间驱动「买入以来」胜率
+      // 持仓信息（按股持久化，见 costBasis）：成本驱动「持仓视角」，保存持仓自动加入自选
       position: pos.value,
-      winRateOverride: winRateOverride.value,
       onSavePosition: onSavePosition,
       onClearPosition: onClearPosition,
     }),

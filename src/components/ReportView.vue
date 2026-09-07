@@ -1,40 +1,42 @@
 <template>
   <view class="report">
-    <!-- 历史胜率提示（独立于信号卡之外，不隶属任何单一信号档）：与信号卡同一引擎逐日回放，
-         默认近 250 个交易日，录入持仓时间后改为「买入以来」口径；
+    <!-- 历史胜率提示（独立于信号卡之外，不隶属任何单一信号档）：与信号卡同一引擎在近 250 个交易日逐日回放；
          无背景，Tip 图标 + 文案左对齐 · 分隔；标签无色，仅数字按涨红/跌绿着色：
-         胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿；右端「持仓」按钮弹出录入表单 -->
+         胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿；右端 briefcase 图标弹出持仓录入 -->
     <view v-if="sigRatePct" class="sig-confidence">
       <OutlineIcon type="tip" :size="26" color="var(--warn)" />
-      <text class="sc-label">{{ sigRateLabel }}</text>
+      <text class="sc-label">20 个交易日胜率</text>
       <text :class="['sc-num', sigRateCls]">{{ sigRatePct }}%</text>
       <text class="sc-dot">·</text>
       <text class="sc-label">平均收益</text>
       <text :class="['sc-num', sigRetCls]">{{ sigRetText }}</text>
-      <view class="sc-pos" @click="openPosForm" role="button" aria-label="录入持仓">
+      <view class="sc-pos" @click="posFormOpen = true" role="button" aria-label="录入持仓">
         <OutlineIcon type="briefcase" :size="28" color="var(--primary)" />
       </view>
     </view>
 
-    <!-- 持仓录入弹层（买入时间/持仓成本/持仓数量，均必填）：保存后「持仓视角」与「买入以来」胜率立即生效 -->
-    <view v-if="posFormOpen" class="pos-form">
-      <view class="pf-row">
-        <text class="pf-k">买入时间</text>
-        <picker mode="date" :value="pfTime" @change="onPfTime">
-          <view class="pf-in pf-pick">{{ pfTime || "选择买入日期" }}</view>
-        </picker>
-      </view>
-      <view class="pf-row">
-        <text class="pf-k">持仓成本</text>
-        <input class="pf-in" type="digit" :value="pfCost" placeholder="元/股（必填）" @input="onPfCost" />
-      </view>
-      <view class="pf-row">
-        <text class="pf-k">持仓数量</text>
-        <input class="pf-in" type="number" :value="pfQty" placeholder="股（必填）" @input="onPfQty" />
-      </view>
-      <view class="pf-actions">
-        <view class="pf-btn clear" @click="clearPosition" role="button" aria-label="清除持仓">清除持仓</view>
-        <view class="pf-btn ok" @click="savePosition" role="button" aria-label="保存持仓">保存</view>
+    <!-- 持仓录入弹窗（持仓成本/持仓数量均必填，字段与社区发帖持仓卡对齐）：
+         保存后「持仓视角」建议立即生效 -->
+    <view v-if="posFormOpen" class="pos-mask" @click.self="posFormOpen = false">
+      <view class="pos-form">
+        <view class="pf-head">
+          <text class="pf-title">录入持仓</text>
+          <view class="pf-close" @click="posFormOpen = false" role="button" aria-label="关闭">
+            <OutlineIcon type="close" :size="26" color="var(--text-3)" />
+          </view>
+        </view>
+        <view class="pf-row">
+          <text class="pf-k">持仓成本</text>
+          <input class="pf-in" type="digit" :value="pfCost" placeholder="元/股（必填）" @input="onPfCost" />
+        </view>
+        <view class="pf-row">
+          <text class="pf-k">持仓数量</text>
+          <input class="pf-in" type="number" :value="pfQty" placeholder="股（必填）" @input="onPfQty" />
+        </view>
+        <view class="pf-actions">
+          <view class="pf-btn clear" @click="clearPosition" role="button" aria-label="清除持仓">清除持仓</view>
+          <view class="pf-btn ok" @click="savePosition" role="button" aria-label="保存持仓">保存</view>
+        </view>
       </view>
     </view>
 
@@ -410,10 +412,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import PriceText from "./PriceText.vue";
-import type { AnalysisResult, SignalWinRateResult } from "@/utils/analyzer";
+import type { AnalysisResult } from "@/utils/analyzer";
 import type { Position } from "@/utils/costBasis";
 import { tagNewsItem, type NewsItem, type NewsSignal } from "@/utils/newsSentiment";
 
@@ -421,10 +423,8 @@ const props = defineProps<{
   result: AnalysisResult;
   news?: NewsItem[];
   newsSignal?: NewsSignal | null;
-  /** 持仓信息（成本/数量/买入时间，按股持久化）：填了成本即视为持仓中 */
+  /** 持仓信息（成本/数量，按股持久化）：填了成本即视为持仓中 */
   position?: Position | null;
-  /** 胜率覆盖：录入买入时间后按「买入以来」口径重算的结果；未录入时为 null */
-  winRateOverride?: SignalWinRateResult | null;
 }>();
 const emit = defineEmits<{
   (e: "save-position", p: Position): void;
@@ -734,67 +734,55 @@ const rangePosColor = computed(() =>
 
 // ---------------- 历史胜率提示（与信号卡同一引擎的回放统计；全部信号合并、不分档） ----------------
 // 「20 个交易日」与均线 MA20 同一计数口径：都是 20 根日 K（非自然日）。
-// 录入买入时间后改用「买入以来」口径（winRateOverride，见 analyzer.computeSignalWinRate）。
 // 标签恒为中性色，仅数字按涨红/跌绿着色：胜率 ≥50% 红（偏多）/ <50% 绿（偏弱）。
-const wrShown = computed(() => props.winRateOverride ?? a.value.signalWinRate);
 const sigRatePct = computed(() => {
-  const wr = wrShown.value;
+  const wr = a.value.signalWinRate;
   // 样本 <3 次不展示：小样本胜率噪声极大，展示反而误导
   if (!wr || wr.count < 3) return "";
   return (wr.winRate * 100).toFixed(0);
 });
-const sigRateLabel = computed(() => (props.winRateOverride ? "买入以来胜率" : "20 个交易日胜率"));
 const sigRateCls = computed(() => {
-  const wr = wrShown.value;
+  const wr = a.value.signalWinRate;
   if (!wr || wr.count < 3) return "";
   return wr.winRate >= 0.5 ? "rate-up" : "rate-down";
 });
 // 平均收益数字按符号着色：+ 红 / − 绿（A 股涨跌约定，与个股涨跌色一致）
 const sigRetText = computed(() => {
-  const wr = wrShown.value;
+  const wr = a.value.signalWinRate;
   if (!wr || wr.count < 3) return "";
   const ret = Math.abs(wr.avgRet * 100).toFixed(2) + "%";
   return (wr.avgRet >= 0 ? "+" : "-") + ret;
 });
 const sigRetCls = computed(() => {
-  const wr = wrShown.value;
+  const wr = a.value.signalWinRate;
   if (!wr || wr.count < 3) return "";
   return wr.avgRet >= 0 ? "ret-up" : "ret-down";
 });
 
-// ---------------- 持仓录入弹层（买入时间/持仓成本/持仓数量） ----------------
-// 保存到 costBasis（按股持久化）：成本驱动「持仓视角」建议；买入时间驱动「买入以来」胜率口径。
+// ---------------- 持仓录入弹窗（持仓成本/持仓数量，均必填，与发帖持仓卡字段对齐） ----------------
+// 保存到 costBasis（按股持久化）：成本驱动「持仓视角」建议。
 // 引擎信号与胜率回放本身不感知用户成本（成本是个体状态，进引擎会污染胜率口径）。
 const posFormOpen = ref(false);
 const pfCost = ref("");
 const pfQty = ref("");
-const pfTime = ref("");
-function openPosForm() {
-  posFormOpen.value = !posFormOpen.value;
-  if (posFormOpen.value) {
-    const p = props.position;
+watch(
+  () => props.position,
+  (p) => {
     pfCost.value = p?.cost ? String(p.cost) : "";
     pfQty.value = p?.qty ? String(p.qty) : "";
-    pfTime.value = p?.time || "";
-  }
-}
+  },
+  { immediate: true }
+);
 function onPfCost(e: any) {
   pfCost.value = String(e?.detail?.value ?? "");
 }
 function onPfQty(e: any) {
   pfQty.value = String(e?.detail?.value ?? "");
 }
-function onPfTime(e: any) {
-  pfTime.value = String(e?.detail?.value ?? "");
-}
 function savePosition() {
-  // 三项均必填：买入时间决定「买入以来」胜率窗口，成本驱动持仓视角，数量供发帖持仓卡回填
+  // 两项均必填（与社区发帖持仓卡对齐）：成本驱动持仓视角，数量供发帖持仓卡回填
   const c = parseFloat(pfCost.value);
   const qty = parseInt(pfQty.value, 10);
-  if (!pfTime.value) {
-    uni.showToast({ title: "请选择买入时间", icon: "none" });
-    return;
-  }
   if (!Number.isFinite(c) || c <= 0) {
     uni.showToast({ title: "请填写持仓成本", icon: "none" });
     return;
@@ -803,14 +791,13 @@ function savePosition() {
     uni.showToast({ title: "请填写持仓数量", icon: "none" });
     return;
   }
-  emit("save-position", { cost: c, qty, time: pfTime.value });
+  emit("save-position", { cost: c, qty });
   posFormOpen.value = false;
 }
 function clearPosition() {
   emit("clear-position");
   pfCost.value = "";
   pfQty.value = "";
-  pfTime.value = "";
   posFormOpen.value = false;
 }
 
@@ -1407,16 +1394,39 @@ function openNews(it: NewsItem) {
 .sc-pos:active {
   background: var(--primary-soft);
 }
-/* 持仓录入弹层：时间/成本/数量 三行 + 保存/清除 */
+/* 持仓录入弹窗：遮罩 + 居中卡片（点击遮罩空白处关闭） */
+.pos-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+}
 .pos-form {
+  width: min(600rpx, 86vw);
   display: flex;
   flex-direction: column;
-  gap: 12rpx;
-  margin-bottom: 8rpx;
-  padding: 20rpx 24rpx;
-  background: var(--r-panel);
+  gap: 16rpx;
+  padding: 24rpx;
+  background: var(--card);
   border: 1rpx solid var(--border);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
+.pf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pf-title {
+  font-size: var(--font-md);
+  color: var(--text);
+}
+.pf-close {
+  flex: none;
+  padding: 6rpx;
 }
 .pf-row {
   display: flex;
@@ -1432,16 +1442,12 @@ function openNews(it: NewsItem) {
 .pf-in {
   flex: 1;
   min-width: 0;
-  height: 64rpx;
+  height: 72rpx;
   padding: 0 20rpx;
   font-size: var(--font-sm);
   color: var(--r-ink);
   background: var(--card-2);
   border-radius: 12rpx;
-}
-.pf-pick {
-  display: flex;
-  align-items: center;
 }
 .pf-actions {
   display: flex;

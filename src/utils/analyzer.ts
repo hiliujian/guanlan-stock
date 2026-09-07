@@ -855,22 +855,6 @@ export interface MarketContext {
   } | null;
 }
 
-/**
- * 信号胜率（公开入口）：默认「近 250 个交易日」回放；传入 fromDate（买入日期 YYYY-MM-DD，
- * 用户在报告页录入持仓时间）时改为「买入以来」口径——回放窗口截取买入日（含）之后的数据。
- * 买入时间属于用户个体状态，绝不进入引擎信号本身，只影响回放窗口起点。
- */
-export function computeSignalWinRate(
-  daily: Kline[] | undefined,
-  code: string | undefined,
-  fromDate?: string
-): SignalWinRateResult | null {
-  if (!fromDate || !daily || !daily.length) return replaySignalStats(daily, code);
-  const idx = daily.findIndex((k) => k.date >= fromDate);
-  if (idx < 0) return replaySignalStats(daily, code); // 买入日早于数据起点 → 全量
-  return replaySignalStats(daily.slice(idx), code);
-}
-
 export function analyze(
   klines: Kline[],
   flowMap: Record<string, number> = {},
