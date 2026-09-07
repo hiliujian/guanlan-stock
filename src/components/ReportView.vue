@@ -5,7 +5,6 @@
       <OutlineIcon type="check" :size="26" color="var(--primary)" />
       <text class="sc-text">{{ sigWinRateText }}</text>
     </view>
-    <text v-if="sigWinRateText" class="sc-note">{{ sigWinRateNote }}</text>
 
     <!-- 直白操作信号：报告的操作结论以此卡为唯一来源（原顶部横幅已移除，避免两套判定相互矛盾） -->
     <view :class="['signal-card', signalCls]">
@@ -672,17 +671,13 @@ const rangePosColor = computed(() =>
 );
 
 // ---------------- 历史胜率提示（与信号卡同一引擎的回放统计；全部信号合并、不分档） ----------------
+// 「20 个交易日」与均线 MA20 同一计数口径：都是 20 根日 K（非自然日）。
 const sigWinRateText = computed(() => {
   const wr = a.value.signalWinRate;
   // 样本 <3 次不展示：小样本胜率噪声极大，展示反而误导
   if (!wr || wr.count < 3) return "";
   const ret = (wr.avgRet >= 0 ? "+" : "") + (wr.avgRet * 100).toFixed(2) + "%";
-  return `20 日胜率 ${(wr.winRate * 100).toFixed(0)}% · 平均收益 ${ret}`;
-});
-const sigWinRateNote = computed(() => {
-  const wr = a.value.signalWinRate;
-  if (!wr || wr.count < 3) return "";
-  return `口径：与信号同一套规则引擎在近 ${wr.days} 个交易日逐日回放（共 ${wr.count} 次信号、20 交易日前瞻，方向正确即计胜），资金流/大盘/资讯等仅实时可得维度按当日无数据降级；历史回测不构成未来保证。`;
+  return `20 个交易日胜率 ${(wr.winRate * 100).toFixed(0)}% · 平均收益 ${ret}`;
 });
 
 // ---------------- 乖离率 BIAS · 布林带宽（均值回归 + 波动率挤压）派生 ----------------
@@ -1191,16 +1186,6 @@ function openNews(it: NewsItem) {
   font-size: var(--font-sm);
   line-height: 1.4;
   color: var(--primary);
-  font-weight: 600;
-}
-/* 口径注释：胜率条正下方的浅色小字，说明统计口径与免责 */
-.sc-note {
-  display: block;
-  margin-bottom: 16rpx;
-  padding: 0 24rpx;
-  font-size: var(--font-xs);
-  line-height: 1.5;
-  color: var(--text-3);
 }
 .signal-card.buy .signal { background: rgba(239, 35, 42, 0.1); }
 .signal-card.sell .signal { background: rgba(9, 176, 122, 0.12); }

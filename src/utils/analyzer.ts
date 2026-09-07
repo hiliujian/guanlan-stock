@@ -713,7 +713,7 @@ const SIGNAL_WIN_RULE: Record<AnalysisResult["signal"]["level"], "up" | "down"> 
   wait: "down",
 };
 function replaySignalStats(daily: Kline[] | undefined, code: string | undefined): SignalWinRateResult | null {
-  const H = 20; // 前瞻评估窗口（交易日）
+  const H = 20; // 前瞻评估窗口：20 根日 K（收盘→收盘），与均线 MA20 同一计数口径（交易日，非自然日）
   const WINDOW = 250; // 回放范围（交易日）
   const WARMUP = 80; // 单日指标预热下限（MA60/RSI/DMI/pivot）
   const PREFIX_CAP = 260; // 单日回看最多取多少根（控耗；覆盖 MA60/pivot/RSI 窗口）
