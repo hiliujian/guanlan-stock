@@ -1,12 +1,15 @@
 <template>
   <view class="report">
     <!-- 历史胜率提示（独立于信号卡之外，不隶属任何单一信号档）：与信号卡同一引擎在近 250 个交易日逐日回放；
-         左侧胜率右侧平均收益；颜色只用涨红/跌绿：胜率 ≥50% 红（偏多）/ <50% 绿（偏弱），收益 + 红 / − 绿 -->
-    <view v-if="sigRateText" class="sig-confidence">
-      <text :class="['sc-rate', sigRateCls]">{{ sigRateText }}</text>
-      <view class="sc-side">
+         背景恒为提示黄不随数据变化；标签无色，仅数字按涨红/跌绿着色：胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿 -->
+    <view v-if="sigRatePct" class="sig-confidence">
+      <view class="sc-item">
+        <text class="sc-label">20 个交易日胜率</text>
+        <text :class="['sc-num', sigRateCls]">{{ sigRatePct }}%</text>
+      </view>
+      <view class="sc-item">
         <text class="sc-label">平均收益</text>
-        <text :class="['sc-ret', sigRetCls]">{{ sigRetText }}</text>
+        <text :class="['sc-num', sigRetCls]">{{ sigRetText }}</text>
       </view>
     </view>
 
@@ -676,12 +679,12 @@ const rangePosColor = computed(() =>
 
 // ---------------- 历史胜率提示（与信号卡同一引擎的回放统计；全部信号合并、不分档） ----------------
 // 「20 个交易日」与均线 MA20 同一计数口径：都是 20 根日 K（非自然日）。
-// 颜色只用涨红/跌绿一对：胜率 ≥50% 红（偏多）/ <50% 绿（偏弱）。
-const sigRateText = computed(() => {
+// 标签恒为中性色，仅数字按涨红/跌绿着色：胜率 ≥50% 红（偏多）/ <50% 绿（偏弱）。
+const sigRatePct = computed(() => {
   const wr = a.value.signalWinRate;
   // 样本 <3 次不展示：小样本胜率噪声极大，展示反而误导
   if (!wr || wr.count < 3) return "";
-  return `20 个交易日胜率 ${(wr.winRate * 100).toFixed(0)}%`;
+  return (wr.winRate * 100).toFixed(0);
 });
 const sigRateCls = computed(() => {
   const wr = a.value.signalWinRate;
@@ -1190,24 +1193,19 @@ function openNews(it: NewsItem) {
   justify-content: space-between;
   padding: 20rpx 24rpx;
 }
-/* 历史胜率提示：独立条（置于信号卡外，不隶属任何单一信号档），左右两侧布局；
-   颜色只用涨红/跌绿一对，样本不足时整条隐藏 */
+/* 历史胜率提示：独立条（置于信号卡外），整条居中；背景恒为提示黄（--warn 12% 透明度），
+   不随数据变化；标签中性色，仅数字按涨红/跌绿着色；样本不足时整条隐藏 */
 .sig-confidence {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12rpx;
+  justify-content: center;
+  gap: 48rpx;
   margin-bottom: 8rpx;
   padding: 16rpx 24rpx;
-  background: var(--primary-soft);
+  background: rgba(255, 159, 28, 0.12);
   border-radius: var(--radius);
 }
-.sc-rate {
-  font-size: var(--font-sm);
-}
-.sc-rate.rate-up { color: var(--up); }
-.sc-rate.rate-down { color: var(--down); }
-.sc-side {
+.sc-item {
   display: flex;
   align-items: center;
   gap: 8rpx;
@@ -1216,12 +1214,14 @@ function openNews(it: NewsItem) {
   font-size: var(--font-sm);
   color: var(--text-2);
 }
-/* 平均收益数字：+ 红 / − 绿（A 股涨跌约定） */
-.sc-ret {
+/* 数字着色：胜率 ≥50% 红 / <50% 绿；收益 + 红 / − 绿（均为 A 股涨跌约定） */
+.sc-num {
   font-size: var(--font-sm);
 }
-.sc-ret.ret-up { color: var(--up); }
-.sc-ret.ret-down { color: var(--down); }
+.sc-num.rate-up { color: var(--up); }
+.sc-num.rate-down { color: var(--down); }
+.sc-num.ret-up { color: var(--up); }
+.sc-num.ret-down { color: var(--down); }
 .signal-card.buy .signal { background: rgba(239, 35, 42, 0.1); }
 .signal-card.sell .signal { background: rgba(9, 176, 122, 0.12); }
 .signal-card.hold .signal { background: rgba(59, 130, 246, 0.1); }
