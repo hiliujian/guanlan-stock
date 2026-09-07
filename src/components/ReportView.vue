@@ -2,6 +2,11 @@
   <view class="report">
     <!-- 直白操作信号：报告的操作结论以此卡为唯一来源（原顶部横幅已移除，避免两套判定相互矛盾） -->
     <view :class="['signal-card', signalCls]">
+      <!-- 历史胜率提示：与信号卡同一引擎在近 250 个交易日逐日回放（口径同源，样本不足不展示） -->
+      <view v-if="sigWinRateText" class="sig-confidence">
+        <OutlineIcon type="check" :size="24" color="var(--primary)" />
+        <text class="sc-text">{{ sigWinRateText }}</text>
+      </view>
       <view class="signal">
         <view class="sig-main">
           <text class="sig-label">{{ a.signal.label }}</text>
@@ -26,6 +31,7 @@
           <text class="sd-k">确认信号</text>
           <text class="sd-v">{{ a.signal.confirm }}</text>
         </view>
+        <text v-if="sigWinRateText" class="base-note">{{ sigWinRateNote }}</text>
       </view>
     </view>
 
@@ -168,30 +174,6 @@
           <text class="m-k">布林带宽</text>
           <text class="m-v" :style="{ color: bollBwColor }">{{ bollBwText }}</text>
         </view>
-      </view>
-    </view>
-
-    <!-- 信号回测 · 历史胜率：为「量化预判」提供历史校准（样本不足时优雅降级） -->
-    <view class="panel anim-fade-up" :style="{ animationDelay: '70ms' }">
-      <view class="panel-title">
-        <OutlineIcon type="check" :size="28" color="var(--primary)" />
-        <text>信号回测 · 历史胜率</text>
-      </view>
-      <template v-if="btValid">
-        <view class="metric-grid">
-          <view class="metric">
-            <text class="m-k">买入信号</text>
-            <text class="m-v" :style="{ color: btBuyColor }">{{ btBuyText }}</text>
-          </view>
-          <view class="metric">
-            <text class="m-k">卖出信号</text>
-            <text class="m-v" :style="{ color: btSellColor }">{{ btSellText }}</text>
-          </view>
-        </view>
-        <text class="base-note">口径：仅统计「MA5/20 交叉」单一规则（买入信号另需放量确认，卖出仅看交叉；近 {{ a.backtest.bars }} 根日线 · 20 日前瞻）的历史胜率，不代表对综合评分与买卖信号的验证；历史参考，非未来保证。</text>
-      </template>
-      <view v-else class="news-empty">
-        <text>样本不足</text>
       </view>
     </view>
 
@@ -688,28 +670,22 @@ const rangePosColor = computed(() =>
   a.value.rangePos > 80 ? "var(--down)" : a.value.rangePos < 20 ? "var(--up)" : "var(--r-ink)"
 );
 
-// ---------------- 信号回测派生（样本不足时降级为「样本不足」） ----------------
-const bt = computed(() => a.value.backtest);
-const btValid = computed(() => bt.value.bars >= 80 && bt.value.buyCount + bt.value.sellCount >= 3);
-const fmtBtRet = (v: number) => (v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%";
-// 单边零样本降级：analyzer 对零样本侧返回 0 胜率/0 均收，直接渲染会被误读为「历史全败」——
-// 实为该方向无任何样本（如常年多头交叉被放量条件挡掉的股票），显示「暂无数据」。
-const btBuyText = computed(() =>
-  bt.value.buyCount
-    ? `${bt.value.buyCount}次 · ${bt.value.horizon}日胜率 ${(bt.value.buyWinRate * 100).toFixed(0)}% · 均收 ${fmtBtRet(bt.value.buyAvgRet)}`
-    : "暂无数据"
-);
-const btSellText = computed(() =>
-  bt.value.sellCount
-    ? `${bt.value.sellCount}次 · ${bt.value.horizon}日胜率 ${(bt.value.sellWinRate * 100).toFixed(0)}% · 均收 ${fmtBtRet(bt.value.sellAvgRet)}`
-    : "暂无数据"
-);
-// 均收为正=该方向有效=红；均收为负=失效=绿（A股约定）；零样本=中性
-const btBuyColor = computed(() =>
-  !bt.value.buyCount ? "var(--r-ink)" : bt.value.buyAvgRet > 0 ? "var(--up)" : bt.value.buyAvgRet < 0 ? "var(--down)" : "var(--r-ink)"
-);
-const btSellColor = computed(() =>
-  !bt.value.sellCount ? "var(--r-ink)" : bt.value.sellAvgRet > 0 ? "var(--up)" : bt.value.sellAvgRet < 0 ? "var(--down)" : "var(--r-ink)"
+// ---------------- 历史胜率提示（与信号卡同一引擎的回放统计；样本不足时隐藏，避免误导） ----------------
+const SIG_LEVEL_LABELS: Record<string, string> = { buy: "买点", sell: "卖点", hold: "持有", watch: "关注", wait: "观望" };
+const sigWinRateText = computed(() => {
+  const wr = a.value.signalWinRate;
+  if (!wr) return "";
+  const lv = a.value.signal.level;
+  const b = wr.buckets[lv];
+  // 样本 <3 次不展示：小样本胜率噪声极大，展示反而误导（与旧回测板块「样本不足」降级同思路）
+  if (!b || b.n < 3) return "";
+  const ret = (b.avgRet >= 0 ? "+" : "") + (b.avgRet * 100).toFixed(2) + "%";
+  return `同规则回测：近 ${wr.days} 个交易日「${SIG_LEVEL_LABELS[lv]}」${b.n} 次 · ${wr.horizon} 日胜率 ${(b.winRate * 100).toFixed(0)}% · 平均 ${ret}`;
+});
+const sigWinRateNote = computed(() =>
+  sigWinRateText.value
+    ? "口径：与上方信号同一套规则引擎在历史日线上逐日回放（同分支顺序、同阈值、20 个交易日前瞻；资金流/大盘/资讯等仅实时可得维度按当日无数据降级）。买点/持有/关注＝20 日后上涨为胜，卖点/观望＝下跌为胜；历史回测不构成未来保证。"
+    : ""
 );
 
 // ---------------- 乖离率 BIAS · 布林带宽（均值回归 + 波动率挤压）派生 ----------------
@@ -1200,6 +1176,24 @@ function openNews(it: NewsItem) {
   align-items: center;
   justify-content: space-between;
   padding: 20rpx 24rpx;
+}
+/* 历史胜率提示：贴 signal 元素上方的轻量胶囊条（与卡片同宽、primary-soft 薄染，
+   复用主题 token 不新增色）；信号为观望/关注或样本不足时整条隐藏 */
+.sig-confidence {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin: 16rpx 16rpx 0;
+  padding: 10rpx 16rpx;
+  background: var(--primary-soft);
+  border-radius: 12rpx;
+}
+.sig-confidence .sc-text {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-xs);
+  line-height: 1.4;
+  color: var(--primary);
 }
 .signal-card.buy .signal { background: rgba(239, 35, 42, 0.1); }
 .signal-card.sell .signal { background: rgba(9, 176, 122, 0.12); }

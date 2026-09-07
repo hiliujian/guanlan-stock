@@ -405,17 +405,8 @@ export interface AnalysisResult {
   breakout: boolean; // 已有效突破压力（仅当压力来自明确 pivot 拐点）
   breakdown: boolean; // 已有效跌破支撑（仅当支撑来自明确 pivot 拐点）
   sigType: string; // 走势预测：突破上攻 / 破位下行 / 承压回落 / 企稳反弹 / 震荡上行 / 震荡下行 / 区间震荡 / 冲高回落 / 反弹乏力（后两者仅卖点兜底改写）
-  // ---- 信号历史回测（MA5/20 交叉核心规则，20 日前瞻收益的历史校准；样本不足由 UI 降级）----
-  backtest: {
-    horizon: number; // 前瞻窗口（交易日）
-    bars: number; // 回放样本 K 线数
-    buyCount: number;
-    buyWinRate: number; // 0~1：信号后 horizon 日收盘上涨占比
-    buyAvgRet: number; // 小数收益，如 0.042 = +4.2%
-    sellCount: number;
-    sellWinRate: number; // 0~1：信号后 horizon 日收盘下跌占比
-    sellAvgRet: number;
-  };
+  // ---- 信号历史回放胜率（与信号卡同一引擎在历史日线上逐日回放；日线缺失/样本不足为 null，UI 不展示）----
+  signalWinRate: SignalWinRateResult | null;
   signal: {
     level: "buy" | "sell" | "hold" | "watch" | "wait";
     label: string; // 买点 / 卖点 / 持有 / 关注 / 观望
@@ -475,6 +466,352 @@ function flowSumByDays(flowMap: Record<string, number>, n: number): FlowSummary 
   let s = 0;
   for (const d of dates) s += flowMap[d];
   return { sum: s / 1e8, has: dates.length > 0 };
+}
+
+// ---------------- 共享决策工具（实时报告与历史回放同一份实现，杜绝口径漂移） ----------------
+
+type TrendKey = "up" | "down" | "shake_up" | "shake_down" | "shake";
+// 趋势定性（共用）：个股 / 宽基指数 / 行业板块 / 历史回放四处原本各写一份，阈值与用词易漂移。
+// 抽成单一 judgeTrend，确保同样的 ADX/DI/斜率永远得到同样的结论与术语。
+//   · ADX<20             → 无趋势（方向看 MA20 斜率；可选 extraUp/extraDown 用均线多空做次级确认）
+//   · ADX≥25 且 +DI>-DI  → 有效上涨趋势；20≤ADX<25 → 震荡偏强（Wilder 标准）
+//   · ADX≥25 且 -DI>+DI  → 有效下跌趋势；20≤ADX<25 → 震荡偏弱
+function judgeTrend(
+  adx: number, pdi: number, mdi: number, slope: number,
+  extraUp = false, extraDown = false
+): { trend: TrendKey; text: string; strength: string } {
+  if (adx < 20) {
+    if (slope > 0.004 || extraUp) return { trend: "shake_up", text: "震荡偏强", strength: "中" };
+    if (slope < -0.004 || extraDown) return { trend: "shake_down", text: "震荡偏弱", strength: "中" };
+    return { trend: "shake", text: "区间震荡", strength: "中" };
+  }
+  if (pdi > mdi) {
+    if (adx >= 25) return { trend: "up", text: "上涨趋势", strength: adx >= 40 ? "强" : "中" };
+    return { trend: "shake_up", text: "震荡偏强", strength: "偏强" };
+  }
+  // ADX 度量趋势强度，与方向无关：下跌 + ADX≥40 同样是「强」趋势（此前误写「弱」，
+  // 与上涨分支不对称，报告会显示「下跌趋势（弱）」误导用户低估空头动能）
+  if (adx >= 25) return { trend: "down", text: "下跌趋势", strength: adx >= 40 ? "强" : "中" };
+  return { trend: "shake_down", text: "震荡偏弱", strength: "偏弱" };
+}
+
+/** 近 recent 根内 a 对 b 的最近一次金叉/死叉方向（实时报告与历史回放共用） */
+function recentCross(a: (number | null)[], b: (number | null)[], recent: number): "gold" | "dead" | null {
+  for (let i = a.length - 1; i >= Math.max(1, a.length - recent); i--) {
+    if (a[i - 1]! <= b[i - 1]! && a[i]! > b[i]!) return "gold";
+    if (a[i - 1]! >= b[i - 1]! && a[i]! < b[i]!) return "dead";
+  }
+  return null;
+}
+
+/** 主支撑/主压力：分层结果中挑「最强、未破位、位于现价同侧」的价位；
+ *  缺失时回退箱体上下沿，再回退近 60 根极值（实时报告与历史回放共用，保证同口径） */
+function pickMainLevels(
+  priceLevels: ReturnType<typeof computePriceLevels>,
+  price: number,
+  recent: Kline[]
+): { support: number; resistance: number } {
+  const supportCands = [priceLevels.structSupport, priceLevels.tradeSupportS]
+    .filter((x): x is NonNullable<typeof x> => !!x && !x.isBroken)
+    .filter((x) => x.price < price);
+  const support = supportCands.length
+    ? supportCands.slice().sort((a, b) => b.totalScore - a.totalScore || b.price - a.price)[0].price
+    : priceLevels.boxBottom != null && priceLevels.boxBottom < price
+      ? priceLevels.boxBottom
+      : Math.min(...recent.map((k) => k.low));
+  const resistCands = [priceLevels.structPressure, priceLevels.tradePressureB]
+    .filter((x): x is NonNullable<typeof x> => !!x && !x.isBroken)
+    .filter((x) => x.price > price);
+  const resistance = resistCands.length
+    ? resistCands.slice().sort((a, b) => b.totalScore - a.totalScore || a.price - b.price)[0].price
+    : priceLevels.boxTop != null && priceLevels.boxTop > price
+      ? priceLevels.boxTop
+      : Math.max(...recent.map((k) => k.high));
+  return { support, resistance };
+}
+
+/** 直白买卖信号（5 档）决策级联 —— 纯函数。
+ *  实时报告与历史胜率回放共用同一套分支顺序、阈值与文案（胜率口径统一的根基）：
+ *  整合突破/跌破 + 临近关键位 + 趋势/动能/资金，给普通人一句话买卖参考；
+ *  这是技术形态信号，带「确认条件」，非保证、非投资建议。 */
+interface SignalCascadeCtx {
+  price: number;
+  support: number;
+  resistance: number;
+  topZone: number;
+  nearTop: boolean;
+  nearSup: boolean;
+  nearRes: boolean;
+  breakout: boolean;
+  breakdown: boolean;
+  reduce: boolean;
+  build: boolean;
+  add: boolean;
+  trend: TrendKey;
+  rNow: number;
+  macdCross: "gold" | "dead" | null;
+  f5: FlowSummary;
+  f10: FlowSummary;
+}
+function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
+  if (c.breakdown) {
+    return {
+      level: "sell",
+      label: "卖点",
+      text: "已跌破关键支撑，建议减仓回避",
+      reason: `现价 ${c.price.toFixed(2)} 已跌破支撑 ${c.support.toFixed(2)}，技术形态转弱`,
+      confirm: "若 3 日内不能收回支撑上方，下行空间进一步打开，应果断降低仓位",
+    };
+  }
+  if (c.reduce) {
+    // 决策-信号同向兜底：reduce 已成立（临近高位 / RSI 超买 / 远离 MA60+资金流出）但
+    // 未命中上方任何信号分支时，信号卡不得回落为「关注/持有」与决策「建议减仓」同屏打架。
+    // 置于 breakout 之前：拉高出货（大幅偏离 MA60 + 主力资金净流出）即使伴随放量突破，
+    // 资金流向警示也优先于技术形态，宁可不追。
+    return {
+      level: "sell",
+      label: "卖点",
+      text: "高位风险积聚，建议逢高减仓",
+      reason: c.nearTop
+        ? `价格接近阶段高位（约 ${c.topZone.toFixed(2)}），追高风险大`
+        : c.rNow > 78
+          ? `RSI(12) 达 ${c.rNow.toFixed(2)}，超买明显`
+          : "股价大幅偏离 MA60 且主力资金净流出，警惕拉高出货",
+      confirm: "放量滞涨或跌破 MA5/MA10 时果断减仓；缩量回踩 MA20 不破可继续持有",
+    };
+  }
+  if (c.breakout) {
+    return {
+      level: "buy",
+      label: "买点",
+      text: "已放量突破关键压力，可积极关注",
+      reason: `现价 ${c.price.toFixed(2)} 已站上压力 ${c.resistance.toFixed(2)}，打开上行空间`,
+      confirm: "回踩不破该压力位且量能维持，则确认有效突破，可顺势加仓",
+    };
+  }
+  if (c.nearRes && (c.rNow > 72 || c.macdCross === "dead" || (c.f10.has && c.f10.sum < 0))) {
+    return {
+      level: "sell",
+      label: "卖点",
+      text: "临近压力且动能转弱，注意逢高减仓",
+      reason: `价格接近压力 ${c.resistance.toFixed(2)}，且出现${c.rNow > 70 ? "RSI超买" : c.macdCross === "dead" ? "MACD死叉" : "资金净流出"}等滞涨信号`,
+      confirm: "若放量强势突破压力则转强可持有；否则易遇阻回落，应减仓",
+    };
+  }
+  if (c.nearSup && (c.rNow < 40 || c.macdCross === "gold" || c.build || (c.f5.has && c.f5.sum > 0))) {
+    // reduce 已在上方分支先行拦截（卖点兜底），走到这里必然 !reduce，
+    // 窄幅箱体内 nearTop(7%) 与 nearSup(5%) 同时成立时不会再出现「买点 vs 减仓」矛盾。
+    return {
+      level: "buy",
+      label: "买点",
+      text: "临近支撑且出现企稳信号，可逢低关注",
+      reason: `价格接近支撑 ${c.support.toFixed(2)}，且出现${c.rNow < 30 ? "RSI超卖" : c.macdCross === "gold" ? "MACD金叉" : "资金净流入"}等企稳信号`,
+      confirm: "若放量站上支撑则确认止跌，可在买入区间内建仓；跌破则转弱观望",
+    };
+  }
+  if (c.trend === "up" && c.add) {
+    return {
+      level: "hold",
+      label: "持有",
+      text: "趋势向上，可持有跟随，回调即加仓点",
+      reason: "上涨趋势 + 主力资金流入，动能未衰减",
+      confirm: "跌破 MA20 或放量大阴线则警惕转弱，考虑减仓",
+    };
+  }
+  if (c.trend === "up" || c.trend === "shake_up") {
+    return {
+      level: "watch",
+      label: "关注",
+      text: "偏强运行，等待回调至支撑的更好买点",
+      reason: "趋势偏强但尚未到理想介入位，追高性价比低",
+      confirm: "回踩支撑企稳时介入更稳妥，避免追涨",
+    };
+  }
+  if (c.trend === "down") {
+    return {
+      level: "wait",
+      label: "观望",
+      text: "处于下跌趋势，暂不参与",
+      reason: "下跌趋势未改，弱势运行",
+      confirm: "放量站上 MA20 并企稳后再考虑介入",
+    };
+  }
+  return {
+    level: "wait",
+    label: "观望",
+    text: "多空僵持，等待方向明朗",
+    reason: "区间震荡，支撑与压力均未有效突破",
+    confirm: "放量突破压力或跌破支撑后，再顺势而为",
+  };
+}
+
+/** 涨跌停/炸板信号覆盖：极端盘中走势直接改写短线操作建议（实时报告与历史回放共用同一套覆盖规则） */
+function applyIntradayOverride(
+  signal: AnalysisResult["signal"],
+  intraday: ReturnType<typeof detectLimitMove>
+): AnalysisResult["signal"] {
+  if (intraday.isLimitUp) {
+    return {
+      level: "hold",
+      label: "持有",
+      text: "今日封涨停，多头情绪极强，已持有者持有为主",
+      reason: `收盘封涨停（+${(intraday.pct * 100).toFixed(2)}%），买盘远超卖盘`,
+      confirm: "次日高开不破今日收盘价则强势延续；低开破板则及时止盈",
+    };
+  }
+  if (intraday.isLimitDown) {
+    return {
+      level: "sell",
+      label: "卖点",
+      text: "今日封跌停，空头情绪极强，建议减仓回避",
+      reason: `收盘封跌停（${(intraday.pct * 100).toFixed(2)}%），卖盘远超买盘`,
+      confirm: "次日撬板放量可考虑短线博反弹；继续一字跌停则观望",
+    };
+  }
+  if (intraday.isBrokenLimitUp) {
+    return {
+      level: "sell",
+      label: "卖点",
+      text: "今日炸板，多空分歧剧烈，注意波动风险",
+      reason: `盘中触及涨停但未封住，收涨 ${(intraday.pct * 100).toFixed(2)}%，高位抛压显现`,
+      confirm: "次日不能反包今日高点则转弱减仓；放量反包则重新走强",
+    };
+  }
+  if (intraday.isBrokenLimitDown) {
+    return {
+      level: "watch",
+      label: "关注",
+      text: "今日跌停开板，恐慌有所释放，关注是否企稳",
+      reason: `盘中触及跌停但打开，收跌 ${(intraday.pct * 100).toFixed(2)}%，恐慌盘释放`,
+      confirm: "次日缩量企稳可短线关注反弹；继续放量下跌则仍需回避",
+    };
+  }
+  return signal;
+}
+
+// ---------------- 信号历史回放胜率（与信号卡同一引擎的胜率口径） ----------------
+// 与旧「MA5/20 交叉」单规则回测不同：这里把实时报告的 5 档信号决策级联（decideSignal +
+// applyIntradayOverride + pickMainLevels + judgeTrend 全部同一份代码）在历史日线上逐日回放。
+// 仅实时可得的历史缺席维度（主力资金流/大盘/行业/资讯/筹码）按「当日无数据」降级，
+// 与实时报告缺这些数据时的行为完全一致。
+// 评估窗口 20 个交易日（约 1 个月，主流量化工具对短线 swing 信号的常用前瞻周期）；
+// 回放范围近 250 个交易日（约一年）；样本不足（日线缺失）返回 null，UI 不展示。
+export interface SignalWinBucket {
+  n: number; // 信号出现次数
+  winRate: number; // 0~1：方向正确占比
+  avgRet: number; // 平均前瞻收益（小数，如 0.042 = +4.2%）
+}
+export interface SignalWinRateResult {
+  horizon: number; // 前瞻评估窗口（交易日）
+  days: number; // 实际回放的交易日数
+  buckets: Partial<Record<AnalysisResult["signal"]["level"], SignalWinBucket>>;
+}
+// 方向正确定义（与各档信号的建议方向一致）：买点/持有/关注=偏多（20 日后上涨为胜）；
+// 卖点/观望=规避（20 日后下跌为胜）。口径在报告 UI 注明。
+const SIGNAL_WIN_RULE: Record<AnalysisResult["signal"]["level"], "up" | "down"> = {
+  buy: "up",
+  hold: "up",
+  watch: "up",
+  sell: "down",
+  wait: "down",
+};
+function replaySignalStats(daily: Kline[] | undefined, code: string | undefined): SignalWinRateResult | null {
+  const H = 20; // 前瞻评估窗口（交易日）
+  const WINDOW = 250; // 回放范围（交易日）
+  const WARMUP = 80; // 单日指标预热下限（MA60/RSI/DMI/pivot）
+  const PREFIX_CAP = 260; // 单日回看最多取多少根（控耗；覆盖 MA60/pivot/RSI 窗口）
+  if (!daily || daily.length < WARMUP + H + 5) return null;
+  const n = daily.length;
+  const from = Math.max(WARMUP, n - WINDOW);
+  const raw: Record<string, { n: number; win: number; ret: number }> = {};
+  let days = 0;
+  const noFlow: FlowSummary = { sum: 0, has: false }; // 历史日资金流不可得=无数据（与实时缺数据同语义）
+  for (let i = from; i < n - H; i++) {
+    const prefix = daily.slice(Math.max(0, i - PREFIX_CAP + 1), i + 1);
+    const plen = prefix.length;
+    const closes = prefix.map((k) => k.close);
+    const vols = prefix.map((k) => k.vol);
+    const ma5 = ma(closes, 5);
+    const ma10 = ma(closes, 10);
+    const ma20 = ma(closes, 20);
+    const ma60 = ma(closes, 60);
+    const vma5 = ma(vols, 5);
+    const vma20 = ma(vols, 20);
+    const m = macd(closes);
+    const r12 = rsi(closes, 12);
+    const { pDI, mDI, adx } = dmi(prefix.map((k) => k.high), prefix.map((k) => k.low), closes, 14);
+    const price = closes[plen - 1];
+    const ma20Now = ma20[plen - 1] as number;
+    const ma20Ref = (ma20[Math.max(0, plen - 21)] as number) || ma20Now;
+    const slope = ma20Ref ? (ma20Now - ma20Ref) / ma20Ref : 0;
+    const ma60Last = ma60[plen - 1];
+    const upCount =
+      ((ma5[plen - 1] as number) > (ma10[plen - 1] as number) ? 1 : 0) +
+      ((ma10[plen - 1] as number) > ma20Now ? 1 : 0) +
+      (ma60Last != null && ma20Now > ma60Last ? 1 : 0);
+    const downCount =
+      ((ma5[plen - 1] as number) < (ma10[plen - 1] as number) ? 1 : 0) +
+      ((ma10[plen - 1] as number) < ma20Now ? 1 : 0) +
+      (ma60Last != null && ma20Now < ma60Last ? 1 : 0);
+    const { trend } = judgeTrend(
+      adx[plen - 1] ?? 0, pDI[plen - 1] ?? 0, mDI[plen - 1] ?? 0, slope,
+      price > ma20Now && upCount >= 1,
+      price < ma20Now && downCount >= 1
+    );
+    const levelCtx: LevelCtx = {
+      vma20Last: vma20[plen - 1] ?? undefined,
+      adx: adx[plen - 1] ?? undefined,
+      pdi: pDI[plen - 1] ?? undefined,
+      mdi: mDI[plen - 1] ?? undefined,
+    };
+    const priceLevels = computePriceLevels(prefix, resolvePeriodGuard("d"), levelCtx);
+    const { support, resistance } = pickMainLevels(priceLevels, price, prefix.slice(-60));
+    const distSup = (price - support) / price;
+    const distRes = (resistance - price) / price;
+    const nearBottom = price <= support * 1.05;
+    const nearTop = price >= resistance * 0.93;
+    const nearSup = distSup < 0.05;
+    const nearRes = distRes < 0.03;
+    const rRaw = r12[plen - 1];
+    const rNow = typeof rRaw === "number" && isFinite(rRaw) ? rRaw : 50;
+    const macdCross = recentCross(m.dif, m.dea, 8);
+    const volRatio = vma5[plen - 1] && vma20[plen - 1] ? (vma5[plen - 1] as number) / (vma20[plen - 1] as number) : 1;
+    const supportFromPivot = !!(
+      (priceLevels.structSupport && !priceLevels.structSupport.isBroken && priceLevels.structSupport.price < price) ||
+      (priceLevels.tradeSupportS && !priceLevels.tradeSupportS.isBroken && priceLevels.tradeSupportS.price < price)
+    );
+    const resistanceFromPivot = !!(
+      (priceLevels.structPressure && !priceLevels.structPressure.isBroken && priceLevels.structPressure.price > price) ||
+      (priceLevels.tradePressureB && !priceLevels.tradePressureB.isBroken && priceLevels.tradePressureB.price > price)
+    );
+    const breakdown = supportFromPivot && price < support * 0.985 && volRatio > 0.9;
+    const breakout = resistanceFromPivot && price > resistance * 1.015 && volRatio > 1.0;
+    const build = !breakdown && (nearBottom || (trend === "up" && price <= ma20Now * 1.02)) && rNow < 70 && !nearTop;
+    const reduce = ((nearTop || rNow > 78) && !breakout) || (ma60Last != null && price > ma60Last * 1.5 && noFlow.sum < 0);
+    const add = !reduce && !breakdown && trend === "up" && Math.abs(price - ma20Now) / ma20Now < 0.03 && noFlow.sum > 0 && rNow < 75;
+    // 与实时报告同序：先 5 档级联，再涨跌停/炸板覆盖
+    const signal = applyIntradayOverride(
+      decideSignal({
+        price, support, resistance, topZone: resistance,
+        nearTop, nearSup, nearRes, breakout, breakdown, reduce, build, add,
+        trend, rNow, macdCross, f5: noFlow, f10: noFlow,
+      }),
+      detectLimitMove(prefix, code)
+    );
+    const fwd = daily[i + H].close / price - 1;
+    const b = (raw[signal.level] ||= { n: 0, win: 0, ret: 0 });
+    b.n++;
+    b.ret += fwd;
+    if (SIGNAL_WIN_RULE[signal.level] === "up" ? fwd > 0 : fwd < 0) b.win++;
+    days++;
+  }
+  if (!days) return null;
+  const buckets: SignalWinRateResult["buckets"] = {};
+  for (const k of Object.keys(raw) as (keyof typeof SIGNAL_WIN_RULE)[]) {
+    const b = raw[k];
+    buckets[k] = { n: b.n, winRate: b.n ? b.win / b.n : 0, avgRet: b.n ? b.ret / b.n : 0 };
+  }
+  return { horizon: H, days, buckets };
 }
 
 // 大盘 · 市场环境上下文：由调用方（行情页 / 报告页）获取相关指数日 K 后传入，
@@ -704,29 +1041,11 @@ export function analyze(
   const priceLevels = computePriceLevels(klines, guard, levelCtx);
 
   // 主支撑/主压力：从分层结果中挑选「最强、未破位、位于现价同侧」的价位；缺失时回退近 60 日极值 + 箱体弱兜底。
-  const supportCands = [priceLevels.structSupport, priceLevels.tradeSupportS]
-    .filter((x): x is NonNullable<typeof x> => !!x && !x.isBroken)
-    .filter((x) => x.price < price);
-  const mainSupport = supportCands.length
-    ? supportCands.slice().sort((a, b) => b.totalScore - a.totalScore || b.price - a.price)[0].price
-    : priceLevels.boxBottom != null && priceLevels.boxBottom < price
-      ? priceLevels.boxBottom
-      : Math.min(...klines.slice(-60).map((k) => k.low));
-  const resistCands = [priceLevels.structPressure, priceLevels.tradePressureB]
-    .filter((x): x is NonNullable<typeof x> => !!x && !x.isBroken)
-    .filter((x) => x.price > price);
-  const mainResistance = resistCands.length
-    ? resistCands.slice().sort((a, b) => b.totalScore - a.totalScore || a.price - b.price)[0].price
-    : priceLevels.boxTop != null && priceLevels.boxTop > price
-      ? priceLevels.boxTop
-      : Math.max(...klines.slice(-60).map((k) => k.high));
-
-  // 兼容旧字段：报告页 ReportView 仍读 a.support / a.resistance
-  const support = mainSupport;
-  const resistance = mainResistance;
+  // （挑选逻辑抽成 pickMainLevels 与历史胜率回放共用，保证回放与实时报告同口径）
+  const { support, resistance } = pickMainLevels(priceLevels, price, klines.slice(-60));
   // 阶段高低区：以主支撑/主压力为锚（箱体区间内即取箱体上下沿）
-  const bottomZone = mainSupport;
-  const topZone = mainResistance;
+  const bottomZone = support;
+  const topZone = resistance;
   const distSup = (price - support) / price;
   const distRes = (resistance - price) / price;
   // nearTop 阈值 7%（原 4%）：A 股强势股常沿 5 日线运行，距高点 2-3% 是正常状态，
@@ -746,15 +1065,8 @@ export function analyze(
 
   const volRatio = vma5[len - 1] && vma20[len - 1] ? (vma5[len - 1] as number) / (vma20[len - 1] as number) : 1;
 
-  function cross(arrA: (number | null)[], arrB: (number | null)[], recent: number): "gold" | "dead" | null {
-    for (let i = len - 1; i >= Math.max(1, len - recent); i--) {
-      if (arrA[i - 1]! <= arrB[i - 1]! && arrA[i]! > arrB[i]!) return "gold";
-      if (arrA[i - 1]! >= arrB[i - 1]! && arrA[i]! < arrB[i]!) return "dead";
-    }
-    return null;
-  }
-  const macdCross = cross(m.dif, m.dea, 8);
-  const kdjCross = cross(kd.K, kd.D, 8);
+  const macdCross = recentCross(m.dif, m.dea, 8);
+  const kdjCross = recentCross(kd.K, kd.D, 8);
 
   const kLast = kd.K[len - 1] as number;
   const jLast = kd.J[len - 1] as number;
@@ -1041,100 +1353,10 @@ export function analyze(
   else if (trend === "up") sigType = "震荡上行";
   else if (trend === "down") sigType = "震荡下行";
 
-  // ---------------- 直白买卖信号（5 档）----------------
-  // 整合：突破/跌破 + 临近关键位 + 趋势/动能/资金，给普通人一句话买卖参考。
-  // 注意：这是技术形态信号，带「确认条件」，非保证、非投资建议。
-  let signal: AnalysisResult["signal"];
-  if (breakdown) {
-    signal = {
-      level: "sell",
-      label: "卖点",
-      text: "已跌破关键支撑，建议减仓回避",
-      reason: `现价 ${price.toFixed(2)} 已跌破支撑 ${support.toFixed(2)}，技术形态转弱`,
-      confirm: "若 3 日内不能收回支撑上方，下行空间进一步打开，应果断降低仓位",
-    };
-  } else if (reduce) {
-    // 决策-信号同向兜底：reduce 已成立（临近高位 / RSI 超买 / 远离 MA60+资金流出）但
-    // 未命中上方任何信号分支时，信号卡不得回落为「关注/持有」与决策「建议减仓」同屏打架。
-    // 置于 breakout 之前：拉高出货（大幅偏离 MA60 + 主力资金净流出）即使伴随放量突破，
-    // 资金流向警示也优先于技术形态，宁可不追。
-    signal = {
-      level: "sell",
-      label: "卖点",
-      text: "高位风险积聚，建议逢高减仓",
-      reason: nearTop
-        ? `价格接近阶段高位（约 ${topZone.toFixed(2)}），追高风险大`
-        : rNow > 78
-          ? `RSI(12) 达 ${rNow.toFixed(2)}，超买明显`
-          : "股价大幅偏离 MA60 且主力资金净流出，警惕拉高出货",
-      confirm: "放量滞涨或跌破 MA5/MA10 时果断减仓；缩量回踩 MA20 不破可继续持有",
-    };
-  } else if (breakout) {
-    signal = {
-      level: "buy",
-      label: "买点",
-      text: "已放量突破关键压力，可积极关注",
-      reason: `现价 ${price.toFixed(2)} 已站上压力 ${resistance.toFixed(2)}，打开上行空间`,
-      confirm: "回踩不破该压力位且量能维持，则确认有效突破，可顺势加仓",
-    };
-  } else if (nearRes && (rNow > 72 || macdCross === "dead" || (f10.has && f10.sum < 0))) {
-    signal = {
-      level: "sell",
-      label: "卖点",
-      text: "临近压力且动能转弱，注意逢高减仓",
-      reason: `价格接近压力 ${resistance.toFixed(2)}，且出现${rNow > 70 ? "RSI超买" : macdCross === "dead" ? "MACD死叉" : "资金净流出"}等滞涨信号`,
-      confirm: "若放量强势突破压力则转强可持有；否则易遇阻回落，应减仓",
-    };
-  } else if (nearSup && (rNow < 40 || macdCross === "gold" || build || (f5.has && f5.sum > 0))) {
-    // reduce 已在上方分支先行拦截（卖点兜底），走到这里必然 !reduce，
-    // 窄幅箱体内 nearTop(7%) 与 nearSup(5%) 同时成立时不会再出现「买点 vs 减仓」矛盾。
-    signal = {
-      level: "buy",
-      label: "买点",
-      text: "临近支撑且出现企稳信号，可逢低关注",
-      reason: `价格接近支撑 ${support.toFixed(2)}，且出现${rNow < 30 ? "RSI超卖" : macdCross === "gold" ? "MACD金叉" : "资金净流入"}等企稳信号`,
-      confirm: "若放量站上支撑则确认止跌，可在买入区间内建仓；跌破则转弱观望",
-    };
-  } else if (trend === "up" && add) {
-    signal = {
-      level: "hold",
-      label: "持有",
-      text: "趋势向上，可持有跟随，回调即加仓点",
-      reason: "上涨趋势 + 主力资金流入，动能未衰减",
-      confirm: "跌破 MA20 或放量大阴线则警惕转弱，考虑减仓",
-    };
-  } else if (trend === "up" || trend === "shake_up") {
-    signal = {
-      level: "watch",
-      label: "关注",
-      text: "偏强运行，等待回调至支撑的更好买点",
-      reason: "趋势偏强但尚未到理想介入位，追高性价比低",
-      confirm: "回踩支撑企稳时介入更稳妥，避免追涨",
-    };
-  } else if (trend === "down") {
-    signal = {
-      level: "wait",
-      label: "观望",
-      text: "处于下跌趋势，暂不参与",
-      reason: "下跌趋势未改，弱势运行",
-      confirm: "放量站上 MA20 并企稳后再考虑介入",
-    };
-  } else {
-    signal = {
-      level: "wait",
-      label: "观望",
-      text: "多空僵持，等待方向明朗",
-      reason: "区间震荡，支撑与压力均未有效突破",
-      confirm: "放量突破压力或跌破支撑后，再顺势而为",
-    };
-  }
-
   // ---------------- 今日盘中走势（A 股特有：涨停/跌停/炸板实时反映当日异动）----------------
-  // 涨跌停是 A 股最强的短线方向信号：封涨停=多头极强、封跌停=空头极强、
-  // 炸板=多空分歧剧烈、跌停开板=恐慌释放。这些当日异动应直接覆盖短线操作建议。
-  // 「今日」异动判定必须基于日 K：周/月视图下第一参 klines 是周线/月线，拿「本周/本月
-  // 涨跌幅」判「今日封涨停/大涨」会系统性误报（周涨 6% 很常见、月线碰涨停价纯属巧合）。
-  // 与换手率/筹码/回测同口径：恒用 dailyKlines（缺失时回退当前周期）。
+  // 检测前移（信号覆盖与评分微调都依赖它）：「今日」异动判定必须基于日 K——周/月视图下
+  // 第一参 klines 是周线/月线，拿「本周/本月涨跌幅」判「今日封涨停/大涨」会系统性误报
+  // （周涨 6% 很常见、月线碰涨停价纯属巧合）。与换手率/胜率回放同口径：恒用 dailyKlines。
   const intraday = detectLimitMove(dailyKlines && dailyKlines.length >= 2 ? dailyKlines : klines, stockCode);
   let moveLabel = "";
   if (intraday.isLimitUp) moveLabel = "今日封涨停";
@@ -1143,6 +1365,8 @@ export function analyze(
   else if (intraday.isBrokenLimitDown) moveLabel = "今日跌停开板";
   else if (intraday.isBigUp) moveLabel = "今日大涨";
   else if (intraday.isBigDown) moveLabel = "今日大跌";
+  // 炸板是独立风险提示（多空分歧剧烈）：信号覆盖抽成共享函数后，此提示保留在风险列表
+  if (intraday.isBrokenLimitUp) risks.push("今日炸板（曾封涨停但打开），多空分歧剧烈，短期波动风险大。");
 
   // 涨跌停对综合评分的影响（短线极强的方向信号）：
   //   · 封涨停：多头极强，次日溢价概率高 → +10
@@ -1164,41 +1388,18 @@ export function analyze(
     addReason(intradayReasonLabel, intradayDelta);
   }
 
-  // 涨跌停信号覆盖：极端盘中走势直接决定短线操作建议
-  if (intraday.isLimitUp) {
-    signal = {
-      level: "hold",
-      label: "持有",
-      text: "今日封涨停，多头情绪极强，已持有者持有为主",
-      reason: `收盘封涨停（+${(intraday.pct * 100).toFixed(2)}%），买盘远超卖盘`,
-      confirm: "次日高开不破今日收盘价则强势延续；低开破板则及时止盈",
-    };
-  } else if (intraday.isLimitDown) {
-    signal = {
-      level: "sell",
-      label: "卖点",
-      text: "今日封跌停，空头情绪极强，建议减仓回避",
-      reason: `收盘封跌停（${(intraday.pct * 100).toFixed(2)}%），卖盘远超买盘`,
-      confirm: "次日撬板放量可考虑短线博反弹；继续一字跌停则观望",
-    };
-  } else if (intraday.isBrokenLimitUp) {
-    signal = {
-      level: "sell",
-      label: "卖点",
-      text: "今日炸板，多空分歧剧烈，注意波动风险",
-      reason: `盘中触及涨停但未封住，收涨 ${(intraday.pct * 100).toFixed(2)}%，高位抛压显现`,
-      confirm: "次日不能反包今日高点则转弱减仓；放量反包则重新走强",
-    };
-    risks.push("今日炸板（曾封涨停但打开），多空分歧剧烈，短期波动风险大。");
-  } else if (intraday.isBrokenLimitDown) {
-    signal = {
-      level: "watch",
-      label: "关注",
-      text: "今日跌停开板，恐慌有所释放，关注是否企稳",
-      reason: `盘中触及跌停但打开，收跌 ${(intraday.pct * 100).toFixed(2)}%，恐慌盘释放`,
-      confirm: "次日缩量企稳可短线关注反弹；继续放量下跌则仍需回避",
-    };
-  }
+  // ---------------- 直白买卖信号（5 档）----------------
+  // 决策级联抽成纯函数 decideSignal、涨跌停覆盖抽成 applyIntradayOverride（均与历史胜率
+  // 回放 replaySignalStats 共用同一份代码，保证胜率统计口径与实时信号完全同源）：
+  // 整合突破/跌破 + 临近关键位 + 趋势/动能/资金 + 盘中异动，给普通人一句话买卖参考。
+  // 注意：这是技术形态信号，带「确认条件」，非保证、非投资建议。
+  const signal = applyIntradayOverride(
+    decideSignal({
+      price, support, resistance, topZone, nearTop, nearSup, nearRes,
+      breakout, breakdown, reduce, build, add, trend, rNow, macdCross, f5, f10,
+    }),
+    intraday
+  );
 
   // 盘中异动与操作决策对齐：涨跌停/炸板是当日最强信号，决策标签不得与之相悖
   // （封涨停仍显示「建议减仓」、封跌停/炸板却显示「可加仓/建仓/关注」都会误导）。
@@ -1241,31 +1442,7 @@ export function analyze(
   // 把「中期趋势方向 × 今日异动 × 价格结构 × 量能 × DMI」合成为唯一定性结论。
   // 今日异动显著（≥±1%）且与中期趋势反向时才给定性（超跌反弹/修复企稳/反转信号/正常回踩/阶段调整/见顶信号），
   // 同向异动或小幅波动返回 ""（无歧义，不贴标签）。指数与行业板块共用，避免重复实现。
-  // 趋势定性（共用）：个股 / 宽基指数 / 行业板块三处趋势判定原本各写一份，阈值与用词易漂移
-  // （个股中性称「震荡整理」、指数/板块称「区间震荡」）。抽成单一 judgeTrend，确保同样的
-  // ADX/DI/斜率永远得到同样的结论与术语，杜绝重复实现与术语不一致。
-  //   · ADX<20             → 无趋势（方向看 MA20 斜率；可选 extraUp/extraDown 用均线多空做次级确认）
-  //   · ADX≥25 且 +DI>-DI  → 有效上涨趋势；20≤ADX<25 → 震荡偏强（Wilder 标准，原 40 阈值过高会系统性低估动能）
-  //   · ADX≥25 且 -DI>+DI  → 有效下跌趋势；20≤ADX<25 → 震荡偏弱
-  type TrendKey = "up" | "down" | "shake_up" | "shake_down" | "shake";
-  function judgeTrend(
-    adx: number, pdi: number, mdi: number, slope: number,
-    extraUp = false, extraDown = false
-  ): { trend: TrendKey; text: string; strength: string } {
-    if (adx < 20) {
-      if (slope > 0.004 || extraUp) return { trend: "shake_up", text: "震荡偏强", strength: "中" };
-      if (slope < -0.004 || extraDown) return { trend: "shake_down", text: "震荡偏弱", strength: "中" };
-      return { trend: "shake", text: "区间震荡", strength: "中" };
-    }
-    if (pdi > mdi) {
-      if (adx >= 25) return { trend: "up", text: "上涨趋势", strength: adx >= 40 ? "强" : "中" };
-      return { trend: "shake_up", text: "震荡偏强", strength: "偏强" };
-    }
-    // ADX 度量趋势强度，与方向无关：下跌 + ADX≥40 同样是「强」趋势（此前误写「弱」，
-    // 与上涨分支不对称，报告会显示「下跌趋势（弱）」误导用户低估空头动能）
-    if (adx >= 25) return { trend: "down", text: "下跌趋势", strength: adx >= 40 ? "强" : "中" };
-    return { trend: "shake_down", text: "震荡偏弱", strength: "偏弱" };
-  }
+  // 趋势判定 judgeTrend 已抽到模块作用域（个股/指数/板块/历史回放四处共用同一份实现）。
 
   function judgeTodayMove(opts: {
     closeNow: number; ma20Now: number; ma5Now: number; slope: number;
@@ -1538,52 +1715,11 @@ export function analyze(
     };
   }
 
-  // ---------------- 信号历史回测：MA5/20 交叉核心规则的 20 日前瞻表现 ----------------
-  // 完整 signal 依赖资金流/大盘历史（不可得），回测口径为核心规则：
-  //   买入 = MA5 上穿 MA20 且当日量 > 5日均量（放量确认）；卖出 = MA5 下穿 MA20。
-  // 统计信号后 20 个交易日收盘涨跌的胜率与均值，为「量化预判」提供历史校准。
-  // 优先日线序列（周期切换时口径稳定），样本不足时由 UI 显示「样本不足」降级。
-  const btSrc = dailyKlines && dailyKlines.length >= 80 ? dailyKlines : klines;
-  const btClose = btSrc.map((k) => k.close);
-  const btVol = btSrc.map((k) => k.vol);
-  const btMa5 = ma(btClose, 5);
-  const btMa20 = ma(btClose, 20);
-  const btVma5 = ma(btVol, 5);
-  const BT_HORIZON = 20;
-  let btBuyN = 0;
-  let btBuyWin = 0;
-  let btBuyRet = 0;
-  let btSellN = 0;
-  let btSellWin = 0;
-  let btSellRet = 0;
-  for (let i = 20; i < btClose.length - BT_HORIZON; i++) {
-    const m5 = btMa5[i];
-    const m5p = btMa5[i - 1];
-    const m20 = btMa20[i];
-    const m20p = btMa20[i - 1];
-    const v5 = btVma5[i];
-    if (m5 == null || m5p == null || m20 == null || m20p == null || v5 == null) continue;
-    const fwd = btClose[i + BT_HORIZON] / btClose[i] - 1;
-    if (m5p <= m20p && m5 > m20 && btVol[i] > v5) {
-      btBuyN++;
-      btBuyRet += fwd;
-      if (fwd > 0) btBuyWin++;
-    } else if (m5p >= m20p && m5 < m20) {
-      btSellN++;
-      btSellRet += fwd;
-      if (fwd < 0) btSellWin++;
-    }
-  }
-  const backtest = {
-    horizon: BT_HORIZON,
-    bars: btClose.length,
-    buyCount: btBuyN,
-    buyWinRate: btBuyN ? btBuyWin / btBuyN : 0,
-    buyAvgRet: btBuyN ? btBuyRet / btBuyN : 0,
-    sellCount: btSellN,
-    sellWinRate: btSellN ? btSellWin / btSellN : 0,
-    sellAvgRet: btSellN ? btSellRet / btSellN : 0,
-  };
+  // ---------------- 信号历史回放胜率 ----------------
+  // 与信号卡同一引擎（decideSignal 级联 + 涨跌停覆盖 + 同源支撑压力/趋势判定）在历史
+  // 日线上逐日回放，20 个交易日前瞻评估各档信号的方向正确率（详见 replaySignalStats 注释）。
+  // 仅用日 K 序列（周/月视图下口径也稳定）；日线缺失时返回 null，UI 不展示胜率提示。
+  const signalWinRate = replaySignalStats(dailyKlines && dailyKlines.length >= 120 ? dailyKlines : undefined, stockCode);
 
   return {
     price,
@@ -1643,7 +1779,7 @@ export function analyze(
     breakdown,
     sigType,
     signal,
-    backtest,
+    signalWinRate,
     marketEnv,
     intradayMove,
   };
