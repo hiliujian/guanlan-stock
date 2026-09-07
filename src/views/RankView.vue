@@ -65,6 +65,7 @@ import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
 import { fmtPrice, fmtPct, trendCls } from "@/utils/format";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
+import { staleGet, staleSet } from "@/utils/staleCache";
 
 const props = defineProps<{ mode: "today" | "all" }>();
 const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
@@ -79,7 +80,7 @@ interface RankRow {
   chg: number;
 }
 
-const rows = ref<RankRow[]>([]);
+const rows = ref<RankRow[]>(staleGet<RankRow[]>("rank:" + props.mode) ?? []);
 const loading = ref(false);
 
 async function load() {
@@ -109,11 +110,20 @@ async function load() {
   rows.value = res
     .filter((r): r is PromiseFulfilledResult<RankRow> => r.status === "fulfilled")
     .map((r) => r.value);
+  // 成功加载后保留到 stale 缓存（按 mode 分键）：切换 tab / 实例重建先展示旧榜单再覆盖
+  staleSet("rank:" + props.mode, rows.value);
   loading.value = false;
 }
 
 onMounted(load);
-watch(() => props.mode, load);
+// 切换榜单模式：先把该 mode 的 stale 缓存上屏（无缓存则清空，避免旧 mode 数据串台），再拉新数据
+watch(
+  () => props.mode,
+  (m) => {
+    rows.value = staleGet<RankRow[]>("rank:" + m) ?? [];
+    load();
+  }
+);
 
 function rankCls(i: number): string {
   if (i === 0) return "gold";

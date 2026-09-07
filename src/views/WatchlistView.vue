@@ -552,7 +552,7 @@ interface PeekRow {
   pct: number | null;
   price: number | null;
 }
-const peek = ref<PeekRow | null>(null);
+const peek = ref<PeekRow | null>(staleGet<PeekRow>("wl:peek"));
 async function loadPeek() {
   const heat = await fetchStockHeat(20, true);
   // 刷新容错：热度接口读失败会伪装成空数组——已有旧内容时保留（允许数据延迟），首次为空正常
@@ -562,8 +562,10 @@ async function loadPeek() {
   try {
     const s = await fetchSnapshot(secid);
     peek.value = { code: top.code, name: top.name, chg: s.chg, pct: s.pct, price: s.price };
+    staleSet("wl:peek", peek.value);
   } catch {
     peek.value = { code: top.code, name: top.name, chg: 0, pct: null, price: null };
+    staleSet("wl:peek", peek.value);
   }
 }
 

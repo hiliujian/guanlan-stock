@@ -552,7 +552,7 @@ const suggestOpen = computed(() => showSuggest.value && suggestions.value.length
 const focused = ref(false);
 
 // 空态卡片「热门搜索」标签：后端当日真实搜索行为统计，最多 9 个（名称随榜返回，免二次解析）
-const hotList = ref<HotStock[]>([]);
+const hotList = ref<HotStock[]>(staleGet<HotStock[]>("mv:hotList") ?? []);
 const hotLoaded = ref(false); // 区分「加载中」与「当日确实无热点」，避免首帧闪现空态文案
 async function loadHot() {
   const list = await fetchHotSearches(9);
@@ -560,6 +560,7 @@ async function loadHot() {
   // 刷新容错：读失败伪装成空数组——已有热门搜索时保留旧数据（允许数据延迟），首次为空正常
   if (list.length === 0 && hotList.value.length > 0) return;
   hotList.value = list;
+  staleSet("mv:hotList", list);
 }
 
 // 最近搜索历史：本地存储、去重、上限 10、可清除；空输入聚焦时作为联想展示
