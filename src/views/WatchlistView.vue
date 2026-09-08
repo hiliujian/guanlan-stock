@@ -504,7 +504,7 @@ import OutlineIcon from "@/components/OutlineIcon.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import PeekSheet from "@/components/PeekSheet.vue";
 import RollSwap from "@/components/RollSwap.vue";
-import RankView from "@/views/RankView.vue";
+import RankView, { preloadRank } from "@/views/RankView.vue";
 import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, applyGroupOrder, type WatchItem, type PriceAlert } from "@/store/watchlist";
 import { userState } from "@/store/user";
 import { goTab, openInMarket } from "@/store/nav";
@@ -1348,12 +1348,14 @@ onMounted(() => {
   loadCols();
   if (!needLogin.value) loadQuotesSafe();
   loadPeek();
+  preloadRank("today"); // 预加载今日热榜：展开榜单面板零等待（与 RankView 共用同一装载代码）
   scanPositionSignals(); // 持仓信号巡检：进入自选页即检测一次
 });
 onActivated(() => {
   loadQuotesSafe();
   startPolling();
   loadPeek(); // 回到本页即刷新「今日最热」预览，避免展示过期的空态
+  preloadRank("today"); // 切回本页同样预热（preloadRank 内置 60s 节流）
   // onDeactivated 已停提醒对齐：回页后须重启，否则窗口内的异动提醒不再展示
   if (anomalyList.value.length > 0) startAnomSync();
   scanPositionSignals(); // 回页再巡检一次（kline 缓存命中，开销可忽略）

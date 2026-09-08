@@ -57,20 +57,15 @@
   </view>
 </template>
 
-<script setup lang="ts">
-import { ref, watch, onMounted } from "vue";
-import OutlineIcon from "@/components/OutlineIcon.vue";
+<script lang="ts">
+// 模块级装载逻辑：与组件实例解耦，供「进入自选页预加载热榜」（WatchlistView onMounted
+// 调 preloadRank）与组件 load() 共用同一份取数代码，杜绝两处实现漂移。
 import { fetchSnapshot } from "@/api/quote";
 import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
-import { fmtPrice, fmtPct, trendCls } from "@/utils/format";
-import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
 import { staleGet, staleSet } from "@/utils/staleCache";
 
-const props = defineProps<{ mode: "today" | "all" }>();
-const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
-
-interface RankRow {
+export interface RankRow {
   code: string;
   market: string;
   name: string;
@@ -80,23 +75,17 @@ interface RankRow {
   chg: number;
 }
 
-const rows = ref<RankRow[]>(staleGet<RankRow[]>("rank:" + props.mode) ?? []);
-const loading = ref(false);
+// 组件实例外的短效缓存：预加载结果在这里，面板打开时命中即零等待上屏
+const rankCache: Record<string, RankRow[] | undefined> = {};
+const rankFetchedAt: Record<string, number> = {};
 
-async function load() {
-  loading.value = true;
+async function loadRankRows(mode: "today" | "all"): Promise<RankRow[]> {
   // 热度榜：跨用户自选聚合（人气）。
   //   today 模式（今日热榜）→ 仅统计当日（北京时间）新增自选行为，真实反映今日热度；
   //   all 模式（完整榜单）  → 统计历史累计持有人数。
-  // 二者后端各自独立聚合；today 为空时本组件显示「暂无数据」，不会兜底完整榜单。
-  const today = props.mode === "today";
-  const heat = await fetchStockHeat(props.mode === "all" ? 100 : 20, today);
-  // 刷新容错：热度接口读失败会伪装成空数组——已有榜单时保留旧榜单（允许数据延迟），
-  // 首次为空正常显示「暂无数据」
-  if (!heat.length && rows.value.length) {
-    loading.value = false;
-    return;
-  }
+  // 二者后端各自独立聚合；today 为空时 UI 显示「暂无数据」，不会兜底完整榜单。
+  const today = mode === "today";
+  const heat = await fetchStockHeat(mode === "all" ? 100 : 20, today);
   const tasks = heat.map(async (h) => {
     const secid = resolveSecid(h.code, h.market as any);
     try {
@@ -107,20 +96,67 @@ async function load() {
     }
   });
   const res = await Promise.allSettled(tasks);
-  rows.value = res
+  return res
     .filter((r): r is PromiseFulfilledResult<RankRow> => r.status === "fulfilled")
     .map((r) => r.value);
+}
+
+/** 进入自选页时预热今日热榜数据（后台静默，失败无感）；60s 节流防切页刷量 */
+export function preloadRank(mode: "today" | "all" = "today"): void {
+  const now = Date.now();
+  if (rankCache[mode]?.length && now - (rankFetchedAt[mode] || 0) < 60000) return;
+  rankFetchedAt[mode] = now;
+  loadRankRows(mode)
+    .then((rows) => {
+      if (rows.length) {
+        rankCache[mode] = rows;
+        staleSet("rank:" + mode, rows);
+      }
+    })
+    .catch(() => {
+      /* 预加载失败无感，面板打开时组件照常拉取 */
+    });
+}
+</script>
+
+<script setup lang="ts">
+import { ref, watch, onMounted } from "vue";
+import OutlineIcon from "@/components/OutlineIcon.vue";
+import { fmtPrice, fmtPct, trendCls } from "@/utils/format";
+import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
+
+const props = defineProps<{ mode: "today" | "all" }>();
+const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
+
+const rows = ref<RankRow[]>(staleGet<RankRow[]>("rank:" + props.mode) ?? []);
+const loading = ref(false);
+
+async function load() {
+  loading.value = true;
+  // 预加载缓存命中：直接上屏（打开面板零等待），随后仍后台刷新最新数据
+  const cached = rankCache[props.mode];
+  if (cached?.length) rows.value = cached;
+  const fresh = await loadRankRows(props.mode);
+  // 刷新容错：热度接口读失败会伪装成空数组——已有榜单时保留旧榜单（允许数据延迟），
+  // 首次为空正常显示「暂无数据」
+  if (!fresh.length && rows.value.length) {
+    loading.value = false;
+    return;
+  }
+  rows.value = fresh;
+  rankCache[props.mode] = fresh;
   // 成功加载后保留到 stale 缓存（按 mode 分键）：切换 tab / 实例重建先展示旧榜单再覆盖
   staleSet("rank:" + props.mode, rows.value);
   loading.value = false;
 }
 
 onMounted(load);
-// 切换榜单模式：先把该 mode 的 stale 缓存上屏（无缓存则清空，避免旧 mode 数据串台），再拉新数据
+// 切换榜单模式：优先预加载缓存，其次 stale 缓存（无则清空，避免旧 mode 数据串台），再拉新数据
 watch(
   () => props.mode,
   (m) => {
-    rows.value = staleGet<RankRow[]>("rank:" + m) ?? [];
+    const cached = rankCache[m];
+    rows.value = cached?.length ? cached : staleGet<RankRow[]>("rank:" + m) ?? [];
     load();
   }
 );

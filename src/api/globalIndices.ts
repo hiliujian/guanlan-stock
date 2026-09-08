@@ -34,6 +34,13 @@ interface GlobalIndexGroup {
   items: GlobalIndexItem[];
 }
 type GlobalSessionLabel = "盘前" | "盘中" | "盘后";
+/** 单时段篮子视图：pct/chg 为该时段等权涨跌幅/涨跌额；date 为数据所属 ET 日期（"MM-DD"，当日省略）
+ *  ——休市/假期数据定格在上一交易日时，UI 用它把「盘中」角标替换为日期（如 09-04）防误导。 */
+interface BasketView {
+  pct: number | null;
+  chg: number | null;
+  date?: string;
+}
 export interface GlobalIndexQuote {
   secid: string;
   name: string;
@@ -44,7 +51,7 @@ export interface GlobalIndexQuote {
   session?: GlobalSessionLabel;
   /** 美股篮子三时段视图（盘前/盘中/盘后各自的等权涨跌幅，null=该时段暂无数据）。
    *  供 UI 点击角标切换展示时段；pct/chg 始终为「实际所处阶段」的数据，与 session 一致。 */
-  views?: { pre: { pct: number | null; chg: number | null } | null; regular: { pct: number | null; chg: number | null } | null; post: { pct: number | null; chg: number | null } | null };
+  views?: { pre: BasketView | null; regular: BasketView | null; post: BasketView | null };
 }
 
 // ---------------- 美东交易日划分（时区经 Intl 由 ICU 处理，自动适应冬/夏令时） ----------------
@@ -292,7 +299,10 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
     for (const e of ext) extMap.set(e.secid, e);
   }
   // 「盘中」标签须有数据实证：时钟在盘中时段，且至少有成分股行情时间戳落在今日盘中窗口内。
-  // 假期/停盘/深夜/周末 → 不打标签（UI 隐藏角标），杜绝标签与数据脱节。
+  // 盘前/盘后同理：至少 1 只成分的扩展行情时间戳落在今日该阶段窗口内（新浪盘前数据常在
+  // 开盘前 1~2 小时才更新；美股假期——如 2026-09-07 劳动节——全天无盘前/盘后数据）。
+  // 假期/停盘/深夜/周末/数据源未更新 → 不打标签（UI 隐藏角标），杜绝标签与数据脱节、
+  // 「盘前/盘中」角标配「暂无数据」的组合。
   const regularLive =
     session === "regular" &&
     GLOBAL_INDEX_GROUPS.some((g) =>
@@ -300,8 +310,23 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
         (i.members ?? []).some((m) => tsInRegularWindow(memberTs.get(m), et))
       )
     );
+  const extLive = (stage: "pre" | "post") =>
+    GLOBAL_INDEX_GROUPS.some((g) =>
+      g.items.some((i) =>
+        (i.members ?? []).some((m) => {
+          const t = parseSinaUsExtTime(extMap.get(m)?.extTime ?? "");
+          return extFresh(t, et, stage);
+        })
+      )
+    );
   const label: GlobalSessionLabel | undefined =
-    session === "pre" ? "盘前" : session === "post" ? "盘后" : regularLive ? "盘中" : undefined;
+    session === "pre" && extLive("pre")
+      ? "盘前"
+      : session === "post" && extLive("post")
+        ? "盘后"
+        : regularLive
+          ? "盘中"
+          : undefined;
   for (const g of GLOBAL_INDEX_GROUPS) {
     for (const it of g.items) {
       if (!it.members) continue;
@@ -310,14 +335,14 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
       // 故恒走常规口径（东财 ulist 等权），且不打美东阶段标签（与亚太指数一致，收盘后展示当日收盘）。
       const nonUs = it.flag === "kr" || it.flag === "jp";
       if (nonUs) {
-        const r = computeBasket(it, map, extMap, "regular", null);
+        const r = computeBasket(it, map, extMap, memberTs, "regular", et);
         map.set(it.secid, { secid: it.secid, name: it.name, price: null, pct: r.pct, chg: r.chg, session: undefined });
       } else {
         // 美股篮子：三时段视图一次算齐，供 UI 点击角标切换展示（无数据的时段为 null → 暂无数据）
         const views = {
-          pre: computeBasket(it, map, extMap, "pre", et),
-          regular: computeBasket(it, map, extMap, "regular", et),
-          post: computeBasket(it, map, extMap, "post", et),
+          pre: computeBasket(it, map, extMap, memberTs, "pre", et),
+          regular: computeBasket(it, map, extMap, memberTs, "regular", et),
+          post: computeBasket(it, map, extMap, memberTs, "post", et),
         };
         // session 可能为 "closed"（休市）→ 常规口径兜底
         const r = session === "pre" || session === "post" ? views[session] : views.regular;
@@ -332,7 +357,10 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
 // 若把这种结果直接覆盖到 UI，行情页会从「有数据」突变为「暂无数据」，体验突兀。
 // 因此保留最近一次含有效数据的合并结果 lastGoodGlobal：
 //   · 新结果整体无任何有效数据 → 整体沿用上次快照；
-//   · 新结果部分缺失 → 仅对缺失条目用旧值补位（允许数据延迟，正常条目仍用新值）；
+//   · 新结果部分缺失 → 仅对缺失条目用旧值**回填数值**（price/pct/chg）；
+//     ⚠️ 绝不回填旧 session/views 标签——标签必须描述本次计算出的阶段与数据。
+//     否则上一阶段（如上周五盘中）的角标会被带到新阶段：实测劳动节盘前出现
+//     「暂无数据 + 盘中角标」的组合（旧条目整条回填所致），误导性极强。
 //   · 首次拉取（无旧快照）→ 原样返回，UI 正常显示「暂无数据」。
 let lastGoodGlobal: Map<string, GlobalIndexQuote> | null = null;
 function mergeWithLastGood(fresh: Map<string, GlobalIndexQuote>): Map<string, GlobalIndexQuote> {
@@ -342,7 +370,10 @@ function mergeWithLastGood(fresh: Map<string, GlobalIndexQuote>): Map<string, Gl
     for (const [secid, q] of fresh) {
       if (hasData(q)) continue;
       const old = lastGoodGlobal.get(secid);
-      if (old && hasData(old)) fresh.set(secid, old);
+      if (old && hasData(old)) {
+        // 数值兜底 + 标签/视图保持本次新鲜计算结果（bktSel 会按数据可得性自动回退展示时段）
+        fresh.set(secid, { ...q, price: old.price, pct: old.pct, chg: old.chg });
+      }
     }
   }
   lastGoodGlobal = fresh;
@@ -367,14 +398,23 @@ function extFresh(
   return !t.am && t.minutes >= 960 && t.minutes <= 1260; // 盘后 16:00–20:00，容忍 21:00 前的迟到的戳
 }
 
-/** 篮子等权计算：正式/休市走东财常规口径；盘前/盘后走新浪扩展行情并施加分级过滤。 */
+/** 数据日期标签（ET "MM-DD"）：当日省略，非当日返回如 "09-04"——供 UI 以日期角标替代「盘中/盘后」防误导 */
+function etDateTag(t: { month: number; day: number }, today: EtNow): string | undefined {
+  if (t.month === today.month && t.day === today.day) return undefined;
+  return String(t.month).padStart(2, "0") + "-" + String(t.day).padStart(2, "0");
+}
+
+/** 篮子等权计算：正式/休市走东财常规口径；盘前/盘后走新浪扩展行情并施加分级过滤。
+ *  regular 视图附带 date（成分股最新行情时间戳换算的 ET 日期，非当日才有）；
+ *  pre/post 视图行已被 extFresh 过滤为「当日」，天然无陈旧日期问题，不附 date。 */
 function computeBasket(
   it: GlobalIndexItem,
   map: Map<string, GlobalIndexQuote>,
   extMap: Map<string, SinaUsExtQuote>,
+  memberTs: Map<string, number>,
   session: UsSession,
-  et: EtNow | null
-): { pct: number | null; chg: number | null } {
+  et: EtNow
+): BasketView {
   const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
   if (session === "pre" || session === "post") {
     const post = session === "post";
@@ -387,7 +427,7 @@ function computeBasket(
     for (const m of it.members ?? []) {
       const e = extMap.get(m);
       if (!e || e.extPrice == null || e.extPct == null || e.close == null) continue;
-      if (!extFresh(parseSinaUsExtTime(e.extTime), et as EtNow, post ? "post" : "pre")) continue;
+      if (!extFresh(parseSinaUsExtTime(e.extTime), et, post ? "post" : "pre")) continue;
       if (Math.abs(e.extPct) > pctCap) continue;
       const derived = ((e.extPrice - e.close) / e.close) * 100;
       if (Math.abs(derived - e.extPct) > consTol) continue;
@@ -403,8 +443,12 @@ function computeBasket(
     .map((m) => map.get(m))
     .filter((q): q is GlobalIndexQuote => !!q && q.price != null && q.pct != null);
   if (!rows.length) return { pct: null, chg: null };
+  // 数据日期：取成分股最新行情时间戳（f124）换算 ET 日期；假期/休市数据定格在上一交易日
+  // → 非当日返回 date 标签，UI 据此把「盘中」角标替换为日期（如 09-04）
+  const latest = (it.members ?? []).reduce((mx, m) => Math.max(mx, memberTs.get(m) ?? 0), 0);
   return {
     pct: mean(rows.map((q) => q.pct as number)),
     chg: mean(rows.map((q) => q.chg ?? 0)),
+    date: latest ? etDateTag(etNow(new Date(latest * 1000)), et) : undefined,
   };
 }

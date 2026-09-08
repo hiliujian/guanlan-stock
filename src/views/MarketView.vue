@@ -179,8 +179,9 @@
                       <image v-if="it.flag" class="peek-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
                       <image v-else-if="it.icon" class="peek-flag-ic" :src="COMMODITY_ICON[it.icon]" mode="aspectFit" />
                       <text class="idx-item-name">{{ it.name }}</text>
-                      <!-- 篮子时段角标：标注当前展示数据所属阶段（盘前/盘中/盘后），点击在三个时段间循环切换 -->
-                      <text v-if="it.members && qOf(it.secid)?.views" class="idx-item-bkt bkt-switch" @click.stop="cycleBkt(it)">{{ BKT_LABEL[bktSel(it)] }}</text>
+                      <!-- 篮子时段角标：标注当前展示数据所属阶段（盘前/盘中/盘后），点击在三个时段间循环切换；
+                           数据非当日（休市/假期定格上一交易日）时改显日期（如 09-04），避免「盘中」配旧数据误导 -->
+                      <text v-if="it.members && qOf(it.secid)?.views" class="idx-item-bkt bkt-switch" @click.stop="cycleBkt(it)">{{ bktLabel(it) }}</text>
                       <text v-else-if="it.members && qOf(it.secid)?.session" class="idx-item-bkt">{{ qOf(it.secid)?.session }}</text>
                     </view>
                     <view class="idx-item-right">
@@ -381,16 +382,24 @@ const globalQuotes = ref<Map<string, GlobalIndexQuote>>(
     staleGet<Map<string, GlobalIndexQuote>>("mv:globalQuotes") ?? new Map()
   );
 let globalTimer: any = null;
+let lastGlobalFetchAt = 0; // 预加载节流：keep-alive 每次切回都进 onActivated，60s 内不重复拉
 // 面板展开态跟踪：keep-alive 切走时 stopTimers 会同步停掉指数面板刷新，
 // 切回（onActivated → syncTimers）按此恢复展开态的轮询；浏览器后台门控（syncTimers）同用
 const sheetExpanded = ref(false);
 async function refreshGlobal() {
+  lastGlobalFetchAt = Date.now();
   try {
     globalQuotes.value = await fetchGlobalIndices();
     staleSet("mv:globalQuotes", globalQuotes.value);
   } catch {
     /* 保留上次数据，下一拍重试 */
   }
+}
+// 预加载：进入行情页即拉一次全球指数（含科技热点），不等用户展开面板——
+// 展开时直接见数据，消除「打开卡片才加载」的空窗。60s 节流防切页刷量。
+function preloadGlobal() {
+  if (Date.now() - lastGlobalFetchAt < 60000) return;
+  void refreshGlobal();
 }
 function startGlobalTimer() {
   if (globalTimer) return; // 已在跑则不动（重复调用不重复立即拉取）
@@ -461,11 +470,18 @@ function cycleBkt(it: { secid: string }) {
   const next = BKT_CYCLE[(BKT_CYCLE.indexOf(cur) + 1) % BKT_CYCLE.length];
   bktView.value = { ...bktView.value, [it.secid]: next };
 }
-function bktData(it: { secid: string }): { pct: number | null; chg: number | null } | null {
+function bktData(it: { secid: string }): { pct: number | null; chg: number | null; date?: string } | null {
   const q = qOf(it.secid);
   if (!q) return null;
   if (!q.views) return { pct: q.pct, chg: q.chg }; // 非美股篮子（指数/日韩/商品）走原口径
   return q.views[bktSel(it)] ?? null;
+}
+// 角标文案：默认「盘前/盘中/盘后」；所选视图数据非当日（假期/休市定格上一交易日）时
+// 改显日期（如 09-04），杜绝「盘中」标签配旧数据误导——与期指持仓日期后缀同思路
+function bktLabel(it: { secid: string }): string {
+  const q = qOf(it.secid);
+  const v = q?.views?.[bktSel(it)];
+  return (v && v.date) || BKT_LABEL[bktSel(it)];
 }
 function bktPct(it: { secid: string }): string {
   const d = bktData(it);
@@ -1060,6 +1076,7 @@ watch(secid, loadIndex, { immediate: true });
 onMounted(() => {
   loadHistory();
   loadHot();
+  preloadGlobal(); // 预加载全球指数/科技热点：展开面板零等待
   // 仅当从「自选」页跳转过来（带 pendingCode）时才自动搜索；
   // 否则若本地有最近查看记录则恢复该股票，保证切回行情页不丢数据、冷启动也能恢复。
   if (navState.pendingCode) {
@@ -1082,6 +1099,7 @@ onMounted(() => {
 // 仅在「行情」为当前可见页时跑心跳（刷新行情 + 状态标识），离开即暂停，省请求。
 onActivated(() => {
   syncTimers(); // 含按面板展开态恢复指数面板轮询（此前仅重启主心跳，切回后面板数据冻结）
+  preloadGlobal(); // 切回行情页同样预加载（60s 节流，不重复拉）
 });
 onDeactivated(() => {
   stopTimers();
