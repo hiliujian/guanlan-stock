@@ -11,7 +11,7 @@
 // =====================================================================
 
 // 底部 Tab 键（与 src/pages/index/index.vue / AppTabBar 对应）
-export type TabKey = "market" | "watch" | "position" | "community" | "profile";
+export type TabKey = "market" | "watch" | "community" | "profile";
 
 // 菜单配置：每类 Tab 是否启用（false = 底部导航隐藏、入口一并隐藏）
 export type MenuConfig = Record<TabKey, boolean>;
@@ -21,11 +21,11 @@ export interface AppSettings {
 }
 
 // 本地默认配置（无 Supabase 远程覆盖时生效）
+// 自选 / 持仓 合并为同一个「自选」Tab，持仓视图在 WatchlistView 内通过品牌区点击切换
 export const DEFAULT_SETTINGS: AppSettings = {
   menus: {
     market: true,
-    watch: true, // 自选
-    position: true, // 持仓（复用自选页代码与样式）
+    watch: true, // 自选（内含「持仓」子视图，品牌区点击切换）
     community: true, // 社区已开启：底部导航显示「社区」Tab；模块本身未移除，改回 false 可隐藏
     profile: true,
   },

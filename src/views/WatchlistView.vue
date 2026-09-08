@@ -2,7 +2,13 @@
   <view class="wl-page">
     <!-- 头部：与社区共用 PageHeader，移出 scroll-view 以保证 H5 上始终吸顶。 -->
     <!-- #brand：默认品牌区（星标图标 + 「自选」渐变标题），与社区页同一套左上角 logo 风格 -->
-    <PageHeader :brand-text="mainView === 'pos' ? '持仓' : '自选'" :brand-icon="mainView === 'pos' ? 'briefcase' : 'star'">
+    <PageHeader
+      :brand-text="mainView === 'pos' ? '持仓' : '自选'"
+      :brand-icon="mainView === 'pos' ? 'wallet' : 'star'"
+      brand-hint="swap"
+      :brand-clickable="true"
+      @brand-click="toggleView"
+    >
       <!-- #right：自选视图=分组胶囊；持仓视图=总收益胶囊（组合级：涨跌数量/收益率/收益金额，实时计算） -->
       <template #right>
         <view
@@ -74,11 +80,11 @@
           <view v-if="!posRows.length" class="empty-wrap">
             <view class="empty-card glass">
               <view class="empty-ic flex-center">
-                <OutlineIcon type="briefcase" :size="60" color="var(--primary)" />
+                <OutlineIcon type="wallet" :size="60" color="var(--primary)" />
               </view>
               <text class="empty-title">还没有持仓</text>
               <text class="empty-s">在「行情」页报告卡或自选页长按菜单中设置持仓成本与数量，收益与操作信号将同步展示在这里。</text>
-              <button class="btn-primary empty-btn" @click="goTab('watch')">去自选页设置</button>
+              <button class="btn-primary empty-btn" @click="toggleView">切换到自选</button>
             </view>
           </view>
           <view v-else class="wl-wrap">
@@ -525,7 +531,7 @@
               <view class="grp-list">
                 <view class="grp-item" role="button" @click="openPosForm">
                   <!-- 未设置持仓图标置灰，已设置高亮主色（绿）：一眼看出该股当前持仓状态 -->
-                  <OutlineIcon type="briefcase" :size="28" :color="lpHasPosition ? 'var(--primary)' : 'var(--text-2)'" />
+                  <OutlineIcon type="wallet" :size="28" :color="lpHasPosition ? 'var(--primary)' : 'var(--text-2)'" />
                   <text class="grp-label" :class="{ primary: lpHasPosition }">设置持仓</text>
                 </view>
                 <view v-if="lpHasPosition" class="grp-item" role="button" @click="clearLpPosition">
@@ -620,7 +626,7 @@ import { anomalies, type AnomalyRecord, ANOMALY_META } from "@/store/anomaly";
 import { staleGet, staleSet } from "@/utils/staleCache";
 import { analyze } from "@/utils/analyzer";
 import { getKline } from "@/api/sources";
-import { listCostSecids, getPosition, setPosition, clearPosition, listPositions, getLastSignal, setLastSignal, type Position } from "@/utils/costBasis";
+import { listCostSecids, getPosition, setPosition, clearPosition, listPositions, getLastSignal, setLastSignal, positionsVersion, type Position } from "@/utils/costBasis";
 import { hydrateCloudPositions } from "@/store/holdingsMirror";
 import { saveHolding, dropHolding } from "@/api/holdings";
 
@@ -1092,22 +1098,22 @@ async function scanPositionSignals() {
 }
 
 
-// ===== 自选 / 持仓 两视图：由底部 Tab 的 view prop 派生（自选 Tab → 'watch'，持仓 Tab → 'position'） =====
+// ===== 自选 / 持仓 两视图：同一 WatchlistView 内切换（底部只有「自选」一个 Tab） =====
 // 自选=关注（不含成本语义），持仓=实际持有（成本/数量驱动盈亏），两者不混同；
-// 两个视图已拆为独立底部 Tab（index.vue 用不同 key 渲染同一 WatchlistView，共享 store 数据）。
+// 点击左上角品牌区（图标 + swap 提示）在 自选 ↔ 持仓 间切换，本地持久化上次停留视图。
 type MainView = "watch" | "pos";
-// 视图由页面 prop (view) 派生：底部「自选」Tab → watch、「持仓」Tab → position。
-// 不再本地持久化切换状态（原 toggleView 已移除，两个视图已拆为独立底部 Tab）。
-const props = defineProps<{ view?: "watch" | "position" }>();
-const mainView = computed<MainView>(() => (props.view === "position" ? "pos" : "watch"));
-// 首次进入持仓视图：行情快照复用自选页已有的批量缓存，信号若未扫描过则触发一次巡检
-watch(
-  mainView,
-  (mv) => {
-    if (mv === "pos" && (!posSigMap.value || !Object.keys(posSigMap.value).length)) scanPositionSignals();
-  },
-  { immediate: true }
-);
+const POS_VIEW_KEY = "wl:mainView";
+const mainView = ref<MainView>(uni.getStorageSync(POS_VIEW_KEY) === "pos" ? "pos" : "watch");
+function toggleView() {
+  mainView.value = mainView.value === "pos" ? "watch" : "pos";
+  try {
+    uni.setStorageSync(POS_VIEW_KEY, mainView.value);
+  } catch (_) {}
+  // 首次进入持仓视图：行情快照复用自选页已有的批量缓存，信号若未扫描过则触发一次巡检
+  if (mainView.value === "pos" && (!posSigMap.value || !Object.keys(posSigMap.value).length)) {
+    scanPositionSignals();
+  }
+}
 
 // ===== 持仓视图数据：listPositions() + 行情快照（复用 quotes）+ analyze 信号（复用 sigCache） =====
 // 信号即行情页操作建议信号（同一 analyze 引擎对日 K 计算，同一双视角标签）；
@@ -1135,6 +1141,7 @@ const SIG_META: Record<string, { text: string; cls: string }> = {
   wait: { text: "观望", cls: "wait" },
 };
 const posRows = computed<PosRow[]>(() => {
+  void positionsVersion.value; // 持仓变更（设置/清除）后立即重算，修复「设了持仓却显示无持仓」
   const out: PosRow[] = [];
   for (const p of listPositions()) {
     const [m, code] = p.secid.split(".");
@@ -1639,7 +1646,10 @@ const lpSecid = computed(() => {
   return (resolveSecid(it.code, it.market as any) as string) || "";
 });
 // 长按目标是否已设置持仓：决定「设置持仓」项图标/文字是否高亮配色、是否显示「清除持仓」入口
-const lpHasPosition = computed(() => !!lpSecid.value && !!getPosition(lpSecid.value));
+const lpHasPosition = computed(() => {
+  void positionsVersion.value; // 持仓变更后同步刷新「设置持仓」项高亮态
+  return !!lpSecid.value && !!getPosition(lpSecid.value);
+});
 function openPosForm() {
   if (!lpSecid.value) return;
   posFormRef.value?.open();

@@ -20,20 +20,9 @@ export const navState = reactive<{
   pendingMarket: "auto",
 });
 
-// 底部「自选 / 持仓」视图记忆键：仅记忆这两个 watchlist Tab 的停留位置，
-// 行情 / 社区 / 我的 不记忆，避免偏离「默认自选」的定位。
-export const LAST_WL_TAB_KEY = "gl:lastWatchlistTab";
-
-// 冷启动时恢复上次停留的 watchlist Tab，默认「自选」。
-function loadLastWatchlistTab(): TabKey {
-  try {
-    const v = uni.getStorageSync(LAST_WL_TAB_KEY);
-    if (v === "position" || v === "watch") return v;
-  } catch (_) {}
-  return "watch";
-}
-
-export const navTab = reactive<{ currentKey: TabKey }>({ currentKey: loadLastWatchlistTab() });
+// 默认进入「自选」Tab（底部只有 行情/自选/社区/我的；自选内含「持仓」子视图）。
+// 注：自选/持仓 子视图的停留记忆在 WatchlistView 内（POS_VIEW_KEY），不在底部 Tab 层。
+export const navTab = reactive<{ currentKey: TabKey }>({ currentKey: "watch" });
 
 /**
  * 吞掉 uni 导航 Promise 的良性拒绝（如「Navigation cancelled / interrupted」——
@@ -82,12 +71,6 @@ export function goTab(key: TabKey) {
     return;
   }
   navTab.currentKey = key;
-  // 记住「自选 / 持仓」停留位置（仅这两个 Tab 记忆，其余 Tab 不覆盖）
-  if (key === "watch" || key === "position") {
-    try {
-      uni.setStorageSync(LAST_WL_TAB_KEY, key);
-    } catch (_) {}
-  }
 }
 
 export function openAuth(mode: "login" | "register" = "login") {

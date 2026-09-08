@@ -1,12 +1,19 @@
 // =====================================================================
 // 持仓信息（按 secid 持久化）：持仓成本 / 持仓数量。填了持仓成本即视为「持仓中」。
 // 消费方：
-//   · 行情页报告（MarketView/ReportView）：Tip 行 briefcase 图标弹出录入（字段与社区
+//   · 行情页报告（MarketView/ReportView）：Tip 行 wallet 图标弹出录入（字段与社区
 //     发帖持仓卡对齐：仅持仓成本+数量），成本驱动报告页持仓状态双视角建议，抑制频繁交易误导；
 //   · 社区发帖（PostComposer）：持仓卡「一键填入」快速关联本地持仓（成本/数量预填）；
 //   · 自选页（WatchlistView）：持仓标的巡检，产生买/卖信号时页内常驻卡片提醒。
 // 兼容：旧版本 cost:<secid> 存的是纯数字（仅成本），读取时自动归一为 Position。
 // =====================================================================
+
+import { ref } from "vue";
+
+// 持仓版本号：setPosition / clearPosition 时自增，供持仓视图（posRows 等）响应式重算。
+// 底层存储是 uni.getStorageSync（非响应式），仅靠它无法触发 Vue computed 更新，
+// 故用该计数器作为响应式依赖，避免「设置了持仓但持仓页不刷新」的问题。
+export const positionsVersion = ref(0);
 
 const IDX_KEY = "cost:index"; // 已设置持仓的 secid 索引（供巡检枚举，避免遍历 storage）
 const KEY = (secid: string) => "cost:" + secid;
@@ -50,6 +57,7 @@ export function setPosition(secid: string, pos: Position) {
       idx.push(secid);
       uni.setStorageSync(IDX_KEY, idx);
     }
+    positionsVersion.value++;
   } catch {
     /* noop */
   }
@@ -64,6 +72,7 @@ export function clearPosition(secid: string) {
     const idx: string[] = uni.getStorageSync(IDX_KEY) || [];
     const next = idx.filter((s) => s !== secid);
     if (next.length !== idx.length) uni.setStorageSync(IDX_KEY, next);
+    positionsVersion.value++;
   } catch {
     /* noop */
   }

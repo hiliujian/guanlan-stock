@@ -2,7 +2,7 @@
   <view class="report">
     <!-- 历史胜率提示（独立于信号卡之外，不隶属任何单一信号档）：与信号卡同一引擎在近 250 个交易日逐日回放；
          无背景，Tip 图标 + 文案左对齐 · 分隔；标签无色，仅数字按涨红/跌绿着色：
-         胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿；右端 briefcase 图标弹出设置持仓 -->
+         胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿；右端 wallet 图标弹出设置持仓 -->
     <view v-if="sigRatePct" class="sig-confidence">
       <OutlineIcon type="tip" :size="26" color="var(--warn)" />
       <text class="sc-label">20 个交易日胜率</text>
@@ -11,7 +11,7 @@
       <text class="sc-label">平均收益</text>
       <text :class="['sc-num', sigRetCls]">{{ sigRetText }}</text>
       <view class="sc-pos" @click="posFormRef?.open()" role="button" aria-label="设置持仓">
-        <OutlineIcon type="briefcase" :size="28" :color="holding ? 'var(--primary)' : 'var(--text-2)'" />
+        <OutlineIcon type="wallet" :size="28" :color="holding ? 'var(--primary)' : 'var(--text-2)'" />
       </view>
     </view>
 

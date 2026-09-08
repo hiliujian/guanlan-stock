@@ -6,8 +6,7 @@
         :is="currentComp"
         :key="currentKey"
         ref="tabRef"
-        v-bind="(currentKey === 'watch' || currentKey === 'position') ? { view: currentKey === 'position' ? 'position' : 'watch' } : {}"
-        v-on="(currentKey === 'watch' || currentKey === 'position') ? { 'open-market': onOpenMarket } : {}"
+        v-on="currentKey === 'watch' ? { 'open-market': onOpenMarket } : {}"
       />
       </keep-alive>
     </transition>
@@ -47,16 +46,14 @@ const currentKey = ref<TabKey>("market");
 const TAB_DEFS: Record<TabKey, TabDef> = {
   market: { key: "market", label: "行情", icon: "bars", iconActive: "bars" },
   watch: { key: "watch", label: "自选", icon: "star", iconActive: "star-filled" },
-  position: { key: "position", label: "持仓", icon: "briefcase", iconActive: "briefcase" },
   community: { key: "community", label: "社区", icon: "chatbubble", iconActive: "chatbubble" },
   profile: { key: "profile", label: "我的", icon: "person", iconActive: "person" },
 };
 // 视图注册表：与 TabKey 一一对应，仅渲染被启用的 Tab
-// 自选「watch」与持仓「position」共用同一 WatchlistView，靠 view prop 区分视角
+// 自选 / 持仓 合并为同一「自选」Tab（WatchlistView），持仓视图在组件内通过品牌区点击切换
 const COMP_REGISTRY: Record<TabKey, any> = {
   market: markRaw(MarketView),
   watch: markRaw(WatchlistView),
-  position: markRaw(WatchlistView),
   community: markRaw(CommunityView),
   profile: markRaw(ProfileView),
 };

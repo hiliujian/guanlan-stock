@@ -3,11 +3,17 @@
     <view class="ph-brand-wrap">
       <!-- 优先级：#brand slot > brandIcon + brandText > 默认空 -->
       <slot name="brand">
-        <view v-if="brandText || brandIcon" class="ph-brand">
+        <view
+          v-if="brandText || brandIcon"
+          class="ph-brand"
+          :class="{ 'ph-brand-clickable': brandClickable }"
+          @click="brandClickable && $emit('brand-click')"
+        >
           <view v-if="brandIcon" class="ph-brand-ic">
             <OutlineIcon :type="brandIcon" :size="38" color="var(--primary)" />
           </view>
           <text v-if="brandText" class="ph-brand-text">{{ brandText }}</text>
+          <OutlineIcon v-if="brandHint" :type="brandHint" :size="22" color="var(--text-2)" class="ph-brand-hint" />
         </view>
       </slot>
     </view>
@@ -23,6 +29,7 @@ import OutlineIcon from "./OutlineIcon.vue";
  * 通用页面顶部栏（自选 / 社区共用，避免重复样式）
  * - 仅外壳：左侧品牌图标 + 字 + 右侧 slot（业务按钮由调用方实现）
  * - 玻璃磨砂背景 + 主题色渐变品牌字 + 呼吸光晕动效
+ * - brandClickable + brand-hint：品牌区可点击切换（如自选↔持仓），hint 图标作提示
  */
 withDefaults(
   defineProps<{
@@ -30,14 +37,21 @@ withDefaults(
     brandIcon?: string;
     showAnimation?: boolean;
     sticky?: boolean;
+    /** 品牌区右侧提示图标（如 "swap"），提示可点击切换 */
+    brandHint?: string;
+    /** 是否允许点击品牌区（触发 brand-click） */
+    brandClickable?: boolean;
   }>(),
   {
     brandText: "",
     brandIcon: "",
     showAnimation: true,
     sticky: true,
+    brandHint: "",
+    brandClickable: false,
   }
 );
+defineEmits<{ (e: "brand-click"): void }>();
 </script>
 
 <style scoped>
@@ -93,6 +107,19 @@ withDefaults(
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
+}
+/* 品牌区可点击切换（自选 ↔ 持仓）：手型 + 提示图标轻微高亮 */
+.ph-brand-clickable {
+  cursor: pointer;
+}
+.ph-brand-hint {
+  margin-left: 2rpx;
+  opacity: 0.7;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.ph-brand-clickable:active .ph-brand-hint {
+  opacity: 1;
+  transform: rotate(180deg);
 }
 /* 呼吸光晕：仅在 ph-anim 开启时挂载，避免无意义渲染开销 */
 .ph-anim .ph-brand::after {
