@@ -35,6 +35,7 @@ const BUILTIN_ACCESS: Record<string, AccessMeta> = {
   "pages/auth/reset": { path: "pages/auth/reset", open: true, showInMenu: false, sortWeight: 0, extra: {}, isTab: false },
   "pages/index/index": { path: "pages/index/index", open: true, showInMenu: false, sortWeight: 0, extra: {}, isTab: false },
   watch: { path: "watch", open: false, showInMenu: true, sortWeight: 20, extra: {}, isTab: true },
+  position: { path: "position", open: false, showInMenu: true, sortWeight: 25, extra: {}, isTab: true },
   community: { path: "community", open: false, showInMenu: true, sortWeight: 30, extra: {}, isTab: true },
   profile: { path: "profile", open: false, showInMenu: true, sortWeight: 40, extra: {}, isTab: true },
   "pages/settings/settings": { path: "pages/settings/settings", open: false, showInMenu: false, sortWeight: 0, extra: {}, isTab: false },

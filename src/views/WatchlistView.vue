@@ -2,7 +2,7 @@
   <view class="wl-page">
     <!-- 头部：与社区共用 PageHeader，移出 scroll-view 以保证 H5 上始终吸顶。 -->
     <!-- #brand：默认品牌区（星标图标 + 「自选」渐变标题），与社区页同一套左上角 logo 风格 -->
-    <PageHeader :brand-text="mainView === 'pos' ? '持仓' : '自选'" :brand-icon="mainView === 'pos' ? 'briefcase' : 'star'" @click="toggleView">
+    <PageHeader :brand-text="mainView === 'pos' ? '持仓' : '自选'" :brand-icon="mainView === 'pos' ? 'briefcase' : 'star'">
       <!-- #right：自选视图=分组胶囊；持仓视图=总收益胶囊（组合级：涨跌数量/收益率/收益金额，实时计算） -->
       <template #right>
         <view
@@ -78,49 +78,67 @@
               </view>
               <text class="empty-title">还没有持仓</text>
               <text class="empty-s">在「行情」页报告卡或自选页长按菜单中设置持仓成本与数量，收益与操作信号将同步展示在这里。</text>
-              <button class="btn-primary empty-btn" @click="toggleView">去自选页设置</button>
+              <button class="btn-primary empty-btn" @click="goTab('watch')">去自选页设置</button>
             </view>
           </view>
-          <view v-else class="pos-table">
-            <view class="pos-thead">
-              <text class="pos-th pos-th-name">名称/代码</text>
-              <text class="pos-th pos-th-sig">信号</text>
-              <text class="pos-th">现价</text>
-              <text class="pos-th">收益率</text>
-              <text class="pos-th">盈亏</text>
-              <text class="pos-th">成本</text>
-            </view>
-            <view
-              v-for="p in posRows"
-              :key="p.secid"
-              class="pos-row"
-              role="button"
-              :aria-label="`查看 ${p.name}，长按管理`"
-              @click="openPosStock(p)"
-              @touchstart="onPosPressStart(p, $event)"
-              @touchmove="onRowPressMove"
-              @touchend="onRowPressEnd"
-              @touchcancel="onRowPressEnd"
-              @mousedown="onPosPressStart(p, $event)"
-              @mousemove="onRowPressMove"
-              @mouseup="onRowPressEnd"
-              @mouseleave="onRowPressEnd"
-            >
-              <view class="pos-cell-name">
-                <text class="t-name truncate">{{ p.name }}</text>
-                <view class="t-sub">
-                  <text class="t-mkt mkt-label">{{ marketCharFor(p.code, marketFromSecid(p.secid) as any) }}</text>
-                  <text class="t-code truncate">{{ p.code }}</text>
+          <view v-else class="wl-wrap">
+            <!-- 持仓表格完全复用自选表格体系（.wl-grid/.wl-thead/.tr/.td/.c-name/.signal-chip），
+                 仅列集不同：名称/代码 · 信号 · 现价 · 收益率 · 盈亏 · 成本 -->
+            <scroll-view class="wl-grid" scroll-x="true" scroll-y="true">
+              <view class="wl-rows">
+              <view class="wl-thead">
+                <view class="th c-name"></view>
+                <view class="th c-sig"><text class="th-label">信号</text></view>
+                <view class="th c-price"><text class="th-label">现价</text></view>
+                <view class="th c-pct"><text class="th-label">收益率</text></view>
+                <view class="th c-pnl"><text class="th-label">盈亏</text></view>
+                <view class="th c-cost"><text class="th-label">成本</text></view>
+              </view>
+              <view class="wl-body">
+              <view
+                v-for="p in posRows"
+                :key="p.secid"
+                class="tr"
+                role="button"
+                :aria-label="`查看 ${p.name}，长按管理`"
+                @click="openPosStock(p)"
+                @touchstart="onPosPressStart(p, $event)"
+                @touchmove="onRowPressMove"
+                @touchend="onRowPressEnd"
+                @touchcancel="onRowPressEnd"
+                @mousedown="onPosPressStart(p, $event)"
+                @mousemove="onRowPressMove"
+                @mouseup="onRowPressEnd"
+                @mouseleave="onRowPressEnd"
+              >
+                <view class="td c-name">
+                  <view class="t-block">
+                    <text class="t-name truncate">{{ p.name }}</text>
+                    <view class="t-sub">
+                      <text class="t-mkt mkt-label">{{ marketCharFor(p.code, marketFromSecid(p.secid) as any) }}</text>
+                      <text class="t-code truncate">{{ p.code }}</text>
+                    </view>
+                  </view>
+                </view>
+                <view class="td c-sig">
+                  <view :class="['signal-chip', p.sigCls]"><text>{{ p.sigText }}</text></view>
+                </view>
+                <view class="td c-price">
+                  <text class="st-num" :class="trendCls(p.pnlPct)">{{ p.price ? fmtPrice(p.price) : '--' }}</text>
+                </view>
+                <view class="td c-pct">
+                  <text class="st-num" :class="trendCls(p.pnlPct)">{{ fmtPct(p.pnlPct) }}</text>
+                </view>
+                <view class="td c-pnl">
+                  <text class="st-num" :class="trendCls(p.pnl)">{{ fmtSigned(p.pnl) }}</text>
+                </view>
+                <view class="td c-cost">
+                  <text class="st-num">{{ fmtPrice(p.cost) }}</text>
                 </view>
               </view>
-              <view class="pos-cell-sig">
-                <view :class="['signal-chip', p.sigCls]"><text>{{ p.sigText }}</text></view>
               </view>
-              <text class="pos-cell-num st-num">{{ p.price ? fmtPrice(p.price) : "--" }}</text>
-              <text :class="['pos-cell-num pos-cell-pnl', trendCls(p.pnlPct)]">{{ fmtPct(p.pnlPct) }}</text>
-              <text :class="['pos-cell-num pos-cell-pnl', trendCls(p.pnlPct)]">{{ fmtSigned(p.pnl) }}</text>
-              <text class="pos-cell-num pos-cost">{{ fmtPrice(p.cost) }}</text>
-            </view>
+              </view>
+            </scroll-view>
           </view>
         </view>
 
@@ -1074,23 +1092,22 @@ async function scanPositionSignals() {
 }
 
 
-// ===== 自选 ↔ 持仓 双视图：左上角品牌区轻量切换 + 本地缓存（刷新后保持上次视图） =====
+// ===== 自选 / 持仓 两视图：由底部 Tab 的 view prop 派生（自选 Tab → 'watch'，持仓 Tab → 'position'） =====
 // 自选=关注（不含成本语义），持仓=实际持有（成本/数量驱动盈亏），两者不混同；
-// 仅切换视图展示，不新增页面路由（keep-alive 常驻同一 tab 组件）。
-// 切换入口：点击左上角「自选/持仓」品牌区（点击品牌区即轻量切换，无 Tab 视觉残留）。
+// 两个视图已拆为独立底部 Tab（index.vue 用不同 key 渲染同一 WatchlistView，共享 store 数据）。
 type MainView = "watch" | "pos";
-const POS_VIEW_KEY = "wl:mainView";
-const mainView = ref<MainView>(uni.getStorageSync(POS_VIEW_KEY) === "pos" ? "pos" : "watch");
-function toggleView() {
-  mainView.value = mainView.value === "pos" ? "watch" : "pos";
-  try {
-    uni.setStorageSync(POS_VIEW_KEY, mainView.value);
-  } catch (_) {}
-  // 首次进入持仓视图：行情快照复用自选页已有的批量缓存，信号若未扫描过则触发一次巡检
-  if (mainView.value === "pos") {
-    if (!posSigMap.value || !Object.keys(posSigMap.value).length) scanPositionSignals();
-  }
-}
+// 视图由页面 prop (view) 派生：底部「自选」Tab → watch、「持仓」Tab → position。
+// 不再本地持久化切换状态（原 toggleView 已移除，两个视图已拆为独立底部 Tab）。
+const props = defineProps<{ view?: "watch" | "position" }>();
+const mainView = computed<MainView>(() => (props.view === "position" ? "pos" : "watch"));
+// 首次进入持仓视图：行情快照复用自选页已有的批量缓存，信号若未扫描过则触发一次巡检
+watch(
+  mainView,
+  (mv) => {
+    if (mv === "pos" && (!posSigMap.value || !Object.keys(posSigMap.value).length)) scanPositionSignals();
+  },
+  { immediate: true }
+);
 
 // ===== 持仓视图数据：listPositions() + 行情快照（复用 quotes）+ analyze 信号（复用 sigCache） =====
 // 信号即行情页操作建议信号（同一 analyze 引擎对日 K 计算，同一双视角标签）；
@@ -2094,6 +2111,10 @@ function removeLp() {
 .c-open { width: 150rpx; }
 .c-amp  { width: 150rpx; }
 .c-amt  { width: 200rpx; }
+/* 持仓表格复用自选表格体系，新增三列（信号/盈亏/成本）沿用 150rpx 等宽规范 */
+.c-sig  { width: 150rpx; }
+.c-pnl  { width: 150rpx; }
+.c-cost { width: 150rpx; }
 /* 名称列内部 */
 .t-block {
   display: flex;
@@ -2591,85 +2612,8 @@ function removeLp() {
   display: flex;
   flex-direction: column;
 }
-.pos-table {
-  background: var(--card);
-  border: 1rpx solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-.pos-thead {
-  display: flex;
-  align-items: center;
-  padding: 0 20rpx;
-  height: 68rpx;
-  background: var(--card-2);
-  font-size: var(--font-xs);
-  color: var(--text-3);
-}
-.pos-th {
-  width: 132rpx;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-.pos-th-name {
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-}
-.pos-th-sig {
-  flex: none;
-  width: 104rpx;
-  text-align: center;
-}
-.pos-row {
-  display: flex;
-  align-items: center;
-  padding: 0 20rpx;
-  min-height: 100rpx;
-  border-top: 1rpx solid var(--border);
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-.pos-row:active {
-  background: var(--card-2);
-}
-.pos-cell-name {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4rpx;
-}
-.pos-cell-sig {
-  flex: none;
-  width: 104rpx;
-  display: flex;
-  justify-content: center;
-}
-.pos-cell-num {
-  width: 132rpx;
-  flex: none;
-  text-align: right;
-  font-size: var(--font-sm);
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-.pos-cell-pnl.up {
-  color: var(--up);
-}
-.pos-cell-pnl.down {
-  color: var(--down);
-}
-.pos-cell-pnl.flat {
-  color: var(--text-2);
-}
-.pos-cost {
-  color: var(--text) !important;
-}
-.pos-cell-name .t-name {
-  color: var(--text);
-}
+/* 持仓表格已完全复用自选表格 .wl-grid 体系（.wl-thead/.tr/.td/.c-name/.signal-chip），
+   原 .pos-table/.pos-thead/.pos-row/.pos-cell-* 等 bespoke 死样式已移除，避免样式与自选页不一致。 */
 /* 信号标签：与行情页操作建议一致（5 类），底色柔和、文字即主色 */
 .signal-chip {
   display: inline-flex;
