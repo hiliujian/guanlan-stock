@@ -1,8 +1,28 @@
 <template>
   <view class="wl-page">
-    <!-- 头部：与社区共用 PageHeader，移出 scroll-view 以保证 H5 上始终吸顶 -->
-    <PageHeader brand-text="自选" brand-icon="star">
+    <!-- 头部：与社区共用 PageHeader，移出 scroll-view 以保证 H5 上始终吸顶。
+         #brand slot 挂 自选↔持仓 分段切换（本地缓存，刷新后保持上次视图） -->
+    <PageHeader>
+      <template #brand>
+        <view class="vw-seg" role="tablist">
+          <view class="vw-seg-item" :class="{ on: mainView === 'watch' }" role="tab" aria-label="自选" @click="switchView('watch')">
+            <OutlineIcon type="star" :size="26" :color="mainView === 'watch' ? '#fff' : 'var(--text-2)'" />
+            <text>自选</text>
+          </view>
+          <view class="vw-seg-item" :class="{ on: mainView === 'pos' }" role="tab" aria-label="持仓" @click="switchView('pos')">
+            <OutlineIcon type="briefcase" :size="26" :color="mainView === 'pos' ? '#fff' : 'var(--text-2)'" />
+            <text>持仓</text>
+          </view>
+        </view>
+      </template>
       <template #right>
+        <!-- 持仓视图右上角：总收益率 / 总盈亏汇总（同持仓页，数据源共用 posSummary） -->
+        <view v-if="mainView === 'pos' && posSummary.count" class="pos-sum">
+          <text class="ps-k">总收益</text>
+          <text :class="['ps-v', trendCls(posSummary.pnl)]">{{ fmtSigned(posSummary.pnl) }}</text>
+          <text :class="['ps-v', trendCls(posSummary.pnl)]">{{ fmtPct(posSummary.pnlPct) }}</text>
+        </view>
+        <template v-else>
         <view class="cm-me" role="button" aria-label="分组切换" @click="openGroups">
           <view class="cm-avatar flex-center" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
             <OutlineIcon type="layers" :size="24" color="#fff" />
@@ -21,6 +41,7 @@
           </view>
           <OutlineIcon type="pulldown" :size="18" color="var(--text-2)" />
         </view>
+        </template>
       </template>
     </PageHeader>
 
@@ -53,8 +74,53 @@
         <!-- 价格预警：命中行在自选表格内闪烁红/绿提示（见 .tr.alert-up/.alert-down），
              不再使用独立横幅卡片；清除预警请在长按菜单「编辑价格预警」中操作。 -->
 
+        <!-- ===== 持仓视图：每行 名称/代码 + 信号(引擎操作建议) + 收益率 + 盈亏 + 成本 + 现价；
+             右上角汇总见头部（总收益/总收益率）。与自选视图互斥切换，共享行情与信号数据源 ===== -->
+        <view v-if="mainView === 'pos'" class="pos-view anim-fade-up">
+          <view v-if="!posRows.length" class="empty-wrap">
+            <view class="empty-card glass">
+              <view class="empty-ic flex-center">
+                <OutlineIcon type="briefcase" :size="60" color="var(--primary)" />
+              </view>
+              <text class="empty-title">还没有持仓</text>
+              <text class="empty-s">在「行情」页报告卡或自选页长按菜单中设置持仓成本与数量，收益与操作信号将同步展示在这里。</text>
+              <button class="btn-primary empty-btn" @click="switchView('watch')">去自选页设置</button>
+            </view>
+          </view>
+          <view v-else class="pos-table glass">
+            <view class="pos-thead">
+              <text class="pos-th pos-th-name">名称/代码</text>
+              <text class="pos-th pos-th-sig">信号</text>
+              <text class="pos-th pos-th-num">收益率</text>
+              <text class="pos-th pos-th-num">盈亏</text>
+              <text class="pos-th pos-th-num">成本</text>
+              <text class="pos-th pos-th-num">现价</text>
+            </view>
+            <view
+              v-for="p in posRows"
+              :key="p.secid"
+              class="pos-row"
+              role="button"
+              :aria-label="`查看 ${p.name}`"
+              @click="openPosStock(p)"
+            >
+              <view class="pos-cell-name">
+                <text class="t-name truncate">{{ p.name }}</text>
+                <text class="t-code truncate">{{ p.code }}</text>
+              </view>
+              <view class="pos-cell-sig">
+                <text :class="['pos-sig', p.sigCls]">{{ p.sigText }}</text>
+              </view>
+              <text :class="['pos-cell-num', trendCls(p.pnlPct)]">{{ fmtPct(p.pnlPct) }}</text>
+              <text :class="['pos-cell-num', trendCls(p.pnlPct)]">{{ fmtSigned(p.pnl) }}</text>
+              <text class="pos-cell-num pos-cost">{{ fmtPrice(p.cost) }}</text>
+              <text class="pos-cell-num pos-price">{{ fmtPrice(p.price) }}</text>
+            </view>
+          </view>
+        </view>
+
         <!-- 空态 -->
-        <view v-if="!list.length" class="empty-wrap anim-fade-up">
+        <view v-if="mainView === 'watch' && !list.length" class="empty-wrap anim-fade-up">
           <view class="empty-card glass">
             <view class="empty-ic flex-center">
               <OutlineIcon type="star" :size="60" color="var(--primary)" />
@@ -66,7 +132,7 @@
         </view>
 
         <!-- 自选股表格：全屏铺满 + 固定表头 + 名称列固定(横滑不丢) + 横向滚动 -->
-        <view v-if="rows.length" class="wl-wrap">
+        <view v-if="mainView === 'watch' && rows.length" class="wl-wrap">
         <!-- 拖拽行期间动态关闭 scroll-x/scroll-y：iOS 上滚动容器自身的触摸平移不受行内
              preventDefault 约束，会拖着整张表一起跑；拖拽中锁定滚动、结束即恢复 -->
         <scroll-view class="wl-grid" :scroll-x="!dragKey" :scroll-y="!dragKey">
@@ -434,6 +500,10 @@
                 <text class="sheet-title">{{ lpItem ? (lpItem.name || lpItem.code) : '' }}</text>
               </view>
               <view class="grp-list">
+                <view class="grp-item" role="button" @click="openPosForm">
+                  <OutlineIcon type="briefcase" :size="28" color="var(--text-2)" />
+                  <text class="grp-label">设置持仓</text>
+                </view>
                 <view class="grp-item" role="button" @click="openAlertPanel">
                   <OutlineIcon type="bell" :size="28" color="var(--text-2)" />
                   <text class="grp-label">编辑价格预警</text>
@@ -494,6 +564,9 @@
           </template>
         </PeekSheet>
 
+        <!-- 设置持仓弹窗（共享组件 PositionForm）：长按菜单打开，按 lpItem 现读/写入 costBasis -->
+        <PositionForm ref="posFormRef" :secid="lpSecid" @save="saveLpPosition" @clear="clearLpPosition" />
+
       </view>
   </view>
 </template>
@@ -503,6 +576,7 @@ import { computed, reactive, ref, watch, onMounted, onActivated, onDeactivated, 
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import PeekSheet from "@/components/PeekSheet.vue";
+import PositionForm from "@/components/PositionForm.vue";
 import RollSwap from "@/components/RollSwap.vue";
 import RankView, { preloadRank } from "@/views/RankView.vue";
 import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, applyGroupOrder, type WatchItem, type PriceAlert } from "@/store/watchlist";
@@ -511,14 +585,14 @@ import { goTab, openInMarket } from "@/store/nav";
 import { usePageGuard } from "@/store/guard";
 import { fetchSnapshot, fetchSnapshots, type SnapResult } from "@/api/quote";
 import { fetchStockHeat } from "@/api/heat";
-import { resolveSecid, marketCharFor } from "@/utils/period";
+import { resolveSecid, marketCharFor, marketFromSecid } from "@/utils/period";
 import { getMarketStatus } from "@/utils/marketStatus";
 import { fmtPrice, fmtPct, fmtSigned, fmtAmount, trendCls } from "@/utils/format";
 import { anomalies, type AnomalyRecord, ANOMALY_META } from "@/store/anomaly";
 import { staleGet, staleSet } from "@/utils/staleCache";
 import { analyze } from "@/utils/analyzer";
 import { getKline } from "@/api/sources";
-import { listCostSecids, getPosition, getLastSignal, setLastSignal } from "@/utils/costBasis";
+import { listCostSecids, getPosition, setPosition, clearPosition, listPositions, getLastSignal, setLastSignal, type Position } from "@/utils/costBasis";
 
 // 长按操作菜单目标股（统一并入 PeekSheet 面板，替代原先独立的 ActionSheet 弹层）
 const sheetExpanded = ref(false);
@@ -961,6 +1035,9 @@ async function scanPositionSignals() {
         const lvl = a.signal.level;
         const prev = getLastSignal(secid);
         setLastSignal(secid, lvl);
+        // 顺带缓存信号标签供持仓视图复用（同一引擎同一口径，不重复跑 analyze）
+        const meta = SIG_META[lvl] || SIG_META.wait;
+        posSigMap.value = { ...posSigMap.value, [secid]: { text: meta.text, cls: meta.cls } };
         if ((lvl === "buy" || lvl === "sell") && lvl !== prev) {
           const cost = getPosition(secid)?.cost;
           const pnl = cost ? ((a.price - cost) / cost) * 100 : 0;
@@ -983,6 +1060,94 @@ async function scanPositionSignals() {
   }
 }
 
+
+// ===== 自选 ↔ 持仓 双视图：左上角分段切换 + 本地缓存（刷新后保持上次视图） =====
+// 自选=关注（不含成本语义），持仓=实际持有（成本/数量驱动盈亏），两者不混同；
+// 仅切换视图展示，不新增页面路由（keep-alive 常驻同一 tab 组件）
+type MainView = "watch" | "pos";
+const POS_VIEW_KEY = "wl:mainView";
+const mainView = ref<MainView>(uni.getStorageSync(POS_VIEW_KEY) === "pos" ? "pos" : "watch");
+function switchView(v: MainView) {
+  if (mainView.value === v) return;
+  mainView.value = v;
+  try {
+    uni.setStorageSync(POS_VIEW_KEY, v);
+  } catch (_) {}
+  // 首次进入持仓视图：行情快照复用自选页已有的批量缓存，信号若未扫描过则触发一次巡检
+  if (v === "pos") {
+    if (!posSigMap.value || !Object.keys(posSigMap.value).length) scanPositionSignals();
+  }
+}
+
+// ===== 持仓视图数据：listPositions() + 行情快照（复用 quotes）+ analyze 信号（复用 sigCache） =====
+// 信号即行情页操作建议信号（同一 analyze 引擎对日 K 计算，同一双视角标签）；
+// 收益率/盈亏 = (现价−成本)×数量；成本或行情缺失时显示 "--"，不硬造数据
+interface PosRow {
+  secid: string;
+  code: string;
+  name: string;
+  cost: number;
+  qty: number;
+  price: number;
+  pnl: number;
+  pnlPct: number;
+  sigText: string;
+  sigCls: string;
+}
+// 信号缓存（secid → {text, cls}）：scanPositionSignals 已对每只持仓算过 analyze，
+// 在此顺带缓存信号标签，持仓视图直接复用，不重复跑引擎
+const posSigMap = ref<Record<string, { text: string; cls: string }>>({});
+const SIG_META: Record<string, { text: string; cls: string }> = {
+  buy: { text: "买点", cls: "buy" },
+  sell: { text: "卖点", cls: "sell" },
+  hold: { text: "持有", cls: "hold" },
+  watch: { text: "关注", cls: "watch" },
+  wait: { text: "观望", cls: "wait" },
+};
+const posRows = computed<PosRow[]>(() => {
+  const out: PosRow[] = [];
+  for (const p of listPositions()) {
+    const [m, code] = p.secid.split(".");
+    const k = list.value.findIndex(
+      (it) => resolveSecid(it.code, it.market as any) === p.secid
+    );
+    const name = k >= 0 ? list.value[k].name || code : code;
+    const q = quotes[`${code}|${marketFromSecid(p.secid)}`] || quotes[Object.keys(quotes).find((key) => key.startsWith(code + "|")) || ""];
+    const price = q?.price || 0;
+    const sig = posSigMap.value[p.secid] || SIG_META.wait;
+    const pnlPct = p.cost && price ? ((price - p.cost) / p.cost) * 100 : 0;
+    out.push({
+      secid: p.secid,
+      code,
+      name,
+      cost: p.cost,
+      qty: p.qty ?? 0,
+      price,
+      pnl: p.cost && price && p.qty ? (price - p.cost) * p.qty : 0,
+      pnlPct,
+      sigText: sig.text,
+      sigCls: sig.cls,
+    });
+  }
+  return out;
+});
+// 右上角汇总：总盈亏 = Σ(现价−成本)×数量；总收益率 = 总盈亏 / Σ(成本×数量)（成本加权，口径一致）
+const posSummary = computed(() => {
+  let pnl = 0;
+  let base = 0;
+  for (const r of posRows.value) {
+    if (r.qty && r.price && r.cost) {
+      pnl += (r.price - r.cost) * r.qty;
+      base += r.cost * r.qty;
+    }
+  }
+  return { count: posRows.value.length, pnl, pnlPct: base > 0 ? (pnl / base) * 100 : 0 };
+});
+// 点击持仓行：跳转行情页查看该股报告（持仓状态双视角在报告页自动生效）
+function openPosStock(p: PosRow) {
+  openInMarket(p.code, marketFromSecid(p.secid) as any);
+  goTab("market");
+}
 
 // 空态按钮：跳转到行情 tab 选股
 function goPickMarket() {
@@ -1445,6 +1610,34 @@ function onRowLongPress(it: WatchItem) {
   lpItem.value = it;
   activePanel.value = "actions";
   sheet.value?.expand();
+}
+
+// 长按菜单「设置持仓」：共享 PositionForm 弹窗，按 lpItem 的 secid 现读/写入 costBasis。
+// 保存/清除即刷新行情（成本变化 → 收益率/盈亏列即时重算），与行情页设置持仓全链路同步
+const posFormRef = ref<any>(null);
+const lpSecid = computed(() => {
+  const it = lpItem.value;
+  if (!it) return "";
+  return (resolveSecid(it.code, it.market as any) as string) || "";
+});
+function openPosForm() {
+  if (!lpSecid.value) return;
+  posFormRef.value?.open();
+}
+function saveLpPosition(p: Position) {
+  if (!lpSecid.value) return;
+  setPosition(lpSecid.value, p);
+  lpItem.value = null;
+  loadQuotesSafe();
+  scanPositionSignals();
+  uni.showToast({ title: "持仓已保存", icon: "none" });
+}
+function clearLpPosition() {
+  if (!lpSecid.value) return;
+  clearPosition(lpSecid.value);
+  lpItem.value = null;
+  loadQuotesSafe();
+  uni.showToast({ title: "已清除持仓", icon: "none" });
 }
 // 价格预警：实时价参考（进入面板即拉取最新成交价）+ 选项下方内联输入（替代原 uni-modal 弹窗）
 const alertRT = ref<SnapResult | null>(null);
@@ -1925,12 +2118,12 @@ function removeLp() {
   text-align: left;
   background: var(--bg-2);
 }
-/* 列宽（合计 > 屏宽 → 横向滚动）。涨跌幅/最新价/涨跌额/今开 四列等宽(150rpx) */
+/* 列宽（合计 > 屏宽 → 横向滚动）。最新价/涨跌幅/涨跌额/今开/振幅 五列严格等宽(150rpx) */
 .c-pct  { width: 150rpx; }
 .c-price { width: 150rpx; }
 .c-chg  { width: 150rpx; }
 .c-open { width: 150rpx; }
-.c-amp  { width: 120rpx; }
+.c-amp  { width: 150rpx; }
 .c-amt  { width: 200rpx; }
 /* 名称列内部 */
 .t-block {
@@ -2419,5 +2612,150 @@ function removeLp() {
   text-align: center;
   color: var(--text-3);
   font-size: var(--font-md);
+}
+
+/* ===== 自选 ↔ 持仓 分段切换（PageHeader #brand slot 内） ===== */
+.vw-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 4rpx;
+  background: var(--card-2);
+  border-radius: 999rpx;
+}
+.vw-seg-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  font-size: var(--font-sm);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.vw-seg-item.on {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ===== 持仓视图汇总（PageHeader #right slot，仅持仓视图有持仓时显示） ===== */
+.pos-sum {
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
+  padding: 8rpx 20rpx;
+  background: var(--card-2);
+  border-radius: 999rpx;
+  font-variant-numeric: tabular-nums;
+}
+.ps-k {
+  font-size: var(--font-xs);
+  color: var(--text-3);
+}
+.ps-v {
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+
+/* ===== 持仓视图表格 ===== */
+.pos-view {
+  margin-top: 16rpx;
+}
+.pos-table {
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.pos-thead {
+  display: flex;
+  align-items: center;
+  padding: 0 20rpx;
+  height: 64rpx;
+  background: var(--card-2);
+  font-size: var(--font-xs);
+  color: var(--text-3);
+}
+.pos-th {
+  width: 132rpx;
+  text-align: right;
+}
+.pos-th-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.pos-th-sig {
+  flex: none;
+  width: 96rpx;
+  text-align: center;
+}
+.pos-th-num {
+  width: 132rpx;
+  text-align: right;
+}
+.pos-row {
+  display: flex;
+  align-items: center;
+  padding: 0 20rpx;
+  min-height: 96rpx;
+  border-top: 1rpx solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.pos-row:active {
+  background: var(--card-2);
+}
+.pos-cell-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+.pos-cell-sig {
+  flex: none;
+  width: 96rpx;
+  display: flex;
+  justify-content: center;
+}
+.pos-cell-num {
+  width: 132rpx;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* 信号标签：与行情页报告卡片(signal-card)同色同底口径 */
+.pos-sig {
+  flex: none;
+  font-size: var(--font-xs);
+  line-height: 1;
+  padding: 8rpx 14rpx;
+  border-radius: 8rpx;
+  background: var(--card-2);
+  color: var(--text-3);
+}
+.pos-sig.buy {
+  color: var(--up);
+  background: rgba(239, 35, 42, 0.1);
+}
+.pos-sig.sell {
+  color: var(--down);
+  background: rgba(9, 176, 122, 0.12);
+}
+.pos-sig.hold {
+  color: #2563eb;
+  background: rgba(59, 130, 246, 0.1);
+}
+.pos-sig.watch {
+  color: #c87f00;
+  background: rgba(255, 159, 28, 0.12);
+}
+.pos-cost,
+.pos-price {
+  width: 132rpx;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-sm);
+  color: var(--text);
 }
 </style>

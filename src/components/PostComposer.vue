@@ -97,11 +97,11 @@
       >
         <!-- + 图标：始终占据按钮原位（56rpx 方位），展开 / 录入态旋转 135° 成为 ×，空间连续。
              开/关切换唯一入口挂在这里（与 svg 直接相邻，与旧版 .cp-plus 同层级，事件必定触发） -->
-        <view class="cp-morph-icon" @click="toggleMenu" role="button" :aria-label="editKind ? '退出添加持仓' : menuOpen ? '收起菜单' : '添加附件'">
+        <view class="cp-morph-icon" @click="toggleMenu" role="button" :aria-label="editKind ? '退出设置持仓' : menuOpen ? '收起菜单' : '添加附件'">
           <OutlineIcon type="plus" :size="ICON_SIZE" :color="menuOpen || editKind ? 'var(--primary)' : 'var(--text)'" />
         </view>
-        <!-- 顶行提示：随状态切换「添加附件 / 添加持仓」 -->
-        <text class="cp-morph-hint">{{ editKind ? "添加持仓" : "添加附件" }}</text>
+        <!-- 顶行提示：随状态切换「添加附件 / 设置持仓」 -->
+        <text class="cp-morph-hint">{{ editKind ? "设置持仓" : "添加附件" }}</text>
         <!-- 附件菜单（持仓录入态隐藏：同一容器状态切换，非独立容器） -->
         <view v-if="!editKind" class="cp-morph-list">
           <view class="cp-morph-item" @click="onAddImage">
@@ -1335,7 +1335,7 @@ watch([text, holdings], saveDraft, { deep: true });
    展开宽 100% 高 216rpx（顶行 56 + 2×74 项 + 间隔 4 + 底 8），文档流内撑高卡片。
    收拢态即一枚「裸 +」：无背景、无描边（底与描边只在展开 / 录入态出现）；
    --cp-inset / --cp-item-pad：面板内留白与行内 padding 的单一来源，
-   保证「添加附件」列表与「添加持仓」录入面板的边距、行高、圆角完全对齐。 */
+   保证「添加附件」列表与「设置持仓」录入面板的边距、行高、圆角完全对齐。 */
 .cp-morph {
   --cp-inset: 8rpx;
   --cp-item-pad: 18rpx;

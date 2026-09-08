@@ -1323,14 +1323,24 @@ export function analyze(
   const breakdown = supportFromPivot && price < support * 0.985 && volRatio > 0.9;
   const breakout = resistanceFromPivot && price > resistance * 1.015 && volRatio > 1.0;
 
-  // 买入区间仅在价格接近支撑（或距支撑 8% 内）时有意义；远离支撑的上涨趋势中
-  // 给出围绕支撑的买点会误导，故置 NaN，由 UI 显示「—」。
+  // 买入区间（波动率 / 趋势强度自适应，不再用固定比例），仅在价格接近支撑（或距支撑 8% 内）
+  // 时有意义；远离支撑的上涨趋势中给出围绕支撑的买点会误导，故置 NaN，由 UI 显示「—」。
   // 关键：必须排除已破位（breakdown）——否则会出现「支撑已被有效跌破、应止损离场」
   // 与「建议买入区间 x~y」同屏并存的矛盾（distSup 在破位后为负，天然满足 <0.08）。
+  // 区间推导（全部锚定支撑/压力位，宽度随 ATR 与趋势缩放，可解释、无拍脑袋比例）：
+  //   · 下沿 = 支撑 − 缓冲：缓冲取 ATR(14)（14 日真实波幅均值，即历史波动率的绝对度量）
+  //     的一部分——扫损回踩也能接住；并按趋势强度缩放：强趋势（ADX≥25）回调通常更深
+  //     取 0.35×ATR，无趋势（ADX<20）取 0.2×ATR，其余 0.28×ATR；缓冲同时夹在支撑价的
+  //     0.3%~2.5% 之间，避免低波股缓冲窄到无意义、高波股缓冲失真。
+  //   · 上沿 = min(支撑 + 0.6×ATR, 压力位)：买点围绕支撑回踩展开，向上最多延伸到压力位
+  //     （贴近压力位买入胜率低；突破压力的量能确认已由 breakout 的量比门槛另行判定）；
+  //     且必须高于下沿至少 0.01，保证区间有效。
+  const trendScale = adxNow >= 25 ? 0.35 : adxNow < 20 ? 0.2 : 0.28;
+  const supBuf = Math.min(Math.max((atr[len - 1] ?? 0) * trendScale, support * 0.003), support * 0.025);
   const nearBuyZone = !breakdown && (nearSup || distSup < 0.08);
-  const buyLow = nearBuyZone ? +(support * 0.985).toFixed(3) : NaN;
+  const buyLow = nearBuyZone ? +(support - supBuf).toFixed(3) : NaN;
   const buyHigh = nearBuyZone
-    ? +Math.max(buyLow + 0.01, Math.min(support * 1.03, resistance)).toFixed(3)
+    ? +Math.max(buyLow + 0.01, Math.min(support + (atr[len - 1] ?? 0) * 0.6, resistance)).toFixed(3)
     : NaN;
 
   // !breakout 抑制：放量突破压力后「价格临近高位 / RSI 超买」不再触发减仓；
