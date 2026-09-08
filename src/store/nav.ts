@@ -22,7 +22,11 @@ export const navState = reactive<{
 
 // 默认进入「自选」Tab（底部只有 行情/自选/社区/我的；自选内含「持仓」子视图）。
 // 注：自选/持仓 子视图的停留记忆在 WatchlistView 内（POS_VIEW_KEY），不在底部 Tab 层。
-export const navTab = reactive<{ currentKey: TabKey }>({ currentKey: "watch" });
+// watchView：当前自选 Tab 内展示的子视图（watch=自选 / pos=持仓），用于联动底部 Tab 文案/图标。
+export const navTab = reactive<{ currentKey: TabKey; watchView: "watch" | "pos" }>({
+  currentKey: "watch",
+  watchView: "watch",
+});
 
 /**
  * 吞掉 uni 导航 Promise 的良性拒绝（如「Navigation cancelled / interrupted」——

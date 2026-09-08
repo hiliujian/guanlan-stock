@@ -11,7 +11,7 @@
       <text class="sc-label">平均收益</text>
       <text :class="['sc-num', sigRetCls]">{{ sigRetText }}</text>
       <view class="sc-pos" @click="posFormRef?.open()" role="button" aria-label="设置持仓">
-        <OutlineIcon type="wallet" :size="28" :color="holding ? 'var(--primary)' : 'var(--text-2)'" />
+        <OutlineIcon type="portfolio" :size="28" :color="holding ? 'var(--primary)' : 'var(--text-2)'" />
       </view>
     </view>
 

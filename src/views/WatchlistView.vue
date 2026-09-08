@@ -4,7 +4,7 @@
     <!-- #brand：默认品牌区（星标图标 + 「自选」渐变标题），与社区页同一套左上角 logo 风格 -->
     <PageHeader
       :brand-text="mainView === 'pos' ? '持仓' : '自选'"
-      :brand-icon="mainView === 'pos' ? 'wallet' : 'star'"
+      :brand-icon="mainView === 'pos' ? 'portfolio' : 'star'"
       brand-hint="swap"
       :brand-clickable="true"
       @brand-click="toggleView"
@@ -14,12 +14,15 @@
         <view
           v-if="mainView === 'pos' && posSummary.count"
           class="cm-me"
-          aria-label="总收益"
+          role="button"
+          aria-label="持仓收益"
           @click="openPosSheet"
         >
-          <text :class="['cm-line', trendCls(posSummary.pnl)]">{{ fmtSigned(posSummary.pnl) }}</text>
-          <text :class="['cm-line cm-pct', trendCls(posSummary.pnl)]">{{ fmtPct(posSummary.pnlPct) }}</text>
-          <text :class="['cm-line cm-amt', trendCls(posSummary.pnl)]">¥{{ fmtSigned(posSummary.pnl) }}</text>
+          <view class="cm-avatar flex-center" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
+            <OutlineIcon type="portfolio" :size="24" color="#fff" />
+          </view>
+          <text class="cm-name truncate">持仓</text>
+          <text :class="['cm-val', trendCls(posSummary.pnl)]">{{ fmtPct(posSummary.pnlPct) }}</text>
           <OutlineIcon type="pulldown" :size="18" color="var(--text-2)" />
         </view>
         <view v-else class="cm-me" role="button" aria-label="分组切换" @click="openGroups">
@@ -80,7 +83,7 @@
           <view v-if="!posRows.length" class="empty-wrap">
             <view class="empty-card glass">
               <view class="empty-ic flex-center">
-                <OutlineIcon type="wallet" :size="60" color="var(--primary)" />
+                <OutlineIcon type="portfolio" :size="60" color="var(--primary)" />
               </view>
               <text class="empty-title">还没有持仓</text>
               <text class="empty-s">在「行情」页报告卡或自选页长按菜单中设置持仓成本与数量，收益与操作信号将同步展示在这里。</text>
@@ -90,21 +93,23 @@
           <view v-else class="wl-wrap">
             <!-- 持仓表格完全复用自选表格体系（.wl-grid/.wl-thead/.tr/.td/.c-name/.signal-chip），
                  仅列集不同：名称/代码 · 信号 · 现价 · 收益率 · 盈亏 · 成本 -->
-            <scroll-view class="wl-grid" scroll-x="true" scroll-y="true">
+            <scroll-view class="wl-grid" :scroll-x="!dragKey" :scroll-y="!dragKey">
               <view class="wl-rows">
               <view class="wl-thead">
                 <view class="th c-name"></view>
-                <view class="th c-sig"><text class="th-label">信号</text></view>
-                <view class="th c-price"><text class="th-label">现价</text></view>
-                <view class="th c-pct"><text class="th-label">收益率</text></view>
-                <view class="th c-pnl"><text class="th-label">盈亏</text></view>
-                <view class="th c-cost"><text class="th-label">成本</text></view>
+                <view v-if="posCols.sig" class="th c-sig"><text class="th-label">信号</text></view>
+                <view v-if="posCols.price" class="th c-price"><text class="th-label">现价</text></view>
+                <view v-if="posCols.pct" class="th c-pct"><text class="th-label">收益率</text></view>
+                <view v-if="posCols.pnl" class="th c-pnl"><text class="th-label">盈亏</text></view>
+                <view v-if="posCols.cost" class="th c-cost"><text class="th-label">成本</text></view>
               </view>
               <view class="wl-body">
               <view
                 v-for="p in posRows"
                 :key="p.secid"
                 class="tr"
+                :class="{ reordering: posReorderMode, dragging: dragKey === p.secid }"
+                :style="dragKey === p.secid ? dragStyle : undefined"
                 role="button"
                 :aria-label="`查看 ${p.name}，长按管理`"
                 @click="openPosStock(p)"
@@ -117,7 +122,22 @@
                 @mouseup="onRowPressEnd"
                 @mouseleave="onRowPressEnd"
               >
-                <view class="td c-name">
+                <view class="td c-name" :class="{ 'has-handle': posReorderMode }">
+                  <view
+                    v-if="posReorderMode"
+                    class="drag-handle"
+                    :class="{ on: dragKey === p.secid }"
+                    role="button"
+                    aria-label="拖动排序"
+                    @click.stop
+                    @touchstart.stop="onPosDragStart($event, p)"
+                    @touchmove.stop="onDragMove"
+                    @touchend.stop="onDragEnd"
+                    @touchcancel.stop="onDragEnd"
+                    @mousedown.stop="onPosDragStart($event, p)"
+                  >
+                    <OutlineIcon type="grip" :size="30" :color="dragKey === p.secid ? 'var(--primary)' : 'var(--text-3)'" />
+                  </view>
                   <view class="t-block">
                     <text class="t-name truncate">{{ p.name }}</text>
                     <view class="t-sub">
@@ -126,25 +146,42 @@
                     </view>
                   </view>
                 </view>
-                <view class="td c-sig">
+                <view v-if="posCols.sig" class="td c-sig">
                   <view :class="['signal-chip', p.sigCls]"><text>{{ p.sigText }}</text></view>
                 </view>
-                <view class="td c-price">
-                  <text class="st-num" :class="trendCls(p.pnlPct)">{{ p.price ? fmtPrice(p.price) : '--' }}</text>
+                <view v-if="posCols.price" class="td c-price">
+                  <text class="st-num" :class="stTrend(p.pnlPct)">{{ p.price ? fmtPrice(p.price) : '--' }}</text>
                 </view>
-                <view class="td c-pct">
-                  <text class="st-num" :class="trendCls(p.pnlPct)">{{ fmtPct(p.pnlPct) }}</text>
+                <view v-if="posCols.pct" class="td c-pct">
+                  <text class="st-num" :class="stTrend(p.pnlPct)">{{ fmtPct(p.pnlPct) }}</text>
                 </view>
-                <view class="td c-pnl">
-                  <text class="st-num" :class="trendCls(p.pnl)">{{ fmtSigned(p.pnl) }}</text>
+                <view v-if="posCols.pnl" class="td c-pnl">
+                  <text class="st-num" :class="stTrend(p.pnl)">{{ fmtSigned(p.pnl) }}</text>
                 </view>
-                <view class="td c-cost">
+                <view v-if="posCols.cost" class="td c-cost">
                   <text class="st-num">{{ fmtPrice(p.cost) }}</text>
                 </view>
               </view>
               </view>
               </view>
             </scroll-view>
+            <!-- 排序/列设置控制按钮：与自选表一致，定位覆盖名称列固定表头左上角 -->
+            <view class="wl-cols-overlay">
+              <view class="th-cols" :class="{ on: posReorderMode || activePanel === 'cols' }">
+                <view
+                  class="th-ic grip"
+                  :class="{ on: posReorderMode }"
+                  role="button"
+                  aria-label="拖拽排序"
+                  @click="togglePosReorder"
+                >
+                  <OutlineIcon type="grip" :size="28" :color="posReorderMode ? 'var(--primary)' : 'var(--text-3)'" />
+                </view>
+                <view class="th-ic" :class="{ on: activePanel === 'cols' }" role="button" aria-label="列设置" @click="openCols">
+                  <OutlineIcon type="columns" :size="28" :color="activePanel === 'cols' ? 'var(--primary)' : 'var(--text-3)'" />
+                </view>
+              </view>
+            </view>
           </view>
         </view>
 
@@ -509,15 +546,15 @@
               </view>
               <view class="col-list">
                 <view
-                  v-for="c in colDefs"
+                  v-for="c in activeColList"
                   :key="c.key"
                   class="col-item"
-                  :class="{ off: !cols[c.key] }"
+                  :class="{ off: !activeColOn(c.key) }"
                   role="button"
-                  @click="toggleCol(c.key)"
+                  @click="toggleActiveCol(c.key)"
                 >
                   <text class="col-name">{{ c.label }}</text>
-                  <view class="col-sw" :class="{ on: cols[c.key] }"><view class="col-knob" /></view>
+                  <view class="col-sw" :class="{ on: activeColOn(c.key) }"><view class="col-knob" /></view>
                 </view>
               </view>
               <text class="col-tip">设置仅保存在本机，不影响其他设备</text>
@@ -531,7 +568,7 @@
               <view class="grp-list">
                 <view class="grp-item" role="button" @click="openPosForm">
                   <!-- 未设置持仓图标置灰，已设置高亮主色（绿）：一眼看出该股当前持仓状态 -->
-                  <OutlineIcon type="wallet" :size="28" :color="lpHasPosition ? 'var(--primary)' : 'var(--text-2)'" />
+                  <OutlineIcon type="portfolio" :size="28" :color="lpHasPosition ? 'var(--primary)' : 'var(--text-2)'" />
                   <text class="grp-label" :class="{ primary: lpHasPosition }">设置持仓</text>
                 </view>
                 <view v-if="lpHasPosition" class="grp-item" role="button" @click="clearLpPosition">
@@ -615,7 +652,7 @@ import RollSwap from "@/components/RollSwap.vue";
 import RankView, { preloadRank } from "@/views/RankView.vue";
 import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, applyGroupOrder, type WatchItem, type PriceAlert } from "@/store/watchlist";
 import { userState } from "@/store/user";
-import { goTab, openInMarket } from "@/store/nav";
+import { goTab, openInMarket, navTab } from "@/store/nav";
 import { usePageGuard } from "@/store/guard";
 import { fetchSnapshot, fetchSnapshots, type SnapResult } from "@/api/quote";
 import { fetchStockHeat } from "@/api/heat";
@@ -1104,11 +1141,14 @@ async function scanPositionSignals() {
 type MainView = "watch" | "pos";
 const POS_VIEW_KEY = "wl:mainView";
 const mainView = ref<MainView>(uni.getStorageSync(POS_VIEW_KEY) === "pos" ? "pos" : "watch");
+// 同步底部 Tab 文案/图标：切到持仓时 watch Tab 显示「持仓」+ portfolio 图标（见 index.vue tabs computed）
+navTab.watchView = mainView.value;
 function toggleView() {
   mainView.value = mainView.value === "pos" ? "watch" : "pos";
   try {
     uni.setStorageSync(POS_VIEW_KEY, mainView.value);
   } catch (_) {}
+  navTab.watchView = mainView.value;
   // 首次进入持仓视图：行情快照复用自选页已有的批量缓存，信号若未扫描过则触发一次巡检
   if (mainView.value === "pos" && (!posSigMap.value || !Object.keys(posSigMap.value).length)) {
     scanPositionSignals();
@@ -1164,6 +1204,18 @@ const posRows = computed<PosRow[]>(() => {
       pnlPct,
       sigText: sig.text,
       sigCls: sig.cls,
+    });
+  }
+  // 持仓拖拽重排：按持久化的 secid 顺序重排；新持仓（不在序列中）落到末尾
+  if (posManualOrder.value.length) {
+    const idx = new Map(posManualOrder.value.map((k, i) => [k, i]));
+    out.sort((a, b) => {
+      const ia = idx.get(a.secid);
+      const ib = idx.get(b.secid);
+      if (ia != null && ib != null) return ia - ib;
+      if (ia != null) return -1;
+      if (ib != null) return 1;
+      return 0;
     });
   }
   return out;
@@ -1306,6 +1358,43 @@ function toggleCol(k: ColKey) {
     uni.setStorageSync(COLS_KEY, { ...cols });
   } catch (_) {}
 }
+// ===== 持仓视图列显隐：本地持久化（wl_pos_cols），默认全显；与自选「显示列」共用同一面板 =====
+type PosColKey = "sig" | "price" | "pct" | "pnl" | "cost";
+interface ColDef { key: string; label: string }
+const POS_COLS_KEY = "wl_pos_cols";
+const posColDefs: ColDef[] = [
+  { key: "sig", label: "信号" },
+  { key: "price", label: "现价" },
+  { key: "pct", label: "收益率" },
+  { key: "pnl", label: "盈亏" },
+  { key: "cost", label: "成本" },
+];
+const posCols = reactive<Record<PosColKey, boolean>>({ sig: true, price: true, pct: true, pnl: true, cost: true });
+function loadPosCols() {
+  try {
+    const saved = uni.getStorageSync(POS_COLS_KEY);
+    if (saved && typeof saved === "object") {
+      (Object.keys(posCols) as PosColKey[]).forEach((k) => {
+        if (typeof saved[k] === "boolean") posCols[k] = saved[k];
+      });
+    }
+  } catch (_) {}
+}
+function togglePosCol(k: PosColKey) {
+  posCols[k] = !posCols[k];
+  try {
+    uni.setStorageSync(POS_COLS_KEY, { ...posCols });
+  } catch (_) {}
+}
+// 「显示列」面板按当前视图选择列集与开关：持仓视图用 posColDefs/posCols，自选视图用 colDefs/cols
+const activeColList = computed<ColDef[]>(() => (mainView.value === "pos" ? posColDefs : colDefs));
+function activeColOn(key: string): boolean {
+  return mainView.value === "pos" ? !!posCols[key as PosColKey] : !!cols[key as ColKey];
+}
+function toggleActiveCol(key: string) {
+  if (mainView.value === "pos") togglePosCol(key as PosColKey);
+  else toggleCol(key as ColKey);
+}
 // 列设置入口：复用底部统一窗体，展开并切到 cols 内容区（标题栏与「我的分组」共用）；
 // 再次点击则收起（toggle）
 function openCols() {
@@ -1327,6 +1416,23 @@ function toggleReorder() {
     // 不再自动切分组：「全部」视图现已支持全局拖拽重排（applyGroupOrder("__all__")），
     // 保留当前视图即可，避免点击拖拽图标后列表被过滤而「数据变少」的回归。
     manualOrder.value = renderRows.value.map((r) => keyOf(r.it));
+  }
+}
+
+// ===== 持仓视图自定义排序（与自选同一套拖拽手柄，scope 区分） =====
+const POS_ORDER_KEY = "wl_pos_order";
+const posReorderMode = ref(false);
+const posManualOrder = ref<string[]>([]); // secid 序列（持仓行重排结果）
+function loadPosOrder() {
+  try {
+    const saved = uni.getStorageSync(POS_ORDER_KEY);
+    if (Array.isArray(saved)) posManualOrder.value = saved;
+  } catch (_) {}
+}
+function togglePosReorder() {
+  posReorderMode.value = !posReorderMode.value;
+  if (posReorderMode.value) {
+    manualOrder.value = posRows.value.map((p) => p.secid);
   }
 }
 
@@ -1365,6 +1471,7 @@ let dragStartY = 0;
 let rowHpx = 0;
 let dragMoved = false;
 let dragFromIdx = 0; // 起拖槽位（原始数组下标，恒定）
+let dragScope: "watch" | "pos" = "watch"; // 当前拖拽所属视图（自选 / 持仓）
 function dragPtY(e: any): number {
   if (e.touches && e.touches[0]) return e.touches[0].clientY;
   if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
@@ -1388,13 +1495,14 @@ function unbindWinDrag() {
   } catch (_) {}
 }
 onUnmounted(unbindWinDrag);
-function onDragStart(e: any, it: WatchItem) {
-  dragKey.value = keyOf(it);
+// 统一拖拽起点：按 scope 用对应视图的展示顺序初始化拖拽缓冲，避免跨视图互串。
+function beginDrag(e: any, scope: "watch" | "pos", key: string) {
+  dragScope = scope;
+  dragKey.value = key;
   dragStartY = dragPtY(e);
-  // 以「当前视图」展示顺序初始化拖拽缓冲，并标记所属视图——保证只影响当前视图、不串入其它分组。
-  manualOrder.value = rows.value.map((r) => keyOf(r.it));
-  manualOrderGroup.value = selectedGroup.value;
-  dragFromIdx = manualOrder.value.indexOf(dragKey.value);
+  manualOrder.value = scope === "pos" ? posRows.value.map((p) => p.secid) : rows.value.map((r) => keyOf(r.it));
+  manualOrderGroup.value = scope === "pos" ? null : selectedGroup.value;
+  dragFromIdx = manualOrder.value.indexOf(key);
   dragDy.value = 0;
   dragMoved = false;
   try {
@@ -1410,6 +1518,12 @@ function onDragStart(e: any, it: WatchItem) {
       e.preventDefault();
     } catch (_) {}
   }
+}
+function onDragStart(e: any, it: WatchItem) {
+  beginDrag(e, "watch", keyOf(it));
+}
+function onPosDragStart(e: any, p: PosRow) {
+  beginDrag(e, "pos", p.secid);
 }
 function onDragMove(e: any) {
   if (!dragKey.value) return;
@@ -1438,12 +1552,20 @@ function onDragMove(e: any) {
 function onDragEnd() {
   if (!dragKey.value) return;
   unbindWinDrag();
+  const scope = dragScope;
   dragKey.value = null;
   dragDy.value = 0;
   // 拖拽结束后持久化重排结果：单分组按组内 order 持久化；"全部"视图按全局 order 持久化
-  // （applyGroupOrder 内部按 group 是否为 "__all__" 区分两种重排范围）。
+  // （applyGroupOrder 内部按 group 是否为 "__all__" 区分两种重排范围）；持仓视图按 secid 序列持久化。
   if (dragMoved) {
-    applyGroupOrder(selectedGroup.value, manualOrder.value);
+    if (scope === "pos") {
+      posManualOrder.value = manualOrder.value.slice();
+      try {
+        uni.setStorageSync(POS_ORDER_KEY, posManualOrder.value);
+      } catch (_) {}
+    } else {
+      applyGroupOrder(selectedGroup.value, manualOrder.value);
+    }
   }
 }
 
@@ -1520,6 +1642,12 @@ function pctCls(q: Snap): string {
   const t = trendCls(q.chg);
   return t === "up" ? "st-up" : t === "down" ? "st-down" : "";
 }
+// 持仓表格数值列配色：直接返回带 st- 前缀的类名（与 .st-up/.st-down/.st-flat 对齐），
+// 修复此前用裸 trendCls（up/down/flat）导致持仓表不上色的 bug；缺失/零值回落灰色。
+function stTrend(v: number | null | undefined): string {
+  const t = trendCls(v);
+  return t === "up" ? "st-up" : t === "down" ? "st-down" : "st-flat";
+}
 // 振幅%（(最高-最低)/昨收）
 function ampPct(q: Snap): string {
   if (q.loading || !q.preClose || q.preClose === 0 || q.high == null || q.low == null) return "--";
@@ -1534,6 +1662,8 @@ function onSheetOpenMarket(p: { code: string; market: string }) {
 
 onMounted(() => {
   loadCols();
+  loadPosCols();
+  loadPosOrder();
   if (!needLogin.value) loadQuotesSafe();
   loadPeek();
   preloadRank("today"); // 预加载今日热榜：展开榜单面板零等待（与 RankView 共用同一装载代码）
@@ -2656,22 +2786,16 @@ function removeLp() {
   background: var(--card-2);
 }
 
-/* 总收益胶囊数据行：涨跌数量 · 收益率 · 收益金额 三行并排，复用 --text-3 分隔 */
-.cm-line {
+/* 持仓胶囊「值」：仅收益率，与自选胶囊视觉一致（头像 + 标签 + 值 + 下拉），不额外加粗 */
+.cm-val {
   font-size: var(--font-sm);
   font-variant-numeric: tabular-nums;
   color: var(--text-3);
   line-height: 1.1;
 }
-.cm-line.up { color: var(--up); }
-.cm-line.down { color: var(--down); }
-.cm-line.flat { color: var(--text-2); }
-.cm-pct {
-  font-weight: 500;
-}
-.cm-amt {
-  font-weight: 600;
-}
+.cm-val.up { color: var(--up); }
+.cm-val.down { color: var(--down); }
+.cm-val.flat { color: var(--text-2); }
 
 /* 持仓汇总面板：2×2 指标块 + 提示行 */
 .stk-grid {
@@ -2694,7 +2818,6 @@ function removeLp() {
 }
 .stk-v {
   font-size: var(--font-lg);
-  font-weight: 600;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }

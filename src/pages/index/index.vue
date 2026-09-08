@@ -61,7 +61,15 @@ const COMP_REGISTRY: Record<TabKey, any> = {
 // 配置驱动的 Tab 列表：远程关闭某模块（menus）或白名单 show_in_menu=false 时，自动从底部导航消失
 // （showInMenu 取 page_access 表字段，与 menus 双维度控制；默认种子均 true，当前无视觉变化）
 const tabKeys = computed(() => enabledTabs().filter((k) => showInMenu(k)));
-const tabs = computed(() => tabKeys.value.map((k) => TAB_DEFS[k]));
+// 自选 Tab 随内部子视图（自选 / 持仓）联动文案与图标：切到持仓时显示「持仓」+ portfolio 图标。
+const tabs = computed(() =>
+  tabKeys.value.map((k) => {
+    if (k === "watch" && navTab.watchView === "pos") {
+      return { key: "watch", label: "持仓", icon: "portfolio", iconActive: "portfolio-filled" } as TabDef;
+    }
+    return TAB_DEFS[k];
+  })
+);
 const currentComp = computed(() => COMP_REGISTRY[currentKey.value]);
 // 当前 tab 对应的页面标识，供 AnnouncementOverlay 匹配公告的 pages 字段
 const pageKey = computed(() => currentKey.value);
