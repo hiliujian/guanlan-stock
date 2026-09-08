@@ -270,7 +270,8 @@ import { analyze, type AnalysisResult, type MarketContext } from "@/utils/analyz
 import { scoreNews, filterNews, type NewsSignal } from "@/utils/newsSentiment";
 import { visibleMarketCards, type MarketCardMeta, type CardId } from "@/utils/cardLayout";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
-import { useUser } from "@/store/user";
+import { useUser, userState } from "@/store/user";
+import { saveHolding, dropHolding } from "@/api/holdings";
 import { navState, openAuth } from "@/store/nav";
 
 const code = ref("");
@@ -287,6 +288,11 @@ watch(secid, (s) => { pos.value = getPosition(s); }, { immediate: true });
 async function onSavePosition(p: Position) {
   setPosition(secid.value, p);
   pos.value = getPosition(secid.value);
+  // 已登录：持仓簿同步写回云端（跨设备 / 刷新后恢复）；未登录保持纯本地
+  if (userState.loggedIn) {
+    const code = codeFromSecid(secid.value);
+    await saveHolding({ code, name: name.value || code, cost: p.cost, shares: p.qty ?? 0 });
+  }
   // 填了持仓即视为持仓中 → 自动加入自选（已存在则跳过），保证自选页能巡检到该持仓的信号
   if (!isWatched(curCode.value, curMarket.value)) {
     const r = await addWatch({ code: curCode.value, market: curMarket.value, name: name.value || curCode.value, note: "" });
@@ -298,6 +304,10 @@ async function onSavePosition(p: Position) {
 function onClearPosition() {
   clearPosition(secid.value);
   pos.value = null;
+  // 已登录：同步删除云端持仓簿对应行
+  if (userState.loggedIn) {
+    dropHolding(codeFromSecid(secid.value));
+  }
   uni.showToast({ title: "已清除持仓", icon: "none" });
 }
 const klines = ref<any[]>([]);

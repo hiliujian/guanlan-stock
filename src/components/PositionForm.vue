@@ -1,7 +1,7 @@
 <template>
   <!-- 设置持仓弹窗（持仓成本/持仓数量均必填）：teleport 到 body —— 避免被任何
-       transform/backdrop-filter 祖先变成「相对元素定位」，导致弹窗出现在页面中部；
-       半透明遮罩聚焦输入、回车直接保存。行情页报告卡与自选页长按菜单共用此组件 -->
+       transform/backdrop-filter 祖先变成「相对元素定位」，导致弹窗出现在页面中部。
+       行情页报告卡与自选页长按菜单共用此组件 -->
   <teleport to="body">
     <view v-if="visible" ref="maskRef" class="pos-mask" @click.self="close">
       <view class="pos-form">
@@ -13,13 +13,12 @@
         </view>
         <view class="pf-row">
           <text class="pf-k">持仓成本</text>
-          <input class="pf-in" type="digit" :focus="autoFocus" :value="pfCost" placeholder="元/股（必填）" @input="onPfCost" />
+          <input class="pf-in" type="digit" :value="pfCost" placeholder="元/股（必填）" @input="onPfCost" />
         </view>
         <view class="pf-row">
           <text class="pf-k">持仓数量</text>
           <input class="pf-in" type="number" :value="pfQty" placeholder="股（必填）" @input="onPfQty" />
         </view>
-        <view class="pf-hint"><text>按回车可直接保存</text></view>
         <view class="pf-actions">
           <view class="pf-btn clear" @click="clear" role="button" aria-label="清除持仓">清除持仓</view>
           <view class="pf-btn ok" @click="save" role="button" aria-label="保存持仓">保存</view>
@@ -47,7 +46,6 @@ const emit = defineEmits<{
 }>();
 
 const visible = ref(false);
-const autoFocus = ref(false);
 const pfCost = ref("");
 const pfQty = ref("");
 
@@ -56,12 +54,9 @@ function open() {
   pfCost.value = p?.cost ? String(p.cost) : "";
   pfQty.value = p?.qty ? String(p.qty) : "";
   visible.value = true;
-  // 打开时自动聚焦成本输入框，引导用户聚焦数据填写
-  autoFocus.value = true;
 }
 function close() {
   visible.value = false;
-  autoFocus.value = false;
 }
 function onPfCost(e: any) {
   pfCost.value = String(e?.detail?.value ?? "");
@@ -83,17 +78,15 @@ function save() {
   }
   emit("save", { cost: c, qty });
   visible.value = false;
-  autoFocus.value = false;
 }
 function clear() {
   emit("clear");
   pfCost.value = "";
   pfQty.value = "";
   visible.value = false;
-  autoFocus.value = false;
 }
 
-// 点击遮罩或遮罩外部关闭；Enter 保存。均在弹窗可见时挂全局监听
+// 点击遮罩或遮罩外部关闭。均在弹窗可见时挂全局监听
 const maskRef = ref<any>(null);
 function onDocPointerDown(e: Event) {
   const r = maskRef.value as any;
@@ -103,24 +96,15 @@ function onDocPointerDown(e: Event) {
   if (el && (e.target as Node) === el) return;
   if (el && !el.contains(e.target as Node)) visible.value = false;
 }
-function onKeyDown(e: KeyboardEvent) {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    save();
-  }
-}
 watch(visible, (v) => {
   if (v) {
     document.addEventListener("pointerdown", onDocPointerDown, true);
-    document.addEventListener("keydown", onKeyDown);
   } else {
     document.removeEventListener("pointerdown", onDocPointerDown, true);
-    document.removeEventListener("keydown", onKeyDown);
   }
 });
 onUnmounted(() => {
   document.removeEventListener("pointerdown", onDocPointerDown, true);
-  document.removeEventListener("keydown", onKeyDown);
 });
 
 defineExpose({ open });
@@ -193,10 +177,6 @@ defineExpose({ open });
 .pf-in:focus {
   background: var(--card);
   box-shadow: 0 0 0 2rpx var(--primary-soft);
-}
-.pf-hint {
-  font-size: var(--font-xs);
-  color: var(--text-3);
 }
 .pf-actions {
   display: flex;

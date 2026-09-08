@@ -45,7 +45,7 @@ const currentKey = ref<TabKey>("market");
 // Tab 元信息（key / 文案 / 图标）。是否展示由系统配置（menus）决定，见 tabs computed
 const TAB_DEFS: Record<TabKey, TabDef> = {
   market: { key: "market", label: "行情", icon: "bars", iconActive: "bars" },
-  watch: { key: "watch", label: "自选", icon: "star", iconActive: "star-filled" },
+  watch: { key: "watch", label: "持仓", icon: "star", iconActive: "star-filled" },
   community: { key: "community", label: "社区", icon: "chatbubble", iconActive: "chatbubble" },
   profile: { key: "profile", label: "我的", icon: "person", iconActive: "person" },
 };

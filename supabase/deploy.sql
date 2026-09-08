@@ -1098,3 +1098,29 @@ alter table public.profiles add column if not exists location text not null defa
 alter table public.profiles add column if not exists allow_dm boolean not null default true;
 alter table public.profiles add column if not exists public_watchlist boolean not null default true;
 
+-- 用户持仓簿 user_holdings（与 supabase/user_holdings.sql 声明一致）：发帖「一键填入」+
+-- 自选/行情页「设置持仓」的云端数据源。整段幂等（if not exists / drop policy if exists），
+-- 生产库单独执行本段或执行 user_holdings.sql 均可补齐，不会影响其他表。
+create table if not exists public.user_holdings (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  code       text not null,
+  name       text not null default '',
+  cost       numeric not null default 0,
+  shares     numeric not null default 0,
+  updated_at timestamptz not null default now(),
+  constraint user_holdings_user_code_key unique (user_id, code),
+  constraint user_holdings_shares_positive check (shares > 0)
+);
+create index if not exists idx_user_holdings_user on public.user_holdings (user_id, updated_at desc);
+create index if not exists idx_user_holdings_user_code on public.user_holdings (user_id, code);
+alter table public.user_holdings enable row level security;
+drop policy if exists "user_holdings_select_self" on public.user_holdings;
+create policy "user_holdings_select_self" on public.user_holdings for select using (auth.uid() = user_id);
+drop policy if exists "user_holdings_insert_self" on public.user_holdings;
+create policy "user_holdings_insert_self" on public.user_holdings for insert with check (auth.uid() = user_id);
+drop policy if exists "user_holdings_update_self" on public.user_holdings;
+create policy "user_holdings_update_self" on public.user_holdings for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "user_holdings_delete_self" on public.user_holdings;
+create policy "user_holdings_delete_self" on public.user_holdings for delete using (auth.uid() = user_id);
+

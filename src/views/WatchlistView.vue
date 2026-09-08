@@ -2,8 +2,8 @@
   <view class="wl-page">
     <!-- 头部：与社区共用 PageHeader，移出 scroll-view 以保证 H5 上始终吸顶。 -->
     <!-- #brand：默认品牌区（星标图标 + 「自选」渐变标题），与社区页同一套左上角 logo 风格 -->
-    <PageHeader brand-text="自选" brand-icon="star">
-      <!-- #right：自选视图=分组胶囊；持仓视图=总收益胶囊（复用 cm-me 同款胶囊外壳） -->
+    <PageHeader :brand-text="mainView === 'pos' ? '持仓' : '自选'" :brand-icon="mainView === 'pos' ? 'briefcase' : 'star'" @click="toggleView">
+      <!-- #right：自选视图=分组胶囊；持仓视图=总收益胶囊（组合级：涨跌数量/收益率/收益金额，实时计算） -->
       <template #right>
         <view
           v-if="mainView === 'pos' && posSummary.count"
@@ -11,13 +11,9 @@
           aria-label="总收益"
           @click="openPosSheet"
         >
-          <view class="cm-avatar flex-center" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
-            <OutlineIcon type="briefcase" :size="24" color="#fff" />
-          </view>
-          <view class="ps-col">
-            <text class="ps-k">总收益</text>
-            <text :class="['ud-num', trendCls(posSummary.pnl)]">{{ fmtSigned(posSummary.pnl) }} <text class="ps-pct" :class="trendCls(posSummary.pnl)">{{ fmtPct(posSummary.pnlPct) }}</text></text>
-          </view>
+          <text :class="['cm-line', trendCls(posSummary.pnl)]">{{ fmtSigned(posSummary.pnl) }}</text>
+          <text :class="['cm-line cm-pct', trendCls(posSummary.pnl)]">{{ fmtPct(posSummary.pnlPct) }}</text>
+          <text :class="['cm-line cm-amt', trendCls(posSummary.pnl)]">¥{{ fmtSigned(posSummary.pnl) }}</text>
           <OutlineIcon type="pulldown" :size="18" color="var(--text-2)" />
         </view>
         <view v-else class="cm-me" role="button" aria-label="分组切换" @click="openGroups">
@@ -25,7 +21,7 @@
             <OutlineIcon type="layers" :size="24" color="#fff" />
           </view>
           <text class="cm-name truncate">{{ upDown.currentGroup }}</text>
-          <!-- 当前分组内实时涨/跌个数（随行情实时刷新）：并入分组按钮，避免割裂 -->
+          <!-- 当前分组内实时涨/跌家数（随行情实时刷新）：并入分组按钮，避免割裂 -->
           <view class="ud-pill">
             <view class="ud-item">
               <OutlineIcon type="arrow-up" :size="16" color="var(--up)" />
@@ -40,18 +36,6 @@
         </view>
       </template>
     </PageHeader>
-
-    <!-- 自选 ↔ 持仓 视图切换：独立成行（品牌区恢复默认 logo），分段胶囊样式与系统 pill 一致 -->
-    <view class="vw-tabs" role="tablist">
-      <view class="vw-tab" :class="{ on: mainView === 'watch' }" role="tab" aria-label="自选" @click="switchView('watch')">
-        <OutlineIcon type="star" :size="24" :color="mainView === 'watch' ? '#fff' : 'var(--text-2)'" />
-        <text>自选</text>
-      </view>
-      <view class="vw-tab" :class="{ on: mainView === 'pos' }" role="tab" aria-label="持仓" @click="switchView('pos')">
-        <OutlineIcon type="briefcase" :size="24" :color="mainView === 'pos' ? '#fff' : 'var(--text-2)'" />
-        <text>持仓</text>
-      </view>
-    </view>
 
     <view class="wl">
 
@@ -94,7 +78,7 @@
               </view>
               <text class="empty-title">还没有持仓</text>
               <text class="empty-s">在「行情」页报告卡或自选页长按菜单中设置持仓成本与数量，收益与操作信号将同步展示在这里。</text>
-              <button class="btn-primary empty-btn" @click="switchView('watch')">去自选页设置</button>
+              <button class="btn-primary empty-btn" @click="toggleView">去自选页设置</button>
             </view>
           </view>
           <view v-else class="pos-table">
@@ -161,47 +145,23 @@
           <view class="wl-thead">
             <!-- 名称列表头：仅占位(固定列左上角)。排序/列设置按钮已移至滚动容器外的 .wl-cols-overlay，避免横滑 scroll-view 吞掉点击 -->
             <view class="th c-name"></view>
-            <view v-if="cols.price" class="th c-price" :class="{ active: sortKey === 'price' }" @click="toggleSort('price')">
+            <view v-if="cols.price" class="th c-price">
               <text class="th-label">最新价</text>
-              <view class="sort-ic">
-                <view class="ar up" :class="{ on: sortKey === 'price' && sortDir === 'asc' }" />
-                <view class="ar dn" :class="{ on: sortKey === 'price' && sortDir === 'desc' }" />
-              </view>
             </view>
-            <view v-if="cols.pct" class="th c-pct" :class="{ active: sortKey === 'pct' }" @click="toggleSort('pct')">
+            <view v-if="cols.pct" class="th c-pct">
               <text class="th-label">涨跌幅</text>
-              <view class="sort-ic">
-                <view class="ar up" :class="{ on: sortKey === 'pct' && sortDir === 'asc' }" />
-                <view class="ar dn" :class="{ on: sortKey === 'pct' && sortDir === 'desc' }" />
-              </view>
             </view>
-            <view v-if="cols.chg" class="th c-chg" :class="{ active: sortKey === 'chg' }" @click="toggleSort('chg')">
+            <view v-if="cols.chg" class="th c-chg">
               <text class="th-label">涨跌额</text>
-              <view class="sort-ic">
-                <view class="ar up" :class="{ on: sortKey === 'chg' && sortDir === 'asc' }" />
-                <view class="ar dn" :class="{ on: sortKey === 'chg' && sortDir === 'desc' }" />
-              </view>
             </view>
-            <view v-if="cols.open" class="th c-open" :class="{ active: sortKey === 'open' }" @click="toggleSort('open')">
+            <view v-if="cols.open" class="th c-open">
               <text class="th-label">今开</text>
-              <view class="sort-ic">
-                <view class="ar up" :class="{ on: sortKey === 'open' && sortDir === 'asc' }" />
-                <view class="ar dn" :class="{ on: sortKey === 'open' && sortDir === 'desc' }" />
-              </view>
             </view>
-            <view v-if="cols.amp" class="th c-amp" :class="{ active: sortKey === 'amp' }" @click="toggleSort('amp')">
+            <view v-if="cols.amp" class="th c-amp">
               <text class="th-label">振幅</text>
-              <view class="sort-ic">
-                <view class="ar up" :class="{ on: sortKey === 'amp' && sortDir === 'asc' }" />
-                <view class="ar dn" :class="{ on: sortKey === 'amp' && sortDir === 'desc' }" />
-              </view>
             </view>
-            <view v-if="cols.amt" class="th c-amt" :class="{ active: sortKey === 'amt' }" @click="toggleSort('amt')">
+            <view v-if="cols.amt" class="th c-amt">
               <text class="th-label">成交额</text>
-              <view class="sort-ic">
-                <view class="ar up" :class="{ on: sortKey === 'amt' && sortDir === 'asc' }" />
-                <view class="ar dn" :class="{ on: sortKey === 'amt' && sortDir === 'desc' }" />
-              </view>
             </view>
           </view>
           <view class="wl-body">
@@ -643,6 +603,8 @@ import { staleGet, staleSet } from "@/utils/staleCache";
 import { analyze } from "@/utils/analyzer";
 import { getKline } from "@/api/sources";
 import { listCostSecids, getPosition, setPosition, clearPosition, listPositions, getLastSignal, setLastSignal, type Position } from "@/utils/costBasis";
+import { hydrateCloudPositions } from "@/store/holdingsMirror";
+import { saveHolding, dropHolding } from "@/api/holdings";
 
 // 长按操作菜单目标股（统一并入 PeekSheet 面板，替代原先独立的 ActionSheet 弹层）
 const sheetExpanded = ref(false);
@@ -812,7 +774,7 @@ const groupRows = computed(() => {
 });
 function pickGroup(key: string) {
   selectedGroup.value = key;
-  manualOrderGroup.value = null; // 切换视图即令手工顺序失效，renderRows 回落 displayRows
+  manualOrderGroup.value = null; // 切换分组即令手工顺序失效，renderRows 回落 store default order
   sheet.value?.collapse();
 }
 
@@ -1112,20 +1074,20 @@ async function scanPositionSignals() {
 }
 
 
-// ===== 自选 ↔ 持仓 双视图：左上角分段切换 + 本地缓存（刷新后保持上次视图） =====
+// ===== 自选 ↔ 持仓 双视图：左上角品牌区轻量切换 + 本地缓存（刷新后保持上次视图） =====
 // 自选=关注（不含成本语义），持仓=实际持有（成本/数量驱动盈亏），两者不混同；
-// 仅切换视图展示，不新增页面路由（keep-alive 常驻同一 tab 组件）
+// 仅切换视图展示，不新增页面路由（keep-alive 常驻同一 tab 组件）。
+// 切换入口：点击左上角「自选/持仓」品牌区（点击品牌区即轻量切换，无 Tab 视觉残留）。
 type MainView = "watch" | "pos";
 const POS_VIEW_KEY = "wl:mainView";
 const mainView = ref<MainView>(uni.getStorageSync(POS_VIEW_KEY) === "pos" ? "pos" : "watch");
-function switchView(v: MainView) {
-  if (mainView.value === v) return;
-  mainView.value = v;
+function toggleView() {
+  mainView.value = mainView.value === "pos" ? "watch" : "pos";
   try {
-    uni.setStorageSync(POS_VIEW_KEY, v);
+    uni.setStorageSync(POS_VIEW_KEY, mainView.value);
   } catch (_) {}
   // 首次进入持仓视图：行情快照复用自选页已有的批量缓存，信号若未扫描过则触发一次巡检
-  if (v === "pos") {
+  if (mainView.value === "pos") {
     if (!posSigMap.value || !Object.keys(posSigMap.value).length) scanPositionSignals();
   }
 }
@@ -1341,22 +1303,20 @@ function toggleReorder() {
     // 不再自动切分组：「全部」视图现已支持全局拖拽重排（applyGroupOrder("__all__")），
     // 保留当前视图即可，避免点击拖拽图标后列表被过滤而「数据变少」的回归。
     manualOrder.value = renderRows.value.map((r) => keyOf(r.it));
-    sortKey.value = "";
   }
 }
 
 // 拖拽顺序缓冲（键序列），仅作用于「当前视图」并与 selectedGroup 强绑定，杜绝跨视图互串。
 const manualOrder = ref<string[]>([]);
-// manualOrder 所属视图；与 selectedGroup 不一致即视为失效，renderRows 回落 displayRows（store 的 per-view 排序）。
+// manualOrder 所属视图；与 selectedGroup 不一致即视为失效，renderRows 回落默认顺序。
 const manualOrderGroup = ref<string | null>(null);
-// 渲染行：列排序优先；否则按手动顺序（仅限当前视图的拖拽结果）
+// 渲染行：手动顺序（拖拽结果，仅限当前视图）；未拖拽时回落到 store 的 per-view order / globalOrder。
 const renderRows = computed(() => {
-  if (sortKey.value) return displayRows.value;
   // 仅当 manualOrder 属于「当前视图」时才应用：切换分组后 manualOrderGroup 被置空/不匹配，
-  // 直接回落到 displayRows（store 的 per-view order / globalOrder 排序），从根上杜绝顺序互串。
+  // 直接回落到默认顺序（store 的 per-view order / globalOrder 排序），从根上杜绝顺序互串。
   if (manualOrderGroup.value === selectedGroup.value && manualOrder.value.length) {
     const idx = new Map(manualOrder.value.map((k, i) => [k, i]));
-    return displayRows.value
+    return rows.value
       .slice()
       .sort((a, b) => {
         const ia = idx.get(keyOf(a.it));
@@ -1367,7 +1327,7 @@ const renderRows = computed(() => {
         return 0;
       });
   }
-  return displayRows.value;
+  return rows.value;
 });
 
 // 拖拽状态（整理模式下所有视图——含"全部"——均可拖拽重排）
@@ -1405,11 +1365,10 @@ function unbindWinDrag() {
 }
 onUnmounted(unbindWinDrag);
 function onDragStart(e: any, it: WatchItem) {
-  if (sortKey.value) sortKey.value = ""; // 拖拽即自定义顺序，清除列排序
   dragKey.value = keyOf(it);
   dragStartY = dragPtY(e);
   // 以「当前视图」展示顺序初始化拖拽缓冲，并标记所属视图——保证只影响当前视图、不串入其它分组。
-  manualOrder.value = displayRows.value.map((r) => keyOf(r.it));
+  manualOrder.value = rows.value.map((r) => keyOf(r.it));
   manualOrderGroup.value = selectedGroup.value;
   dragFromIdx = manualOrder.value.indexOf(dragKey.value);
   dragDy.value = 0;
@@ -1515,48 +1474,6 @@ onUnmounted(() => {
   document.removeEventListener("touchmove", wlGuardMove);
 });
 
-// 表头排序：点击列头切换 升/降序；null(加载中) 始终排末尾（名称列固定，不参与排序）
-type SortKey = "pct" | "price" | "chg" | "open" | "amp" | "amt" | "";
-const sortKey = ref<SortKey>("");
-const sortDir = ref<"asc" | "desc">("desc");
-function toggleSort(key: SortKey) {
-  if (!key) return;
-  if (sortKey.value === key) sortDir.value = sortDir.value === "desc" ? "asc" : "desc";
-  else {
-    sortKey.value = key;
-    sortDir.value = "desc";
-  }
-}
-function sortVal(q: Snap, k: Exclude<SortKey, "">): number | null {
-  if (q.loading) return null;
-  switch (k) {
-    case "pct": return q.pct ?? null;
-    case "price": return q.price ?? null;
-    case "chg": return q.chg ?? null;
-    case "open": return q.open ?? null;
-    case "amp":
-      return q.high != null && q.low != null && q.preClose ? ((q.high - q.low) / q.preClose) * 100 : null;
-    case "amt": return q.amount ?? null;
-  }
-  return null;
-}
-const displayRows = computed(() => {
-  const arr = rows.value;
-  const k = sortKey.value;
-  if (!k) return arr;
-  const dir = sortDir.value === "desc" ? -1 : 1;
-  return [...arr].sort((a, b) => {
-    let cmp = 0;
-    const va = sortVal(a.q, k);
-    const vb = sortVal(b.q, k);
-    if (va == null && vb == null) cmp = 0;
-    else if (va == null) cmp = 1;
-    else if (vb == null) cmp = -1;
-    else cmp = va - vb;
-    return cmp * dir;
-  });
-});
-
 // 顶部右侧：当前分组名（默认「全部」）+ 当前分组内实时涨/跌个股个数（随行情刷新）
 const upDown = computed(() => {
   const g = selectedGroup.value;
@@ -1596,6 +1513,8 @@ onMounted(() => {
   if (!needLogin.value) loadQuotesSafe();
   loadPeek();
   preloadRank("today"); // 预加载今日热榜：展开榜单面板零等待（与 RankView 共用同一装载代码）
+  // 已登录时以云端持仓簿为准重铺本地缓存（跨设备 / 刷新后图标与盈亏收口到真实数据）
+  if (userState.loggedIn) hydrateCloudPositions();
   scanPositionSignals(); // 持仓信号巡检：进入自选页即检测一次
 });
 onActivated(() => {
@@ -1617,6 +1536,8 @@ watch(
   () => userState.loggedIn,
   (li) => {
     if (li) {
+      // 登录后以云端持仓簿为准重铺本地缓存（含跨设备恢复），并巡检信号
+      hydrateCloudPositions().then(() => scanPositionSignals());
       loadQuotesSafe();
       startPolling();
     } else {
@@ -1706,17 +1627,31 @@ function openPosForm() {
   if (!lpSecid.value) return;
   posFormRef.value?.open();
 }
-function saveLpPosition(p: Position) {
+async function saveLpPosition(p: Position) {
   if (!lpSecid.value) return;
   setPosition(lpSecid.value, p);
+  // 已登录：同步写回云端持仓簿（以 code 为主键 upsert），刷新/换设备后仍可恢复
+  if (userState.loggedIn) {
+    const it = lpItem.value ?? list.value.find((x) => resolveSecid(x.code, x.market as any) === lpSecid.value);
+    await saveHolding({
+      code: lpSecid.value.split(".")[1] || lpSecid.value,
+      name: it?.name || lpSecid.value.split(".")[1] || "",
+      cost: p.cost,
+      shares: p.qty ?? 0,
+    });
+  }
   lpItem.value = null;
   loadQuotesSafe();
   scanPositionSignals();
   uni.showToast({ title: "持仓已保存", icon: "none" });
 }
-function clearLpPosition() {
+async function clearLpPosition() {
   if (!lpSecid.value) return;
   clearPosition(lpSecid.value);
+  // 已登录：同步删除云端持仓簿对应行
+  if (userState.loggedIn) {
+    await dropHolding(lpSecid.value.split(".")[1] || lpSecid.value);
+  }
   lpItem.value = null;
   loadQuotesSafe();
   scanPositionSignals();
@@ -2111,62 +2046,10 @@ function removeLp() {
   background: var(--bg-2);
   padding: 0 16rpx 0 18rpx;
 }
-/* 表头可排序：箭头指示 + 激活态高亮 */
+/* 表头标签：不参与排序，无点击选中态（label 仅只读文本） */
 .th-label {
   white-space: nowrap;
   letter-spacing: 0.5rpx;
-}
-/* 排序激活：主色文字 + 顶部小色块提示（脱离上下小箭头，用更直观的方式） */
-.th.active {
-  color: var(--primary);
-  font-weight: 700;
-}
-.th.active::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 14rpx;
-  left: 14rpx;
-  height: 4rpx;
-  border-radius: 0 0 4rpx 4rpx;
-  background: linear-gradient(90deg, var(--primary), var(--primary-dark, #06a050));
-}
-.th.c-name.active::before {
-  right: 16rpx;
-  left: 16rpx;
-}
-/* 排序指示器：双箭头加粗，未激活态透明灰、激活态主色 */
-.sort-ic {
-  display: inline-flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 3rpx;
-  margin-left: 6rpx;
-  width: 14rpx;
-}
-.sort-ic .ar {
-  width: 0;
-  height: 0;
-  border-left: 5rpx solid transparent;
-  border-right: 5rpx solid transparent;
-  transition: border-color 0.18s ease;
-}
-.sort-ic .ar.up {
-  border-bottom: 6rpx solid var(--text-3);
-}
-.sort-ic .ar.dn {
-  border-top: 6rpx solid var(--text-3);
-}
-.th:hover .sort-ic .ar.up,
-.th:hover .sort-ic .ar.dn {
-  border-bottom-color: var(--text-2);
-  border-top-color: var(--text-2);
-}
-.th.active .sort-ic .ar.up.on {
-  border-bottom-color: var(--primary);
-}
-.th.active .sort-ic .ar.dn.on {
-  border-top-color: var(--primary);
 }
 .tr {
   background: var(--bg-2);
@@ -2338,7 +2221,6 @@ function removeLp() {
 }
 .alert-rt-price {
   font-size: var(--font-lg);
-  font-weight: 600;
   color: var(--text);
 }
 .alert-rt-price.up { color: var(--up); }
@@ -2397,7 +2279,6 @@ function removeLp() {
   padding: 20rpx 0;
   border-radius: 999rpx;
   font-size: var(--font-md);
-  font-weight: 500;
   /* 幽灵按钮：描边 + 主色字，与绿色 primary 按钮视觉协调，比灰底更有品质感 */
   color: var(--primary);
   background: transparent;
@@ -2703,37 +2584,6 @@ function removeLp() {
   font-size: var(--font-md);
 }
 
-/* ===== 自选 ↔ 持仓 视图切换行：独立成行（品牌区恢复默认 logo），分段胶囊样式与系统 pill 一致 ===== */
-.vw-tabs {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6rpx;
-  margin: 0 24rpx 12rpx;
-  padding: 4rpx;
-  background: var(--card-2);
-  border-radius: 999rpx;
-  box-shadow: inset 0 0 0 1rpx var(--border);
-}
-.vw-tab {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10rpx;
-  padding: 10rpx 0;
-  border-radius: 999rpx;
-  font-size: var(--font-sm);
-  color: var(--text-2);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.vw-tab.on {
-  background: var(--primary);
-  color: #fff;
-  font-weight: 600;
-}
-
 /* ===== 持仓视图 ===== */
 .pos-view {
   flex: 1;
@@ -2805,9 +2655,6 @@ function removeLp() {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-.pos-cell-pnl {
-  font-weight: 600;
-}
 .pos-cell-pnl.up {
   color: var(--up);
 }
@@ -2855,29 +2702,21 @@ function removeLp() {
   background: var(--card-2);
 }
 
-/* 总收益胶囊 .ps-col：细分列，容纳 总收益/盈亏 双行，对齐 .cm-me 右侧信息 */
-.ps-col {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2rpx;
-  min-width: 0;
-}
-.ps-k {
-  font-size: var(--font-xs);
-  color: var(--text-3);
-  line-height: 1;
-}
-.ps-pct {
-  margin-left: 6rpx;
+/* 总收益胶囊数据行：涨跌数量 · 收益率 · 收益金额 三行并排，复用 --text-3 分隔 */
+.cm-line {
   font-size: var(--font-sm);
-  font-weight: 500;
   font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+  line-height: 1.1;
 }
-.ps-col .ud-num {
-  font-size: var(--font-md);
+.cm-line.up { color: var(--up); }
+.cm-line.down { color: var(--down); }
+.cm-line.flat { color: var(--text-2); }
+.cm-pct {
+  font-weight: 500;
+}
+.cm-amt {
   font-weight: 600;
-  line-height: 1.15;
 }
 
 /* 持仓汇总面板：2×2 指标块 + 提示行 */
