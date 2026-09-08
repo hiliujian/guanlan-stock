@@ -763,7 +763,7 @@ const sigRetCls = computed(() => {
 });
 
 // ---------------- 持仓录入弹窗（持仓成本/持仓数量，均必填，与发帖持仓卡字段对齐） ----------------
-// 保存到 costBasis（按股持久化）：成本驱动「持仓视角」建议。
+// 保存到 costBasis（按股持久化）：成本驱动报告页持仓状态双视角建议。
 // 引擎信号与胜率回放本身不感知用户成本（成本是个体状态，进引擎会污染胜率口径）。
 const posFormOpen = ref(false);
 const pfCost = ref("");
@@ -783,7 +783,7 @@ function onPfQty(e: any) {
   pfQty.value = String(e?.detail?.value ?? "");
 }
 function savePosition() {
-  // 两项均必填（与社区发帖持仓卡对齐）：成本驱动持仓视角，数量供发帖持仓卡回填
+  // 两项均必填（与社区发帖持仓卡对齐）：成本驱动持仓状态双视角，数量供发帖持仓卡回填
   const c = parseFloat(pfCost.value);
   const qty = parseInt(pfQty.value, 10);
   if (!Number.isFinite(c) || c <= 0) {
@@ -822,7 +822,7 @@ function clearPosition() {
 // 引擎信号（a.signal）是技术面口径，不感知用户成本；标签与一句话建议按持仓状态翻译：
 //   · 空仓（未设持仓）：介入导向术语——买点/卖点/持有=关注（未持仓谈不上「持有」）/观望；
 //   · 持仓（已设成本）：仓位管理导向术语——按浮动盈亏 × 信号方向映射为
-//     止盈/止损/减仓/持有/补仓等专业动作，文案沿用原「持仓视角」的成本翻译逻辑；
+//     止盈/止损/减仓/持有/补仓等专业动作，按成本翻译为仓位管理动作；
 // 触发条件/确认信号保持引擎技术面口径（成本是个体状态，不进引擎污染胜率回放），
 // 卡片着色（signalCls）按引擎信号方向不变，胜率回放样本口径亦不受影响。
 const holding = computed(() => !!props.position?.cost && props.position.cost > 0);
@@ -839,7 +839,7 @@ const signalView = computed<{ label: string; text: string }>(() => {
       return { label: "关注", text: "趋势向上，可关注回调低吸机会，勿追高" };
     return { label: s.label, text: s.text };
   }
-  // 持仓视角：按浮动盈亏 × 信号方向给出仓位管理动作（与原 posView 同一套翻译规则）
+  // 持仓视角：按浮动盈亏 × 信号方向给出仓位管理动作
   const pnl = pnlPct.value;
   const pt = (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + "%";
   if (pnl >= 1) {
@@ -1084,17 +1084,24 @@ const buyRow = computed<{ text: string; active: boolean }>(() => {
 const supPriceCls = computed(() => (a.value.breakdown ? "lv-st-bad" : a.value.nearSup ? "lv-st-warn" : ""));
 const resPriceCls = computed(() => (a.value.breakout ? "lv-st-ok" : a.value.nearRes ? "lv-st-warn" : ""));
 
-// 决策标签唯一视图：由 a.decision 单源派生（reduce→add→build→watch→wait）
+// 决策标签唯一视图：由 a.decision 单源派生（reduce→add→build→watch→wait）。
+// 措辞按持仓状态双视角（与「分析结论」advice 同一套口径）：空仓=介入导向（考虑建仓/可关注），
+// 持仓=仓位管理导向（可补仓/持有观察/持有观望）——已持仓不存在「建仓/关注」语境；
+// reduce「建议减仓」与 add「可加仓」两态下动作一致，共用一份。
 const decisionView = computed(() => {
   const d = a.value.decision;
-  const map: Record<string, { text: string; cls: string; icon: string }> = {
-    reduce: { text: "建议减仓", cls: "warn", icon: "arrow-down" },
-    add: { text: "可加仓", cls: "ok", icon: "plus" },
-    build: { text: "考虑建仓", cls: "ok", icon: "fire" },
-    watch: { text: "可关注", cls: "ok", icon: "star" },
-    wait: { text: "观望为主", cls: "wait", icon: "info" },
+  const text = holding.value
+    ? { reduce: "建议减仓", add: "可加仓", build: "可补仓", watch: "持有观察", wait: "持有观望" }
+    : { reduce: "建议减仓", add: "可加仓", build: "考虑建仓", watch: "可关注", wait: "观望为主" };
+  const shapeMap: Record<string, { cls: string; icon: string }> = {
+    reduce: { cls: "warn", icon: "arrow-down" },
+    add: { cls: "ok", icon: "plus" },
+    build: { cls: "ok", icon: "fire" },
+    watch: { cls: "ok", icon: "star" },
+    wait: { cls: "wait", icon: "info" },
   };
-  return map[d] ?? map.wait;
+  const shape = shapeMap[d] ?? shapeMap.wait;
+  return { text: text[d] ?? text.wait, ...shape };
 });
 
 // ---------------- 关联资讯展示列表 ----------------

@@ -281,7 +281,7 @@ const switching = ref(false); // 仅「切换周期」使用，避免误占用�
 const name = ref("");
 const secid = ref("");
 const preClose = ref(0);
-// 持仓信息（选填，按股持久化）：填了持仓成本即视为持仓中，报告页给出「持仓视角」建议
+// 持仓信息（选填，按股持久化）：填了持仓成本即视为持仓中，报告页按持仓状态双视角（信号卡/操作建议/结论）适配
 const pos = ref<Position | null>(null);
 watch(secid, (s) => { pos.value = getPosition(s); }, { immediate: true });
 async function onSavePosition(p: Position) {
@@ -554,7 +554,7 @@ const CARD_RENDERERS: Record<CardId, { comp: Component; props: () => Record<stri
       result: result.value,
       news: news.value,
       newsSignal: newsSig.value,
-      // 持仓信息（按股持久化，见 costBasis）：成本驱动「持仓视角」，保存持仓自动加入自选
+      // 持仓信息（按股持久化，见 costBasis）：成本驱动报告页持仓状态双视角，保存持仓自动加入自选
       position: pos.value,
       onSavePosition: onSavePosition,
       onClearPosition: onClearPosition,
