@@ -1,29 +1,26 @@
 <template>
   <view class="wl-page">
-    <!-- 头部：与社区共用 PageHeader，移出 scroll-view 以保证 H5 上始终吸顶。
-         #brand slot 挂 自选↔持仓 分段切换（本地缓存，刷新后保持上次视图） -->
-    <PageHeader>
-      <template #brand>
-        <view class="vw-seg" role="tablist">
-          <view class="vw-seg-item" :class="{ on: mainView === 'watch' }" role="tab" aria-label="自选" @click="switchView('watch')">
-            <OutlineIcon type="star" :size="26" :color="mainView === 'watch' ? '#fff' : 'var(--text-2)'" />
-            <text>自选</text>
-          </view>
-          <view class="vw-seg-item" :class="{ on: mainView === 'pos' }" role="tab" aria-label="持仓" @click="switchView('pos')">
-            <OutlineIcon type="briefcase" :size="26" :color="mainView === 'pos' ? '#fff' : 'var(--text-2)'" />
-            <text>持仓</text>
-          </view>
-        </view>
-      </template>
+    <!-- 头部：与社区共用 PageHeader，移出 scroll-view 以保证 H5 上始终吸顶。 -->
+    <!-- #brand：默认品牌区（星标图标 + 「自选」渐变标题），与社区页同一套左上角 logo 风格 -->
+    <PageHeader brand-text="自选" brand-icon="star">
+      <!-- #right：自选视图=分组胶囊；持仓视图=总收益胶囊（复用 cm-me 同款胶囊外壳） -->
       <template #right>
-        <!-- 持仓视图右上角：总收益率 / 总盈亏汇总（同持仓页，数据源共用 posSummary） -->
-        <view v-if="mainView === 'pos' && posSummary.count" class="pos-sum">
-          <text class="ps-k">总收益</text>
-          <text :class="['ps-v', trendCls(posSummary.pnl)]">{{ fmtSigned(posSummary.pnl) }}</text>
-          <text :class="['ps-v', trendCls(posSummary.pnl)]">{{ fmtPct(posSummary.pnlPct) }}</text>
+        <view
+          v-if="mainView === 'pos' && posSummary.count"
+          class="cm-me"
+          aria-label="总收益"
+          @click="openPosSheet"
+        >
+          <view class="cm-avatar flex-center" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
+            <OutlineIcon type="briefcase" :size="24" color="#fff" />
+          </view>
+          <view class="ps-col">
+            <text class="ps-k">总收益</text>
+            <text :class="['ud-num', trendCls(posSummary.pnl)]">{{ fmtSigned(posSummary.pnl) }} <text class="ps-pct" :class="trendCls(posSummary.pnl)">{{ fmtPct(posSummary.pnlPct) }}</text></text>
+          </view>
+          <OutlineIcon type="pulldown" :size="18" color="var(--text-2)" />
         </view>
-        <template v-else>
-        <view class="cm-me" role="button" aria-label="分组切换" @click="openGroups">
+        <view v-else class="cm-me" role="button" aria-label="分组切换" @click="openGroups">
           <view class="cm-avatar flex-center" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
             <OutlineIcon type="layers" :size="24" color="#fff" />
           </view>
@@ -41,9 +38,20 @@
           </view>
           <OutlineIcon type="pulldown" :size="18" color="var(--text-2)" />
         </view>
-        </template>
       </template>
     </PageHeader>
+
+    <!-- 自选 ↔ 持仓 视图切换：独立成行（品牌区恢复默认 logo），分段胶囊样式与系统 pill 一致 -->
+    <view class="vw-tabs" role="tablist">
+      <view class="vw-tab" :class="{ on: mainView === 'watch' }" role="tab" aria-label="自选" @click="switchView('watch')">
+        <OutlineIcon type="star" :size="24" :color="mainView === 'watch' ? '#fff' : 'var(--text-2)'" />
+        <text>自选</text>
+      </view>
+      <view class="vw-tab" :class="{ on: mainView === 'pos' }" role="tab" aria-label="持仓" @click="switchView('pos')">
+        <OutlineIcon type="briefcase" :size="24" :color="mainView === 'pos' ? '#fff' : 'var(--text-2)'" />
+        <text>持仓</text>
+      </view>
+    </view>
 
     <view class="wl">
 
@@ -74,8 +82,10 @@
         <!-- 价格预警：命中行在自选表格内闪烁红/绿提示（见 .tr.alert-up/.alert-down），
              不再使用独立横幅卡片；清除预警请在长按菜单「编辑价格预警」中操作。 -->
 
-        <!-- ===== 持仓视图：每行 名称/代码 + 信号(引擎操作建议) + 收益率 + 盈亏 + 成本 + 现价；
-             右上角汇总见头部（总收益/总收益率）。与自选视图互斥切换，共享行情与信号数据源 ===== -->
+        <!-- ===== 持仓视图：每行 名称/代码 + 信号(引擎操作建议) + 现价 + 收益率 + 盈亏 + 成本；
+             右上角汇总见头部（总收益/总收益率）。与自选视图互斥切换，共享行情与信号数据源。
+             点击行跳转行情页；长按行弹出操作菜单（设置持仓/清除持仓/编辑预警等，与自选行一致）。
+             行数值列公用 .tr/.td/.st-num/.th 样式体系，表头与信号标签复用全局 .th 规范 ===== -->
         <view v-if="mainView === 'pos'" class="pos-view anim-fade-up">
           <view v-if="!posRows.length" class="empty-wrap">
             <view class="empty-card glass">
@@ -87,34 +97,45 @@
               <button class="btn-primary empty-btn" @click="switchView('watch')">去自选页设置</button>
             </view>
           </view>
-          <view v-else class="pos-table glass">
+          <view v-else class="pos-table">
             <view class="pos-thead">
               <text class="pos-th pos-th-name">名称/代码</text>
               <text class="pos-th pos-th-sig">信号</text>
-              <text class="pos-th pos-th-num">收益率</text>
-              <text class="pos-th pos-th-num">盈亏</text>
-              <text class="pos-th pos-th-num">成本</text>
-              <text class="pos-th pos-th-num">现价</text>
+              <text class="pos-th">现价</text>
+              <text class="pos-th">收益率</text>
+              <text class="pos-th">盈亏</text>
+              <text class="pos-th">成本</text>
             </view>
             <view
               v-for="p in posRows"
               :key="p.secid"
               class="pos-row"
               role="button"
-              :aria-label="`查看 ${p.name}`"
+              :aria-label="`查看 ${p.name}，长按管理`"
               @click="openPosStock(p)"
+              @touchstart="onPosPressStart(p, $event)"
+              @touchmove="onRowPressMove"
+              @touchend="onRowPressEnd"
+              @touchcancel="onRowPressEnd"
+              @mousedown="onPosPressStart(p, $event)"
+              @mousemove="onRowPressMove"
+              @mouseup="onRowPressEnd"
+              @mouseleave="onRowPressEnd"
             >
               <view class="pos-cell-name">
                 <text class="t-name truncate">{{ p.name }}</text>
-                <text class="t-code truncate">{{ p.code }}</text>
+                <view class="t-sub">
+                  <text class="t-mkt mkt-label">{{ marketCharFor(p.code, marketFromSecid(p.secid) as any) }}</text>
+                  <text class="t-code truncate">{{ p.code }}</text>
+                </view>
               </view>
               <view class="pos-cell-sig">
-                <text :class="['pos-sig', p.sigCls]">{{ p.sigText }}</text>
+                <view :class="['signal-chip', p.sigCls]"><text>{{ p.sigText }}</text></view>
               </view>
-              <text :class="['pos-cell-num', trendCls(p.pnlPct)]">{{ fmtPct(p.pnlPct) }}</text>
-              <text :class="['pos-cell-num', trendCls(p.pnlPct)]">{{ fmtSigned(p.pnl) }}</text>
+              <text class="pos-cell-num st-num">{{ p.price ? fmtPrice(p.price) : "--" }}</text>
+              <text :class="['pos-cell-num pos-cell-pnl', trendCls(p.pnlPct)]">{{ fmtPct(p.pnlPct) }}</text>
+              <text :class="['pos-cell-num pos-cell-pnl', trendCls(p.pnlPct)]">{{ fmtSigned(p.pnl) }}</text>
               <text class="pos-cell-num pos-cost">{{ fmtPrice(p.cost) }}</text>
-              <text class="pos-cell-num pos-price">{{ fmtPrice(p.price) }}</text>
             </view>
           </view>
         </view>
@@ -358,8 +379,32 @@
                 <text class="sheet-title">{{ groupTitle }}</text>
               </view>
               <scroll-view class="grp-body" scroll-y>
+                <!-- 持仓汇总明细：右上角总收益胶囊点击进入（复用分组面板同窗体） -->
+                <template v-if="groupView === 'possum'">
+                  <view class="stk-grid">
+                    <view class="stk-tile">
+                      <text class="stk-k">持仓市值</text>
+                      <text class="stk-v">{{ fmtAmount(sumValue) }}</text>
+                    </view>
+                    <view class="stk-tile">
+                      <text class="stk-k">持仓成本</text>
+                      <text class="stk-v">{{ fmtAmount(sumCost) }}</text>
+                    </view>
+                  </view>
+                  <view class="stk-grid">
+                    <view class="stk-tile">
+                      <text class="stk-k">总收益</text>
+                      <text class="stk-v" :class="trendCls(posSummary.pnl)">{{ fmtSigned(posSummary.pnl) }} ({{ fmtPct(posSummary.pnlPct) }})</text>
+                    </view>
+                    <view class="stk-tile">
+                      <text class="stk-k">持仓数</text>
+                      <text class="stk-v">{{ posSummary.count }} 只</text>
+                    </view>
+                  </view>
+                  <text class="grp-tip">总收益 = Σ（现价 − 成本）× 数量；总收益率口径同自选（仅含已设成本/数量的持仓）。点击行可查看个股报告。</text>
+                </template>
                 <!-- 主视图：我的分组 + 三个入口 -->
-                <template v-if="groupView === 'main'">
+                <template v-else-if="groupView === 'main'">
                   <view class="grp-section">
                     <view
                       v-for="row in groupRows"
@@ -501,8 +546,13 @@
               </view>
               <view class="grp-list">
                 <view class="grp-item" role="button" @click="openPosForm">
-                  <OutlineIcon type="briefcase" :size="28" color="var(--text-2)" />
-                  <text class="grp-label">设置持仓</text>
+                  <!-- 未设置持仓图标置灰，已设置高亮主色（绿）：一眼看出该股当前持仓状态 -->
+                  <OutlineIcon type="briefcase" :size="28" :color="lpHasPosition ? 'var(--primary)' : 'var(--text-2)'" />
+                  <text class="grp-label" :class="{ primary: lpHasPosition }">设置持仓</text>
+                </view>
+                <view v-if="lpHasPosition" class="grp-item" role="button" @click="clearLpPosition">
+                  <OutlineIcon type="trash" :size="28" color="#ff3b30" />
+                  <text class="grp-label danger">清除持仓</text>
                 </view>
                 <view class="grp-item" role="button" @click="openAlertPanel">
                   <OutlineIcon type="bell" :size="28" color="var(--text-2)" />
@@ -766,8 +816,8 @@ function pickGroup(key: string) {
   sheet.value?.collapse();
 }
 
-// 分组面板多视图：我的分组 / 新建分组 / 移入分组 / 管理分组 共用同一窗体
-const groupView = ref<'main' | 'new' | 'move' | 'manage'>('main');
+// 分组面板多视图：我的分组 / 新建分组 / 移入分组 / 管理分组 / 持仓汇总 共用同一窗体
+const groupView = ref<'main' | 'new' | 'move' | 'manage' | 'possum'>('main');
 const newStep = ref(1);
 const newName = ref('');
 const moveStock = ref<WatchItem | null>(null);
@@ -781,6 +831,7 @@ const groupTitle = computed(() => {
   if (groupView.value === 'new') return newStep.value === 1 ? '新建分组' : '选择股票加入';
   if (groupView.value === 'move') return moveStock.value ? '移入分组' : '选择股票';
   if (groupView.value === 'manage') return manageTarget.value ? `管理「${manageTarget.value}」` : '管理分组';
+  if (groupView.value === 'possum') return '持仓汇总';
   return '我的分组';
 });
 
@@ -800,7 +851,7 @@ function groupBack() {
     manageDel.value = false;
     return;
   }
-  groupView.value = 'main';
+  groupView.value = 'main'; // possum / new / move / manage 均回主视图
 }
 
 function openNewGroup() {
@@ -1143,10 +1194,39 @@ const posSummary = computed(() => {
   }
   return { count: posRows.value.length, pnl, pnlPct: base > 0 ? (pnl / base) * 100 : 0 };
 });
+// 持仓汇总面板：市值 / 成本 供明细展示
+const sumValue = computed(() => posRows.value.reduce((s, r) => s + (r.price && r.qty ? r.price * r.qty : 0), 0));
+const sumCost = computed(() => posRows.value.reduce((s, r) => s + (r.cost && r.qty ? r.cost * r.qty : 0), 0));
 // 点击持仓行：跳转行情页查看该股报告（持仓状态双视角在报告页自动生效）
 function openPosStock(p: PosRow) {
+  if (lpFired) {
+    lpFired = false; // 长按已触发菜单，抑制随后冒泡的 click，避免误开个股
+    return;
+  }
   openInMarket(p.code, marketFromSecid(p.secid) as any);
   goTab("market");
+}
+// 持仓行长按：按 secid 回找自选集 WatchItem，复用同一套动作面板（设置持仓/清除持仓/预警等）
+function onPosPressStart(p: PosRow, e: any) {
+  const it = list.value.find((it) => resolveSecid(it.code, it.market as any) === p.secid) ?? null;
+  if (!it) return;
+  lpFired = false;
+  const pt = pressPt(e);
+  lpStartX = pt.x;
+  lpStartY = pt.y;
+  if (lpTimer != null) clearTimeout(lpTimer);
+  lpTimer = setTimeout(() => {
+    lpFired = true;
+    onRowLongPress(it);
+  }, LP_MS);
+}
+// 右上角总收益胶囊点击：展开抽屉面板（与分组/榜单同窗体）——透出持仓汇总明细
+function openPosSheet() {
+  if (lpItem.value) lpItem.value = null;
+  sheetExpanded.value = true;
+  activePanel.value = "group";
+  groupView.value = "possum";
+  sheet.value?.expand();
 }
 
 // 空态按钮：跳转到行情 tab 选股
@@ -1620,6 +1700,8 @@ const lpSecid = computed(() => {
   if (!it) return "";
   return (resolveSecid(it.code, it.market as any) as string) || "";
 });
+// 长按目标是否已设置持仓：决定「设置持仓」项图标/文字是否高亮配色、是否显示「清除持仓」入口
+const lpHasPosition = computed(() => !!lpSecid.value && !!getPosition(lpSecid.value));
 function openPosForm() {
   if (!lpSecid.value) return;
   posFormRef.value?.open();
@@ -1637,6 +1719,7 @@ function clearLpPosition() {
   clearPosition(lpSecid.value);
   lpItem.value = null;
   loadQuotesSafe();
+  scanPositionSignals();
   uni.showToast({ title: "已清除持仓", icon: "none" });
 }
 // 价格预警：实时价参考（进入面板即拉取最新成交价）+ 选项下方内联输入（替代原 uni-modal 弹窗）
@@ -1762,6 +1845,9 @@ function removeLp() {
 }
 .ud-num.down {
   color: var(--down);
+}
+.ud-num.flat {
+  color: var(--text-2);
 }
 /* 「分组 / 我的」胶囊：与社区共用视觉；头像 48rpx + 字 26rpx 与新顶部栏协调 */
 .cm-me {
@@ -2210,6 +2296,9 @@ function removeLp() {
 .grp-label.danger {
   color: #ff3b30;
 }
+.grp-label.primary {
+  color: var(--primary);
+}
 .grp-item.active .grp-label {
   color: var(--primary);
 }
@@ -2614,56 +2703,47 @@ function removeLp() {
   font-size: var(--font-md);
 }
 
-/* ===== 自选 ↔ 持仓 分段切换（PageHeader #brand slot 内） ===== */
-.vw-seg {
-  display: inline-flex;
+/* ===== 自选 ↔ 持仓 视图切换行：独立成行（品牌区恢复默认 logo），分段胶囊样式与系统 pill 一致 ===== */
+.vw-tabs {
+  flex: none;
+  display: flex;
   align-items: center;
-  gap: 4rpx;
+  gap: 6rpx;
+  margin: 0 24rpx 12rpx;
   padding: 4rpx;
   background: var(--card-2);
   border-radius: 999rpx;
+  box-shadow: inset 0 0 0 1rpx var(--border);
 }
-.vw-seg-item {
-  display: inline-flex;
+.vw-tab {
+  flex: 1;
+  display: flex;
   align-items: center;
-  gap: 6rpx;
-  padding: 8rpx 20rpx;
+  justify-content: center;
+  gap: 10rpx;
+  padding: 10rpx 0;
   border-radius: 999rpx;
   font-size: var(--font-sm);
   color: var(--text-2);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
-.vw-seg-item.on {
+.vw-tab.on {
   background: var(--primary);
   color: #fff;
   font-weight: 600;
 }
 
-/* ===== 持仓视图汇总（PageHeader #right slot，仅持仓视图有持仓时显示） ===== */
-.pos-sum {
-  display: flex;
-  align-items: baseline;
-  gap: 10rpx;
-  padding: 8rpx 20rpx;
-  background: var(--card-2);
-  border-radius: 999rpx;
-  font-variant-numeric: tabular-nums;
-}
-.ps-k {
-  font-size: var(--font-xs);
-  color: var(--text-3);
-}
-.ps-v {
-  font-size: var(--font-sm);
-  font-weight: 600;
-}
-
-/* ===== 持仓视图表格 ===== */
+/* ===== 持仓视图 ===== */
 .pos-view {
-  margin-top: 16rpx;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .pos-table {
+  background: var(--card);
+  border: 1rpx solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -2671,7 +2751,7 @@ function removeLp() {
   display: flex;
   align-items: center;
   padding: 0 20rpx;
-  height: 64rpx;
+  height: 68rpx;
   background: var(--card-2);
   font-size: var(--font-xs);
   color: var(--text-3);
@@ -2679,6 +2759,7 @@ function removeLp() {
 .pos-th {
   width: 132rpx;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 .pos-th-name {
   flex: 1;
@@ -2687,18 +2768,14 @@ function removeLp() {
 }
 .pos-th-sig {
   flex: none;
-  width: 96rpx;
+  width: 104rpx;
   text-align: center;
-}
-.pos-th-num {
-  width: 132rpx;
-  text-align: right;
 }
 .pos-row {
   display: flex;
   align-items: center;
   padding: 0 20rpx;
-  min-height: 96rpx;
+  min-height: 100rpx;
   border-top: 1rpx solid var(--border);
   cursor: pointer;
   transition: background 0.12s ease;
@@ -2711,51 +2788,128 @@ function removeLp() {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 4rpx;
 }
 .pos-cell-sig {
   flex: none;
-  width: 96rpx;
+  width: 104rpx;
   display: flex;
   justify-content: center;
 }
 .pos-cell-num {
   width: 132rpx;
+  flex: none;
   text-align: right;
+  font-size: var(--font-sm);
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
-/* 信号标签：与行情页报告卡片(signal-card)同色同底口径 */
-.pos-sig {
-  flex: none;
+.pos-cell-pnl {
+  font-weight: 600;
+}
+.pos-cell-pnl.up {
+  color: var(--up);
+}
+.pos-cell-pnl.down {
+  color: var(--down);
+}
+.pos-cell-pnl.flat {
+  color: var(--text-2);
+}
+.pos-cost {
+  color: var(--text) !important;
+}
+.pos-cell-name .t-name {
+  color: var(--text);
+}
+/* 信号标签：与行情页操作建议一致（5 类），底色柔和、文字即主色 */
+.signal-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
   font-size: var(--font-xs);
   line-height: 1;
-  padding: 8rpx 14rpx;
-  border-radius: 8rpx;
-  background: var(--card-2);
-  color: var(--text-3);
+  white-space: nowrap;
 }
-.pos-sig.buy {
+.signal-chip.buy {
   color: var(--up);
   background: rgba(239, 35, 42, 0.1);
 }
-.pos-sig.sell {
+.signal-chip.sell {
   color: var(--down);
   background: rgba(9, 176, 122, 0.12);
 }
-.pos-sig.hold {
+.signal-chip.hold {
   color: #2563eb;
   background: rgba(59, 130, 246, 0.1);
 }
-.pos-sig.watch {
+.signal-chip.watch {
   color: #c87f00;
   background: rgba(255, 159, 28, 0.12);
 }
-.pos-cost,
-.pos-price {
-  width: 132rpx;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+.signal-chip.wait {
+  color: var(--text-3);
+  background: var(--card-2);
+}
+
+/* 总收益胶囊 .ps-col：细分列，容纳 总收益/盈亏 双行，对齐 .cm-me 右侧信息 */
+.ps-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2rpx;
+  min-width: 0;
+}
+.ps-k {
+  font-size: var(--font-xs);
+  color: var(--text-3);
+  line-height: 1;
+}
+.ps-pct {
+  margin-left: 6rpx;
   font-size: var(--font-sm);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.ps-col .ud-num {
+  font-size: var(--font-md);
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+/* 持仓汇总面板：2×2 指标块 + 提示行 */
+.stk-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+  padding: 6rpx 26rpx 0;
+}
+.stk-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  padding: 20rpx 22rpx;
+  background: var(--card-2);
+  border-radius: var(--radius-sm);
+}
+.stk-k {
+  font-size: var(--font-xs);
+  color: var(--text-3);
+}
+.stk-v {
+  font-size: var(--font-lg);
+  font-weight: 600;
   color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.grp-tip {
+  display: block;
+  margin: 18rpx 26rpx 6rpx;
+  font-size: var(--font-xs);
+  color: var(--text-3);
+  line-height: 1.5;
 }
 </style>
