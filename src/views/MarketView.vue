@@ -180,9 +180,9 @@
                       <image v-else-if="it.icon" class="peek-flag-ic" :src="COMMODITY_ICON[it.icon]" mode="aspectFit" />
                       <text class="idx-item-name">{{ it.name }}</text>
                       <!-- 篮子时段角标：标注当前展示数据所属阶段（盘前/盘中/盘后），点击在三个时段间循环切换；
-                           数据非当日（休市/假期定格上一交易日）时改显日期（如 09-04），避免「盘中」配旧数据误导 -->
-                      <text v-if="it.members && qOf(it.secid)?.views" class="idx-item-bkt bkt-switch" @click.stop="cycleBkt(it)">{{ bktLabel(it) }}</text>
-                      <text v-else-if="it.members && qOf(it.secid)?.session" class="idx-item-bkt">{{ qOf(it.secid)?.session }}</text>
+                           数据非当日（休市/假期定格上一交易日）时改显日期（如 09-04）；所选时段无数据时
+                           不渲染任何标签——「盘前/盘中/盘后/日期」角标必须以数据为前提，杜绝标签配「暂无数据」 -->
+                      <text v-if="it.members && bktHasData(it)" class="idx-item-bkt bkt-switch" @click.stop="cycleBkt(it)">{{ bktLabel(it) }}</text>
                     </view>
                     <view class="idx-item-right">
                       <text v-if="!it.members" class="idx-item-price" :class="[qCls(it.secid), qNa(it.secid) ? 'na' : '']">{{ qPrice(it.secid) }}</text>
@@ -442,7 +442,8 @@ function qNa(secid: string): boolean {
 
 
 // 美股篮子时段切换：点击角标在 盘前→盘中→盘后 间循环，展示所选时段的等权涨跌幅；
-// 所选时段无数据（如非该时段窗口）则显示「暂无数据」，不误导。默认展示实际所处阶段。
+// 所选时段无数据（如非该时段窗口）则 pct 显示「—」占位且不渲染时段角标，不误导。
+// 默认展示实际所处阶段。
 type BktView = 'pre' | 'regular' | 'post';
 const BKT_CYCLE: BktView[] = ['pre', 'regular', 'post'];
 const BKT_LABEL: Record<BktView, string> = { pre: '盘前', regular: '盘中', post: '盘后' };
@@ -476,6 +477,13 @@ function bktData(it: { secid: string }): { pct: number | null; chg: number | nul
   if (!q.views) return { pct: q.pct, chg: q.chg }; // 非美股篮子（指数/日韩/商品）走原口径
   return q.views[bktSel(it)] ?? null;
 }
+// 角标渲染前提：所选时段确有数据（pct 有效）才显示——「盘前/盘中/盘后/日期」标签
+// 必须描述真实数据，拿不到数据（含非美股篮子无 views 的普通项）一律不渲染标签，
+// 杜绝「盘前/盘中/盘后/09-04」角标配「暂无数据」的组合（用户实测反馈）。
+function bktHasData(it: { secid: string }): boolean {
+  const d = bktData(it);
+  return !!d && d.pct != null && Number.isFinite(d.pct);
+}
 // 角标文案：默认「盘前/盘中/盘后」；所选视图数据非当日（假期/休市定格上一交易日）时
 // 改显日期（如 09-04），杜绝「盘中」标签配旧数据误导——与期指持仓日期后缀同思路
 function bktLabel(it: { secid: string }): string {
@@ -485,12 +493,12 @@ function bktLabel(it: { secid: string }): string {
 }
 function bktPct(it: { secid: string }): string {
   const d = bktData(it);
-  if (!d || d.pct == null || !Number.isFinite(d.pct)) return '暂无数据';
+  if (!d || d.pct == null || !Number.isFinite(d.pct)) return '—';
   return (d.pct >= 0 ? '+' : '') + d.pct.toFixed(2) + '%';
 }
 function bktCls(it: { secid: string }): string {
   const d = bktData(it);
-  if (!d || d.pct == null || !Number.isFinite(d.pct)) return '';
+  if (!d || d.pct == null || !Number.isFinite(d.pct)) return 'na';
   return d.pct > 0 ? 'up' : d.pct < 0 ? 'down' : 'flat';
 }
 
@@ -1640,6 +1648,10 @@ defineExpose({ refresh: () => refreshFull() });
 }
 /* 缺失报价的指数：价格列降级为「暂无数据」并采用次级文字色（复用项目空态规范 --text-2） */
 .idx-item-price.na {
+  color: var(--text-2);
+}
+/* 篮子所选时段无数据：涨跌幅列「—」占位采用次级文字色（与价格列 .na 同空态规范） */
+.idx-item-pct.na {
   color: var(--text-2);
 }
 .idx-scroll-pad {

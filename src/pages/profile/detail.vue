@@ -431,9 +431,10 @@ function postSummary(p: CommunityPost): string {
   return s.length > 50 ? s.slice(0, 50) + "…" : s;
 }
 
+// 涨跌色：缺失/零值 → flat（价格黑、涨跌幅灰），仅真实涨/跌才染色——与全局 trendCls 口径一致
 function pctClass(pct?: number): string {
-  if (typeof pct !== "number" || pct === 0) return "flat";
-  return pct > 0 ? "up" : "down";
+  if (typeof pct !== "number") return "flat";
+  return pct > 0 ? "up" : pct < 0 ? "down" : "flat";
 }
 function formatPrice(p: number): string {
   return p.toFixed(2);

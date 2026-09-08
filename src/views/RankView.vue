@@ -168,11 +168,12 @@ function rankCls(i: number): string {
   return "";
 }
 
-// 复用全局 trendCls 统一规则：价格/涨跌幅缺失 → 灰色(flat)；否则按 chg 涨跌着色。
-// 与自选股表(pctCls)、价格文本(PriceText)共用同一套「占位符灰、有值才分涨跌」逻辑。
+// 缺失 → flat 灰色（"--" 占位）；真实 0 涨跌 → 无涨跌色（回落 .st-num 的 --text 黑）；
+// 否则按 chg 涨跌着色。与自选股表(pctCls)共用同一套「占位符灰、0 中性、有值才分涨跌」逻辑。
 function clsOf(r: RankRow): string {
   if (r.price == null || r.pct == null) return "flat";
-  return trendCls(r.chg);
+  const t = trendCls(r.chg);
+  return t === "flat" ? "" : t;
 }
 
 function watched(r: { code: string; market: string }): boolean {

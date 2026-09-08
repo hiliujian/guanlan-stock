@@ -125,7 +125,7 @@
       <text class="base-note">基准分 50，按技术面多空因子加权得出（范围 5–95）；仅反映技术动能，非投资评级。</text>
     </view>
 
-    <!-- 关键价位 · 操作建议（支撑/买点/压力 + 决策标签，小白最关心的「在哪买卖」紧跟评分） -->
+    <!-- 关键价位 · 操作建议（支撑/建议区间/压力 + 决策标签，小白最关心的「在哪买卖」紧跟评分） -->
     <view class="panel anim-fade-up" :style="{ animationDelay: '40ms' }">
       <view class="panel-title">
         <OutlineIcon type="bars" :size="28" color="var(--primary)" />
@@ -141,8 +141,10 @@
           </view>
         </view>
         <view class="lv subsection">
-          <text class="lv-k">建议买入区间</text>
-          <text class="lv-v" :class="buyActive ? 'lv-bz-ok' : ''">{{ buyText }}</text>
+          <text class="lv-k">{{ buyRow.label }}</text>
+          <view class="lv-right">
+            <text class="lv-v" :class="buyRow.active ? 'lv-bz-ok' : ''">{{ buyRow.text }}</text>
+          </view>
         </view>
         <view class="lv subsection">
           <text class="lv-k">压力位</text>
@@ -564,11 +566,13 @@ const intradayPctText = computed(() => {
   const p = m.pct * 100;
   return (p >= 0 ? "+" : "") + p.toFixed(2) + "%";
 });
-// 异动数值着色（A股：涨=红、跌=绿）——距板口径下回升=红、回落=绿
+// 异动数值着色（A股：涨=红、跌=绿、真实 0=中性墨色）——距板口径下回升=红、回落=绿
 const intradayPctColor = computed(() => {
   const m = a.value.intradayMove;
-  if (m.offLimitPct != null) return m.offLimitPct >= 0 ? "var(--up)" : "var(--down)";
-  return m.pct >= 0 ? "var(--up)" : "var(--down)";
+  const v = m.offLimitPct != null ? m.offLimitPct : m.pct;
+  if (v > 0) return "var(--up)";
+  if (v < 0) return "var(--down)";
+  return "var(--r-ink)";
 });
 
 // ---------------- 多维研判派生 ----------------
@@ -980,20 +984,48 @@ const conclusion = computed(() => {
   return parts.join("");
 });
 
-// 买入区间：价格远离支撑时（analyzer 置 NaN）显示占位，避免给出无意义买点
-const buyText = computed(() => {
+// 「建议区间」行：按信号方向适配，术语与决策标签/分析摘要统一——
+//   · 偏多场景（买点/持有/关注/考虑建仓/可加仓）→「建议买入区间」（支撑上下方的挂单带）；
+//   · 卖出语境（信号 sell / 决策减仓 / 破位）分两种：破位是「既成事实」，给「止损参考区间」
+//     （反弹至原支撑转压力位附近分批止损，与摘要「止损离场」同口径）；其余给「建议减仓区间」
+//     （现价 ~ 压力位×1.02，逢反弹至压力带分批减仓，与买入区间围绕支撑的逻辑镜像对称）；
+//   · 观望（wait）→「建议操作区间」占位，不给方向性区间——决策标签「观望为主」与区间行同向，
+//     杜绝「卖出语境残留买入区间」「观望却给减仓区间」的同屏矛盾。
+// analyzer 的 buyLow/buyHigh 仅在 nearBuyZone 时有效；区间价格统一 3 位小数，
+// 与 support/resistance（toFixed(3)）同口径，不再混用原始浮点。
+const buyRow = computed<{ label: string; text: string; active: boolean }>(() => {
   const r = a.value;
-  if (r.buyLow == null || isNaN(r.buyLow) || isNaN(r.buyHigh)) return "—（远离支撑，按趋势跟踪）";
-  return `${r.buyLow} ~ ${r.buyHigh}`;
+  const f3 = (x: number) => x.toFixed(3);
+  const buyValid = r.buyLow != null && !isNaN(r.buyLow) && !isNaN(r.buyHigh);
+  // 决策链首位的 reduce 必然映射 decision==="reduce"，不重复判 r.reduce
+  const sellSignal = r.signal.level === "sell" || r.decision === "reduce" || r.breakdown;
+  if (sellSignal) {
+    // 破位：术语用「止损」而非「减仓」，反弹目标=原支撑（有效跌破后角色转为压力）
+    if (r.breakdown) {
+      const res = r.resistance > 0 ? f3(r.resistance) : "";
+      return {
+        label: "止损参考区间",
+        text: res ? `反弹至 ${res}（原支撑转压力）附近分批止损` : "反弹无力应止损离场",
+        active: true,
+      };
+    }
+    // 逢高减仓：现价 ~ 压力位上方 2% 即减仓带；压力价无效时仅提示逢反弹减仓
+    const hi = r.resistance > 0 ? +(r.resistance * 1.02).toFixed(3) : 0;
+    if (hi > r.price)
+      return { label: "建议减仓区间", text: `${f3(r.price)} ~ ${f3(hi)}（反弹至压力带分批减仓）`, active: true };
+    return { label: "建议减仓区间", text: "逢反弹至压力带附近分批减仓", active: true };
+  }
+  if (r.decision === "wait") {
+    return { label: "建议操作区间", text: "方向不明朗，观望等待", active: false };
+  }
+  // 偏多语境：维持买入区间逻辑（analyzer 已对「远离支撑」置 NaN）
+  if (!buyValid) return { label: "建议买入区间", text: "远离支撑，按趋势跟踪，不追高", active: false };
+  return { label: "建议买入区间", text: `${f3(r.buyLow)} ~ ${f3(r.buyHigh)}`, active: true };
 });
 // 关键价位状态着色：三个数值默认统一墨色，出现状态时数值本身换语义色
 // （已突破/买入区间成立=红·机会，已跌破=绿·风险，临近=橙·无方向警示），不再是「淡黑没意义」
 const supPriceCls = computed(() => (a.value.breakdown ? "lv-st-bad" : a.value.nearSup ? "lv-st-warn" : ""));
 const resPriceCls = computed(() => (a.value.breakout ? "lv-st-ok" : a.value.nearRes ? "lv-st-warn" : ""));
-const buyActive = computed(() => {
-  const r = a.value;
-  return r.buyLow != null && !isNaN(r.buyLow) && !isNaN(r.buyHigh);
-});
 
 // 决策标签唯一视图：由 a.decision 单源派生（reduce→add→build→watch→wait）
 const decisionView = computed(() => {
@@ -1293,15 +1325,17 @@ function openNews(it: NewsItem) {
   color: var(--text-2);
   font-size: var(--font-sm);
 }
-.lv-v {
-  font-size: var(--font-sm);
-  color: var(--r-ink);
-}
-/* 关键价位三个数值统一口径：字号与左侧标题一致（--font-sm 24rpx）+ 墨色 --r-ink
-   （支撑/压力经 .price-text 覆盖 PriceText 默认平盘色，与建议买入区间完全一致）；
+/* 关键价位行统一口径：区间行文本与支撑/压力数值同字号 + 墨色 --r-ink，长文案右对齐；
    出现状态（已突破/买入区间成立/临近/已跌破）时数值换语义色，强化状态可读性 */
 .lv-right .price-text {
   color: var(--r-ink);
+}
+.lv-v {
+  font-size: var(--font-sm);
+  color: var(--r-ink);
+  text-align: right;
+  flex: 1;
+  margin-left: 16rpx;
 }
 .lv-right .price-text.lv-st-ok {
   color: var(--up);
@@ -1312,6 +1346,8 @@ function openNews(it: NewsItem) {
 .lv-right .price-text.lv-st-warn {
   color: #c87f00;
 }
+/* 区间行有效值着色：买入/减仓/止损均给出可执行价位带（active=true）时统一强调色，
+   与相邻状态角标（已突破=红、已跌破=绿）形成「机会/风险」同视觉语言 */
 .lv-v.lv-bz-ok {
   color: var(--up);
 }

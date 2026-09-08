@@ -220,8 +220,8 @@
                       <text class="peek-code">{{ peek.code }}</text>
                     </view>
                     <view class="peek-right">
-                      <text class="peek-price" :class="peek.price != null ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
-                      <text class="peek-pct" :class="peek.pct != null ? (peek.chg >= 0 ? 'up' : 'down') : ''">{{ peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
+                      <text class="peek-price" :class="trendCls(peek.price != null ? peek.chg : null)">{{ peek.price != null ? fmtPrice(peek.price) : '--' }}</text>
+                      <text class="peek-pct" :class="trendCls(peek.pct != null ? peek.chg : null)">{{ peek.pct != null ? fmtPct(peek.pct) : '--' }}</text>
                     </view>
                   </view>
                   <text v-else class="peek-empty truncate">今日暂无人气新增</text>
@@ -235,8 +235,8 @@
                     </view>
                     <view class="peek-right">
                       <text class="anom-tag" :class="ANOMALY_META[curSlide.rec.type].cls">{{ ANOMALY_META[curSlide.rec.type].label }}</text>
-                      <text class="peek-price" :class="curSlide.rec.chg >= 0 ? 'up' : 'down'">{{ fmtPrice(curSlide.rec.price) }}</text>
-                      <text class="peek-pct" :class="curSlide.rec.chg >= 0 ? 'up' : 'down'">{{ fmtPct(curSlide.rec.pct) }}</text>
+                      <text class="peek-price" :class="trendCls(curSlide.rec.chg)">{{ fmtPrice(curSlide.rec.price) }}</text>
+                      <text class="peek-pct" :class="trendCls(curSlide.rec.chg)">{{ fmtPct(curSlide.rec.pct) }}</text>
                     </view>
                   </view>
                 </template>
@@ -1326,11 +1326,13 @@ const upDown = computed(() => {
   return { currentGroup, counts: { up, down } };
 });
 
-// 表格数值列配色：复用全局 trendCls 统一规则——缺失/零值一律灰色(st-flat)，
-// 仅当价格/涨跌幅/涨跌额均有值且 chg 非零时才显示红/绿，避免 "--" 占位符被着色。
+// 表格数值列配色：缺失/加载中 → 灰色(st-flat，仅用于 "--" 占位)；真实 0 涨跌 →
+// 不加涨跌色（回落到 .st-num 的 --text 黑色，与行情页全球指数面板 0% 中性色一致）；
+// 仅当价格/涨跌幅/涨跌额均有值且 chg 非零时才显示红/绿。
 function pctCls(q: Snap): string {
   if (q.loading || q.price == null || q.pct == null || q.chg == null) return "st-flat";
-  return trendCls(q.chg) === "up" ? "st-up" : "st-down";
+  const t = trendCls(q.chg);
+  return t === "up" ? "st-up" : t === "down" ? "st-down" : "";
 }
 // 振幅%（(最高-最低)/昨收）
 function ampPct(q: Snap): string {

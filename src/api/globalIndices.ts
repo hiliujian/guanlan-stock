@@ -357,10 +357,11 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
 // 若把这种结果直接覆盖到 UI，行情页会从「有数据」突变为「暂无数据」，体验突兀。
 // 因此保留最近一次含有效数据的合并结果 lastGoodGlobal：
 //   · 新结果整体无任何有效数据 → 整体沿用上次快照；
-//   · 新结果部分缺失 → 仅对缺失条目用旧值**回填数值**（price/pct/chg）；
-//     ⚠️ 绝不回填旧 session/views 标签——标签必须描述本次计算出的阶段与数据。
-//     否则上一阶段（如上周五盘中）的角标会被带到新阶段：实测劳动节盘前出现
-//     「暂无数据 + 盘中角标」的组合（旧条目整条回填所致），误导性极强。
+//   · 新结果部分缺失 → 缺失条目用旧值**回填数值**（price/pct/chg）；
+//     篮子三时段视图逐槽兜底：本次某时段被新鲜度过滤剔除（槽位无有效 pct）时沿用旧槽位
+//     （旧值自带诚实 date 标签，如 09-04），杜绝「有数据→跳回暂无数据」的闪变；
+//     ⚠️ session 阶段标签仍绝不回填——它描述本次计算出的阶段；UI 角标也已改为按
+//     「数据可得性」渲染（MarketView bktHasData），不存在标签配「暂无数据」的组合。
 //   · 首次拉取（无旧快照）→ 原样返回，UI 正常显示「暂无数据」。
 let lastGoodGlobal: Map<string, GlobalIndexQuote> | null = null;
 function mergeWithLastGood(fresh: Map<string, GlobalIndexQuote>): Map<string, GlobalIndexQuote> {
@@ -368,12 +369,25 @@ function mergeWithLastGood(fresh: Map<string, GlobalIndexQuote>): Map<string, Gl
   if (![...fresh.values()].some(hasData)) return lastGoodGlobal ?? fresh;
   if (lastGoodGlobal) {
     for (const [secid, q] of fresh) {
-      if (hasData(q)) continue;
       const old = lastGoodGlobal.get(secid);
-      if (old && hasData(old)) {
-        // 数值兜底 + 标签/视图保持本次新鲜计算结果（bktSel 会按数据可得性自动回退展示时段）
-        fresh.set(secid, { ...q, price: old.price, pct: old.pct, chg: old.chg });
+      if (!old || !hasData(old)) continue;
+      // 篮子三时段视图逐槽兜底（map 级有数据、仅个别时段掉线的部分缺失同样覆盖）
+      let views = q.views;
+      if (views && old.views) {
+        const pick = (nv: BasketView | null, ov: BasketView | null): BasketView | null =>
+          (nv && nv.pct != null ? nv : ov) ?? nv;
+        views = {
+          pre: pick(views.pre, old.views.pre),
+          regular: pick(views.regular, old.views.regular),
+          post: pick(views.post, old.views.post),
+        };
       }
+      if (hasData(q)) {
+        if (views !== q.views) fresh.set(secid, { ...q, views });
+        continue;
+      }
+      // 数值兜底 + views 逐槽结果 + session 标签保持本次新鲜计算结果
+      fresh.set(secid, { ...q, price: old.price, pct: old.pct, chg: old.chg, views });
     }
   }
   lastGoodGlobal = fresh;
