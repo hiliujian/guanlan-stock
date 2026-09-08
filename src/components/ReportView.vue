@@ -43,12 +43,15 @@
       </view>
     </teleport>
 
-    <!-- 直白操作信号：报告的操作结论以此卡为唯一来源（原顶部横幅已移除，避免两套判定相互矛盾） -->
+    <!-- 直白操作信号：报告的操作结论以此卡为唯一来源（原顶部横幅已移除，避免两套判定相互矛盾）；
+         标签/一句话建议按持仓状态双视角适配（signalView）：空仓=介入导向（买点/卖点/关注/观望），
+         持仓=仓位管理导向（止盈/止损/持有/补仓），触发条件/确认信号保持引擎技术面口径，
+         卡片着色（signalCls）仍按引擎信号方向，胜率回放口径不受持仓影响 -->
     <view :class="['signal-card', signalCls]">
       <view class="signal">
         <view class="sig-main">
-          <text class="sig-label">{{ a.signal.label }}</text>
-          <text class="sig-text">{{ a.signal.text }}</text>
+          <text class="sig-label">{{ signalView.label }}</text>
+          <text class="sig-text">{{ signalView.text }}</text>
         </view>
         <view class="sig-type">{{ a.sigType }}</view>
       </view>
@@ -69,20 +72,13 @@
           <text class="sd-k">确认信号</text>
           <text class="sd-v">{{ a.signal.confirm }}</text>
         </view>
-        <!-- 持仓视角：填入成本价后展示（浮动盈亏 + 依据成本翻译后的持仓动作） -->
+        <!-- 持仓视角：填入成本价后展示（浮动盈亏一行）；持仓动作已上移至信号卡主标签（signalView） -->
         <template v-if="posView">
           <view class="sd-row">
             <text class="sd-k">持仓成本</text>
             <text class="sd-v">
               成本 {{ posView.c.toFixed(3) }} · 现价 {{ posView.p.toFixed(3) }} · 浮动盈亏
               <text :class="posView.pnl >= 0 ? 'pv-up' : 'pv-down'">{{ posView.pnlText }}</text>
-            </text>
-          </view>
-          <view class="sd-row">
-            <text class="sd-k">持仓视角</text>
-            <text class="sd-v">
-              <text :class="posView.pnl >= 0 ? 'pv-up' : 'pv-down'">{{ posView.label }}</text>
-              ：{{ posView.text }}
             </text>
           </view>
         </template>
@@ -125,7 +121,7 @@
       <text class="base-note">基准分 50，按技术面多空因子加权得出（范围 5–95）；仅反映技术动能，非投资评级。</text>
     </view>
 
-    <!-- 关键价位 · 操作建议（支撑/建议区间/压力 + 决策标签，小白最关心的「在哪买卖」紧跟评分） -->
+    <!-- 关键价位 · 操作建议（支撑/操作建议/压力 + 决策标签，小白最关心的「在哪买卖」紧跟评分） -->
     <view class="panel anim-fade-up" :style="{ animationDelay: '40ms' }">
       <view class="panel-title">
         <OutlineIcon type="bars" :size="28" color="var(--primary)" />
@@ -141,7 +137,7 @@
           </view>
         </view>
         <view class="lv subsection">
-          <text class="lv-k">{{ buyRow.label }}</text>
+          <text class="lv-k">操作建议</text>
           <view class="lv-right">
             <text class="lv-v" :class="buyRow.active ? 'lv-bz-ok' : ''">{{ buyRow.text }}</text>
           </view>
@@ -822,33 +818,54 @@ function clearPosition() {
   posFormOpen.value = false;
 }
 
-// ---------------- 持仓视角（成本感知）：把引擎信号翻译成依据买入成本的持仓动作 ----------------
-// 盈利中出现卖点→止盈、亏损中出现卖点→止损、持仓中出现买点→持有勿追（抑制频繁交易）。
-const posView = computed(() => {
+// ---------------- 操作信号卡片 · 持仓状态双视角（signalView） ----------------
+// 引擎信号（a.signal）是技术面口径，不感知用户成本；标签与一句话建议按持仓状态翻译：
+//   · 空仓（未设持仓）：介入导向术语——买点/卖点/持有=关注（未持仓谈不上「持有」）/观望；
+//   · 持仓（已设成本）：仓位管理导向术语——按浮动盈亏 × 信号方向映射为
+//     止盈/止损/减仓/持有/补仓等专业动作，文案沿用原「持仓视角」的成本翻译逻辑；
+// 触发条件/确认信号保持引擎技术面口径（成本是个体状态，不进引擎污染胜率回放），
+// 卡片着色（signalCls）按引擎信号方向不变，胜率回放样本口径亦不受影响。
+const holding = computed(() => !!props.position?.cost && props.position.cost > 0);
+const pnlPct = computed(() => {
   const c = props.position?.cost;
-  if (!c || c <= 0) return null;
-  const p = a.value.price;
-  const pnl = ((p - c) / c) * 100;
-  const pnlText = (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + "%";
-  const lvl = a.value.signal.level;
-  let label = "";
-  let text = "";
-  if (pnl >= 1) {
-    if (lvl === "sell") { label = "止盈减仓"; text = `已盈利 ${pnlText}，出现卖出信号，建议分批止盈锁定收益`; }
-    else if (lvl === "buy") { label = "持有勿追"; text = `已持仓盈利 ${pnlText}，出现买点但不宜追高加仓，持有为主`; }
-    else if (lvl === "hold") { label = "继续持有"; text = `盈利 ${pnlText}，趋势未破继续持有，回落至成本价附近可止盈`; }
-    else if (lvl === "watch") { label = "持有观察"; text = `盈利 ${pnlText}，偏强运行，持有观察即可`; }
-    else { label = "减仓保盈"; text = `盈利回吐中（现价仍高于成本 ${pnlText}），趋势转弱，可先减仓保住利润`; }
-  } else if (pnl <= -1) {
-    if (lvl === "sell") { label = "止损减仓"; text = `已亏损 ${pnlText}，出现卖出信号，建议严格执行止损`; }
-    else if (lvl === "buy") { label = "谨慎补仓"; text = `亏损 ${pnlText}，出现买点可小仓补仓摊薄成本，破位须止损`; }
-    else if (lvl === "hold" || lvl === "watch") { label = "持有观察"; text = `亏损 ${pnlText}，暂无明确转强信号，等待修复`; }
-    else { label = "观望等待"; text = `亏损 ${pnlText} 且趋势偏弱，勿盲目补仓，等待企稳信号`; }
-  } else {
-    label = a.value.signal.label;
-    text = "已持仓（成本≈现价），按上方信号操作即可";
+  if (!c || c <= 0) return 0;
+  return ((a.value.price - c) / c) * 100;
+});
+const signalView = computed<{ label: string; text: string }>(() => {
+  const s = a.value.signal;
+  if (!holding.value) {
+    // 空仓视角：把「持有」翻译成空仓语境的「关注」（趋势向上但未持仓，先关注勿追）
+    if (s.level === "hold")
+      return { label: "关注", text: "趋势向上，可关注回调低吸机会，勿追高" };
+    return { label: s.label, text: s.text };
   }
-  return { c, p, pnl, pnlText, label, text };
+  // 持仓视角：按浮动盈亏 × 信号方向给出仓位管理动作（与原 posView 同一套翻译规则）
+  const pnl = pnlPct.value;
+  const pt = (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + "%";
+  if (pnl >= 1) {
+    if (s.level === "sell") return { label: "止盈减仓", text: `已盈利 ${pt}，出现卖出信号，建议分批止盈锁定收益` };
+    if (s.level === "buy") return { label: "持有勿追", text: `已持仓盈利 ${pt}，出现买点但不宜追高加仓，持有为主` };
+    if (s.level === "hold") return { label: "继续持有", text: `盈利 ${pt}，趋势未破继续持有，回落至成本价附近可止盈` };
+    if (s.level === "watch") return { label: "持有观察", text: `盈利 ${pt}，偏强运行，持有观察即可` };
+    return { label: "减仓保盈", text: `盈利回吐中（现价仍高于成本 ${pt}），趋势转弱，可先减仓保住利润` };
+  }
+  if (pnl <= -1) {
+    if (s.level === "sell") return { label: "止损减仓", text: `已亏损 ${pt}，出现卖出信号，建议严格执行止损` };
+    if (s.level === "buy") return { label: "谨慎补仓", text: `亏损 ${pt}，出现买点可小仓补仓摊薄成本，破位须止损` };
+    if (s.level === "hold" || s.level === "watch") return { label: "持有观察", text: `亏损 ${pt}，暂无明确转强信号，等待修复` };
+    return { label: "观望等待", text: `亏损 ${pt} 且趋势偏弱，勿盲目补仓，等待企稳信号` };
+  }
+  return { label: "持有", text: "已持仓（成本≈现价），按上方信号操作即可" };
+});
+
+// ---------------- 持仓盈亏行（成本感知）：信号卡内的成本/浮动盈亏展示行 ----------------
+const posView = computed(() => {
+  if (!holding.value) return null;
+  const c = props.position!.cost;
+  const p = a.value.price;
+  const pnl = pnlPct.value;
+  const pnlText = (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + "%";
+  return { c, p, pnl, pnlText };
 });
 
 // ---------------- 乖离率 BIAS · 布林带宽（均值回归 + 波动率挤压）派生 ----------------
@@ -940,22 +957,52 @@ const conclusion = computed(() => {
   const r = a.value;
   const parts: string[] = [];
   parts.push(`${r.trendText}（${r.strength}），处于「${r.stageText}」阶段，${r.riskLevel}风险，技术面评分 ${r.score} 分，走势预测「${r.sigType}」。`);
-  // 操作建议：与上方「决策标签」同读 r.decision（单一数据源、同一优先级），不再各排一遍 if/else
-  const advice: Record<string, string> = {
-    reduce: "信号偏空，建议逢高减仓、严控仓位。",
-    add: "趋势与资金配合良好，可于回调分批加仓。",
-    build: "处于相对低位且风险可控，可于支撑附近分批建仓。",
-    watch: "可纳入自选关注，等待更优介入时点。",
-    wait: "多空信号交织，建议观望，等方向明朗。",
-  };
+  // 操作建议：与上方「决策标签」同读 r.decision（单一数据源、同一优先级），不再各排一遍 if/else；
+  // 措辞按持仓状态双视角：空仓=介入导向（回避/买入/建仓），持仓=仓位管理导向（减仓/加仓/补仓）
+  const advice: Record<string, string> = holding.value
+    ? {
+        reduce: "信号偏空，建议逢高减仓、严控仓位。",
+        add: "趋势与资金配合良好，可于回调分批加仓。",
+        build: "处于相对低位且风险可控，可于支撑附近小幅补仓。",
+        watch: "趋势尚可，持有观察，等待更优操作时点。",
+        wait: "多空信号交织，建议持有观望，等方向明朗。",
+      }
+    : {
+        reduce: "信号偏空，建议回避，勿急于介入。",
+        add: "趋势与资金配合良好，可于回调分批买入。",
+        build: "处于相对低位且风险可控，可于支撑附近分批建仓。",
+        watch: "可纳入自选关注，等待更优介入时点。",
+        wait: "多空信号交织，建议观望，等方向明朗。",
+      };
   parts.push(advice[r.decision] ?? advice.wait);
-  // 价位应对必须区分「既成事实」与「待验证假设」：已破位仍念通用止损提示会误导
-  if (r.breakdown) parts.push(`支撑 ${r.support.toFixed(3)} 已被有效跌破，原支撑或转为压力，反弹无力应止损离场。`);
-  else if (r.breakout) parts.push(`压力 ${r.resistance.toFixed(3)} 已有效突破，回踩不破可顺势持有或跟进。`);
-  else parts.push(`支撑 ${r.support.toFixed(3)}、压力 ${r.resistance.toFixed(3)}：有效跌破支撑应止损离场，放量突破压力可顺势跟进。`);
+  // 价位应对必须区分「既成事实」与「待验证假设」：已破位仍念通用止损提示会误导；
+  // 措辞按持仓状态：持仓谈「止损离场」，空仓谈「回避/勿接飞刀」（未持仓不存在止损动作）
+  if (r.breakdown) {
+    parts.push(
+      holding.value
+        ? `支撑 ${r.support.toFixed(3)} 已被有效跌破，原支撑或转为压力，反弹无力应止损离场。`
+        : `支撑 ${r.support.toFixed(3)} 已被有效跌破，破位下行，建议回避、勿急于接回。`
+    );
+  } else if (r.breakout) {
+    parts.push(
+      holding.value
+        ? `压力 ${r.resistance.toFixed(3)} 已有效突破，回踩不破可顺势持有或加仓。`
+        : `压力 ${r.resistance.toFixed(3)} 已有效突破，回踩不破可顺势跟进。`
+    );
+  } else {
+    parts.push(
+      holding.value
+        ? `支撑 ${r.support.toFixed(3)}、压力 ${r.resistance.toFixed(3)}：有效跌破支撑应止损离场，放量突破压力可顺势加仓。`
+        : `支撑 ${r.support.toFixed(3)}、压力 ${r.resistance.toFixed(3)}：有效跌破支撑应回避，放量突破压力可顺势跟进。`
+    );
+  }
   // 资金背离防误判：给偏多建议但主力明显净流出（analyzer 同口径 ≤ -0.5 亿）时必须点破
   if ((r.add || r.build || r.watch) && r.f5.has && r.f5.sum <= -0.5) {
-    parts.push(`但近5日主力资金净流出 ${Math.abs(r.f5.sum).toFixed(2)} 亿，介入宜轻仓试探、严控仓位。`);
+    parts.push(
+      holding.value
+        ? `但近5日主力资金净流出 ${Math.abs(r.f5.sum).toFixed(2)} 亿，加仓宜谨慎、严控仓位。`
+        : `但近5日主力资金净流出 ${Math.abs(r.f5.sum).toFixed(2)} 亿，介入宜轻仓试探、严控仓位。`
+    );
   }
   // 极端超买/超卖属结论级状态（追高/抄底风险），仅极端时提示；RSI 无效数据不参与。
   // 措辞不带「短期/中期」前缀：触发条件含 RSI(12)（短期口径）与 BIAS(24)（中期口径，
@@ -984,43 +1031,53 @@ const conclusion = computed(() => {
   return parts.join("");
 });
 
-// 「建议区间」行：按信号方向适配，术语与决策标签/分析摘要统一——
-//   · 偏多场景（买点/持有/关注/考虑建仓/可加仓）→「建议买入区间」（支撑上下方的挂单带）；
-//   · 卖出语境（信号 sell / 决策减仓 / 破位）分两种：破位是「既成事实」，给「止损参考区间」
-//     （反弹至原支撑转压力位附近分批止损，与摘要「止损离场」同口径）；其余给「建议减仓区间」
-//     （现价 ~ 压力位×1.02，逢反弹至压力带分批减仓，与买入区间围绕支撑的逻辑镜像对称）；
-//   · 观望（wait）→「建议操作区间」占位，不给方向性区间——决策标签「观望为主」与区间行同向，
+// 「操作建议」行：标签统一为「操作建议」，右侧格式统一为「区间（说明）」——
+//   · 有可执行价位带 → `${区间}（${说明}）`，如 17.159 ~ 17.943（回调至支撑分批买入）；
+//     无明确价位带 → 纯文字说明；
+//   · 按信号方向 + 持仓状态适配内容：
+//     空仓：破位→观望等待企稳（未持仓不谈止损）；卖出语境→不追高、等企稳；偏多→买入区间；
+//     持仓：破位→止损（反弹至原支撑转压力位分批止损，与摘要「止损离场」同口径）；
+//     卖出语境→减仓带（现价 ~ 压力位×1.02，逢反弹分批减仓）；偏多→持有/补仓（不再给买入区间）；
+//   · 观望（wait）→ 纯文字「方向不明朗，观望等待」——决策标签「观望为主」与建议行同向，
 //     杜绝「卖出语境残留买入区间」「观望却给减仓区间」的同屏矛盾。
 // analyzer 的 buyLow/buyHigh 仅在 nearBuyZone 时有效；区间价格统一 3 位小数，
 // 与 support/resistance（toFixed(3)）同口径，不再混用原始浮点。
-const buyRow = computed<{ label: string; text: string; active: boolean }>(() => {
+const buyRow = computed<{ text: string; active: boolean }>(() => {
   const r = a.value;
   const f3 = (x: number) => x.toFixed(3);
   const buyValid = r.buyLow != null && !isNaN(r.buyLow) && !isNaN(r.buyHigh);
   // 决策链首位的 reduce 必然映射 decision==="reduce"，不重复判 r.reduce
   const sellSignal = r.signal.level === "sell" || r.decision === "reduce" || r.breakdown;
   if (sellSignal) {
-    // 破位：术语用「止损」而非「减仓」，反弹目标=原支撑（有效跌破后角色转为压力）
-    if (r.breakdown) {
-      const res = r.resistance > 0 ? f3(r.resistance) : "";
-      return {
-        label: "止损参考区间",
-        text: res ? `反弹至 ${res}（原支撑转压力）附近分批止损` : "反弹无力应止损离场",
-        active: true,
-      };
+    if (holding.value) {
+      // 破位是「既成事实」：术语用「止损」而非「减仓」，反弹目标=原支撑（有效跌破后角色转为压力）
+      if (r.breakdown) {
+        const res = r.resistance > 0 ? f3(r.resistance) : "";
+        return {
+          text: res ? `${res}（反弹至此原支撑转压力位分批止损）` : "反弹无力应止损离场",
+          active: !!res,
+        };
+      }
+      // 逢高减仓：现价 ~ 压力位上方 2% 即减仓带；压力价无效时仅提示逢反弹减仓
+      const hi = r.resistance > 0 ? +(r.resistance * 1.02).toFixed(3) : 0;
+      if (hi > r.price) return { text: `${f3(r.price)} ~ ${f3(hi)}（反弹至压力带分批减仓）`, active: true };
+      return { text: "逢反弹至压力带附近分批减仓", active: true };
     }
-    // 逢高减仓：现价 ~ 压力位上方 2% 即减仓带；压力价无效时仅提示逢反弹减仓
-    const hi = r.resistance > 0 ? +(r.resistance * 1.02).toFixed(3) : 0;
-    if (hi > r.price)
-      return { label: "建议减仓区间", text: `${f3(r.price)} ~ ${f3(hi)}（反弹至压力带分批减仓）`, active: true };
-    return { label: "建议减仓区间", text: "逢反弹至压力带附近分批减仓", active: true };
+    // 空仓视角：卖点语境=不介入，不谈止损/减仓
+    if (r.breakdown) return { text: "破位下行，观望等待企稳", active: false };
+    return { text: "偏空运行，不追高，等待企稳信号", active: false };
   }
   if (r.decision === "wait") {
-    return { label: "建议操作区间", text: "方向不明朗，观望等待", active: false };
+    return { text: "方向不明朗，观望等待", active: false };
   }
-  // 偏多语境：维持买入区间逻辑（analyzer 已对「远离支撑」置 NaN）
-  if (!buyValid) return { label: "建议买入区间", text: "远离支撑，按趋势跟踪，不追高", active: false };
-  return { label: "建议买入区间", text: `${f3(r.buyLow)} ~ ${f3(r.buyHigh)}`, active: true };
+  if (holding.value) {
+    // 已持仓：偏多语境=继续持有，回调至支撑可小幅补仓（不给买入区间，避免误导重复建仓）
+    if (buyValid) return { text: `${f3(r.buyLow)} ~ ${f3(r.buyHigh)}（回调至支撑可小幅补仓）`, active: true };
+    return { text: "按趋势跟踪持有，回调不破支撑不加不减", active: false };
+  }
+  // 空仓偏多语境：维持买入区间逻辑（analyzer 已对「远离支撑」置 NaN）
+  if (!buyValid) return { text: "远离支撑，按趋势跟踪，不追高", active: false };
+  return { text: `${f3(r.buyLow)} ~ ${f3(r.buyHigh)}（回调至支撑分批买入）`, active: true };
 });
 // 关键价位状态着色：三个数值默认统一墨色，出现状态时数值本身换语义色
 // （已突破/买入区间成立=红·机会，已跌破=绿·风险，临近=橙·无方向警示），不再是「淡黑没意义」
@@ -1346,7 +1403,7 @@ function openNews(it: NewsItem) {
 .lv-right .price-text.lv-st-warn {
   color: #c87f00;
 }
-/* 区间行有效值着色：买入/减仓/止损均给出可执行价位带（active=true）时统一强调色，
+/* 操作建议行有效值着色：给出可执行价位带（active=true）时统一强调色，
    与相邻状态角标（已突破=红、已跌破=绿）形成「机会/风险」同视觉语言 */
 .lv-v.lv-bz-ok {
   color: var(--up);
