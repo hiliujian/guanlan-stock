@@ -637,7 +637,7 @@
         <!-- 设置持仓弹窗（共享组件 PositionForm）：长按菜单打开，按 lpItem 现读/写入 costBasis -->
         <PositionForm ref="posFormRef" :secid="lpSecid" @save="saveLpPosition" @clear="clearLpPosition" />
 
-        <!-- 信号提醒浮层：自选/持仓共有标的（含未设持仓）出现重要仓位信号（加仓/减仓/清仓）时，
+        <!-- 信号提醒浮层：自选/持仓标的出现重要信号（加仓/减仓/买点/回避）时，
              悬浮在表格可视化区域底部。信号存在期间每次进页都提醒（不做"仅一次"去重），
              展示 3s 自动消失，也可点 × 手动关闭；点击行跳转个股报告 -->
         <view v-if="sigAlertList.length" class="sig-toast anim-fade-up">
@@ -689,7 +689,7 @@ import { anomalies, type AnomalyRecord, ANOMALY_META } from "@/store/anomaly";
 import { staleGet, staleSet } from "@/utils/staleCache";
 import { analyze } from "@/utils/analyzer";
 import { toActionChip } from "@/utils/actionSignal";
-import { getKline } from "@/api/sources";
+import { getKline, getFlow } from "@/api/sources";
 import { getPosition, setPosition, clearPosition, listPositions, positionsVersion, type Position } from "@/utils/costBasis";
 import { hydrateCloudPositions } from "@/store/holdingsMirror";
 import { saveHolding, dropHolding } from "@/api/holdings";
@@ -1121,15 +1121,16 @@ function refreshAlertHits() {
   alertState.value = next;
 }
 
-// ===== 信号提醒巡检：自选页全部标的（含未设持仓）出现重要仓位信号时，底部浮层提醒 =====
-// 信号用真实 analyze() 引擎对日 K 计算（与报告页同源）；持仓视角下 buy→加仓 / sell→减仓，
-// 空仓视角 sell 视为「清仓/离场」信号同样提醒。不做"仅一次"去重：信号在就提醒，
-// 每次进页都会重新展示；浮层 3s 自动消失，也可手动关闭。
+// ===== 信号提醒巡检：自选 + 持仓标的出现重要信号时，底部浮层提醒 + 缓存信号供持仓表复用 =====
+// 与行情页完全同源：同一 analyze 引擎、同一日 K、且必须传入资金流（旧巡检传 {} 导致
+// 卖点/回踩买点口径与行情页漂移，同股两页信号不一致）；5 档信号全部缓存进 posSigMap。
+// 浮层只提醒 buy/sell 两档，措辞按真实持仓状态区分：已持仓=加仓/减仓，空仓=买点/回避。
+// 不做"仅一次"去重：信号在就提醒，每次进页都会重新展示；浮层 3s 自动消失，也可手动关闭。
 interface SigAlert {
   code: string;
   name: string;
   level: "buy" | "sell";
-  tag: string; // 信号标签：加仓 / 减仓 / 清仓
+  tag: string; // 信号标签：加仓 / 减仓 / 买点 / 回避
   price: number;
   pct: number; // 当日涨跌幅（来自行情快照）
 }
@@ -1150,27 +1151,37 @@ function openAlertStock(a: SigAlert) {
 let scanningSig = false;
 async function scanPositionSignals() {
   if (scanningSig) return;
-  if (!list.value.length) return;
+  // 巡检范围 = 自选标的 ∪ 持仓标的（云端同步下来的持仓可能不在自选列表里）
+  const targets = new Map<string, string>(); // secid → name
+  for (const it of list.value) {
+    const secid = resolveSecid(it.code, it.market as any) as string;
+    if (secid) targets.set(secid, it.name || it.code);
+  }
+  for (const p of listPositions()) if (!targets.has(p.secid)) targets.set(p.secid, p.secid.split(".")[1]);
+  if (!targets.size) return;
   scanningSig = true;
   try {
     const alerts: SigAlert[] = [];
-    for (const it of list.value) {
-      const secid = resolveSecid(it.code, it.market as any) as string;
-      if (!secid) continue;
+    for (const [secid, fallbackName] of targets) {
       try {
-        const kls = await getKline(secid, "d");
+        const [kls, flow] = await Promise.all([getKline(secid, "d"), getFlow(secid)]);
         if (!kls || kls.length < 60) continue;
-        const a = analyze(kls, {}, null, kls, null, secid.split(".")[1], "d");
+        // 与 MarketView 完全同参：日 K + 资金流 + dailyKlines + 股票代码，保证两页信号同口径
+        const a = analyze(kls, flow, null, kls, null, secid.split(".")[1], "d");
         const lvl = a.signal.level;
-        if (lvl !== "buy" && lvl !== "sell") continue;
-        // 顺带缓存信号标签供持仓视图复用（同一引擎同一口径，不重复跑 analyze）
+        // 持仓表只展示已持仓标的，固定按持仓视角取标签（加仓/持有/减仓），全档缓存
         posSigMap.value = { ...posSigMap.value, [secid]: toActionChip(lvl, true) };
+        if (lvl !== "buy" && lvl !== "sell") continue;
         const hasPos = !!getPosition(secid);
-        const tag = lvl === "buy" ? "加仓" : hasPos ? "减仓" : "清仓";
-        const q = quotes[keyOf(it)];
+        const tag = lvl === "buy" ? (hasPos ? "加仓" : "买点") : hasPos ? "减仓" : "回避";
+        const name = list.value.find(
+          (it) => resolveSecid(it.code, it.market as any) === secid
+        )?.name || fallbackName;
+        const it = list.value.find((it) => resolveSecid(it.code, it.market as any) === secid);
+        const q = it ? quotes[keyOf(it)] : undefined;
         alerts.push({
           code: secid.split(".")[1] || secid,
-          name: it.name || it.code,
+          name,
           level: lvl as "buy" | "sell",
           tag,
           price: a.price,
@@ -1239,8 +1250,8 @@ interface PosRow {
   chg: number;
   loading: boolean;
 }
-// 信号缓存（secid → {text, cls}）：scanPositionSignals 已对每只持仓算过 analyze，
-// 在此顺带缓存信号标签，持仓视图直接复用，不重复跑引擎。
+// 信号缓存（secid → {text, cls}）：scanPositionSignals 对每只自选/持仓标的跑过 analyze
+// （日 K + 资金流，与行情页同参），全 5 档信号都缓存，持仓视图直接复用，不重复跑引擎。
 // 标签来自 utils/actionSignal（与行情页信号卡同一份实现）：持仓表内必然已持仓，
 // 因此固定走「持仓视角」→ 加仓 / 持有 / 减仓，与行情页设过持仓后看到的标签完全一致。
 const posSigMap = ref<Record<string, { text: string; cls: string }>>({});
@@ -1259,7 +1270,9 @@ const posRowsAll = computed<PosRow[]>(() => {
     // 与 marketFromSecid(secid) 不一致导致查不到行情、价格回落 0、收益率算错。
     const q = it ? quotes[keyOf(it)] : quotes[`${code}|${marketFromSecid(p.secid)}`];
     const price = q?.price || 0;
-    const sig = posSigMap.value[p.secid] || toActionChip("wait", true);
+    // 缓存缺失（巡检未跑完/单只拉取失败）时显示中性「—」，不伪造「观望」假信号，
+    // scanPositionSignals 完成后 posSigMap 更新会自动重算
+    const sig = posSigMap.value[p.secid] || { text: "—", cls: "" };
     const pnlPct = p.cost && price ? ((price - p.cost) / p.cost) * 100 : 0;
     out.push({
       secid: p.secid,

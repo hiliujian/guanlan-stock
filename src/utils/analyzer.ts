@@ -363,19 +363,15 @@ export interface AnalysisResult {
   stageText: string;
   score: number;
   riskLevel: string;
-  watch: boolean;
-  build: boolean;
-  add: boolean;
-  reduce: boolean;
   /**
-   * 操作结论的**唯一取值**（reduce → add → build → watch → wait 单链优先级）。
-   * 决策标签与分析结论必须同读此字段，禁止各自再排一遍 if/else 顺序：此前 UI 按
-   * watch→build→add→reduce 判定，而 watch 几乎恒真，导致标签恒显示「可关注」，
-   * 与结论里的「建议减仓 / 可加仓」同屏打架。
+   * 操作结论的**唯一取值**，由 signal.level 单源派生（sell→reduce；buy→add/build；
+   * hold/watch→watch；wait→wait）。决策标签与分析结论必须同读此字段。
    */
   decision: "reduce" | "add" | "build" | "watch" | "wait";
   buyLow: number;
   buyHigh: number;
+  sellLow: number; // 减仓/止损区间下沿（无卖点语境为 NaN，UI 显示「—」）
+  sellHigh: number; // 减仓/止损区间上沿
   risks: string[];
   // ---- 专业指标（新增，提升研判严谨度）----
   adx: number[];
@@ -404,7 +400,7 @@ export interface AnalysisResult {
   // ---- 突破/跌破 + 直白买卖信号（支撑产品卖点：何时买卖 / 支撑压力突破）----
   breakout: boolean; // 已有效突破压力（仅当压力来自明确 pivot 拐点）
   breakdown: boolean; // 已有效跌破支撑（仅当支撑来自明确 pivot 拐点）
-  sigType: string; // 走势预测：突破上攻 / 破位下行 / 承压回落 / 企稳反弹 / 震荡上行 / 震荡下行 / 区间震荡 / 冲高回落 / 反弹乏力（后两者仅卖点兜底改写）
+  sigType: string; // 走势预测（由最终信号单源派生）：突破上攻 / 破位下行 / 承压回落 / 企稳反弹 / 震荡上行 / 震荡下行 / 区间震荡 / 冲高回落 / 反弹乏力 / 超跌反弹
   // ---- 信号历史回放胜率（与信号卡同一引擎在历史日线上逐日回放；日线缺失/样本不足为 null，UI 不展示）----
   signalWinRate: SignalWinRateResult | null;
   signal: {
@@ -533,150 +529,346 @@ function pickMainLevels(
 /** 直白买卖信号（5 档）决策级联 —— 纯函数。
  *  实时报告与历史胜率回放共用同一套分支顺序、阈值与文案（胜率口径统一的根基）：
  *  整合突破/跌破 + 临近关键位 + 趋势/动能/资金，给普通人一句话买卖参考；
- *  这是技术形态信号，带「确认条件」，非保证、非投资建议。 */
+ *  这是技术形态信号，带「确认条件」，非保证、非投资建议。
+ *
+ *  短波量化 / 波段交易口径（本次审计后重写）：
+ *   · 卖点必须「位置 + 价格真实走弱」双确认，资金流只是确认项、不得独立触发
+ *     （旧口径单凭近压 + 资金净流出即喊卖，18 股 60 日样本 353 个卖点，
+ *     茅台/五粮液等 MACD 金叉、恒瑞 RSI27 超卖也喊「高位滞涨」，严重滥发）；
+ *   · 买点锚定回踩 MA5/MA10/MA20 与支撑企稳，新鲜金叉可顺势第一时间上车，
+ *     下跌趋势超卖反弹标注「轻仓」且主力大幅流出时降级观望。 */
 interface SignalCascadeCtx {
   price: number;
   support: number;
   resistance: number;
-  topZone: number;
   nearTop: boolean;
   nearSup: boolean;
   nearRes: boolean;
   breakout: boolean;
   breakdown: boolean;
-  reduce: boolean;
-  build: boolean;
-  add: boolean;
   trend: TrendKey;
   rNow: number;
-  macdCross: "gold" | "dead" | null;
+  macdCross: "gold" | "dead" | null; // 近 8 根内的金/死叉
+  macdFresh: "gold" | "dead" | null; // 近 3 根内的新鲜金/死叉
+  kdjCross: "gold" | "dead" | null;
+  kOversold: boolean;
+  ma5: number;
+  ma10: number;
+  ma20: number;
+  belowMa5: boolean;
+  farAboveMa60: boolean;
+  redToday: boolean; // 当日收红
+  upperShadow: boolean; // 当日明显上影（冲高回落）
+  lowerShadow: boolean; // 当日明显下影（低位承接）
+  volRatio: number;
   f5: FlowSummary;
   f10: FlowSummary;
 }
-/**
- * 减仓（reduce）判定 —— 实时报告与历史回放共用的唯一实现（防两处公式漂移）。
- * 「贴着阶段高位」本身不是卖点：强势股可以长期沿箱体上沿运行（压力位随新高上移，
- * 价格天然经常处于 ≥压力位 93% 的位置），单凭位置高就喊卖，会让上升趋势中的报告
- * 绝大多数天数都是卖点（基线实测：2200 样本天 73% 为卖点、其中 reduce 分支占 100%，
- * 茅台/工行等慢牛股 90%+ 天数显示「高位风险积聚」——这就是「指标都很好为啥是卖点」的根源）。
- * 因此高位减仓需要「位置 + 动能走弱」双重确认：
- *   · nearTop（≥压力位 95%）且动能走弱（RSI>80 / MACD 死叉 / 主力资金净流出）——位置好但涨不动的减仓
- *   · 或 RSI>82（不要求位置的硬超买）
- *   · 或 大幅偏离 MA60（>1.5 倍）且主力资金净流出（拉高出货形态）
- * 放量突破（breakout）期间位置高是强势特征，不触发前两类减仓。
- * flowOut 由调用方按数据可得性传入（实时=f10 净流出；历史回放资金流不可得=恒 false）。
- */
-function isReduce(o: {
-  nearTop: boolean;
-  rNow: number;
-  macdCross: "gold" | "dead" | null;
-  breakout: boolean;
-  ma60Last: number | null | undefined;
-  price: number;
-  flowOut: boolean;
-}): boolean {
-  // 短波量化定位：超买阈值放宽（80 才算动能走弱、82 才硬超买）。
-  // A 股强势股主升段 RSI(12) 常态在 70-85 运行，75/78 就喊减仓会把主升浪拦腰打断，
-  // 信号整体偏保守（卖点过多、买点过少）；仅极端超买才触发仓位管理动作。
-  const weaken = o.rNow > 80 || o.macdCross === "dead" || o.flowOut;
-  return (
-    ((o.nearTop && weaken) || o.rNow > 82) && !o.breakout
-  ) || (o.ma60Last != null && o.price > o.ma60Last * 1.5 && o.flowOut);
+
+/** 当日 K 线形态（实时报告与历史回放共用，防口径漂移）：
+ *  上/下影相对 ATR 与实体长度判定，避免小阴小阳的微小影线被当成冲高/承接信号。 */
+function candleShape(k: Kline, atrNow: number): { redToday: boolean; upperShadow: boolean; lowerShadow: boolean } {
+  const body = Math.abs(k.close - k.open);
+  const upWick = k.high - Math.max(k.open, k.close);
+  const loWick = Math.min(k.open, k.close) - k.low;
+  const sig = Math.max(atrNow * 0.45, body * 0.6);
+  return {
+    redToday: k.close >= k.open,
+    upperShadow: upWick > sig && upWick >= loWick,
+    lowerShadow: loWick > sig && loWick >= upWick,
+  };
 }
+
+type SellKind = "overbought" | "nearWeak" | "pump";
+/**
+ * 技术卖点识别（实时报告与历史回放唯一实现）——「位置/超买 + 价格真实走弱」双确认：
+ *   · 真实走弱 = 放量滞涨/放量收阴、冲高上影、3 根内新鲜死叉，或跌破 MA5 且资金流出/8 根内死叉；
+ *   · 资金净流出只能与价格走弱共同成立，单独流出不构成卖点（旧逻辑的滥发根源）；
+ *   · 下跌趋势 RSI<35 不杀跌（超卖区喊卖=割在地板上，破位纪律由 breakdown 分支另管）；
+ *   · 有效突破当日所有技术卖点让位于突破（breakout），次日若回落由近压卖点接管。
+ */
+function techSellKind(c: SignalCascadeCtx): SellKind | null {
+  if (c.breakout || c.breakdown) return null;
+  if (c.trend === "down" && c.rNow < 35) return null;
+  const flowOut = c.f10.has && c.f10.sum < 0;
+  const bullTrend = c.trend === "up" || c.trend === "shake_up";
+  // 真实走弱（硬证据）：放量滞涨/放量收阴、冲高上影、3 根内新鲜死叉
+  const hardStall =
+    (c.volRatio > 1.2 && (!c.redToday || c.upperShadow)) ||
+    c.upperShadow ||
+    c.macdFresh === "dead";
+  // 软走弱：跌破 MA5 + 资金流出，且只在多头语境下才算「止盈」——
+  // 下跌/震荡偏弱市中价格在 MA5 下方 + 流出是常态基线，再喊「逢高减仓」等于在低位催卖
+  // （旧口径下茅台 RSI45、20 日区间位置 23% 仍报「高位动能转弱」，即源于此）。
+  const softStall = bullTrend && c.belowMa5 && flowOut;
+  if (!hardStall && !softStall) return null;
+  if (c.rNow > 82) return "overbought";
+  if (c.nearTop && (c.rNow > 72 || c.macdFresh === "dead" || c.upperShadow)) return "overbought";
+  if (c.nearRes && (c.rNow > 55 || flowOut || c.macdCross === "dead" || c.upperShadow)) return "nearWeak";
+  // 多头趋势中跌破 MA5 + 流出且临近高位：按近压走弱处理（措辞由 decideSignal 区分）
+  if (softStall && c.nearTop) return "nearWeak";
+  if (c.farAboveMa60 && flowOut) return "pump";
+  return null;
+}
+
+/** 企稳证据：如实返回**实际触发**的条件，供信号「触发条件」展示。
+ *  旧实现条件含 RSI<45、文案却只分超卖/金叉/资金三种，海康 RSI38、资金净流出
+ *  仍显示「资金净流入等企稳」，属于事实性错误，重写后文案与条件严格一一对应。
+ *  注意：RSI 30~40 的「低位」只说明超卖程度，不是企稳本身（可能继续钝化下跌），
+ *  不得作为企稳证据——企稳必须看到转折动作（金叉/收红重回MA5/下影承接/资金回流）。 */
+function stabilizeEvidence(c: SignalCascadeCtx): string[] {
+  const e: string[] = [];
+  if (c.macdFresh === "gold" || c.macdCross === "gold") e.push("MACD金叉");
+  if (c.kdjCross === "gold") e.push("KDJ金叉");
+  if (c.rNow < 30) e.push("RSI超卖");
+  if (!c.belowMa5 && c.redToday) e.push("重回MA5上方");
+  if (c.lowerShadow) e.push("下影线承接");
+  if (c.f5.has && c.f5.sum > 0) e.push("主力资金净流入");
+  return e;
+}
+
+/** 下跌趋势超卖博反弹状态（实时报告与回放共用）：
+ *  超卖 + 当日出现转折迹象才算；近 10 日主力大幅净流出（>5 亿）时降级观望，不接飞刀。 */
+function reboundState(c: SignalCascadeCtx): { rebound: boolean; blocked: boolean } {
+  if (c.trend !== "down" || !(c.rNow < 30 || c.kOversold)) return { rebound: false, blocked: false };
+  const reversal = c.redToday || c.lowerShadow || c.macdFresh === "gold" || c.kdjCross === "gold";
+  if (!reversal) return { rebound: false, blocked: false };
+  return { rebound: true, blocked: c.f10.has && c.f10.sum < -5 };
+}
+
 function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
+  // 1) 破位：纪律性卖点（最高优先）
   if (c.breakdown) {
     return {
       level: "sell",
       label: "卖点",
-      text: "已跌破关键支撑，建议减仓回避",
-      reason: `现价 ${c.price.toFixed(3)} 已跌破支撑 ${c.support.toFixed(3)}，技术形态转弱`,
-      confirm: "若 3 日内不能收回支撑上方，下行空间进一步打开，应果断降低仓位",
+      text: "有效跌破支撑，建议减仓离场",
+      reason: `现价 ${c.price.toFixed(3)} 跌破支撑 ${c.support.toFixed(3)}，形态转弱`,
+      confirm: "3 日内不能收回支撑上方则下行空间打开，持仓者应继续降仓、空仓者回避",
     };
   }
-  if (c.reduce) {
-    // 决策-信号同向兜底：reduce 已成立（高位+动能走弱 / RSI 硬超买 / 远离 MA60+资金流出）但
-    // 未命中上方任何信号分支时，信号卡不得回落为「关注/持有」与决策「建议减仓」同屏打架。
-    // 置于 breakout 之前：拉高出货（大幅偏离 MA60 + 主力资金净流出）即使伴随放量突破，
-    // 资金流向警示也优先于技术形态，宁可不追。
-    const weakenTxt =
-      c.rNow > 80 ? `RSI(12) 达 ${c.rNow.toFixed(2)} 超买` : c.macdCross === "dead" ? "MACD 死叉" : "主力资金净流出";
+  // 2) 高位/近压卖点（双确认，资金流不独立触发）
+  const kind = techSellKind(c);
+  if (kind === "overbought") {
+    const ev: string[] = [];
+    if (c.rNow > 75) ev.push(`RSI ${c.rNow.toFixed(0)} 超买`);
+    if (c.macdFresh === "dead" || c.macdCross === "dead") ev.push("MACD死叉");
+    if (c.upperShadow) ev.push("冲高上影");
+    if (c.volRatio > 1.2 && !c.redToday) ev.push("放量收阴");
+    if (c.belowMa5 && c.f10.has && c.f10.sum < 0) ev.push("跌破MA5且资金净流出");
     return {
       level: "sell",
       label: "卖点",
-      text: "高位滞涨风险，建议逢高减仓",
-      reason: c.rNow > 82
-        ? `RSI(12) 达 ${c.rNow.toFixed(2)}，硬超买`
-        : c.nearTop
-          ? `价格接近阶段高位（约 ${c.topZone.toFixed(3)}）且${weakenTxt}，上攻动能不足`
-          : "股价大幅偏离 MA60 且主力资金净流出，警惕拉高出货",
-      confirm: "放量滞涨或跌破 MA5/MA10 时果断减仓；缩量回踩 MA20 不破可继续持有",
+      text: "高位动能转弱，逢高减仓",
+      reason: `价格临近高位 ${c.resistance.toFixed(3)}，${ev.slice(0, 2).join("、") || "涨势停滞"}`,
+      confirm: "不能放量收复 MA5 则减仓；缩量回踩 MA20 企稳可继续持有",
     };
   }
+  if (kind === "nearWeak") {
+    // 两种触发语境文案分开，避免「跌破MA5走弱」却写「临近压力冲高乏力」的事实错位
+    if (c.nearRes) {
+      const ev: string[] = [];
+      if (c.macdFresh === "dead" || c.macdCross === "dead") ev.push("MACD死叉");
+      if (c.upperShadow) ev.push("冲高上影");
+      if (c.volRatio > 1.2 && !c.redToday) ev.push("放量收阴");
+      if (c.f10.has && c.f10.sum < 0) ev.push("资金净流出");
+      return {
+        level: "sell",
+        label: "卖点",
+        text: "临近压力且冲高乏力，逢高减仓",
+        reason: `接近压力 ${c.resistance.toFixed(3)}，${ev.slice(0, 2).join("、") || "上攻受阻"}`,
+        confirm: "放量突破压力则转强持有；遇阻回落应减仓",
+      };
+    }
+    return {
+      level: "sell",
+      label: "卖点",
+      text: "跌破 MA5 且资金流出，逢高减仓",
+      reason: `价格跌破 MA5（${c.ma5.toFixed(3)}）且近 10 日主力净流出 ${Math.abs(c.f10.sum).toFixed(1)} 亿，短线转弱`,
+      confirm: "快速放量收复 MA5 可继续持有；反抽 MA5 不过应减仓",
+    };
+  }
+  if (kind === "pump") {
+    return {
+      level: "sell",
+      label: "卖点",
+      text: "远离均线放量走弱，警惕拉高出货",
+      reason: "股价大幅偏离 MA60，价格走弱且主力资金净流出",
+      confirm: "反弹不过 MA5/MA10 应减仓；重新站上 MA10 再考虑回补",
+    };
+  }
+  // 3) 放量突破：最强做多信号，第一时间上车
   if (c.breakout) {
     return {
       level: "buy",
       label: "买点",
-      text: "已放量突破关键压力，可积极关注",
-      reason: `现价 ${c.price.toFixed(3)} 已站上压力 ${c.resistance.toFixed(3)}，打开上行空间`,
-      confirm: "回踩不破该压力位且量能维持，则确认有效突破，可顺势加仓",
+      text: "放量突破压力，顺势跟进",
+      reason: `现价 ${c.price.toFixed(3)} 站上压力 ${c.resistance.toFixed(3)}，打开上行空间`,
+      confirm: `回踩不破 ${c.resistance.toFixed(3)} 且量能维持，可顺势加仓`,
     };
   }
-  // 与 reduce 同口径：单凭「临近压力」不算卖，动能走弱也要达到同样强度
-  // （RSI>80 / MACD 死叉 / 资金净流出任一）。短波定位下强势股 RSI 高位运行是常态，不宜轻易喊卖。
-  if (c.nearRes && (c.rNow > 80 || c.macdCross === "dead" || (c.f10.has && c.f10.sum < 0))) {
-    return {
-      level: "sell",
-      label: "卖点",
-      text: "临近压力且动能转弱，注意逢高减仓",
-      reason: `价格接近压力 ${c.resistance.toFixed(3)}，且出现${c.rNow > 75 ? "RSI超买" : c.macdCross === "dead" ? "MACD死叉" : "资金净流出"}等滞涨信号`,
-      confirm: "若放量强势突破压力则转强可持有；否则易遇阻回落，应减仓",
-    };
-  }
-  if (c.nearSup && (c.rNow < 45 || c.macdCross === "gold" || c.build || (c.f5.has && c.f5.sum > 0))) {
-    // reduce 已在上方分支先行拦截（卖点兜底），走到这里必然 !reduce，
-    // 窄幅箱体内 nearTop(7%) 与 nearSup(5%) 同时成立时不会再出现「买点 vs 减仓」矛盾。
+  // 4) 下跌趋势超卖博反弹（轻仓、短线，资金大幅流出则降级观望）
+  const rb = reboundState(c);
+  if (rb.rebound) {
+    const ev: string[] = [];
+    if (c.rNow < 30) ev.push("RSI超卖");
+    if (c.kOversold) ev.push("KDJ超卖");
+    if (c.redToday) ev.push("当日收红");
+    if (c.lowerShadow) ev.push("下影线承接");
+    if (c.macdFresh === "gold" || c.kdjCross === "gold") ev.push("动能金叉");
+    if (rb.blocked) {
+      return {
+        level: "watch",
+        label: "关注",
+        text: "超卖后初现企稳，但主力大幅流出，暂观望",
+        reason: `超卖区出现${ev.slice(0, 2).join("、")}，但近 10 日主力净流出 ${Math.abs(c.f10.sum).toFixed(1)} 亿`,
+        confirm: "需见放量收红且资金回流再轻仓试探，继续创新低则回避",
+      };
+    }
     return {
       level: "buy",
       label: "买点",
-      text: "临近支撑且出现企稳信号，可逢低关注",
-      reason: `价格接近支撑 ${c.support.toFixed(3)}，且出现${c.rNow < 30 ? "RSI超卖" : c.macdCross === "gold" ? "MACD金叉" : "资金净流入"}等企稳信号`,
-      confirm: "若放量站上支撑则确认止跌，可在买入区间内建仓；跌破则转弱观望",
+      text: "超卖初现企稳，轻仓博反弹",
+      reason: `下跌趋势超卖区出现${ev.slice(0, 2).join("、")}，存技术性反弹机会`,
+      confirm: "反弹至 MA10/MA20 遇阻可止盈；跌破近期低点立即止损，不补仓摊低",
     };
   }
-  if (c.trend === "up" && c.add) {
+  const ev = stabilizeEvidence(c);
+  // 压力位出现走弱形态时，即便同时临近支撑也不给买点（近压/近撑在窄箱体内可能同时成立）
+  const resBlocked =
+    c.nearRes && (c.upperShadow || c.macdFresh === "dead" || (c.volRatio > 1.2 && !c.redToday));
+  // 主力近 10 日大幅净流出（>5 亿）时不追多（与超卖反弹 blocked 同阈值，避免逆势接飞刀）
+  const heavyOut = c.f10.has && c.f10.sum < -5;
+  // 5) 上升/偏强趋势回踩 —— 短波主买点（乘势而上）
+  // 两种成立路径：① 回踩 MA5/10/20 均线本身即趋势内买点（趋势结构即证据），只需资金未大幅流出；
+  //              ② 仅接近 swing 支撑时，必须有真实企稳证据（金叉/下影/收红/回流）。
+  const nearMa10 = c.ma10 ? Math.abs(c.price - c.ma10) / c.ma10 < 0.015 : false;
+  const nearMa20 = c.price <= c.ma20 * 1.02 && c.price >= c.ma20 * 0.98;
+  const maPullback = c.price <= c.ma5 * 1.012 || nearMa10 || nearMa20;
+  const pullback = c.nearSup || maPullback;
+  if (
+    (c.trend === "up" || c.trend === "shake_up") &&
+    pullback &&
+    !heavyOut &&
+    c.rNow < 72 &&
+    c.price >= c.ma20 * 0.97 &&
+    !resBlocked &&
+    (maPullback || ev.length > 0)
+  ) {
+    const where = c.nearSup && !maPullback ? `支撑 ${c.support.toFixed(3)}` : "MA5/MA10 均线";
+    return {
+      level: "buy",
+      label: "买点",
+      text: "回踩企稳，可低吸跟进",
+      reason: `上升趋势中回踩${where}，${ev.slice(0, 2).join("、") || "趋势结构未破"}`,
+      confirm: "放量重回 MA5 上方确认走强；跌破支撑或 MA20 走弱则放弃",
+    };
+  }
+  // 6) 新鲜金叉 + 站上 MA20：追势买点（3 根内金叉，不等待深度回调）
+  if (c.macdFresh === "gold" && c.price > c.ma20 && c.rNow < 75 && c.trend !== "down" && !resBlocked && !heavyOut) {
+    return {
+      level: "buy",
+      label: "买点",
+      text: "MACD 新鲜金叉，顺势跟进",
+      reason: "近 3 根 K 线 MACD 金叉且价格站上 MA20，短线动能转强",
+      confirm: "金叉后红柱持续放大可持有；跌回 MA20 下方则离场",
+    };
+  }
+  // 7) 震荡市临近支撑企稳（须有真实企稳证据，主力大幅流出时不给）
+  if (c.nearSup && ev.length > 0 && c.rNow < 60 && c.trend !== "down" && !resBlocked && !heavyOut) {
+    return {
+      level: "buy",
+      label: "买点",
+      text: "临近支撑企稳，可逢低关注",
+      reason: `价格接近支撑 ${c.support.toFixed(3)}，${ev.slice(0, 2).join("、")}`,
+      confirm: "放量站上 MA5 确认止跌可建仓；跌破支撑则转弱观望",
+    };
+  }
+  // 8) 上升趋势健康持有（不再要求资金必须净流入：价格未走弱即让利润奔跑）
+  if (c.trend === "up" && c.price >= c.ma20 * 0.98 && c.macdFresh !== "dead" && c.rNow >= 30 && c.rNow <= 82) {
     return {
       level: "hold",
       label: "持有",
-      text: "趋势向上，可持有跟随，回调即加仓点",
-      reason: "上涨趋势 + 主力资金流入，动能未衰减",
-      confirm: "跌破 MA20 或放量大阴线则警惕转弱，考虑减仓",
+      text: "上升趋势保持，继续持有",
+      reason: "价格在 MA20 上方运行，趋势结构未破坏",
+      confirm: "跌破 MA20 或放量大阴线再考虑减仓",
     };
   }
+  // 9) 偏强但无买点：等回踩；下跌超卖未现转折：等企稳；其余：方向不明
   if (c.trend === "up" || c.trend === "shake_up") {
     return {
       level: "watch",
       label: "关注",
-      text: "偏强运行，等待回调至支撑的更好买点",
-      reason: "趋势偏强但尚未到理想介入位，追高性价比低",
-      confirm: "回踩支撑企稳时介入更稳妥，避免追涨",
+      text: "偏强运行，等待回踩低吸机会",
+      reason: "趋势偏强但当前位置性价比不足，不追高",
+      confirm: "回踩 MA5/MA10 企稳时介入更稳妥",
     };
   }
   if (c.trend === "down") {
+    if (c.rNow < 35 || c.kOversold) {
+      return {
+        level: "watch",
+        label: "关注",
+        text: "进入超卖区，等待企稳信号",
+        reason: "下跌趋势未改，但短线已超卖，随时可能技术性反弹",
+        confirm: "需放量收红或金叉确认再轻仓参与，不提前接飞刀",
+      };
+    }
     return {
       level: "wait",
       label: "观望",
-      text: "处于下跌趋势，暂不参与",
-      reason: "下跌趋势未改，弱势运行",
+      text: "下跌趋势未改，暂不参与",
+      reason: "价格在 MA20 下方弱势运行",
       confirm: "放量站上 MA20 并企稳后再考虑介入",
+    };
+  }
+  if (c.trend === "shake_down") {
+    return {
+      level: "wait",
+      label: "观望",
+      text: "震荡偏弱，暂不参与",
+      reason: "价格运行于 MA20 下方且短线动能偏弱",
+      confirm: "放量站上 MA20 或回踩支撑企稳后再考虑介入",
     };
   }
   return {
     level: "wait",
     label: "观望",
-    text: "多空僵持，等待方向明朗",
-    reason: "区间震荡，支撑与压力均未有效突破",
-    confirm: "放量突破压力或跌破支撑后，再顺势而为",
+    text: "区间震荡，等待方向选择",
+    reason: "支撑与压力均未有效突破，多空僵持",
+    confirm: "放量突破压力或跌破支撑后再顺势而为",
   };
+}
+
+/** 走势预测（sigType）：由**最终信号档位**（含盘中覆盖）单源派生，
+ *  杜绝旧实现「signal=buy 但 sigType=承压回落」这类同屏矛盾。 */
+function deriveSigType(
+  level: AnalysisResult["signal"]["level"],
+  c: SignalCascadeCtx,
+  intraday: ReturnType<typeof detectLimitMove>
+): string {
+  if (intraday.isLimitUp) return "突破上攻";
+  if (intraday.isLimitDown) return "破位下行";
+  if (intraday.isBrokenLimitUp) return "冲高回落";
+  if (intraday.isBrokenLimitDown) return "企稳反弹";
+  if (c.breakdown) return "破位下行";
+  if (c.breakout) return "突破上攻";
+  if (level === "sell") {
+    if (c.nearTop || c.nearRes) return "承压回落";
+    return c.trend === "down" ? "反弹乏力" : "冲高回落";
+  }
+  if (level === "buy") {
+    if (reboundState(c).rebound) return "超跌反弹";
+    if (c.trend === "up" && !c.nearSup) return "震荡上行";
+    return "企稳反弹";
+  }
+  if (level === "hold") return c.trend === "up" ? "震荡上行" : "区间震荡";
+  if (level === "watch") {
+    if (c.trend === "down") return "震荡下行";
+    if (c.trend === "up") return "震荡上行";
+    return "区间震荡";
+  }
+  return c.trend === "down" || c.trend === "shake_down" ? "震荡下行" : "区间震荡";
 }
 
 /** 涨跌停/炸板信号覆盖：极端盘中走势直接改写短线操作建议（实时报告与历史回放共用同一套覆盖规则） */
@@ -769,7 +961,8 @@ function replaySignalStats(daily: Kline[] | undefined, code: string | undefined)
     const vma20 = ma(vols, 20);
     const m = macd(closes);
     const r12 = rsi(closes, 12);
-    const { pDI, mDI, adx } = dmi(prefix.map((k) => k.high), prefix.map((k) => k.low), closes, 14);
+    const kd = kdj(prefix);
+    const { atr: atrArr, pDI, mDI, adx } = dmi(prefix.map((k) => k.high), prefix.map((k) => k.low), closes, 14);
     const price = closes[plen - 1];
     const ma20Now = ma20[plen - 1] as number;
     const ma20Ref = (ma20[Math.max(0, plen - 21)] as number) || ma20Now;
@@ -798,14 +991,19 @@ function replaySignalStats(daily: Kline[] | undefined, code: string | undefined)
     const { support, resistance } = pickMainLevels(priceLevels, price, prefix.slice(-60));
     const distSup = (price - support) / price;
     const distRes = (resistance - price) / price;
-    const nearBottom = price <= support * 1.05;
     const nearTop = price >= resistance * 0.95;
     const nearSup = distSup < 0.05;
     const nearRes = distRes < 0.03;
     const rRaw = r12[plen - 1];
     const rNow = typeof rRaw === "number" && isFinite(rRaw) ? rRaw : 50;
     const macdCross = recentCross(m.dif, m.dea, 8);
+    const macdFresh = recentCross(m.dif, m.dea, 3);
+    const kdjCross = recentCross(kd.K, kd.D, 8);
+    const kOversold = (kd.K[plen - 1] as number) < 20 || (kd.J[plen - 1] as number) < 0;
     const volRatio = vma5[plen - 1] && vma20[plen - 1] ? (vma5[plen - 1] as number) / (vma20[plen - 1] as number) : 1;
+    const ma5Now = ma5[plen - 1] as number;
+    const ma10Now = ma10[plen - 1] as number;
+    const shape = candleShape(prefix[plen - 1], atrArr[plen - 1] ?? 0);
     const supportFromPivot = !!(
       (priceLevels.structSupport && !priceLevels.structSupport.isBroken && priceLevels.structSupport.price < price) ||
       (priceLevels.tradeSupportS && !priceLevels.tradeSupportS.isBroken && priceLevels.tradeSupportS.price < price)
@@ -818,16 +1016,18 @@ function replaySignalStats(daily: Kline[] | undefined, code: string | undefined)
     // 短波量化：突破确认放宽——刚站上压力(0.5%)且量能温和放大即算，追求第一时间上车；
     // 原口径(1.5%+量比1.0)确认过晚，等确认到位短波行情已走出大半段。
     const breakout = resistanceFromPivot && price > resistance * 1.005 && volRatio > 0.9;
-    const build = !breakdown && (nearBottom || (trend === "up" && price <= ma20Now * 1.02)) && rNow < 75 && !nearTop;
-    const reduce = isReduce({ nearTop, rNow, macdCross, breakout, ma60Last, price, flowOut: false });
-    const add = !reduce && !breakdown && trend === "up" && Math.abs(price - ma20Now) / ma20Now < 0.05 && noFlow.sum > 0 && rNow < 80;
-    // 与实时报告同序：先 5 档级联，再涨跌停/炸板覆盖
+    // 与实时报告同序：先 5 档级联，再涨跌停/炸板覆盖（ctx 构造字段与主链路逐项同口径）
     const intraday = detectLimitMove(prefix, code);
     const signal = applyIntradayOverride(
       decideSignal({
-        price, support, resistance, topZone: resistance,
-        nearTop, nearSup, nearRes, breakout, breakdown, reduce, build, add,
-        trend, rNow, macdCross, f5: noFlow, f10: noFlow,
+        price, support, resistance,
+        nearTop, nearSup, nearRes, breakout, breakdown,
+        trend, rNow, macdCross, macdFresh, kdjCross, kOversold,
+        ma5: ma5Now, ma10: ma10Now, ma20: ma20Now,
+        belowMa5: price < ma5Now,
+        farAboveMa60: ma60Last != null && price > ma60Last * 1.5,
+        redToday: shape.redToday, upperShadow: shape.upperShadow, lowerShadow: shape.lowerShadow,
+        volRatio, f5: noFlow, f10: noFlow,
       }),
       intraday
     );
@@ -1105,8 +1305,8 @@ export function analyze(
   const distSup = (price - support) / price;
   const distRes = (resistance - price) / price;
   // nearTop 阈值 5%（0.95）：高位预警带收窄。历史曾经历 4%（主升浪过早减仓）→ 7%（0.93，
-  // 又偏保守：常态沿 5 日线运行的强势股也频繁贴带预警）；现取 5% 折中，配合 isReduce 的
-  // RSI 阈值放宽（80/82），既不追高喊卖也不错过真正的顶部预警。
+  // 又偏保守：常态沿 5 日线运行的强势股也频繁贴带预警）；现取 5% 折中，配合卖点双确认
+  // （位置 + 价格真实走弱），既不追高喊卖也不错过真正的顶部预警。
   const nearBottom = price <= bottomZone * 1.05;
   const nearTop = price >= topZone * 0.95;
   const nearSup = distSup < 0.05;
@@ -1122,6 +1322,7 @@ export function analyze(
   const volRatio = vma5[len - 1] && vma20[len - 1] ? (vma5[len - 1] as number) / (vma20[len - 1] as number) : 1;
 
   const macdCross = recentCross(m.dif, m.dea, 8);
+  const macdFresh = recentCross(m.dif, m.dea, 3); // 3 根内新鲜转折（追势买点/死叉确认用）
   const kdjCross = recentCross(kd.K, kd.D, 8);
 
   const kLast = kd.K[len - 1] as number;
@@ -1136,16 +1337,41 @@ export function analyze(
   const rsiValid = typeof rNowRaw === "number" && isFinite(rNowRaw);
   const rNow = rsiValid ? (rNowRaw as number) : 50;
 
+  // ---- 信号级联共享原语（与 replaySignalStats 逐项同构造，阈值只允许出现在 decideSignal 内）----
+  const ma5Now = (ma5[len - 1] as number) || price;
+  const ma10Now = (ma10[len - 1] as number) || price;
+  const atrNow = atr[len - 1] || 0;
+  const shape = candleShape(last, atrNow);
+  const kOversold = kLast < 20 || jLast < 0;
+  const farAboveMa60 = ma60Last != null && price > ma60Last * 1.5;
+
   let stageText: string;
   // 注：阶段判断基于价/量/资金的技术形态识别，仅描述「当前形态特征」，
   // 不确认背后是否存在真实的主力吸筹/派发行为（后者无法仅凭价量序列证明）。
-  // 「滞涨」= 涨不动；趋势向上且放量（VMA5/20>1.1）+ 资金净流入的加速形态不得标「高位滞涨」
-  //（否则主升浪加速段被描述成停滞，与「多头加速」形态矛盾；高位/超买风险仍由 risks 与决策层提示）
-  if (nearTop && (rNow > 75 || f10.sum < 0) && !(trend === "up" && volRatio > 1.1 && f5.sum > 0)) {
+  // 「滞涨」= 涨不动，必须有价格走弱证据（跌破MA5/上影/放量收阴/新鲜死叉/超买），
+  // 资金净流出不得单独定性滞涨（与卖点级联 techSellKind 同口径，避免 stage 与信号打架）；
+  // 趋势向上且放量 + 资金净流入的加速形态优先标「多头加速」。
+  const accelerating = trend === "up" && volRatio > 1.1 && f5.sum > 0;
+  // 「跌破 MA5 + 资金流出」只在多头语境下算滞涨：下跌/震荡偏弱市中这是常态基线，
+  // 恒瑞 RSI27、20 日区间位置 1% 曾被标成「高位滞涨」即因此（与超卖信号自相矛盾）。
+  const bullTrend = trend === "up" || trend === "shake_up";
+  const topStall =
+    rNow > 78 ||
+    macdFresh === "dead" ||
+    shape.upperShadow ||
+    (volRatio > 1.2 && !shape.redToday) ||
+    (bullTrend && price < ma5Now && f10.sum < 0);
+  const lowStabilize =
+    f5.sum > 0 || shape.lowerShadow || shape.redToday;
+  if (nearTop && topStall && !accelerating) {
     stageText = "高位滞涨";
-  } else if (nearBottom && f5.sum > 0 && rNow < 55 && volRatio > 0.85) {
+  } else if (trend === "down" && (rNow < 35 || kOversold) && (shape.redToday || shape.lowerShadow)) {
+    // 与 reboundState 同口径：主力近 10 日大幅流出（>5 亿）时只算「企稳尝试」，
+    // 不直接定性「反弹」（信号本身也降级为观望，两处不得一个喊反弹一个喊观望）
+    stageText = f10.has && f10.sum < -5 ? "超卖企稳尝试" : "超卖反弹";
+  } else if (nearBottom && lowStabilize && rNow < 55 && volRatio > 0.85) {
     stageText = "低位蓄势";
-  } else if (trend === "up" && volRatio > 1.1 && f5.sum > 0) {
+  } else if (accelerating) {
     stageText = "多头加速";
   } else if (trend === "down" && volRatio < 0.95) {
     stageText = "弱势整理";
@@ -1308,14 +1534,11 @@ export function analyze(
   const elevatedVol = atrPct > 4; // 单日波动幅度偏大
   const deepDd = mdd > 0.35; // 近 120 日回撤超 35%
 
-  // ---------------- 突破 / 跌破 + 买入区间判定 ----------------
-  // 必须先于操作决策（watch/build/add/reduce）计算：已确认放量突破压力位时，
-  // 「临近阶段高位 / RSI 超买」是强势特征而非减仓理由（突破意味着箱体上沿失效），
-  // 若不前移并抑制，会出现信号卡「买点·放量突破」与决策「建议减仓」同屏矛盾。
+  // ---------------- 突破 / 跌破 + 直白买卖信号（5 档，决策/走势均由信号单源派生） ----------------
   // 仅当支撑/压力来自明确的 pivot 拐点（非近60日极值兜底）才判定，
   // 避免创阶段新高/新低时把"极值"误判为被突破/跌破。
   // 量能确认：A 股假突破/假跌破频发，无量突破可靠性极低。
-  //   · 突破要求 VMA5/VMA20 > 1.0（近期放量，确认资金真实参与）
+  //   · 突破要求 VMA5/VMA20 > 0.9（温和放量即可，短波第一时间上车）
   //   · 跌破要求 VMA5/VMA20 > 0.9（至少接近均量，排除无量假跌破）
   const supportFromPivot = !!(
     (priceLevels.structSupport && !priceLevels.structSupport.isBroken && priceLevels.structSupport.price < price) ||
@@ -1329,45 +1552,93 @@ export function analyze(
   // 与回放路径同口径（防漂移）：突破确认放宽至 0.5% + 温和放量，短波第一时间上车
   const breakout = resistanceFromPivot && price > resistance * 1.005 && volRatio > 0.9;
 
-  // 买入区间（波动率 / 趋势强度自适应，不再用固定比例），仅在价格接近支撑（或距支撑 8% 内）
-  // 时有意义；远离支撑的上涨趋势中给出围绕支撑的买点会误导，故置 NaN，由 UI 显示「—」。
-  // 关键：必须排除已破位（breakdown）——否则会出现「支撑已被有效跌破、应止损离场」
-  // 与「建议买入区间 x~y」同屏并存的矛盾（distSup 在破位后为负，天然满足 <0.08）。
-  // 区间推导（全部锚定支撑/压力位，宽度随 ATR 与趋势缩放，可解释、无拍脑袋比例）：
-  //   · 下沿 = 支撑 − 缓冲：缓冲取 ATR(14)（14 日真实波幅均值，即历史波动率的绝对度量）
-  //     的一部分——扫损回踩也能接住；并按趋势强度缩放：强趋势（ADX≥25）回调通常更深
-  //     取 0.35×ATR，无趋势（ADX<20）取 0.2×ATR，其余 0.28×ATR；缓冲同时夹在支撑价的
-  //     0.3%~2.5% 之间，避免低波股缓冲窄到无意义、高波股缓冲失真。
-  //   · 上沿 = min(支撑 + 0.6×ATR, 压力位)：买点围绕支撑回踩展开，向上最多延伸到压力位
-  //     （贴近压力位买入胜率低；突破压力的量能确认已由 breakout 的量比门槛另行判定）；
-  //     且必须高于下沿至少 0.01，保证区间有效。
-  const trendScale = adxNow >= 25 ? 0.35 : adxNow < 20 ? 0.2 : 0.28;
-  const supBuf = Math.min(Math.max((atr[len - 1] ?? 0) * trendScale, support * 0.003), support * 0.025);
-  // 距支撑 12% 内即给出买入区间（原 8% 偏保守：强势股常态距支撑 8-12% 运行，
-  // 区间经常显示「—」形同虚设；短波量化定位下应尽量给出可执行的挂单参考）
-  const nearBuyZone = !breakdown && (nearSup || distSup < 0.12);
-  const buyLow = nearBuyZone ? +(support - supBuf).toFixed(3) : NaN;
-  const buyHigh = nearBuyZone
-    ? +Math.max(buyLow + 0.01, Math.min(support + (atr[len - 1] ?? 0) * 0.6, resistance)).toFixed(3)
-    : NaN;
+  // 盘中异动检测前移：信号覆盖/决策/走势都依赖它（恒用日 K，与周期解耦）
+  const intraday = detectLimitMove(dailyKlines && dailyKlines.length >= 2 ? dailyKlines : klines, stockCode);
 
-  // !breakout 抑制：放量突破压力后「价格临近高位 / RSI 超买」不再触发减仓；
-  // ma60 拉高出货条件（大幅偏离 MA60 + 主力资金净流出）与突破方向相悖，保留不抑制。
-  // trend 门槛与信号层「关注」同口径（up / shake_up）：shake（多空僵持）日决策必须落
-  // 「观望为主」，否则决策「可关注」与信号卡「观望」同屏矛盾（实测 5 股 220 天出现 105 次）。
-  const watch = (!(nearTop && rNow > 80) || breakout) && (trend === "up" || trend === "shake_up");
-  // build/add 必须排除 breakdown：破位后价格贴近 120 日底部（nearBottom 天然成立），
-  // 否则决策「分批建仓/加仓」与信号卡「已跌破关键支撑，减仓回避」及结论「应止损离场」同屏矛盾
-  //（与 reduce 兜底、add 排除 reduce 同一「决策-信号同向」原则）。
-  const build = !breakdown && (nearBottom || (trend === "up" && price <= ma20[len - 1]! * 1.02)) && rNow < 75 && !nearTop;
-  const reduce = isReduce({ nearTop, rNow, macdCross, breakout, ma60Last, price, flowOut: f10.has && f10.sum < 0 });
-  // add 必须排除 reduce 条件（高位 / RSI超买 / 远离MA60+资金流出），
-  // 否则「可加仓」与「建议减仓」同时亮起，给用户矛盾信号。
-  // 短波量化：加仓带放宽到 MA20 偏离 5%、RSI<80（原 3%/75 过保守，主升浪回调 3-5% 是常态介入位）。
-  const add = !reduce && !breakdown && trend === "up" && Math.abs(price - ma20[len - 1]!) / ma20[len - 1]! < 0.05 && f5.sum > 0 && rNow < 80;
-  // 操作结论唯一取值：单链优先级，UI（决策标签 + 分析结论）一律读它，不再各自排序
-  let decision: AnalysisResult["decision"] =
-    reduce ? "reduce" : add ? "add" : build ? "build" : watch ? "watch" : "wait";
+  // 信号级联上下文（字段构造与 replaySignalStats 逐项一致；阈值全部封装在 decideSignal 内）
+  const sigCtx: SignalCascadeCtx = {
+    price, support, resistance,
+    nearTop, nearSup, nearRes, breakout, breakdown,
+    trend, rNow, macdCross, macdFresh, kdjCross, kOversold,
+    ma5: ma5Now, ma10: ma10Now, ma20: ma20_now,
+    belowMa5: price < ma5Now,
+    farAboveMa60,
+    redToday: shape.redToday, upperShadow: shape.upperShadow, lowerShadow: shape.lowerShadow,
+    volRatio, f5, f10,
+  };
+  const signal = applyIntradayOverride(decideSignal(sigCtx), intraday);
+  const sigLevel = signal.level;
+  const reboundBuy = reboundState(sigCtx).rebound && sigLevel === "buy";
+
+  // 操作决策由信号档位**单源派生**（旧实现 watch/build/add/reduce 各自独立判定，
+  // 反复出现 signal=buy 但 decision=watch 的镜像补丁；本处是唯一映射点）：
+  //   sell→reduce；buy→上升趋势贴近 MA20=add，其余=build；hold/watch→watch；wait→wait。
+  // 下跌趋势博反弹买点不给「加仓」（只能轻仓建仓 build）。
+  const canAdd =
+    sigLevel === "buy" &&
+    !breakdown && !reboundBuy &&
+    (trend === "up" || trend === "shake_up") &&
+    Math.abs(price - ma20_now) / ma20_now < 0.06 &&
+    rNow < 78;
+  const decision: AnalysisResult["decision"] =
+    sigLevel === "sell" ? "reduce"
+    : sigLevel === "buy" ? (canAdd ? "add" : "build")
+    : sigLevel === "wait" ? "wait"
+    : "watch";
+
+  // ---------------- 买入 / 卖出区间（多锚点，短波挂单必须「够得着」） ----------------
+  // 旧实现把区间锚死在 swing 支撑（20-30 日前的拐点）±ATR，实测天孚上沿 -3.5%、
+  // 牧原 -10.9%、金山办公直接 NaN——强势股日常运行在支撑上方 5~10%，挂单根本无法成交。
+  // 新口径：
+  //   · 买入上沿取「最贴近现价的有效回踩锚」（MA5 / 支撑+0.6ATR），保证回调 1~3% 即触及；
+  //   · 买入下沿取「最高的支撑锚」（MA20、MA10、swing 支撑），并用 4%~12%（随 ATR 缩放）
+  //     的最大回撤深度兜底，杜绝深不见底的区间；
+  //   · 卖出区间由引擎直接输出（破位=现价~原支撑回抽位；高位/近压=现价~压力×1.02），
+  //     UI 不再临时拼卖出带。
+  let buyLow = NaN;
+  let buyHigh = NaN;
+  let sellLow = NaN;
+  let sellHigh = NaN;
+  const r3 = (x: number) => +x.toFixed(3);
+  if (!breakdown && sigLevel !== "sell") {
+    const minW = Math.max(price * 0.004, atrNow * 0.25);
+    const upAnchors: number[] = [support + atrNow * 0.6];
+    if (trend === "up") { upAnchors.push(ma5Now * 0.995, price - atrNow * 0.5); }
+    else if (trend === "shake_up") { upAnchors.push(ma5Now * 0.99, price - atrNow * 0.6); }
+    else { upAnchors.push(price - atrNow * 0.5); }
+    let u = Math.max(...upAnchors.filter((x) => x < price * 0.999));
+    u = Math.min(u, resistance * 0.995, price * 0.998);
+    const lowAnchors = [
+      ma20_now - atrNow * 0.3,
+      ma10Now - atrNow * 0.15,
+      support - atrNow * 0.25,
+    ];
+    let l = Math.max(...lowAnchors);
+    const maxDrop = Math.min(0.12, Math.max(0.04, (atrPct / 100) * 1.5));
+    l = Math.max(l, price * (1 - maxDrop));
+    if (l > u - minW) l = u - minW;
+    if (u - l >= minW * 0.5 && u < price && l > 0) {
+      buyLow = r3(l);
+      buyHigh = r3(u);
+    }
+  }
+  if (sigLevel === "sell") {
+    if (breakdown) {
+      // 破位：现价即可减/止损，反弹目标=被跌破的支撑（角色已转为压力）
+      sellLow = r3(price);
+      sellHigh = r3(Math.max(support * 1.005, price * 1.005));
+    } else {
+      const l0 = nearRes ? price : Math.max(price, resistance * 0.97);
+      const h0 = Math.min(resistance * 1.02, price + atrNow * 1.5);
+      if (h0 > l0) {
+        sellLow = r3(l0);
+        sellHigh = r3(h0);
+      } else {
+        sellLow = r3(price);
+        sellHigh = r3(price + Math.max(atrNow, price * 0.01));
+      }
+    }
+  }
 
   const risks: string[] = [];
   if (nearTop) risks.push(`当前价格接近阶段高位（约 ${topZone.toFixed(3)}），短期回调风险较大。`);
@@ -1407,29 +1678,18 @@ export function analyze(
   if (bias24 > 20) risks.push(`中期乖离率 BIAS(24) 达 ${bias24.toFixed(2)}%，价格已严重偏离中长期均线，追高风险极大。`);
   // 布林带挤压：波动率压缩到极限，「即将变盘」本身是独立的风险（方向不明朗）
   if (bollSqueeze) risks.push("布林带进入极度收敛区间，波动率将向中枢回归，近期可能出现方向性选择，注意变盘风险。");
-  if (reduce && risks.length === 0) risks.push("综合指标偏谨慎，建议以观望为主。");
+  if (sigLevel === "sell" && risks.length === 0) risks.push("技术形态转弱，注意控制仓位。");
   if (risks.length === 0) risks.push("暂无显著风险信号，但仍需关注量能与大盘环境。");
 
   // 注：原先的顶部横幅（banner）已整体移除——它与「直白买卖信号」是两套独立判定，
-  // 会同时出现「横幅建议观望 + 信号卡买点」的自相矛盾结论（如 trend=震荡偏弱 且
-  // 临近支撑+资金净流入）。操作建议一律由信号卡单点给出；横幅原本承载的独占信息
-  // 已全部落在风险提示里：高位风险见 nearTop 行、布林收敛见 bollSqueeze 行、
-  // 资讯偏空见下方 news.score 行。
+  // 会同时出现「横幅建议观望 + 信号卡买点」的自相矛盾结论。操作建议一律由信号卡单点
+  // 给出；横幅原本承载的独占信息已全部落在风险提示里。
 
-  // 走势预测（基于当前位置 + 趋势 + 量能的形态判断，非确定性预测）
-  let sigType = "区间震荡";
-  if (breakout) sigType = "突破上攻";
-  else if (breakdown) sigType = "破位下行";
-  else if (nearRes) sigType = "承压回落";
-  else if (nearSup) sigType = "企稳反弹";
-  else if (trend === "up") sigType = "震荡上行";
-  else if (trend === "down") sigType = "震荡下行";
+  // 走势预测：由最终信号档位（含涨跌停覆盖）单源派生，sigType 与 signal 永不同向矛盾
+  const sigType = deriveSigType(sigLevel, sigCtx, intraday);
 
-  // ---------------- 今日盘中走势（A 股特有：涨停/跌停/炸板实时反映当日异动）----------------
-  // 检测前移（信号覆盖与评分微调都依赖它）：「今日」异动判定必须基于日 K——周/月视图下
-  // 第一参 klines 是周线/月线，拿「本周/本月涨跌幅」判「今日封涨停/大涨」会系统性误报
-  // （周涨 6% 很常见、月线碰涨停价纯属巧合）。与换手率/胜率回放同口径：恒用 dailyKlines。
-  const intraday = detectLimitMove(dailyKlines && dailyKlines.length >= 2 ? dailyKlines : klines, stockCode);
+  // ---------------- 今日盘中走势标签（A 股特有：涨停/跌停/炸板实时反映当日异动）----------------
+  // intraday 已前移至信号级联之前计算；恒用日 K 判定，周/月视图不会误报「今日封涨停」。
   let moveLabel = "";
   if (intraday.isLimitUp) moveLabel = "今日封涨停";
   else if (intraday.isBrokenLimitUp) moveLabel = "今日炸板";
@@ -1459,45 +1719,8 @@ export function analyze(
     score = Math.max(5, Math.min(95, score + intradayDelta));
     addReason(intradayReasonLabel, intradayDelta);
   }
-
-  // ---------------- 直白买卖信号（5 档）----------------
-  // 决策级联抽成纯函数 decideSignal、涨跌停覆盖抽成 applyIntradayOverride（均与历史胜率
-  // 回放 replaySignalStats 共用同一份代码，保证胜率统计口径与实时信号完全同源）：
-  // 整合突破/跌破 + 临近关键位 + 趋势/动能/资金 + 盘中异动，给普通人一句话买卖参考。
-  // 注意：这是技术形态信号，带「确认条件」，非保证、非投资建议。
-  const signal = applyIntradayOverride(
-    decideSignal({
-      price, support, resistance, topZone, nearTop, nearSup, nearRes,
-      breakout, breakdown, reduce, build, add, trend, rNow, macdCross, f5, f10,
-    }),
-    intraday
-  );
-
-  // 盘中异动与操作决策对齐：涨跌停/炸板是当日最强信号，决策标签不得与之相悖
-  // （封涨停仍显示「建议减仓」、封跌停/炸板却显示「可加仓/建仓/关注」都会误导）。
-  // 封涨停：reduce → watch（可持有观察，不催卖也不追高）；封跌停/炸板：偏多决策一律压回 reduce。
-  // 跌停开板：信号为「关注」，催加仓/建仓与恐慌未消的现状不符，压回 watch。
-  if (intraday.isLimitUp && decision === "reduce") decision = "watch";
-  else if ((intraday.isLimitDown || intraday.isBrokenLimitUp) && (decision === "add" || decision === "build" || decision === "watch")) decision = "reduce";
-  else if (intraday.isBrokenLimitDown && (decision === "add" || decision === "build")) decision = "watch";
-
-  // 决策-信号同向兜底（镜像）：信号卡为「买点」时，决策不得回落为「观望为主」——
-  // 否则「买点·可逢低关注」与决策「观望为主」同屏矛盾（实测多空僵持/下跌趋势中
-  // 临近支撑企稳时出现，5 股 220 天 27 次）。买点成立即至少「可关注」。
-  if (signal.level === "buy" && decision === "wait") decision = "watch";
-  // 同向兜底（镜像）：信号卡为「卖点」时决策至少「建议减仓」（震荡市近压走弱的
-  // nearRes 卖点会落在决策「观望为主」上——减仓建议与躺平观望并存，持仓者无所适从）。
-  if (signal.level === "sell" && decision === "wait") decision = "reduce";
-
-  // 决策-走势同向兜底：信号卡为「卖点」时，走势预测不得残留偏多措辞与「建议减仓」同屏打架
-  // （实证：紫金矿业 reduce 兜底 + 临近支撑 → 「卖点·高位风险积聚」+「企稳反弹」同屏矛盾；
-  // 拉高出货分支同理会出现「卖点」+「突破上攻」）。措辞保留位置维度事实：
-  // 突破后遭资金撤离/超买高位 → 冲高回落；临近支撑但高位风险压制反弹 → 反弹乏力。
-  // 必须置于涨跌停信号覆盖之后：封跌停/炸板把信号改写为「卖点」时同样生效。
-  if (signal.level === "sell") {
-    if (sigType === "突破上攻" || sigType === "震荡上行") sigType = "冲高回落";
-    else if (sigType === "企稳反弹") sigType = "反弹乏力";
-  }
+  // 注：signal / decision / sigType 均已在信号级联处单源派生（含涨跌停覆盖），
+  // 旧的盘中对齐补丁、买卖镜像补丁全部删除——三处不可能再互相打架。
 
   // 风险等级：综合技术评分、波动率(ATR%)、最大回撤与高位。
   // 必须后置到盘中涨跌停调分（封跌停 -10 / 封涨停 +10 等）之后计算，
@@ -1826,13 +2049,11 @@ export function analyze(
     stageText,
     score,
     riskLevel,
-    watch,
-    build,
-    add,
-    reduce,
     decision,
     buyLow,
     buyHigh,
+    sellLow,
+    sellHigh,
     risks,
     adx,
     pDI,

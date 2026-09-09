@@ -213,6 +213,29 @@ run("F. sweep 400 种子全局不变量", () => {
     const m = r.intradayMove;
     check(`F6 互斥 ${tag}`, !(m.isLimitUp && m.isLimitDown) && !(m.isLimitUp && m.isBrokenLimitUp) && !(m.isLimitDown && m.isBrokenLimitDown) && !(m.isLimitUp && m.isBrokenLimitDown) && !(m.isLimitDown && m.isBrokenLimitUp));
     check(`F7 数值有限 ${tag}`, Number.isFinite(r.support) && Number.isFinite(r.resistance) && r.support <= r.resistance, `sup=${r.support} res=${r.resistance}`);
+    // F8 买卖区间短波可执行性（本次审计核心）：
+    //   · 买入带有效时：上沿须低于现价（挂回调单）、距现价 ≤3%（够得着）、下沿不深于 -12%（不深不见底）；
+    //   · 卖出带有效时：下沿≤上沿、均为正、距现价不超过 +12%（不是远期压力位）；
+    //   · 卖出语境（sell/破位）买入带必须缺失，买入语境（buy/hold/watch）卖出带必须缺失（引擎双边互斥输出）。
+    const fin = (x: number) => Number.isFinite(x);
+    if (fin(r.buyLow) && fin(r.buyHigh)) {
+      check(`F8 买入带可触及 ${tag}`, r.buyHigh < r.price && r.price / r.buyHigh - 1 <= 0.03, `price=${r.price.toFixed(2)} hi=${r.buyHigh}`);
+      check(`F8 买入带不深 ${tag}`, r.buyLow >= r.price * 0.88 && r.buyLow <= r.buyHigh, `lo=${r.buyLow} hi=${r.buyHigh}`);
+    }
+    if (fin(r.sellLow) && fin(r.sellHigh)) {
+      check(`F8 卖出带合理 ${tag}`, r.sellLow > 0 && r.sellLow <= r.sellHigh && r.sellHigh <= r.price * 1.12, `lo=${r.sellLow} hi=${r.sellHigh} price=${r.price.toFixed(2)}`);
+    }
+    if (r.signal.level === "sell" || r.breakdown) {
+      check(`F9 卖点无买入带 ${tag}`, !fin(r.buyLow), `buyLow=${r.buyLow}`);
+    } else {
+      check(`F9 非卖点无卖出带 ${tag}`, !fin(r.sellLow), `sellLow=${r.sellLow}`);
+    }
+    // F10 走势预测与信号同向（单源派生不变量）：卖点不得配「突破上攻/企稳反弹/震荡上行」；
+    // 买点不得配「破位下行/承压回落/震荡下行/反弹乏力」。
+    const bullSig = ["突破上攻", "企稳反弹", "震荡上行", "超跌反弹"];
+    const bearSig = ["破位下行", "承压回落", "震荡下行", "反弹乏力", "冲高回落"];
+    if (r.signal.level === "sell") check(`F10 卖点走势非偏多 ${tag}`, !bullSig.includes(r.sigType), `sigType=${r.sigType}`);
+    if (r.signal.level === "buy") check(`F10 买点走势非偏空 ${tag}`, !bearSig.includes(r.sigType), `sigType=${r.sigType}`);
     n++;
   }
   console.log(`    sweep 完成样本数: ${n}/400`);

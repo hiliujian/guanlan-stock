@@ -870,150 +870,117 @@ const newsDelta = computed(() =>
 );
 
 // ---------------- 分析结论（综合合成） ----------------
-// 结论文案：短句直给——「定位 + 怎么做 + 价位应对 + 逆风提示」。
-// 各指标明细已由上方面板呈现，结论不复读数值细节（避免长文劝退）；
-// 但防误判关键信息必须收束进结论：技术面总分与走势预测、已破位/已突破的
-// 既成事实、资金背离、极端超买超卖、量价背离。
+// 结论文案：短句直给，最多四句——「定性 → 操作 → 既成事实/关键背离 → 免责」。
+// 各指标明细已由上方面板呈现，结论不复读数值、不堆砌风险（旧版常达 7~8 句，劝退新手）；
+// 防误判信息按优先级只保留最重要的一条，避免多条警示互相稀释。
 const conclusion = computed(() => {
   const r = a.value;
   const parts: string[] = [];
-  parts.push(`${r.trendText}（${r.strength}），处于「${r.stageText}」阶段，${r.riskLevel}风险，技术面评分 ${r.score} 分，走势预测「${r.sigType}」。`);
-  // 操作建议：与上方「决策标签」同读 r.decision（单一数据源、同一优先级），不再各排一遍 if/else；
-  // 措辞按持仓状态双视角：空仓=介入导向（回避/买入/建仓），持仓=仓位管理导向（减仓/加仓/补仓）
+  parts.push(`${r.trendText}（${r.strength}），${r.stageText}，${r.riskLevel}风险，技术面 ${r.score} 分，走势「${r.sigType}」。`);
+  // 操作建议：与决策标签同读 r.decision（单源），措辞按持仓状态双视角
   const advice: Record<string, string> = holding.value
     ? {
-        reduce: "信号偏空，建议逢高减仓、严控仓位。",
-        add: "趋势与资金配合良好，可于回调分批加仓。",
-        build: "处于相对低位且风险可控，可于支撑附近小幅补仓。",
-        watch: "趋势尚可，持有观察，等待更优操作时点。",
-        wait: "多空信号交织，建议持有观望，等方向明朗。",
+        reduce: "建议逢高减仓、控制仓位。",
+        add: "可在回调时分批加仓。",
+        build: "可在买入区间内小幅补仓。",
+        watch: "继续持有，等待更优时点。",
+        wait: "暂不加仓，等待方向明朗。",
       }
     : {
-        reduce: "信号偏空，建议回避，勿急于介入。",
-        add: "趋势与资金配合良好，可于回调分批买入。",
-        build: "处于相对低位且风险可控，可于支撑附近分批建仓。",
-        watch: "可纳入自选关注，等待更优介入时点。",
-        wait: "多空信号交织，建议观望，等方向明朗。",
+        reduce: "建议回避，暂不介入。",
+        add: "可在回调时分批买入。",
+        build: "可在买入区间内分批建仓。",
+        watch: "加入关注，等待回调低吸。",
+        wait: "观望为主，等待方向明朗。",
       };
   parts.push(advice[r.decision] ?? advice.wait);
-  // 价位应对必须区分「既成事实」与「待验证假设」：已破位仍念通用止损提示会误导；
-  // 措辞按持仓状态：持仓谈「止损离场」，空仓谈「回避/勿接飞刀」（未持仓不存在止损动作）
+  // 仅「既成事实」点价位：常规支撑/压力已在下方价位面板展示，结论不复读
   if (r.breakdown) {
     parts.push(
       holding.value
-        ? `支撑 ${r.support.toFixed(3)} 已被有效跌破，原支撑或转为压力，反弹无力应止损离场。`
-        : `支撑 ${r.support.toFixed(3)} 已被有效跌破，破位下行，建议回避、勿急于接回。`
+        ? `支撑 ${r.support.toFixed(3)} 已有效跌破，反弹无力应止损。`
+        : `支撑 ${r.support.toFixed(3)} 已有效跌破，建议回避。`
     );
   } else if (r.breakout) {
     parts.push(
       holding.value
-        ? `压力 ${r.resistance.toFixed(3)} 已有效突破，回踩不破可顺势持有或加仓。`
+        ? `压力 ${r.resistance.toFixed(3)} 已有效突破，回踩不破可持有或加仓。`
         : `压力 ${r.resistance.toFixed(3)} 已有效突破，回踩不破可顺势跟进。`
     );
-  } else {
-    parts.push(
-      holding.value
-        ? `支撑 ${r.support.toFixed(3)}、压力 ${r.resistance.toFixed(3)}：有效跌破支撑应止损离场，放量突破压力可顺势加仓。`
-        : `支撑 ${r.support.toFixed(3)}、压力 ${r.resistance.toFixed(3)}：有效跌破支撑应回避，放量突破压力可顺势跟进。`
-    );
   }
-  // 资金背离防误判：给偏多建议但主力明显净流出（analyzer 同口径 ≤ -0.5 亿）时必须点破
-  if ((r.add || r.build || r.watch) && r.f5.has && r.f5.sum <= -0.5) {
-    parts.push(
-      holding.value
-        ? `但近5日主力资金净流出 ${Math.abs(r.f5.sum).toFixed(2)} 亿，加仓宜谨慎、严控仓位。`
-        : `但近5日主力资金净流出 ${Math.abs(r.f5.sum).toFixed(2)} 亿，介入宜轻仓试探、严控仓位。`
-    );
-  }
-  // 极端超买/超卖属结论级状态（追高/抄底风险），仅极端时提示；RSI 无效数据不参与。
-  // 措辞不带「短期/中期」前缀：触发条件含 RSI(12)（短期口径）与 BIAS(24)（中期口径，
-  // 研判格/风险提示均称「中期超买」），带周期前缀会与其中一方同屏相悖
-  if (r.rsiValid && (r.rNow > 78 || r.bias24 > 20)) parts.push("超买明显，追高需防回撤。");
-  else if (r.rsiValid && !r.reduce && (r.rNow < 22 || r.bias24 < -20)) parts.push("超卖明显，随时可能出现技术性反弹。");
-  // 量价背离属防误判关键信号：顶背离警示动能衰减、底背离提示下跌动能减弱
-  if (r.divergence === "top") parts.push("量价顶背离，上涨动能衰减，追高需防冲高回落。");
-  else if (r.divergence === "bottom") parts.push("量价底背离，下跌动能减弱，关注企稳信号。");
-  // 指数数据缺失时（analyzer 占位 marketEnv：positionPct=0、alignScore=0）跳过本段，
-  // 避免把「无数据」误报成「市场环境偏弱」误导用户；该分支内 positionAdvice 必为真实文案。
+  // 防误判提示：按优先级只取一条（资金背离 > 顶背离 > 超买 > 超卖 > 大盘逆风 > 资讯）
+  const lvl = r.signal.level;
   const env = r.marketEnv;
-  if (env && env.indexTrend !== "暂无数据") {
-    const mktAdverse = (env.alignScore || 0) < 0;
-    const sectorAdverse = (env.sectorAlignScore || 0) < 0;
-    const defensive = (env.positionPct || 0) <= 30;
-    if (mktAdverse || sectorAdverse || defensive) {
-      const what = mktAdverse ? "大盘逆风" : sectorAdverse ? "行业逆风" : "市场环境偏弱";
-      parts.push(`${what}，${env.positionAdvice}。`);
-    }
-  }
-  if (ns.value && newsDelta.value !== 0) {
-    parts.push(`近3日资讯情绪${newsDelta.value > 0 ? "偏多" : "偏空"}（评分${newsDelta.value > 0 ? "+" : ""}${newsDelta.value} 分）。`);
+  const envOk = env && env.indexTrend !== "暂无数据";
+  const mktAdverse = envOk && (env.alignScore || 0) < 0;
+  const sectorAdverse = envOk && (env.sectorAlignScore || 0) < 0;
+  const defensive = envOk && (env.positionPct || 0) <= 30;
+  if (lvl !== "sell" && r.f5.has && r.f5.sum <= -0.5) {
+    parts.push(`但近5日主力净流出 ${Math.abs(r.f5.sum).toFixed(2)} 亿，宜轻仓谨慎。`);
+  } else if (r.divergence === "top") {
+    parts.push("量价顶背离，追高需防冲高回落。");
+  } else if (r.rsiValid && (r.rNow > 78 || r.bias24 > 20)) {
+    parts.push("短线超买，追高需防回撤。");
+  } else if (lvl === "buy" && r.rsiValid && (r.rNow < 22 || r.bias24 < -20)) {
+    parts.push("短线超卖，反弹需放量确认。");
+  } else if (mktAdverse || sectorAdverse || defensive) {
+    const what = mktAdverse ? "大盘逆风" : sectorAdverse ? "行业逆风" : "市场环境偏弱";
+    parts.push(`${what}，${env.positionAdvice}。`);
+  } else if (ns.value && newsDelta.value !== 0) {
+    parts.push(`近3日资讯情绪${newsDelta.value > 0 ? "偏多" : "偏空"}。`);
   }
   parts.push("以上为技术面参考，非投资建议。");
   return parts.join("");
 });
 
-// 「操作建议」行：标签统一为「操作建议」，右侧格式统一为「区间（说明）」——
-//   · 有可执行价位带 → `${区间}（${说明}）`，如 17.159 ~ 17.943（回调至支撑分批买入）；
-//     无明确价位带 → 纯文字说明；
-//   · 按信号方向 + 持仓状态适配内容：
-//     空仓：破位→观望等待企稳（未持仓不谈止损）；卖出语境→不追高、等企稳；偏多→买入区间；
-//     持仓：破位→止损（反弹至原支撑转压力位分批止损，与摘要「止损离场」同口径）；
-//     卖出语境→减仓带（现价 ~ 压力位×1.02，逢反弹分批减仓）；偏多→持有/补仓（不再给买入区间）；
-//   · 观望（wait）→ 纯文字「方向不明朗，观望等待」——决策标签「观望为主」与建议行同向，
-//     杜绝「卖出语境残留买入区间」「观望却给减仓区间」的同屏矛盾。
-// analyzer 的 buyLow/buyHigh 仅在 nearBuyZone 时有效；区间价格统一 3 位小数，
-// 与 support/resistance（toFixed(3)）同口径，不再混用原始浮点。
+// 「操作建议」行：区间由引擎双边输出（buyLow/buyHigh + sellLow/sellHigh），
+// UI 不再临时拼卖出带（旧版现价~压力×1.02 与引擎口径漂移，且恒为现价上方，破位时失真）。
+//   · 卖点语境：持仓=减仓/止损带；空仓=不参与（不谈止损）；
+//   · 买点/持有语境：买入区间 + 动作说明；观望=纯文字。
 const buyRow = computed<{ text: string; active: boolean }>(() => {
   const r = a.value;
   const f3 = (x: number) => x.toFixed(3);
-  const buyValid = r.buyLow != null && !isNaN(r.buyLow) && !isNaN(r.buyHigh);
-  // 决策链首位的 reduce 必然映射 decision==="reduce"，不重复判 r.reduce
-  const sellSignal = r.signal.level === "sell" || r.decision === "reduce" || r.breakdown;
-  if (sellSignal) {
+  const num = (x: number) => x != null && !isNaN(x);
+  const buyValid = num(r.buyLow) && num(r.buyHigh);
+  const sellValid = num(r.sellLow) && num(r.sellHigh);
+  if (r.signal.level === "sell" || r.breakdown) {
     if (holding.value) {
-      // 破位是「既成事实」：术语用「止损」而非「减仓」，反弹目标=原支撑（有效跌破后角色转为压力）
       if (r.breakdown) {
-        const res = r.resistance > 0 ? f3(r.resistance) : "";
-        return {
-          text: res ? `${res}（反弹至此原支撑转压力位分批止损）` : "反弹无力应止损离场",
-          active: !!res,
-        };
+        return sellValid
+          ? { text: `${f3(r.sellLow)} ~ ${f3(r.sellHigh)}（反弹至原支撑附近分批止损）`, active: true }
+          : { text: "反弹无力应止损离场", active: false };
       }
-      // 逢高减仓：现价 ~ 压力位上方 2% 即减仓带；压力价无效时仅提示逢反弹减仓
-      const hi = r.resistance > 0 ? +(r.resistance * 1.02).toFixed(3) : 0;
-      if (hi > r.price) return { text: `${f3(r.price)} ~ ${f3(hi)}（反弹至压力带分批减仓）`, active: true };
-      return { text: "逢反弹至压力带附近分批减仓", active: true };
+      return sellValid
+        ? { text: `${f3(r.sellLow)} ~ ${f3(r.sellHigh)}（逢反弹分批减仓）`, active: true }
+        : { text: "逢反弹分批减仓", active: false };
     }
-    // 空仓视角：卖点语境=不介入，不谈止损/减仓
-    if (r.breakdown) return { text: "破位下行，观望等待企稳", active: false };
-    return { text: "偏空运行，不追高，等待企稳信号", active: false };
+    return { text: r.breakdown ? "破位下行，等待企稳" : "偏空运行，暂不参与", active: false };
   }
   if (r.decision === "wait") {
-    return { text: "方向不明朗，观望等待", active: false };
+    return { text: "方向未明，观望等待", active: false };
   }
-  if (holding.value) {
-    // 已持仓：偏多语境=继续持有，回调至支撑可小幅补仓（不给买入区间，避免误导重复建仓）
-    if (buyValid) return { text: `${f3(r.buyLow)} ~ ${f3(r.buyHigh)}（回调至支撑可小幅补仓）`, active: true };
-    return { text: "按趋势跟踪持有，回调不破支撑不加不减", active: false };
+  if (!buyValid) {
+    return holding.value
+      ? { text: "趋势跟踪持有，回调企稳再补仓", active: false }
+      : { text: "等待回调至均线附近低吸", active: false };
   }
-  // 空仓偏多语境：维持买入区间逻辑（analyzer 已对「远离支撑」置 NaN）
-  if (!buyValid) return { text: "远离支撑，按趋势跟踪，不追高", active: false };
-  return { text: `${f3(r.buyLow)} ~ ${f3(r.buyHigh)}（回调至支撑分批买入）`, active: true };
+  const note = holding.value ? "回调至区间可小幅补仓" : "回调至区间分批买入";
+  return { text: `${f3(r.buyLow)} ~ ${f3(r.buyHigh)}（${note}）`, active: true };
 });
 // 关键价位状态着色：三个数值默认统一墨色，出现状态时数值本身换语义色
 // （已突破/买入区间成立=红·机会，已跌破=绿·风险，临近=橙·无方向警示），不再是「淡黑没意义」
 const supPriceCls = computed(() => (a.value.breakdown ? "lv-st-bad" : a.value.nearSup ? "lv-st-warn" : ""));
 const resPriceCls = computed(() => (a.value.breakout ? "lv-st-ok" : a.value.nearRes ? "lv-st-warn" : ""));
 
-// 决策标签唯一视图：由 a.decision 单源派生（reduce→add→build→watch→wait）。
-// 措辞按持仓状态双视角（与「分析结论」advice 同一套口径）：空仓=介入导向（考虑建仓/可关注），
-// 持仓=仓位管理导向（可补仓/持有观察/持有观望）——已持仓不存在「建仓/关注」语境；
-// reduce「建议减仓」与 add「可加仓」两态下动作一致，共用一份。
+// 决策标签唯一视图：由 a.decision 单源派生（sell→reduce；buy→add/build；其余 watch/wait）。
+// 措辞按持仓状态双视角（与「分析结论」advice 同一套口径）：空仓=介入导向（考虑建仓/可关注/回避），
+// 持仓=仓位管理导向（可补仓/持有观察/持有观望）——已持仓不存在「建仓/关注」语境，
+// 空仓不存在「减仓」语境（无仓可减，卖点=回避）。
 const decisionView = computed(() => {
   const d = a.value.decision;
   const text = holding.value
     ? { reduce: "建议减仓", add: "可加仓", build: "可补仓", watch: "持有观察", wait: "持有观望" }
-    : { reduce: "建议减仓", add: "可加仓", build: "考虑建仓", watch: "可关注", wait: "观望为主" };
+    : { reduce: "建议回避", add: "可买入", build: "考虑建仓", watch: "可关注", wait: "观望为主" };
   const shapeMap: Record<string, { cls: string; icon: string }> = {
     reduce: { cls: "warn", icon: "arrow-down" },
     add: { cls: "ok", icon: "plus" },
