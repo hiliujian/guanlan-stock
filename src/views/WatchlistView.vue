@@ -90,16 +90,17 @@
           </view>
           <view v-else class="wl-wrap">
             <!-- 持仓表格完全复用自选表格体系（.wl-grid/.wl-thead/.tr/.td/.c-name/.act-chip），
-                 仅列集不同：名称/代码 · 操作 · 现价 · 成本 · 收益率 · 盈亏 -->
+                 仅列集不同：名称/代码 · 操作 · 收益率 · 盈亏 · 成本 · 现价 · 数量 -->
             <scroll-view class="wl-grid" :scroll-x="!dragKey" :scroll-y="!dragKey">
               <view class="wl-rows">
               <view class="wl-thead">
                 <view class="th c-name"></view>
                 <view v-if="posCols.sig" class="th c-sig"><text class="th-label">操作</text></view>
-                <view v-if="posCols.price" class="th c-price"><text class="th-label">现价</text></view>
-                <view v-if="posCols.cost" class="th c-cost"><text class="th-label">成本</text></view>
                 <view v-if="posCols.pct" class="th c-pct"><text class="th-label">收益率</text></view>
                 <view v-if="posCols.pnl" class="th c-pnl"><text class="th-label">盈亏</text></view>
+                <view v-if="posCols.cost" class="th c-cost"><text class="th-label">成本</text></view>
+                <view v-if="posCols.price" class="th c-price"><text class="th-label">现价</text></view>
+                <view v-if="posCols.qty" class="th c-qty"><text class="th-label">数量</text></view>
               </view>
               <view class="wl-body">
               <view
@@ -147,19 +148,22 @@
                 <view v-if="posCols.sig" class="td c-sig">
                   <view :class="['act-chip', p.actCls]"><text>{{ p.actText }}</text></view>
                 </view>
-                <!-- 现价：中性展示，不着色 —— 着色语义留给「收益率/盈亏」（持仓维度），
-                     现价本身与持仓无关，按当日涨跌染色反而与相邻成本列对照困难 -->
-                <view v-if="posCols.price" class="td c-price">
-                  <text class="st-num">{{ p.price ? fmtPrice(p.price) : '--' }}</text>
-                </view>
-                <view v-if="posCols.cost" class="td c-cost">
-                  <text class="st-num">{{ fmtPrice(p.cost) }}</text>
-                </view>
                 <view v-if="posCols.pct" class="td c-pct">
                   <text class="st-num" :class="stTrend(p.pnlPct)">{{ p.price ? fmtPct(p.pnlPct) : '--' }}</text>
                 </view>
                 <view v-if="posCols.pnl" class="td c-pnl">
                   <text class="st-num" :class="stTrend(p.pnl)">{{ p.price ? fmtSigned(p.pnl) : '--' }}</text>
+                </view>
+                <view v-if="posCols.cost" class="td c-cost">
+                  <text class="st-num">{{ fmtPrice(p.cost) }}</text>
+                </view>
+                <!-- 现价：中性展示，不着色 —— 着色语义留给「收益率/盈亏」（持仓维度），
+                     现价本身与持仓无关，按当日涨跌染色反而与相邻成本列对照困难 -->
+                <view v-if="posCols.price" class="td c-price">
+                  <text class="st-num">{{ p.price ? fmtPrice(p.price) : '--' }}</text>
+                </view>
+                <view v-if="posCols.qty" class="td c-qty">
+                  <text class="st-num">{{ p.qty ? p.qty.toLocaleString("en-US") : '--' }}</text>
                 </view>
               </view>
               </view>
@@ -1421,17 +1425,18 @@ function toggleCol(k: ColKey) {
   } catch (_) {}
 }
 // ===== 持仓视图列显隐：本地持久化（wl_pos_cols），默认全显；与自选「显示列」共用同一面板 =====
-type PosColKey = "sig" | "price" | "pct" | "pnl" | "cost";
+type PosColKey = "sig" | "pct" | "pnl" | "cost" | "price" | "qty";
 interface ColDef { key: string; label: string }
 const POS_COLS_KEY = "wl_pos_cols";
 const posColDefs: ColDef[] = [
   { key: "sig", label: "操作" },
-  { key: "price", label: "现价" },
-  { key: "cost", label: "成本" },
   { key: "pct", label: "收益率" },
   { key: "pnl", label: "盈亏" },
+  { key: "cost", label: "成本" },
+  { key: "price", label: "现价" },
+  { key: "qty", label: "数量" },
 ];
-const posCols = reactive<Record<PosColKey, boolean>>({ sig: true, price: true, pct: true, pnl: true, cost: true });
+const posCols = reactive<Record<PosColKey, boolean>>({ sig: true, pct: true, pnl: true, cost: true, price: true, qty: true });
 function loadPosCols() {
   try {
     const saved = uni.getStorageSync(POS_COLS_KEY);
@@ -2323,10 +2328,11 @@ function removeLp() {
 .c-open { width: 150rpx; }
 .c-amp  { width: 150rpx; }
 .c-amt  { width: 200rpx; }
-/* 持仓表格复用自选表格体系，新增三列（信号/盈亏/成本）沿用 150rpx 等宽规范 */
+/* 持仓表格复用自选表格体系，新增列（操作/收益率/盈亏/成本/现价/数量）沿用 150rpx 等宽规范 */
 .c-sig  { width: 150rpx; }
 .c-pnl  { width: 150rpx; }
 .c-cost { width: 150rpx; }
+.c-qty  { width: 150rpx; }
 /* 名称列内部 */
 .t-block {
   display: flex;
@@ -2811,7 +2817,6 @@ function removeLp() {
   padding: 0 14rpx;
   border-radius: 8rpx;
   font-size: var(--font-sm);
-  font-weight: 500;
   line-height: 1;
   white-space: nowrap;
   background: var(--card-2);
