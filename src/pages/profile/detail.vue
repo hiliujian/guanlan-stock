@@ -153,19 +153,27 @@
         </view>
       </view>
 
-      <!-- TA 的动态（最多 5 条，含发布时间 + 内容摘要；查看更多 → 社区该用户全部帖子） -->
+      <!-- TA 的动态：帖子 + 持仓操作事件（建仓/加仓/减仓/清仓）合并时间线，按时间倒序取前 8 条；
+           事件行点击 → 行情页查看该股；查看更多 → 社区该用户全部帖子 -->
       <view class="dp-section">
         <text class="dp-label">TA 的动态</text>
         <view v-if="recentLoading" class="dp-wl-loading"><view class="cl-spin" /></view>
-        <view v-else-if="recentPosts.length === 0" class="dp-wl-empty">暂无动态</view>
+        <view v-else-if="activityFeed.length === 0" class="dp-wl-empty">暂无动态</view>
         <view v-else class="dp-posts">
           <view
-            v-for="p in recentPosts"
-            :key="p.id"
+            v-for="(a, i) in activityFeed"
+            :key="a.type + '-' + i"
             class="dp-post-row"
+            :class="{ tappable: a.type === 'event' }"
+            @click="a.type === 'event' && openEventStock(a.ev!)"
           >
-            <text class="dp-post-time">{{ formatRelative(p.createdAt) }}</text>
-            <text class="dp-post-sum truncate">{{ postSummary(p) }}</text>
+            <text class="dp-post-time">{{ formatRelative(a.time) }}</text>
+            <view v-if="a.type === 'event' && a.ev" class="dp-ev">
+              <text :class="['dp-ev-tag', evCls(a.ev.kind)]">{{ evLabel(a.ev.kind) }}</text>
+              <text class="dp-ev-name truncate">{{ a.ev.name }}</text>
+              <text class="dp-ev-shares">{{ fmtShareNum(a.ev.shares) }}股</text>
+            </view>
+            <text v-else class="dp-post-sum truncate">{{ postSummary(a.post!) }}</text>
           </view>
           <view class="dp-posts-more" hover-class="dp-btn-hover" role="button" @click="goUserPosts">
             <text>查看更多</text>
@@ -358,8 +366,10 @@ async function loadProfile() {
     // 权限判定：本人或对方公开 → 拉取自选股（前端控制 + 后端 RPC 再校验一次）
     if (profile.value.public_watchlist === true || isSelf.value) {
       loadWatchlist();
+      loadHoldingEvents(); // 持仓操作事件可见性与自选/持仓列表同口径（RPC 内再校验一次）
     } else {
       watchlist.value = [];
+      holdEvents.value = [];
     }
     // 拉取 TA 的最新动态（最多 5 条），与自选股相互独立
     loadRecentPosts();
@@ -409,6 +419,80 @@ async function loadWatchlist() {
   } finally {
     watchlistLoading.value = false;
   }
+}
+
+// —— TA 的持仓操作事件（建仓/加仓/减仓/清仓）：与帖子合并为动态时间线 ——
+type EvKind = "open" | "add" | "reduce" | "close";
+interface HoldEvent {
+  kind: EvKind;
+  code: string;
+  name: string;
+  shares: number;
+  createdAt: number;
+}
+const holdEvents = ref<HoldEvent[]>([]);
+
+/** 拉取 TA 最近的持仓操作事件（经 get_user_holding_events RPC，
+ *  后端按 public_watchlist 裁决可见性，口径与自选/持仓列表一致；失败静默不影响帖子展示） */
+async function loadHoldingEvents() {
+  const sb = getSupabase();
+  if (!sb || !uid.value) return;
+  try {
+    const { data, error } = await sb.rpc("get_user_holding_events", {
+      p_target: uid.value,
+      p_limit: 10,
+    });
+    if (error || !data) return;
+    holdEvents.value = (data as any[]).map((d) => ({
+      kind: d.kind as EvKind,
+      code: d.code,
+      name: d.name || d.code,
+      shares: Number(d.shares) || 0,
+      createdAt: new Date(d.created_at).getTime(),
+    }));
+  } catch {
+    /* 事件拉取失败静默 */
+  }
+}
+
+/** 动态合并时间线：帖子 + 持仓事件按时间倒序取前 8 条 */
+interface ActivityItem {
+  time: number;
+  type: "post" | "event";
+  post?: CommunityPost;
+  ev?: HoldEvent;
+}
+const activityFeed = computed<ActivityItem[]>(() => {
+  const items: ActivityItem[] = [
+    ...recentPosts.value.map((p) => ({
+      time: new Date(p.createdAt).getTime(),
+      type: "post" as const,
+      post: p,
+    })),
+    ...holdEvents.value.map((e) => ({ time: e.createdAt, type: "event" as const, ev: e })),
+  ];
+  return items.sort((a, b) => b.time - a.time).slice(0, 8);
+});
+
+// 事件文案与着色：建仓/加仓=红（做多方向）、减仓/清仓=绿（离场方向），与全站涨红跌绿一致
+const EV_META: Record<EvKind, { label: string; cls: string }> = {
+  open: { label: "建仓", cls: "up" },
+  add: { label: "加仓", cls: "up" },
+  reduce: { label: "减仓", cls: "down" },
+  close: { label: "清仓", cls: "down" },
+};
+function evLabel(k: EvKind): string {
+  return EV_META[k]?.label || k;
+}
+function evCls(k: EvKind): string {
+  return EV_META[k]?.cls || "";
+}
+function openEventStock(e: HoldEvent) {
+  openInMarket(e.code, "auto");
+}
+/** 股数展示：整数千分位、非整数保留两位小数 */
+function fmtShareNum(n: number): string {
+  return Number.isInteger(n) ? n.toLocaleString("en-US") : n.toFixed(2);
 }
 
 /** 拉取 TA 的最新动态（最多 5 条）：走社区 listByUser 服务端按 user_id 过滤，
@@ -901,6 +985,44 @@ function goUserPosts() {
   min-width: 0;
   font-size: var(--font-md);
   color: var(--text);
+}
+/* 持仓操作事件行（建仓/加仓/减仓/清仓）：操作标签着色 + 股票名 + 股数，整行可点跳行情 */
+.dp-post-row.tappable {
+  cursor: pointer;
+}
+.dp-ev {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+.dp-ev-tag {
+  flex: none;
+  font-size: var(--font-xs);
+  padding: 2rpx 12rpx;
+  border-radius: 6rpx;
+  line-height: 1.4;
+}
+.dp-ev-tag.up {
+  color: var(--up);
+  background: rgba(239, 35, 42, 0.1);
+}
+.dp-ev-tag.down {
+  color: var(--down);
+  background: rgba(9, 176, 122, 0.12);
+}
+.dp-ev-name {
+  min-width: 0;
+  font-size: var(--font-sm);
+  color: var(--text);
+}
+.dp-ev-shares {
+  flex: none;
+  margin-left: auto;
+  font-size: var(--font-xs);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
 /* 「查看更多」入口：整行可点，与主色呼应 */
 .dp-posts-more {

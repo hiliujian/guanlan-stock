@@ -1131,3 +1131,69 @@ create policy "user_holdings_update_self" on public.user_holdings for update usi
 drop policy if exists "user_holdings_delete_self" on public.user_holdings;
 create policy "user_holdings_delete_self" on public.user_holdings for delete using (auth.uid() = user_id);
 
+-- 持仓操作事件表：由 user_holdings 触发器自动记录（建仓/加仓/减仓/清仓），供公开资料页「TA 的动态」展示
+create table if not exists public.holding_events (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  code       text not null,
+  name       text not null default '',
+  kind       text not null check (kind in ('open','add','reduce','close')),
+  shares     numeric not null default 0,
+  cost       numeric not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_holding_events_user on public.holding_events (user_id, created_at desc);
+alter table public.holding_events enable row level security;
+-- 不建 select policy：事件仅经下方 SECURITY DEFINER RPC 读取，可见性由 RPC 内部按 public_watchlist 裁决
+
+-- 触发器：持仓簿任何写入自动落一条操作事件
+--   INSERT→open(建仓)；shares 增加→add(加仓,记增量)；shares 减少→reduce(减仓,记减量)；DELETE→close(清仓)
+--   仅 shares 变化才记录（只改成本价不算操作）
+create or replace function public.trg_holding_events() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    insert into public.holding_events (user_id, code, name, kind, shares, cost)
+    values (new.user_id, new.code, new.name, 'open', new.shares, new.cost);
+    return new;
+  elsif tg_op = 'UPDATE' then
+    if new.shares > old.shares then
+      insert into public.holding_events (user_id, code, name, kind, shares, cost)
+      values (new.user_id, new.code, new.name, 'add', new.shares - old.shares, new.cost);
+    elsif new.shares < old.shares then
+      insert into public.holding_events (user_id, code, name, kind, shares, cost)
+      values (new.user_id, new.code, new.name, 'reduce', old.shares - new.shares, new.cost);
+    end if;
+    return new;
+  elsif tg_op = 'DELETE' then
+    insert into public.holding_events (user_id, code, name, kind, shares, cost)
+    values (old.user_id, old.code, old.name, 'close', old.shares, old.cost);
+    return old;
+  end if;
+  return null;
+end; $$;
+
+drop trigger if exists trg_user_holdings_events on public.user_holdings;
+create trigger trg_user_holdings_events
+after insert or update or delete on public.user_holdings
+for each row execute function public.trg_holding_events();
+
+-- 读取某人最近的持仓操作事件（本人或对方公开自选/持仓股时可见；口径与 get_user_watchlist 一致）
+drop function if exists public.get_user_holding_events(uuid, int);
+create or replace function public.get_user_holding_events(p_target uuid, p_limit int default 10)
+returns table (kind text, code text, name text, shares numeric, created_at timestamptz)
+language plpgsql security definer set search_path = public as $$
+begin
+  if p_target = auth.uid() or exists (
+    select 1 from public.profiles p
+    where p.id = p_target and coalesce(p.public_watchlist, true) = true
+  ) then
+    return query
+      select e.kind, e.code, e.name, e.shares, e.created_at
+      from public.holding_events e
+      where e.user_id = p_target
+      order by e.created_at desc
+      limit greatest(p_limit, 1);
+  end if;
+end; $$;
+grant execute on function public.get_user_holding_events(uuid, int) to authenticated;

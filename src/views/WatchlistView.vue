@@ -2328,8 +2328,11 @@ function removeLp() {
 .c-open { width: 150rpx; }
 .c-amp  { width: 150rpx; }
 .c-amt  { width: 200rpx; }
-/* 持仓表格复用自选表格体系，新增列（操作/收益率/盈亏/成本/现价/数量）沿用 150rpx 等宽规范 */
-.c-sig  { width: 150rpx; }
+/* 持仓表格复用自选表格体系，新增列（操作/收益率/盈亏/成本/现价/数量）沿用等宽规范；
+   操作列单独缩窄（120rpx）且表头/单元格居中——标签是短词胶囊，右对齐会显得偏右空旷 */
+.c-sig  { width: 120rpx; }
+.th.c-sig { justify-content: center; }
+.td.c-sig { align-items: center; }
 .c-pnl  { width: 150rpx; }
 .c-cost { width: 150rpx; }
 .c-qty  { width: 150rpx; }
