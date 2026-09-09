@@ -1,45 +1,57 @@
 <template>
   <!-- 人机验证弹窗（本地图形验证码，防登录爆破 / 验证码接口滥用）。
        用法：const captcha = ref(); await captcha.verify() → 通过 true / 取消 false。
+       壳样式与遮罩直接复用 global.css 的 .modal-* 弹窗家族（与「设置持仓」完全同款）；
+       teleport 到 body —— 避免被任何 transform/backdrop-filter 祖先改变定位基准。
        纯前端校验：验证码仅在本机生成与比对，用于抬高自动化脚本的批量攻击成本；
        真正的限流兜底仍由后端（Supabase Auth 自带限流）承担。 -->
-  <view v-if="visible" class="cap-mask" @touchmove.stop.prevent>
-    <view class="cap-card" @click.stop>
-      <text class="cap-title">人机验证</text>
-      <text class="cap-desc">请输入下图中的字符，完成验证后继续</text>
+  <teleport to="body">
+    <view v-if="visible" class="modal-mask" @click.self="cancel">
+      <view class="modal-card">
+        <view class="modal-head">
+          <text class="modal-title">人机验证</text>
+          <view class="modal-close" @click="cancel" role="button" aria-label="关闭">
+            <OutlineIcon type="close" :size="26" color="var(--text-3)" />
+          </view>
+        </view>
+        <text class="cap-desc">请输入下图中的字符，完成验证后继续</text>
 
-      <view class="cap-imgrow">
-        <!-- 图形验证码：本地随机生成（字符旋转 + 干扰线 + 噪点），点击可刷新 -->
-        <svg
-          viewBox="0 0 132 44"
-          class="cap-svg"
-          fill="none"
-          v-html="captchaSvg"
-          @click="regen"
-        />
-        <view class="cap-refresh flex-center" role="button" aria-label="换一张" @click="regen">
-          <OutlineIcon type="refresh" :size="30" color="var(--text-2)" />
+        <view class="modal-row">
+          <!-- 图形验证码：本地随机生成（字符旋转 + 干扰线 + 噪点），点击可刷新 -->
+          <svg
+            viewBox="0 0 132 44"
+            class="cap-svg"
+            fill="none"
+            v-html="captchaSvg"
+            @click="regen"
+          />
+          <view class="cap-refresh flex-center" role="button" aria-label="换一张" @click="regen">
+            <OutlineIcon type="refresh" :size="30" color="var(--text-2)" />
+          </view>
+        </view>
+
+        <view class="modal-row">
+          <text class="modal-k">验证码</text>
+          <input
+            v-model="input"
+            class="modal-in"
+            :class="{ err: inputErr }"
+            type="text"
+            maxlength="4"
+            placeholder="不区分大小写"
+            :focus="visible"
+            @confirm="confirm"
+          />
+        </view>
+        <text v-if="inputErr" class="cap-err">{{ inputErr }}</text>
+
+        <view class="modal-actions">
+          <view class="modal-btn ghost" @click="cancel" role="button">取消</view>
+          <view class="modal-btn ok" @click="confirm" role="button">验证</view>
         </view>
       </view>
-
-      <input
-        v-model="input"
-        class="cap-input"
-        :class="{ err: inputErr }"
-        type="text"
-        maxlength="4"
-        placeholder="输入验证码"
-        :focus="visible"
-        @confirm="confirm"
-      />
-      <text v-if="inputErr" class="cap-err">{{ inputErr }}</text>
-
-      <view class="cap-btns">
-        <view class="cap-btn ghost" role="button" @click="cancel">取消</view>
-        <view class="cap-btn primary" role="button" @click="confirm">验证</view>
-      </view>
     </view>
-  </view>
+  </teleport>
 </template>
 
 <script setup lang="ts">
@@ -125,44 +137,17 @@ defineExpose({ verify });
 </script>
 
 <style scoped>
-.cap-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 9999; /* 盖过 PeekSheet / 底栏等一切浮层 */
-  background: rgba(15, 23, 42, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.cap-card {
-  width: 560rpx;
-  background: var(--bg);
-  border-radius: var(--radius);
-  padding: 36rpx 32rpx 28rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 20rpx;
-}
-.cap-title {
-  font-size: var(--font-lg);
-  color: var(--text);
-  text-align: center;
-}
+/* 壳/标题/输入/按钮均复用 global.css .modal-*（与设置持仓同款），此处仅留验证码专属样式 */
 .cap-desc {
   font-size: var(--font-xs);
   color: var(--text-2);
   text-align: center;
 }
-.cap-imgrow {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-}
 .cap-svg {
   flex: 1;
   height: 88rpx;
-  border-radius: var(--radius-sm);
-  background: var(--bg-2);
+  border-radius: 12rpx;
+  background: var(--card-2);
   cursor: pointer;
 }
 .cap-refresh {
@@ -173,43 +158,9 @@ defineExpose({ verify });
   background: var(--card-2);
   cursor: pointer;
 }
-.cap-input {
-  height: 76rpx;
-  border: 2rpx solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0 20rpx;
-  font-size: var(--font-md);
-  color: var(--text);
-  letter-spacing: 4rpx;
-}
-.cap-input.err {
-  border-color: var(--danger);
-}
 .cap-err {
   font-size: var(--font-xs);
   color: var(--danger);
   margin-top: -8rpx;
-}
-.cap-btns {
-  display: flex;
-  gap: 16rpx;
-}
-.cap-btn {
-  flex: 1;
-  height: 76rpx;
-  border-radius: 999rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--font-md);
-  cursor: pointer;
-}
-.cap-btn.ghost {
-  background: var(--card-2);
-  color: var(--text-2);
-}
-.cap-btn.primary {
-  background: var(--primary);
-  color: #fff;
 }
 </style>
