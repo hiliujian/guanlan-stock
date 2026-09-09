@@ -2,7 +2,7 @@
   <view class="report">
     <!-- 历史胜率提示（独立于信号卡之外，不隶属任何单一信号档）：与信号卡同一引擎在近 250 个交易日逐日回放；
          无背景，Tip 图标 + 文案左对齐 · 分隔；标签无色，仅数字按涨红/跌绿着色：
-         胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿；右端 wallet 图标弹出设置持仓 -->
+         胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿；右端持仓图标弹出设置持仓（已持仓=主色，未持仓=灰） -->
     <view v-if="sigRatePct" class="sig-confidence">
       <OutlineIcon type="tip" :size="26" color="var(--warn)" />
       <text class="sc-label">20 个交易日胜率</text>
@@ -18,10 +18,11 @@
     <!-- 设置持仓弹窗（共享组件 PositionForm）：持仓成本/数量必填，保存/清除经父页写入 costBasis -->
     <PositionForm ref="posFormRef" :position="position" @save="p => emit('save-position', p)" @clear="emit('clear-position')" />
 
-    <!-- 直白操作信号：报告的操作结论以此卡为唯一来源（原顶部横幅已移除，避免两套判定相互矛盾）；
-         标签/一句话建议按持仓状态双视角适配（signalView）：空仓=介入导向（买点/卖点/关注/观望），
-         持仓=仓位管理导向（止盈/止损/持有/补仓），触发条件/确认信号保持引擎技术面口径，
-         卡片着色（signalCls）仍按引擎信号方向，胜率回放口径不受持仓影响 -->
+    <!-- 直白操作信号：报告的操作结论以此卡为唯一来源（原顶部横幅已移除，避免两套判定相互矛盾）。
+         标签/一句话建议由 utils/actionSignal 按持仓状态翻译（与自选页持仓表同一份实现）：
+         空仓=买点/关注/观望（介入导向），持仓=加仓/持有/减仓（仓位管理导向），视角内互斥。
+         触发条件/确认信号保持引擎技术面口径；卡片着色（signalCls）仍按引擎信号方向，
+         胜率回放口径不受持仓影响 -->
     <view :class="['signal-card', signalCls]">
       <view class="signal">
         <view class="sig-main">
@@ -395,7 +396,9 @@ import PositionForm from "./PositionForm.vue";
 import type { AnalysisResult } from "@/utils/analyzer";
 import type { Position } from "@/utils/costBasis";
 import { tagNewsItem, type NewsItem, type NewsSignal } from "@/utils/newsSentiment";
+import { toActionSignal } from "@/utils/actionSignal";
 import { requireLogin } from "@/store/nav";
+import { userState } from "@/store/user";
 
 const props = defineProps<{
   result: AnalysisResult;
@@ -757,38 +760,24 @@ function openPosForm() {
 //     止盈/止损/减仓/持有/补仓等专业动作，按成本翻译为仓位管理动作；
 // 触发条件/确认信号保持引擎技术面口径（成本是个体状态，不进引擎污染胜率回放），
 // 卡片着色（signalCls）按引擎信号方向不变，胜率回放样本口径亦不受影响。
-const holding = computed(() => !!props.position?.cost && props.position.cost > 0);
+// 本地持仓缓存（cost:<secid>）不随登出清理，导致登出后行情页仍把用户当成「已持仓」
+// （设置持仓图标常绿、建议切到持仓视角）。已配置后端但未登录时一律按空仓处理；
+// 纯本地模式（未配置 Supabase）没有账号概念，本地持仓始终有效。
+const holding = computed(
+  () =>
+    !!props.position?.cost &&
+    props.position.cost > 0 &&
+    (!userState.supabaseEnabled || userState.loggedIn)
+);
 const pnlPct = computed(() => {
   const c = props.position?.cost;
   if (!c || c <= 0) return 0;
   return ((a.value.price - c) / c) * 100;
 });
-const signalView = computed<{ label: string; text: string }>(() => {
-  const s = a.value.signal;
-  if (!holding.value) {
-    // 空仓视角：把「持有」翻译成空仓语境的「关注」（趋势向上但未持仓，先关注勿追）
-    if (s.level === "hold")
-      return { label: "关注", text: "趋势向上，可关注回调低吸机会，勿追高" };
-    return { label: s.label, text: s.text };
-  }
-  // 持仓视角：按浮动盈亏 × 信号方向给出仓位管理动作
-  const pnl = pnlPct.value;
-  const pt = (pnl >= 0 ? "+" : "") + pnl.toFixed(2) + "%";
-  if (pnl >= 1) {
-    if (s.level === "sell") return { label: "止盈减仓", text: `已盈利 ${pt}，出现卖出信号，建议分批止盈锁定收益` };
-    if (s.level === "buy") return { label: "持有勿追", text: `已持仓盈利 ${pt}，出现买点但不宜追高加仓，持有为主` };
-    if (s.level === "hold") return { label: "继续持有", text: `盈利 ${pt}，趋势未破继续持有，回落至成本价附近可止盈` };
-    if (s.level === "watch") return { label: "持有观察", text: `盈利 ${pt}，偏强运行，持有观察即可` };
-    return { label: "减仓保盈", text: `盈利回吐中（现价仍高于成本 ${pt}），趋势转弱，可先减仓保住利润` };
-  }
-  if (pnl <= -1) {
-    if (s.level === "sell") return { label: "止损减仓", text: `已亏损 ${pt}，出现卖出信号，建议严格执行止损` };
-    if (s.level === "buy") return { label: "谨慎补仓", text: `亏损 ${pt}，出现买点可小仓补仓摊薄成本，破位须止损` };
-    if (s.level === "hold" || s.level === "watch") return { label: "持有观察", text: `亏损 ${pt}，暂无明确转强信号，等待修复` };
-    return { label: "观望等待", text: `亏损 ${pt} 且趋势偏弱，勿盲目补仓，等待企稳信号` };
-  }
-  return { label: "持有", text: "已持仓（成本≈现价），按上方信号操作即可" };
-});
+// 操作信号：统一走 utils/actionSignal 的持仓感知映射（与自选页持仓表同一份实现），
+// 保证「行情页看到的建议」与「持仓表里的操作」永远一致，不会两处各说各话。
+// 同一技术判断按持仓状态切换视角：空仓=买点/关注/观望，持仓=加仓/持有/减仓（视角内互斥）。
+const signalView = computed(() => toActionSignal(a.value.signal.level, holding.value));
 
 // ---------------- 持仓盈亏行（成本感知）：信号卡内的成本/浮动盈亏展示行 ----------------
 const posView = computed(() => {

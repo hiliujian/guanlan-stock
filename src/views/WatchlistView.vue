@@ -54,7 +54,9 @@
             @click="openAlertStock(a)"
           >
             <text class="pa-name truncate">{{ a.name }}</text>
-            <text :class="['pa-lv', a.level]">{{ a.level === "buy" ? "买点" : "卖点" }}</text>
+            <!-- 提醒卡只对已设持仓的标的生成（scanPositionSignals 仅扫持仓），
+                 因此按持仓视角命名：buy→加仓 / sell→减仓（配色类名 buy/sell 语义一致，保留复用） -->
+            <text :class="['pa-lv', a.level]">{{ a.level === "buy" ? "加仓" : "减仓" }}</text>
             <text class="pa-meta">现价 {{ fmtPrice(a.price) }}</text>
             <text :class="['pa-meta', trendCls(a.pnl)]">{{ fmtSigned(a.pnl) }}%</text>
           </view>
@@ -87,17 +89,17 @@
             </view>
           </view>
           <view v-else class="wl-wrap">
-            <!-- 持仓表格完全复用自选表格体系（.wl-grid/.wl-thead/.tr/.td/.c-name/.signal-chip），
-                 仅列集不同：名称/代码 · 信号 · 现价 · 收益率 · 盈亏 · 成本 -->
+            <!-- 持仓表格完全复用自选表格体系（.wl-grid/.wl-thead/.tr/.td/.c-name/.act-chip），
+                 仅列集不同：名称/代码 · 操作 · 现价 · 成本 · 收益率 · 盈亏 -->
             <scroll-view class="wl-grid" :scroll-x="!dragKey" :scroll-y="!dragKey">
               <view class="wl-rows">
               <view class="wl-thead">
                 <view class="th c-name"></view>
-                <view v-if="posCols.sig" class="th c-sig"><text class="th-label">信号</text></view>
+                <view v-if="posCols.sig" class="th c-sig"><text class="th-label">操作</text></view>
                 <view v-if="posCols.price" class="th c-price"><text class="th-label">现价</text></view>
+                <view v-if="posCols.cost" class="th c-cost"><text class="th-label">成本</text></view>
                 <view v-if="posCols.pct" class="th c-pct"><text class="th-label">收益率</text></view>
                 <view v-if="posCols.pnl" class="th c-pnl"><text class="th-label">盈亏</text></view>
-                <view v-if="posCols.cost" class="th c-cost"><text class="th-label">成本</text></view>
               </view>
               <view class="wl-body">
               <view
@@ -143,19 +145,21 @@
                   </view>
                 </view>
                 <view v-if="posCols.sig" class="td c-sig">
-                  <view :class="['signal-chip', p.sigCls]"><text>{{ p.sigText }}</text></view>
+                  <view :class="['act-chip', p.actCls]"><text>{{ p.actText }}</text></view>
                 </view>
+                <!-- 现价：中性展示，不着色 —— 着色语义留给「收益率/盈亏」（持仓维度），
+                     现价本身与持仓无关，按当日涨跌染色反而与相邻成本列对照困难 -->
                 <view v-if="posCols.price" class="td c-price">
-                  <text class="st-num" :class="stTrend(p.pnlPct)">{{ p.price ? fmtPrice(p.price) : '--' }}</text>
+                  <text class="st-num">{{ p.price ? fmtPrice(p.price) : '--' }}</text>
+                </view>
+                <view v-if="posCols.cost" class="td c-cost">
+                  <text class="st-num">{{ fmtPrice(p.cost) }}</text>
                 </view>
                 <view v-if="posCols.pct" class="td c-pct">
                   <text class="st-num" :class="stTrend(p.pnlPct)">{{ p.price ? fmtPct(p.pnlPct) : '--' }}</text>
                 </view>
                 <view v-if="posCols.pnl" class="td c-pnl">
                   <text class="st-num" :class="stTrend(p.pnl)">{{ p.price ? fmtSigned(p.pnl) : '--' }}</text>
-                </view>
-                <view v-if="posCols.cost" class="td c-cost">
-                  <text class="st-num">{{ fmtPrice(p.cost) }}</text>
                 </view>
               </view>
               </view>
@@ -676,6 +680,7 @@ import { fmtPrice, fmtPct, fmtSigned, fmtAmount, trendCls } from "@/utils/format
 import { anomalies, type AnomalyRecord, ANOMALY_META } from "@/store/anomaly";
 import { staleGet, staleSet } from "@/utils/staleCache";
 import { analyze } from "@/utils/analyzer";
+import { toActionChip } from "@/utils/actionSignal";
 import { getKline } from "@/api/sources";
 import { listCostSecids, getPosition, setPosition, clearPosition, listPositions, getLastSignal, setLastSignal, positionsVersion, type Position } from "@/utils/costBasis";
 import { hydrateCloudPositions } from "@/store/holdingsMirror";
@@ -1150,8 +1155,7 @@ async function scanPositionSignals() {
         const prev = getLastSignal(secid);
         setLastSignal(secid, lvl);
         // 顺带缓存信号标签供持仓视图复用（同一引擎同一口径，不重复跑 analyze）
-        const meta = SIG_META[lvl] || SIG_META.wait;
-        posSigMap.value = { ...posSigMap.value, [secid]: { text: meta.text, cls: meta.cls } };
+        posSigMap.value = { ...posSigMap.value, [secid]: toActionChip(lvl, true) };
         if ((lvl === "buy" || lvl === "sell") && lvl !== prev) {
           const cost = getPosition(secid)?.cost;
           const pnl = cost ? ((a.price - cost) / cost) * 100 : 0;
@@ -1207,8 +1211,9 @@ interface PosRow {
   price: number;
   pnl: number;
   pnlPct: number;
-  sigText: string;
-  sigCls: string;
+  /* 操作信号（持仓视角）：标签与配色类名由 utils/actionSignal 统一产出 */
+  actText: string;
+  actCls: string;
   /* 所属分组（取自对应自选项，"" = 默认分组）：持仓视图与自选视图共用同一套分组筛选 */
   group: string;
   /* 当日涨跌额与行情装载态：供顶部胶囊统计「当前分组涨/跌家数」，口径与自选视图一致 */
@@ -1216,15 +1221,10 @@ interface PosRow {
   loading: boolean;
 }
 // 信号缓存（secid → {text, cls}）：scanPositionSignals 已对每只持仓算过 analyze，
-// 在此顺带缓存信号标签，持仓视图直接复用，不重复跑引擎
+// 在此顺带缓存信号标签，持仓视图直接复用，不重复跑引擎。
+// 标签来自 utils/actionSignal（与行情页信号卡同一份实现）：持仓表内必然已持仓，
+// 因此固定走「持仓视角」→ 加仓 / 持有 / 减仓，与行情页设过持仓后看到的标签完全一致。
 const posSigMap = ref<Record<string, { text: string; cls: string }>>({});
-const SIG_META: Record<string, { text: string; cls: string }> = {
-  buy: { text: "买点", cls: "buy" },
-  sell: { text: "卖点", cls: "sell" },
-  hold: { text: "持有", cls: "hold" },
-  watch: { text: "关注", cls: "watch" },
-  wait: { text: "观望", cls: "wait" },
-};
 // 全量持仓行（未按分组筛选）：供「该分组无持仓」空态判断与分组筛选的基集
 const posRowsAll = computed<PosRow[]>(() => {
   void positionsVersion.value; // 持仓变更（设置/清除）后立即重算，修复「设了持仓却显示无持仓」
@@ -1240,7 +1240,7 @@ const posRowsAll = computed<PosRow[]>(() => {
     // 与 marketFromSecid(secid) 不一致导致查不到行情、价格回落 0、收益率算错。
     const q = it ? quotes[keyOf(it)] : quotes[`${code}|${marketFromSecid(p.secid)}`];
     const price = q?.price || 0;
-    const sig = posSigMap.value[p.secid] || SIG_META.wait;
+    const sig = posSigMap.value[p.secid] || toActionChip("wait", true);
     const pnlPct = p.cost && price ? ((price - p.cost) / p.cost) * 100 : 0;
     out.push({
       secid: p.secid,
@@ -1251,8 +1251,8 @@ const posRowsAll = computed<PosRow[]>(() => {
       price,
       pnl: p.cost && price && p.qty ? (price - p.cost) * p.qty : 0,
       pnlPct,
-      sigText: sig.text,
-      sigCls: sig.cls,
+      actText: sig.text,
+      actCls: sig.cls,
       group: it?.group || "",
       chg: q?.chg ?? 0,
       loading: q?.loading ?? true,
@@ -1422,11 +1422,11 @@ type PosColKey = "sig" | "price" | "pct" | "pnl" | "cost";
 interface ColDef { key: string; label: string }
 const POS_COLS_KEY = "wl_pos_cols";
 const posColDefs: ColDef[] = [
-  { key: "sig", label: "信号" },
+  { key: "sig", label: "操作" },
   { key: "price", label: "现价" },
+  { key: "cost", label: "成本" },
   { key: "pct", label: "收益率" },
   { key: "pnl", label: "盈亏" },
-  { key: "cost", label: "成本" },
 ];
 const posCols = reactive<Record<PosColKey, boolean>>({ sig: true, price: true, pct: true, pnl: true, cost: true });
 function loadPosCols() {
@@ -2796,39 +2796,53 @@ function removeLp() {
   display: flex;
   flex-direction: column;
 }
-/* 持仓表格已完全复用自选表格 .wl-grid 体系（.wl-thead/.tr/.td/.c-name/.signal-chip），
+/* 持仓表格已完全复用自选表格 .wl-grid 体系（.wl-thead/.tr/.td/.c-name/.act-chip），
    原 .pos-table/.pos-thead/.pos-row/.pos-cell-* 等 bespoke 死样式已移除，避免样式与自选页不一致。 */
-/* 信号标签：与行情页操作建议一致（5 类），底色柔和、文字即主色 */
-.signal-chip {
+/* 操作标签（持仓表「操作」列）：小圆角方块 + 左侧状态点，替代旧胶囊样式。
+   配色按动作语义（utils/actionSignal 的 level，与行情页信号卡同一套档位）：
+     buy/add 做多→红 · watch 关注→橙 · hold 持有→深灰中性 · wait 观望→浅灰 · reduce 减仓→青绿。
+   持仓表内只会出现 加仓(红)/持有(灰)/减仓(青绿) 三档，空仓视角是 买点(红)/关注(橙)/观望(灰)，
+   同屏不撞色、互斥不重叠 */
+.act-chip {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  padding: 6rpx 14rpx;
-  border-radius: 999rpx;
-  /* 字号与同表其它数值列（stock-table.css .st-num）完全一致，避免信号列偏小显得错行 */
-  font-size: var(--font-md);
+  gap: 8rpx;
+  height: 40rpx;
+  padding: 0 14rpx;
+  border-radius: 8rpx;
+  font-size: var(--font-sm);
+  font-weight: 500;
   line-height: 1;
   white-space: nowrap;
+  background: var(--card-2);
+  color: var(--text-2);
 }
-.signal-chip.buy {
+.act-chip::before {
+  content: "";
+  flex: none;
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: currentColor;
+}
+.act-chip.buy,
+.act-chip.add {
   color: var(--up);
   background: rgba(239, 35, 42, 0.1);
 }
-.signal-chip.sell {
-  color: var(--down);
-  background: rgba(9, 176, 122, 0.12);
-}
-.signal-chip.hold {
-  color: #2563eb;
-  background: rgba(59, 130, 246, 0.1);
-}
-.signal-chip.watch {
-  color: #c87f00;
+.act-chip.watch {
+  color: var(--warn);
   background: rgba(255, 159, 28, 0.12);
 }
-.signal-chip.wait {
+.act-chip.hold {
+  color: var(--text);
+}
+.act-chip.wait {
   color: var(--text-3);
-  background: var(--card-2);
+}
+.act-chip.reduce {
+  color: var(--down);
+  background: rgba(9, 176, 122, 0.12);
 }
 
 /* 持仓汇总面板：2×2 指标块 + 提示行 */
