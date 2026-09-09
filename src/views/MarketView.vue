@@ -186,6 +186,9 @@
                     </view>
                     <view class="idx-item-right">
                       <text v-if="!it.members" class="idx-item-price" :class="[qCls(it.secid), qNa(it.secid) ? 'na' : '']">{{ qPrice(it.secid) }}</text>
+                      <!-- 篮子无点位概念（price 恒 null），仅展示涨跌幅；但初始加载/无数据时与普通卡片
+                           统一空态：价格槽位同样降级显示「暂无数据」，保证整体视觉一致 -->
+                      <text v-else-if="!bktHasData(it)" class="idx-item-price na">暂无数据</text>
                       <text class="idx-item-pct" :class="bktCls(it)">{{ bktPct(it) }}</text>
                     </view>
                   </view>
@@ -507,7 +510,7 @@ function bktLabel(it: { secid: string }): string {
 }
 function bktPct(it: { secid: string }): string {
   const d = bktData(it);
-  if (!d || d.pct == null || !Number.isFinite(d.pct)) return '—';
+  if (!d || d.pct == null || !Number.isFinite(d.pct)) return '--';
   return (d.pct >= 0 ? '+' : '') + d.pct.toFixed(2) + '%';
 }
 function bktCls(it: { secid: string }): string {

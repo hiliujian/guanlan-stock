@@ -1196,6 +1196,9 @@ const mainView = ref<MainView>(uni.getStorageSync(POS_VIEW_KEY) === "pos" ? "pos
 navTab.watchView = mainView.value;
 function toggleView() {
   mainView.value = mainView.value === "pos" ? "watch" : "pos";
+  // 切换视图即收起底部展开窗体：PeekSheet 常驻挂载（不随视图卸载），展开态（榜单/分组/列设置/
+  // 持仓汇总等）会残留到另一视图，且 peek 折叠卡内容已换，收起并复位面板状态才与视图一致
+  if (sheetExpanded.value) sheet.value?.collapse();
   try {
     uni.setStorageSync(POS_VIEW_KEY, mainView.value);
   } catch (_) {}

@@ -120,8 +120,16 @@
               </view>
             </view>
             <!-- 对方持仓标识（位于行情区左侧，与 .dp-wl-q 同构分列对齐：两行右对齐、无背景）——
-                 第一行：持仓收益率（涨红跌绿，与现价同字号）；第二行：铜钱图标 + 持股数（与涨跌幅同字号） -->
-            <view v-if="w.holdingCost && typeof w.price === 'number'" class="dp-wl-hold">
+                 第一行：持仓收益率（涨红跌绿，与现价同字号）；第二行：铜钱图标 + 持股数（与涨跌幅同字号）。
+                 中部持仓信息可点：展开持仓详情弹窗（收益率/盈亏/股数/成本 + 该股近期操作动态），
+                 @click.stop 防止误触发行跳转 -->
+            <view
+              v-if="w.holdingCost && typeof w.price === 'number'"
+              class="dp-wl-hold"
+              role="button"
+              aria-label="查看持仓详情"
+              @click.stop="openHoldDetail(w)"
+            >
               <text class="dp-wl-holdpct" :class="holdPct(w) >= 0 ? 'up' : 'down'">{{ holdPctText(w) }}</text>
               <view class="dp-wl-holdrow">
                 <OutlineIcon type="portfolio" :size="22" color="var(--primary)" />
@@ -184,6 +192,61 @@
 
       </template>
     </scroll-view>
+
+    <!-- 持仓详情弹窗：中部持仓标识点击展开（复用全局 modal-mask/modal-card 窗体），
+         透出该股持仓明细（收益率/盈亏/股数/成本）+ 该股近期操作动态（复用 holdEvents 时间线） -->
+    <view v-if="holdDetail" class="modal-mask" @click.self="closeHoldDetail">
+      <view class="modal-card">
+        <view class="modal-head">
+          <text class="modal-title">{{ holdDetail.name || holdDetail.code }} 持仓详情</text>
+          <view class="modal-close" role="button" aria-label="关闭" @click="closeHoldDetail">
+            <OutlineIcon type="close" :size="26" color="var(--text-3)" />
+          </view>
+        </view>
+        <!-- 持仓明细行：口径与列表行一致（现价−成本 驱动收益率/盈亏），涨红跌绿 -->
+        <view class="hd-grid">
+          <view class="hd-cell">
+            <text class="hd-k">收益率</text>
+            <text class="hd-v" :class="holdPct(holdDetail) >= 0 ? 'up' : 'down'">{{ holdPctText(holdDetail) }}</text>
+          </view>
+          <view class="hd-cell">
+            <text class="hd-k">盈亏</text>
+            <text class="hd-v" :class="holdPnl(holdDetail) >= 0 ? 'up' : 'down'">{{ holdPnlText(holdDetail) }}</text>
+          </view>
+          <view class="hd-cell">
+            <text class="hd-k">持股数</text>
+            <text class="hd-v">{{ fmtShareNum(holdDetail.holdingShares || 0) }} 股</text>
+          </view>
+          <view class="hd-cell">
+            <text class="hd-k">成本价</text>
+            <text class="hd-v">{{ holdDetail.holdingCost?.toFixed(2) ?? "--" }}</text>
+          </view>
+          <view class="hd-cell">
+            <text class="hd-k">现价</text>
+            <text class="hd-v" :class="pctClass(holdDetail.pct)">{{ typeof holdDetail.price === 'number' ? formatPrice(holdDetail.price) : "--" }}</text>
+          </view>
+          <view class="hd-cell">
+            <text class="hd-k">市值</text>
+            <text class="hd-v">{{ holdValueText(holdDetail) }}</text>
+          </view>
+        </view>
+        <!-- 该股近期操作动态：holdEvents 已含全量事件（RPC 拉取 10 条），按 code 过滤即得 -->
+        <view class="hd-ev-head">
+          <text class="hd-k">近期操作</text>
+        </view>
+        <view v-if="holdDetailEvents.length === 0" class="dp-wl-empty">暂无该股操作动态</view>
+        <view v-else class="dp-posts">
+          <view v-for="(e, i) in holdDetailEvents" :key="i" class="dp-post-row">
+            <text class="dp-post-time">{{ formatRelative(e.createdAt) }}</text>
+            <view class="dp-ev">
+              <text :class="['dp-ev-tag', evCls(e.kind)]">{{ evLabel(e.kind) }}</text>
+              <text class="dp-ev-name truncate">{{ e.name }}</text>
+              <text class="dp-ev-shares">{{ fmtShareNum(e.shares) }}股</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -554,6 +617,35 @@ function holdPctText(w: WatchRow): string {
 /** 对方持股数（千分位整数）；未回传时不显示第二行 */
 function holdingShares(w: WatchRow): string {
   return w.holdingShares ? w.holdingShares.toLocaleString("en-US") : "--";
+}
+
+// —— 持仓详情弹窗：列表中部持仓标识点击展开 ——
+const holdDetail = ref<WatchRow | null>(null);
+function openHoldDetail(w: WatchRow) {
+  holdDetail.value = w;
+}
+function closeHoldDetail() {
+  holdDetail.value = null;
+}
+/** 该股近期操作动态：holdEvents 为全量事件（loadHoldingEvents 拉取 10 条），按 code 过滤 */
+const holdDetailEvents = computed<HoldEvent[]>(() => {
+  if (!holdDetail.value) return [];
+  return holdEvents.value.filter((e) => e.code === holdDetail.value!.code);
+});
+/** 盈亏（元）＝(现价−成本)×股数；行情/成本缺失 → 0（显示层用 "--" 判定） */
+function holdPnl(w: WatchRow): number {
+  if (!w.holdingCost || typeof w.price !== "number" || !w.holdingShares) return 0;
+  return (w.price - w.holdingCost) * w.holdingShares;
+}
+function holdPnlText(w: WatchRow): string {
+  if (!w.holdingCost || typeof w.price !== "number" || !w.holdingShares) return "--";
+  const v = holdPnl(w);
+  return `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
+}
+/** 持仓市值（元）＝现价×股数；千分位整数展示 */
+function holdValueText(w: WatchRow): string {
+  if (typeof w.price !== "number" || !w.holdingShares) return "--";
+  return Math.round(w.price * w.holdingShares).toLocaleString("en-US");
 }
 function openStock(w: WatchRow) {
   openInMarket(w.code, w.market as Market);
@@ -1036,5 +1128,40 @@ function goUserPosts() {
   color: var(--primary);
   cursor: pointer;
   border-top: 1rpx solid var(--border);
+}
+
+/* 持仓详情弹窗：明细 2×3 网格（复用全局 modal-card 窗体），数值涨红跌绿 */
+.hd-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx 24rpx;
+}
+.hd-cell {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12rpx;
+  background: var(--card-2);
+  border-radius: 12rpx;
+  padding: 12rpx 16rpx;
+}
+.hd-k {
+  flex: none;
+  font-size: var(--font-xs);
+  color: var(--text-2);
+}
+.hd-v {
+  font-size: var(--font-sm);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.hd-v.up {
+  color: var(--up);
+}
+.hd-v.down {
+  color: var(--down);
+}
+.hd-ev-head {
+  margin-top: 4rpx;
 }
 </style>
