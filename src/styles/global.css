@@ -946,15 +946,17 @@ html.ps-lock body {
   max-width: 220rpx;
   min-width: 0;
   font-size: var(--font-sm);
+  line-height: 1.1;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 股票代码（自选页独有，紧跟名称） */
+/* 股票代码（自选页独有，紧跟名称）；与名称统一 line-height，保证同卡片内垂直居中对齐 */
 .peek-code {
   flex: none;
   font-size: var(--font-sm);
+  line-height: 1.1;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }

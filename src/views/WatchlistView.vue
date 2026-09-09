@@ -153,10 +153,10 @@
                   <text class="st-num" :class="stTrend(p.pnlPct)">{{ p.price ? fmtPrice(p.price) : '--' }}</text>
                 </view>
                 <view v-if="posCols.pct" class="td c-pct">
-                  <text class="st-num" :class="stTrend(p.pnlPct)">{{ fmtPct(p.pnlPct) }}</text>
+                  <text class="st-num" :class="stTrend(p.pnlPct)">{{ p.price ? fmtPct(p.pnlPct) : '--' }}</text>
                 </view>
                 <view v-if="posCols.pnl" class="td c-pnl">
-                  <text class="st-num" :class="stTrend(p.pnl)">{{ fmtSigned(p.pnl) }}</text>
+                  <text class="st-num" :class="stTrend(p.pnl)">{{ p.price ? fmtSigned(p.pnl) : '--' }}</text>
                 </view>
                 <view v-if="posCols.cost" class="td c-cost">
                   <text class="st-num">{{ fmtPrice(p.cost) }}</text>
@@ -269,23 +269,23 @@
             </view>
             <!-- 最新价（独立数值列） -->
             <view v-if="cols.price" class="td c-price">
-              <text class="st-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPrice(row.q.price) }}</text>
+              <text class="st-num" :class="pctCls(row.q)">{{ row.q.loading || row.q.error || row.q.price === 0 ? '--' : fmtPrice(row.q.price) }}</text>
             </view>
             <!-- 涨跌幅（独立数值列，与榜单同款样式） -->
             <view v-if="cols.pct" class="td c-pct">
-              <text class="st-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtPct(row.q.pct) }}</text>
+              <text class="st-num" :class="pctCls(row.q)">{{ row.q.loading || row.q.error || row.q.price === 0 ? '--' : fmtPct(row.q.pct) }}</text>
             </view>
             <view v-if="cols.chg" class="td c-chg">
-              <text class="st-num" :class="pctCls(row.q)">{{ row.q.loading ? '--' : fmtSigned(row.q.chg) }}</text>
+              <text class="st-num" :class="pctCls(row.q)">{{ row.q.loading || row.q.error || row.q.price === 0 ? '--' : fmtSigned(row.q.chg) }}</text>
             </view>
             <view v-if="cols.open" class="td c-open">
-              <text class="st-num">{{ row.q.loading ? '--' : fmtPrice(row.q.open) }}</text>
+              <text class="st-num">{{ row.q.loading || row.q.error || row.q.price === 0 ? '--' : fmtPrice(row.q.open) }}</text>
             </view>
             <view v-if="cols.amp" class="td c-amp">
-              <text class="st-num">{{ row.q.loading ? '--' : ampPct(row.q) }}</text>
+              <text class="st-num">{{ row.q.loading || row.q.error || row.q.price === 0 ? '--' : ampPct(row.q) }}</text>
             </view>
             <view v-if="cols.amt" class="td c-amt">
-              <text class="st-num">{{ row.q.loading ? '--' : fmtAmount(row.q.amount) }}</text>
+              <text class="st-num">{{ row.q.loading || row.q.error || row.q.price === 0 ? '--' : fmtAmount(row.q.amount) }}</text>
             </view>
           </view>
           </view>
@@ -315,7 +315,23 @@
              三套内容共用同一窗体、同一套折叠/展开/铺满手势与动效，避免重复样式与代码 -->
         <PeekSheet ref="sheet" @expand="onSheetExpand" @collapse="onSheetCollapse">
           <template #peek>
-            <view class="peek-row" role="button" aria-label="展开底部面板">
+            <!-- 持仓视图：底部折叠卡展示「持仓概览」（总市值 / 总盈亏 / 收益率），不复用自选的今日最热 -->
+            <view v-if="mainView === 'pos'" class="peek-row" role="button" aria-label="展开持仓概览" @click="openPosSheet">
+              <text class="peek-label">持仓概览</text>
+              <view class="peek-info">
+                <view class="peek-main">
+                  <text class="peek-name">持仓 {{ posSummary.count }}</text>
+                  <text class="peek-code">市值 ¥{{ fmtAmount(sumValue) }}</text>
+                </view>
+                <view class="peek-right">
+                  <text class="peek-price" :class="trendCls(posSummary.pnl)">{{ posSummary.count ? fmtSigned(posSummary.pnl) : '--' }}</text>
+                  <text class="peek-pct" :class="trendCls(posSummary.pnl)">{{ posSummary.count ? fmtPct(posSummary.pnlPct) : '--' }}</text>
+                </view>
+              </view>
+              <OutlineIcon class="peek-caret" type="chevron-up" :size="20" color="var(--text-2)" />
+            </view>
+            <!-- 自选视图：今日最热 / 今日异动 折叠卡 -->
+            <view v-else class="peek-row" role="button" aria-label="展开底部面板">
               <text class="peek-label">{{ peekLabel }}</text>
               <!-- 今日最热 ↔ 今日异动 提醒切换复用 <RollSwap>（与行情页大盘指数切换动画完全一致）；
                    异动仅在「产生时刻起的展示窗口内」切换显示，错过窗口不再出现 -->
@@ -567,13 +583,8 @@
               </view>
               <view class="grp-list">
                 <view class="grp-item" role="button" @click="openPosForm">
-                  <!-- 未设置持仓图标置灰，已设置高亮主色（绿）：一眼看出该股当前持仓状态 -->
-                  <OutlineIcon type="portfolio" :size="28" :color="lpHasPosition ? 'var(--primary)' : 'var(--text-2)'" />
-                  <text class="grp-label" :class="{ primary: lpHasPosition }">设置持仓</text>
-                </view>
-                <view v-if="lpHasPosition" class="grp-item" role="button" @click="clearLpPosition">
-                  <OutlineIcon type="trash" :size="28" color="#ff3b30" />
-                  <text class="grp-label danger">清除持仓</text>
+                  <OutlineIcon type="portfolio" :size="28" color="var(--text-2)" />
+                  <text class="grp-label">设置持仓</text>
                 </view>
                 <view class="grp-item" role="button" @click="openAlertPanel">
                   <OutlineIcon type="bell" :size="28" color="var(--text-2)" />
@@ -1002,7 +1013,14 @@ async function loadQuotes() {
   if (userState.supabaseEnabled && !userState.loggedIn) return;
   const items = list.value;
   if (!items.length) return;
-  const secids = items.map((it) => resolveSecid(it.code, it.market as any));
+  // 单只代码解析失败（如 market 异常）不应中断整批行情；解析失败置 null，后续按「缺失」处理。
+  const secids = items.map((it) => {
+    try {
+      return resolveSecid(it.code, it.market as any);
+    } catch {
+      return null;
+    }
+  });
   // 刷新容错：已有旧快照时不重置为 loading 骨架（避免刷新期间整行数字变 --），
   // 仅置 loading 标记；无旧值时才显示骨架
   for (let i = 0; i < items.length; i++) {
@@ -1011,11 +1029,13 @@ async function loadQuotes() {
     if (!old || !old.price) quotes[k] = { ...EMPTY, loading: true };
     else quotes[k] = { ...old, loading: true };
   }
-  const snaps = await fetchSnapshots(secids);
+  // 仅向网关传有效 secid（跳过解析失败项）；结果仍以 secid 为键，下面按原始序号取用并跳过 null。
+  const snaps = await fetchSnapshots(secids.filter((s): s is string => !!s));
   for (let i = 0; i < items.length; i++) {
     const k = keyOf(items[i]);
     const old = quotes[k];
-    const snap = snaps[secids[i]];
+    const secid = secids[i];
+    const snap = secid ? snaps[secid] : undefined;
     if (snap) {
       quotes[k] = { ...snap, loading: false };
       detectAlert(items[i], snap.price);
@@ -1188,8 +1208,11 @@ const posRows = computed<PosRow[]>(() => {
     const k = list.value.findIndex(
       (it) => resolveSecid(it.code, it.market as any) === p.secid
     );
-    const name = k >= 0 ? list.value[k].name || code : code;
-    const q = quotes[`${code}|${marketFromSecid(p.secid)}`] || quotes[Object.keys(quotes).find((key) => key.startsWith(code + "|")) || ""];
+    const it = k >= 0 ? list.value[k] : null;
+    const name = it?.name || code;
+    // 与 loadQuotes 使用同一 keyOf(it) 取行情，避免 watch 项 market 字段（如 "auto"）
+    // 与 marketFromSecid(secid) 不一致导致查不到行情、价格回落 0、收益率算错。
+    const q = it ? quotes[keyOf(it)] : quotes[`${code}|${marketFromSecid(p.secid)}`];
     const price = q?.price || 0;
     const sig = posSigMap.value[p.secid] || SIG_META.wait;
     const pnlPct = p.cost && price ? ((price - p.cost) / p.cost) * 100 : 0;
@@ -1775,11 +1798,6 @@ const lpSecid = computed(() => {
   if (!it) return "";
   return (resolveSecid(it.code, it.market as any) as string) || "";
 });
-// 长按目标是否已设置持仓：决定「设置持仓」项图标/文字是否高亮配色、是否显示「清除持仓」入口
-const lpHasPosition = computed(() => {
-  void positionsVersion.value; // 持仓变更后同步刷新「设置持仓」项高亮态
-  return !!lpSecid.value && !!getPosition(lpSecid.value);
-});
 function openPosForm() {
   if (!lpSecid.value) return;
   posFormRef.value?.open();
@@ -2239,7 +2257,7 @@ function removeLp() {
   align-items: center;
   justify-content: flex-start;
   gap: 6rpx;
-  width: 200rpx;
+  width: 180rpx;
   padding: 0 10rpx 0 18rpx;
   text-align: left;
   background: var(--bg-2);
@@ -2267,7 +2285,7 @@ function removeLp() {
   font-size: var(--font-md);
   font-weight: 400;
   color: var(--text);
-  max-width: 160rpx;
+  max-width: 144rpx;
   line-height: 1.25;
   /* 截断属性已提升至全局 .truncate */
 }
@@ -2285,7 +2303,7 @@ function removeLp() {
   font-size: var(--font-xs);
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
-  max-width: 92rpx;
+  max-width: 80rpx;
   /* 截断属性已提升至全局 .truncate */
 }
 /* ===== 分组切换面板：与「头像设置」BottomSheet 头部共用同一套 .panel-head 样式 ===== */
@@ -2339,9 +2357,6 @@ function removeLp() {
 }
 .grp-label.danger {
   color: #ff3b30;
-}
-.grp-label.primary {
-  color: var(--primary);
 }
 .grp-item.active .grp-label {
   color: var(--primary);
@@ -2788,10 +2803,11 @@ function removeLp() {
 
 /* 持仓胶囊「值」：仅收益率，与自选胶囊视觉一致（头像 + 标签 + 值 + 下拉），不额外加粗 */
 .cm-val {
-  font-size: var(--font-sm);
+  font-size: var(--font-md); /* 与 .cm-name 字号一致，保持胶囊内标签/数据对齐 */
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
   color: var(--text-3);
-  line-height: 1.1;
+  line-height: 1.3;
 }
 .cm-val.up { color: var(--up); }
 .cm-val.down { color: var(--down); }
