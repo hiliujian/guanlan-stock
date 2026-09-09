@@ -19,7 +19,7 @@ interface Profile {
   last_login?: LoginInfo | null; // 最近一次登录的地点/时间/设备（账号安全页展示）
   signature?: string; // 个人简介（公开可读，供「公开资料页」展示给他人；详见 #536）
   allow_dm?: boolean; // 允许私信（需求 B，默认 true；false 时他人无法向其发私信）
-  public_watchlist?: boolean; // 公开自选股（需求 B，默认 true；false 时他人资料页隐藏其自选股）
+  public_watchlist?: boolean; // 公开自选/持仓股（需求 B，默认 true；false 时他人资料页隐藏其自选股及持仓收益率）
   created_at?: string; // 注册时间（profiles.created_at，ISO 字符串；个人资料页展示用）
 }
 

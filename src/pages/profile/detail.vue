@@ -99,7 +99,7 @@
 
         <!-- 自选股（受 public_watchlist 权限控制；需求 B） -->
         <view v-if="showWatchlist" class="dp-section">
-          <text class="dp-label">自选股</text>
+          <text class="dp-label">自选/持仓股</text>
           <view v-if="watchlistLoading" class="dp-wl-loading"><view class="cl-spin" /></view>
           <view v-else-if="watchError" class="dp-wl-empty">自选股加载失败</view>
           <view v-else-if="watchlist.length === 0" class="dp-wl-empty">暂无自选股</view>
@@ -123,6 +123,11 @@
               <text class="dp-wl-price" :class="pctClass(w.pct)">{{ formatPrice(w.price) }}</text>
               <text class="dp-wl-pct" :class="pctClass(w.pct)">{{ formatPct(w.pct) }}</text>
             </view>
+            <!-- 对方在该标的有持仓：铜钱（portfolio）徽标 + 仅展示持仓收益率（成本金额不展示） -->
+            <view v-if="w.holdingCost && typeof w.price === 'number'" class="dp-wl-hold">
+              <OutlineIcon type="portfolio" :size="22" color="var(--primary)" />
+              <text class="dp-wl-holdpct" :class="holdPct(w) >= 0 ? 'up' : 'down'">{{ holdPctText(w) }}</text>
+            </view>
             <view
               class="dp-wl-star flex-center"
               :class="{ on: isWatched(w.code, w.market) }"
@@ -135,12 +140,12 @@
             </view>
           </view>
         </view>
-        <!-- 对方未公开自选股（需求 B） -->
+        <!-- 对方未公开自选/持仓股（需求 B） -->
         <view v-else-if="watchlistHidden" class="dp-section">
-          <text class="dp-label">自选股</text>
+          <text class="dp-label">自选/持仓股</text>
           <view class="dp-wl-locked">
             <OutlineIcon type="eye-off" :size="40" color="var(--text-3)" />
-          <text class="dp-wl-lock-text">对方未公开自选股</text>
+          <text class="dp-wl-lock-text">对方未公开自选/持仓股</text>
         </view>
       </view>
 
@@ -206,16 +211,19 @@ interface ProfileDetail {
   location: string;
   created_at: string;
   allow_dm: boolean; // 允许私信（需求 B，默认 true）
-  public_watchlist: boolean; // 公开自选股（需求 B，默认 true）
+  public_watchlist: boolean; // 公开自选/持仓股（需求 B，默认 true）
 }
 
-/** 他人自选股行（仅 code / market / name 来自后端公开 RPC，行情为前端实时补充） */
+/** 他人自选股行（code/market/name/holding_cost 来自后端公开 RPC，行情为前端实时补充）。
+ *  holding_cost：该用户在此标的的持仓成本（未持仓为空）——公开自选即公开持仓收益，
+ *  页面仅在行内展示「持有」徽标与持仓收益率，不单独展示成本金额。 */
 interface WatchRow {
   code: string;
   market: string;
   name: string;
   price?: number;
   pct?: number;
+  holdingCost?: number;
 }
 
 const uid = ref("");
@@ -227,7 +235,7 @@ const profile = ref<ProfileDetail | null>(null);
 const watchlist = ref<WatchRow[]>([]);
 const watchlistLoading = ref(false);
 const watchError = ref(false);
-// 本人或对方公开 → 展示自选股列表；否则（他人且未公开）显示「对方未公开自选股」
+// 本人或对方公开 → 展示自选股列表；否则（他人且未公开）显示「对方未公开自选/持仓股」
 const showWatchlist = computed(
   () => !!profile.value && (isSelf.value || profile.value.public_watchlist === true)
 );
@@ -375,6 +383,7 @@ async function loadWatchlist() {
       code: d.code,
       market: d.market || "auto",
       name: d.name || "",
+      holdingCost: typeof d.holding_cost === "number" && d.holding_cost > 0 ? d.holding_cost : undefined,
     }));
     await Promise.all(
       rows.map(async (r) => {
@@ -442,6 +451,15 @@ function formatPrice(p: number): string {
 function formatPct(p?: number): string {
   if (typeof p !== "number") return "";
   return `${p > 0 ? "+" : ""}${p.toFixed(2)}%`;
+}
+/** 对方在该标的的持仓收益率：(现价 − 对方成本) / 对方成本 × 100；成本或行情缺失不展示 */
+function holdPct(w: WatchRow): number {
+  if (!w.holdingCost || typeof w.price !== "number" || !w.price) return 0;
+  return ((w.price - w.holdingCost) / w.holdingCost) * 100;
+}
+function holdPctText(w: WatchRow): string {
+  const p = holdPct(w);
+  return `${p >= 0 ? "+" : ""}${p.toFixed(2)}%`;
 }
 function openStock(w: WatchRow) {
   openInMarket(w.code, w.market as Market);
@@ -784,6 +802,26 @@ function goUserPosts() {
 }
 .dp-wl-pct.flat {
   color: var(--text-2);
+}
+/* 对方持仓标识：铜钱小图标 + 仅持仓收益率（涨红跌绿），插在行情区与自选星标之间 */
+.dp-wl-hold {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 4rpx 10rpx;
+  border-radius: 999rpx;
+  background: var(--primary-soft);
+}
+.dp-wl-holdpct {
+  font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+}
+.dp-wl-holdpct.up {
+  color: var(--up);
+}
+.dp-wl-holdpct.down {
+  color: var(--down);
 }
 /* 自选星标（复用行情页 .qh-star 视觉：圆形底 + 描边星，加入自选底变 primary-soft；
    此处用静态定位而非 absolute，使其内联在行尾，点击加入/移除自选，不触发整卡跳转） */

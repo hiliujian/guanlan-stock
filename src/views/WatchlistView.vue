@@ -2801,15 +2801,12 @@ function removeLp() {
 }
 /* 持仓表格已完全复用自选表格 .wl-grid 体系（.wl-thead/.tr/.td/.c-name/.act-chip），
    原 .pos-table/.pos-thead/.pos-row/.pos-cell-* 等 bespoke 死样式已移除，避免样式与自选页不一致。 */
-/* 操作标签（持仓表「操作」列）：小圆角方块 + 左侧状态点，替代旧胶囊样式。
-   配色按动作语义（utils/actionSignal 的 level，与行情页信号卡同一套档位）：
-     buy/add 做多→红 · watch 关注→橙 · hold 持有→深灰中性 · wait 观望→浅灰 · reduce 减仓→青绿。
-   持仓表内只会出现 加仓(红)/持有(灰)/减仓(青绿) 三档，空仓视角是 买点(红)/关注(橙)/观望(灰)，
-   同屏不撞色、互斥不重叠 */
+/* 操作标签（持仓表「操作」列）：小圆角方块，配色与行情页信号卡（ReportView .signal-card）
+   完全同源——cls 用引擎档位，色值一一对应（buy红/sell绿/hold蓝/watch橙/wait中性），
+   标签文字仍是持仓感知的动作（加仓/持有/减仓），跨页面视觉语义统一 */
 .act-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8rpx;
   height: 40rpx;
   padding: 0 14rpx;
   border-radius: 8rpx;
@@ -2820,32 +2817,25 @@ function removeLp() {
   background: var(--card-2);
   color: var(--text-2);
 }
-.act-chip::before {
-  content: "";
-  flex: none;
-  width: 10rpx;
-  height: 10rpx;
-  border-radius: 50%;
-  background: currentColor;
-}
-.act-chip.buy,
-.act-chip.add {
+.act-chip.buy {
   color: var(--up);
   background: rgba(239, 35, 42, 0.1);
 }
-.act-chip.watch {
-  color: var(--warn);
-  background: rgba(255, 159, 28, 0.12);
+.act-chip.sell {
+  color: var(--down);
+  background: rgba(9, 176, 122, 0.12);
 }
 .act-chip.hold {
-  color: var(--text);
+  color: #2563eb;
+  background: rgba(59, 130, 246, 0.1);
+}
+.act-chip.watch {
+  color: #c87f00;
+  background: rgba(255, 159, 28, 0.12);
 }
 .act-chip.wait {
   color: var(--text-3);
-}
-.act-chip.reduce {
-  color: var(--down);
-  background: rgba(9, 176, 122, 0.12);
+  background: var(--card-2);
 }
 
 /* 持仓汇总面板：复用 global.css 的 .tile-grid/.idx-item 指标卡家族（与行情页指数面板同款），

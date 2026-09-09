@@ -488,28 +488,35 @@ $$;
 --   仅当「查询者是本人」或「目标用户开启 public_watchlist」时，返回其自选股（code, market, name）；
 --   否则返回空集（前端据此显示「对方未公开自选股」）。
 --   SECURITY DEFINER：绕过 watchlists 的 owner-only RLS，改由函数内部裁决可见性，避免越权读取他人自选。
---   仅回传 code / market / name 三个公开字段，绝不下发 note / 提醒等私有配置。
+--   仅回传 code / market / name 三个公开字段 + holding_cost（对方在该标的的持仓成本，未持仓为 null；
+--   前端据此显示「持有」徽标与持仓收益率，成本金额本身不单独展示），绝不下发 note / 提醒等私有配置。
+--   ⚠️ RETURNS TABLE 增列属返回类型变更（42P13），必须先 drop 再建（全新库 drop 为 no-op）。
+drop function if exists public.get_user_watchlist(uuid);
 create or replace function public.get_user_watchlist(p_target uuid)
-returns table (code text, market text, name text)
+returns table (code text, market text, name text, holding_cost numeric)
 language plpgsql security definer set search_path = public as $$
 begin
   -- 本人：始终可见自己的自选
   if p_target = auth.uid() then
     return query
-      select w.code, w.market, w.name
+      select w.code, w.market, w.name, h.cost
       from public.watchlists w
+      left join public.user_holdings h
+        on h.user_id = w.user_id and h.code = w.code
       where w.user_id = p_target
       order by w.created_at asc;
     return;
   end if;
-  -- 他人：仅当对方开启「公开自选股」
+  -- 他人：仅当对方开启「公开自选股」（公开自选即公开持仓收益率，口径与开关文案一致）
   if exists (
     select 1 from public.profiles p
     where p.id = p_target and coalesce(p.public_watchlist, true) = true
   ) then
     return query
-      select w.code, w.market, w.name
+      select w.code, w.market, w.name, h.cost
       from public.watchlists w
+      left join public.user_holdings h
+        on h.user_id = w.user_id and h.code = w.code
       where w.user_id = p_target
       order by w.created_at asc;
   end if;

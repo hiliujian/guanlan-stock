@@ -77,15 +77,7 @@ export function toActionChip(
   hasPosition: boolean
 ): ActionChip {
   const s = toActionSignal(level, hasPosition);
-  return { text: s.label, cls: s.level };
-}
-
-/**
- * 动作档位的语义方向：用于信号卡整体着色等需要「多/空/中性」的场景。
- * up=做多（买点/加仓） down=做空（减仓） flat=中性（关注/持有/观望）
- */
-export function actionTone(level: ActionLevel): "up" | "down" | "flat" {
-  if (level === "buy" || level === "add") return "up";
-  if (level === "reduce") return "down";
-  return "flat";
+  // cls 直接用引擎档位（而非动作档位）：与行情页信号卡的配色体系一一对应
+  // （buy=红 / sell=绿 / hold=蓝 / watch=橙 / wait=中性灰），标签文字仍是持仓感知的动作。
+  return { text: s.label, cls: level };
 }

@@ -183,13 +183,13 @@
           </view>
         </view>
 
-        <!-- 公开自选股 -->
+        <!-- 公开自选/持仓股 -->
         <view class="sec-row">
           <view class="sec-row-left">
             <view class="sec-row-ic"><OutlineIcon type="eye" :size="28" color="var(--text-2)" /></view>
             <view class="sec-row-text">
-              <text class="sec-row-label">公开自选股</text>
-              <text class="sec-row-desc truncate">关闭后，他人查看你的资料页将看不到自选股</text>
+              <text class="sec-row-label">公开自选/持仓股</text>
+              <text class="sec-row-desc truncate">关闭后，他人查看你的资料页将看不到自选股及各标的持仓收益率</text>
             </view>
           </view>
           <view class="sec-row-action">
