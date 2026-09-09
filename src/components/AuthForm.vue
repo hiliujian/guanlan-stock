@@ -41,6 +41,8 @@
       <view v-if="loading" class="btn-spin" />
       <text>{{ loading ? "登录中…" : "登录" }}</text>
     </button>
+    <!-- 连续登录失败达到阈值后的人机验证（防爆破） -->
+    <CaptchaDialog ref="captchaRef" />
   </view>
 </template>
 
@@ -49,9 +51,11 @@
  * 登录表单（单一标识输入框）
  * - 用户名或邮箱共用一个输入框；后端 signInByIdentifier 按实际类型判定登录方式
  * - 不强制校验为邮箱格式：含 @ 走邮箱校验，否则按用户名规则校验
+ * - 连续失败 ≥3 次后，每次登录前必须先通过人机验证（计数本地持久化，登录成功清零）
  */
 import { ref, reactive } from "vue";
 import AuthField from "./AuthField.vue";
+import CaptchaDialog from "./CaptchaDialog.vue";
 import { signInByIdentifier, USERNAME_RE, EMAIL_RE } from "@/api/auth";
 import { isSupabaseConfigured } from "@/config/app";
 
@@ -62,6 +66,25 @@ const password = ref("");
 const loading = ref(false);
 const serverErr = ref("");
 const errors = reactive<{ identifier: string; password: string }>({ identifier: "", password: "" });
+const captchaRef = ref<InstanceType<typeof CaptchaDialog> | null>(null);
+
+// ---- 登录失败计数（本地持久化：跨页面/重启后仍生效，成功登录即清零） ----
+const FAILS_KEY = "auth_login_fails";
+const CAPTCHA_THRESHOLD = 3;
+function getFails(): number {
+  try {
+    return Number(uni.getStorageSync(FAILS_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+function setFails(n: number) {
+  try {
+    uni.setStorageSync(FAILS_KEY, n);
+  } catch {
+    /* 存储失败不阻断登录流程 */
+  }
+}
 
 async function submit() {
   if (loading.value) return; // 回车快速提交 / 连点防抖：请求进行中忽略再次提交
@@ -87,14 +110,21 @@ async function submit() {
     errors.password = "密码至少 6 位";
     return;
   }
+  // 连续失败达到阈值：先过人机验证再发起登录（用户取消则不提交）
+  if (getFails() >= CAPTCHA_THRESHOLD) {
+    const human = await captchaRef.value?.verify();
+    if (!human) return;
+  }
   loading.value = true;
   try {
     const r = await signInByIdentifier(id, p);
     if (!r.ok) {
       // r.error 已按实际登录方式返回中文（用户名不存在 / 邮箱或密码错误等）
+      setFails(getFails() + 1);
       serverErr.value = r.error || "登录失败，请检查账号或密码";
       return;
     }
+    setFails(0); // 登录成功清零失败计数
     emit("authed");
   } catch (err: any) {
     serverErr.value = err?.message || "登录失败，请重试";

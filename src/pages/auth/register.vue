@@ -83,12 +83,15 @@
     </view>
   </AuthShell>
   <view v-else class="auth-guard"><view class="auth-guard-spin" /></view>
+  <!-- 发送邮箱验证码前的人机验证（防接口滥用） -->
+  <CaptchaDialog ref="captchaRef" />
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onUnmounted } from "vue";
 import AuthShell from "@/components/AuthShell.vue";
 import AuthField from "@/components/AuthField.vue";
+import CaptchaDialog from "@/components/CaptchaDialog.vue";
 import {
   requestSignupCode,
   verifySignupCode,
@@ -105,6 +108,9 @@ import { useAuthGuard } from "@/composables/useAuthGuard";
 // 已登录用户访问注册页 → 自动 replace 到「我的」（不渲染表单、返回键不回注册页）。
 // guard() 的 onLoad/onShow 已由 useAuthGuard 内部注册，页面无需重复调用。
 const { ready } = useAuthGuard();
+
+// 发码前人机验证：点「发送验证码」先过图形验证码，抬高批量滥发成本
+const captchaRef = ref<InstanceType<typeof CaptchaDialog> | null>(null);
 
 const email = ref("");
 const username = ref("");
@@ -208,6 +214,9 @@ async function sendCode() {
     errors.email = "请输入有效的邮箱地址";
     return;
   }
+  // 人机验证：用户取消 / 校验不通过则不发码
+  const human = await captchaRef.value?.verify();
+  if (!human) return;
   sending.value = true;
   try {
     const r = await requestSignupCode(e);

@@ -119,14 +119,18 @@
                 <text class="dp-wl-code">{{ w.code }}</text>
               </view>
             </view>
+            <!-- 对方持仓标识（位于行情区左侧，结构与其对齐：两行右对齐、无背景）——
+                 第一行：铜钱小图标 + 持仓收益率（涨红跌绿）；第二行：持股数（N 股） -->
+            <view v-if="w.holdingCost && typeof w.price === 'number'" class="dp-wl-hold">
+              <view class="dp-wl-holdrow">
+                <OutlineIcon type="portfolio" :size="22" color="var(--primary)" />
+                <text class="dp-wl-holdpct" :class="holdPct(w) >= 0 ? 'up' : 'down'">{{ holdPctText(w) }}</text>
+              </view>
+              <text class="dp-wl-shares">{{ holdingShares(w) }} 股</text>
+            </view>
             <view v-if="typeof w.price === 'number'" class="dp-wl-q">
               <text class="dp-wl-price" :class="pctClass(w.pct)">{{ formatPrice(w.price) }}</text>
               <text class="dp-wl-pct" :class="pctClass(w.pct)">{{ formatPct(w.pct) }}</text>
-            </view>
-            <!-- 对方在该标的有持仓：铜钱（portfolio）徽标 + 仅展示持仓收益率（成本金额不展示） -->
-            <view v-if="w.holdingCost && typeof w.price === 'number'" class="dp-wl-hold">
-              <OutlineIcon type="portfolio" :size="22" color="var(--primary)" />
-              <text class="dp-wl-holdpct" :class="holdPct(w) >= 0 ? 'up' : 'down'">{{ holdPctText(w) }}</text>
             </view>
             <view
               class="dp-wl-star flex-center"
@@ -224,6 +228,7 @@ interface WatchRow {
   price?: number;
   pct?: number;
   holdingCost?: number;
+  holdingShares?: number;
 }
 
 const uid = ref("");
@@ -384,6 +389,7 @@ async function loadWatchlist() {
       market: d.market || "auto",
       name: d.name || "",
       holdingCost: typeof d.holding_cost === "number" && d.holding_cost > 0 ? d.holding_cost : undefined,
+      holdingShares: typeof d.holding_shares === "number" && d.holding_shares > 0 ? d.holding_shares : undefined,
     }));
     await Promise.all(
       rows.map(async (r) => {
@@ -460,6 +466,10 @@ function holdPct(w: WatchRow): number {
 function holdPctText(w: WatchRow): string {
   const p = holdPct(w);
   return `${p >= 0 ? "+" : ""}${p.toFixed(2)}%`;
+}
+/** 对方持股数（千分位整数）；未回传时不显示第二行 */
+function holdingShares(w: WatchRow): string {
+  return w.holdingShares ? w.holdingShares.toLocaleString("en-US") : "--";
 }
 function openStock(w: WatchRow) {
   openInMarket(w.code, w.market as Market);
@@ -803,18 +813,22 @@ function goUserPosts() {
 .dp-wl-pct.flat {
   color: var(--text-2);
 }
-/* 对方持仓标识：铜钱小图标 + 仅持仓收益率（涨红跌绿），插在行情区与自选星标之间 */
+/* 对方持仓标识：与行情区 .dp-wl-q 同构（两行右对齐、无背景），置于其左侧——
+   第一行铜钱小图标 + 持仓收益率（涨红跌绿），第二行持股数（次级文字色） */
 .dp-wl-hold {
   flex: none;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 4rpx;
-  padding: 4rpx 10rpx;
-  border-radius: 999rpx;
-  background: var(--primary-soft);
+}
+.dp-wl-holdrow {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
 }
 .dp-wl-holdpct {
-  font-size: var(--font-xs);
+  font-size: var(--font-sm);
   font-variant-numeric: tabular-nums;
 }
 .dp-wl-holdpct.up {
@@ -822,6 +836,11 @@ function goUserPosts() {
 }
 .dp-wl-holdpct.down {
   color: var(--down);
+}
+.dp-wl-shares {
+  font-size: var(--font-xs);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
 /* 自选星标（复用行情页 .qh-star 视觉：圆形底 + 描边星，加入自选底变 primary-soft；
    此处用静态定位而非 absolute，使其内联在行尾，点击加入/移除自选，不触发整卡跳转） */
