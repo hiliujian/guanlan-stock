@@ -18,7 +18,7 @@
     <view v-if="emojiOpen" :class="['emoji-panel', direction]" @mousedown.prevent>
       <scroll-view scroll-y class="emoji-scroll">
         <view class="emoji-grid">
-          <text v-for="em in EMOJIS" :key="em" class="emoji-item" @click="insertEmoji(em)">{{ em }}</text>
+          <text v-for="em in EMOJIS" :key="em" class="emoji-item" @click="insertAndClose(em)">{{ em }}</text>
         </view>
       </scroll-view>
       <view class="emoji-bar">
@@ -78,6 +78,14 @@ const { emojiOpen, toggleEmoji, insertEmoji, backspaceEmoji } = useEmoji(props.g
     emit("after-insert", t);
   },
 });
+
+// 点选表情插入后自动收起面板（插入即完成选词，面板无需常驻）；
+// backspace 退格不收起，方便连续删字
+function insertAndClose(em: string) {
+  insertEmoji(em);
+  emojiOpen.value = false;
+  emit("update:open", false);
+}
 
 // 父组件通过 v-model:open 外部控制展开态时（如发帖收起附件菜单联动），同步到内部状态
 watch(

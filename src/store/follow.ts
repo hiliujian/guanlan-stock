@@ -4,7 +4,8 @@
 // 前端仅缓存「我关注了哪些 uid」（follows 集合）用于即时 UI；真实粉丝数 /
 // 关注数由 count_followers / count_following RPC 计算。
 // 登录态变化时由模块级 onAuthStateChange 订阅自动拉取 / 清空，避免与 user.ts 形成循环依赖。
-// 同时导出 followPanelOpen 共享信号，供 ProfileView 跨 tab 打开社区内的「我的关注」弹层。
+// 同时导出 followPanelOpen / followPanelMode 共享信号，供 ProfileView 跨 tab 打开社区内的
+// 「关注 / 粉丝」弹层（mode 区分：following=我关注的用户，fans=关注我的粉丝）。
 // =====================================================================
 import { ref } from "vue";
 import { getSupabase, isSupabaseConfigured } from "@/api/supabase";
@@ -12,8 +13,11 @@ import { getSupabase, isSupabaseConfigured } from "@/api/supabase";
 // 我关注的用户 uid 集合（响应式，组件间共享同一实例）
 const follows = ref<Set<string>>(new Set());
 
-// 跨组件打开「我的关注」弹层的共享信号（ProfileView 置 true，CommunityView 监听并挂载 FollowListView）
+// 跨组件打开「关注 / 粉丝」弹层的共享信号（ProfileView 置 open+mode，CommunityView 监听并挂载 FollowListView）
 const followPanelOpen = ref(false);
+// 弹层内容方向：following=我关注的用户列表；fans=关注我的粉丝列表
+export type FollowPanelMode = "following" | "fans";
+const followPanelMode = ref<FollowPanelMode>("following");
 
 let loadStarted = false;
 let myUidCache: { value: string | null; ts: number } | null = null;
@@ -127,5 +131,5 @@ export function useFollow() {
 }
 
 export function useFollowPanel() {
-  return { followPanelOpen };
+  return { followPanelOpen, followPanelMode };
 }

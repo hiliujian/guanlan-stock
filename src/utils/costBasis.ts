@@ -4,7 +4,7 @@
 //   · 行情页报告（MarketView/ReportView）：Tip 行 wallet 图标弹出录入（字段与社区
 //     发帖持仓卡对齐：仅持仓成本+数量），成本驱动报告页持仓状态双视角建议，抑制频繁交易误导；
 //   · 社区发帖（PostComposer）：持仓卡「一键填入」快速关联本地持仓（成本/数量预填）；
-//   · 自选页（WatchlistView）：持仓标的巡检，产生买/卖信号时页内常驻卡片提醒。
+//   · 自选页（WatchlistView）：自选标的巡检，出现加仓/减仓/清仓等仓位信号时底部浮层提醒。
 // 兼容：旧版本 cost:<secid> 存的是纯数字（仅成本），读取时自动归一为 Position。
 // =====================================================================
 
@@ -17,7 +17,6 @@ export const positionsVersion = ref(0);
 
 const IDX_KEY = "cost:index"; // 已设置持仓的 secid 索引（供巡检枚举，避免遍历 storage）
 const KEY = (secid: string) => "cost:" + secid;
-const LAST_SIG = (secid: string) => "sigLast:" + secid;
 
 export interface Position {
   cost: number; // 持仓成本（元/股）
@@ -63,12 +62,11 @@ export function setPosition(secid: string, pos: Position) {
   }
 }
 
-/** 清除持仓并维护索引（同步清掉信号提醒去重基线，避免下次再持仓时漏提醒） */
+/** 清除持仓并维护索引 */
 export function clearPosition(secid: string) {
   if (!secid) return;
   try {
     uni.removeStorageSync(KEY(secid));
-    uni.removeStorageSync(LAST_SIG(secid));
     const idx: string[] = uni.getStorageSync(IDX_KEY) || [];
     const next = idx.filter((s) => s !== secid);
     if (next.length !== idx.length) uni.setStorageSync(IDX_KEY, next);
@@ -95,21 +93,4 @@ export function listPositions(): (Position & { secid: string })[] {
       return p ? { secid, ...p } : null;
     })
     .filter((x): x is Position & { secid: string } => x !== null);
-}
-
-/** 上次巡检时该持仓的信号档（自选提醒去重：仅信号变化才提醒） */
-export function getLastSignal(secid: string): string {
-  try {
-    return (uni.getStorageSync(LAST_SIG(secid)) as string) || "";
-  } catch {
-    return "";
-  }
-}
-
-export function setLastSignal(secid: string, level: string) {
-  try {
-    uni.setStorageSync(LAST_SIG(secid), level);
-  } catch {
-    /* noop */
-  }
 }

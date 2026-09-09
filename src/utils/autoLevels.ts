@@ -461,7 +461,8 @@ function fadeColor(hex: string, alpha: number): string {
 }
 
 // 结构线「必须画出」：优先有效簇价；破位（实体击穿/箱体破位）→ 仍显示原价但淡化+「破」标注；
-// 无簇 → 最近摆动点，再无 → 窗口极值，淡化+「参」标注。返回 null 仅当数据不足（buildRawLevels 空态）。
+// 无簇 → 最近摆动点，再无 → 窗口极值，仅淡化展示（不渲染「参考位」小字标签，避免干扰视图）。
+// 返回 null 仅当数据不足（buildRawLevels 空态）。
 function ensureStructLine(
   series: any[], raw: RawLevels, role: "support" | "pressure", guard: PeriodGuard
 ): { price: number; tag: string; sub: string; label: string; src: string; degraded: boolean } | null {
@@ -492,7 +493,7 @@ function ensureStructLine(
     if (!sl.length) return null;
     price = role === "support" ? Math.min(...sl) : Math.max(...sl);
   }
-  return { price, tag: base.tag, sub: "参考位", label: base.name, src: `${srcBase}·参考位（簇缺失兜底）`, degraded: true };
+  return { price, tag: base.tag, sub: "", label: base.name, src: `${srcBase}·参考位（簇缺失兜底）`, degraded: true };
 }
 
 /**
@@ -508,7 +509,7 @@ export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard, d
   const out: AutoLevel[] = [];
 
   // 结构支撑/压力「必须画出」：破位（连续实体击穿/箱体破位）不再隐藏，淡化+「破」标注；
-  // 簇缺失（摆动点不足/分散）退化为最近摆动点或窗口极值，淡化+「参」标注。杜绝"时有时无"。
+  // 簇缺失（摆动点不足/分散）退化为最近摆动点或窗口极值，仅淡化展示（不渲染「参考位」小字标签）。杜绝"时有时无"。
   // 报告侧 computePriceLevels 对此类价位以 isBroken 判失效（含同一错误侧守卫），两端口径一致。
   const sup = ensureStructLine(series, raw, "support", guard);
   if (sup) {
@@ -581,7 +582,7 @@ interface PriceLevelItem {
   totalScore: number;     // 综合总分（量价·筹码·趋势加权后，0-100 量级）
   touchCount: number;     // 触碰次数
   isBroken: boolean;      // 失效：连续2根实体击穿 / 箱体破位 / 现价已收于画线错误侧
-  status: "ok" | "broken" | "ref"; // 与图表状态一一对应：ok=正常 / broken=已破位 / ref=参考位（簇缺失兜底）
+  status: "ok" | "broken" | "ref"; // 与图表状态一一对应：ok=正常 / broken=已破位 / ref=簇缺失兜底
   level: "强" | "中" | "弱"; // 强弱评级
   volDesc: string;        // 量能描述：放量确认/缩量触碰
   labelTag: string;       // 对应图表标签：支/压/S/B
@@ -636,8 +637,8 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
     };
   };
   // 结构线与图表 100% 同源：正常/破位（含错误侧）路径直接走 mk（rl.price 与 ensureStructLine
-  // 同值）；簇缺失时与图表一样兜底「最近摆动点 → 窗口极值」，标参考位（status=ref，弱级），
-  // 杜绝「图表画了参考位、报告却没有该价位」的不一致。
+  // 同值）；簇缺失时与图表一样兜底「最近摆动点 → 窗口极值」（status=ref，弱级），
+  // 杜绝「图表画了兜底线、报告却没有该价位」的不一致。
   const structMk = (
     role: "structSupport" | "structPressure",
     rl: RawLevel,
@@ -645,9 +646,11 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
   ): PriceLevelItem | null => {
     const it = mk(role, rl, tag, name, "");
     if (it) return it;
+    // 走到这里必然是簇缺失（rl.price == null，mk 已放行有效/破位路径），
+    // ensureStructLine 非 null 即兜底参考位；数据不足与图表一致地缺省
     const ensureRole = role === "structSupport" ? "support" : "pressure";
     const sl = ensureStructLine(series, raw, ensureRole, guard);
-    if (!sl || sl.sub !== "参考位") return null; // 仅兜底参考位路径；数据不足与图表一致地缺省
+    if (!sl) return null;
     return {
       price: sl.price, totalScore: 0, touchCount: 0,
       isBroken: false, status: "ref", level: "弱",

@@ -36,32 +36,6 @@
 
     <view class="wl">
 
-        <!-- 持仓信号提醒：持仓标的出现买/卖信号时展示，常驻卡片、点击行跳转个股、手动关闭才消失 -->
-        <view v-if="sigAlertList.length" class="pos-alert anim-fade-up">
-          <view class="pa-head">
-            <OutlineIcon type="flag" :size="28" color="var(--warn)" />
-            <text class="pa-title">持仓信号提醒</text>
-            <view class="pa-close" @click="dismissSigAlerts" role="button" aria-label="关闭提醒">
-              <OutlineIcon type="close" :size="26" color="var(--text-3)" />
-            </view>
-          </view>
-          <view
-            v-for="a in sigAlertList"
-            :key="a.code"
-            class="pa-row"
-            role="button"
-            :aria-label="`查看 ${a.name}`"
-            @click="openAlertStock(a)"
-          >
-            <text class="pa-name truncate">{{ a.name }}</text>
-            <!-- 提醒卡只对已设持仓的标的生成（scanPositionSignals 仅扫持仓），
-                 因此按持仓视角命名：buy→加仓 / sell→减仓（配色类名 buy/sell 语义一致，保留复用） -->
-            <text :class="['pa-lv', a.level]">{{ a.level === "buy" ? "加仓" : "减仓" }}</text>
-            <text class="pa-meta">现价 {{ fmtPrice(a.price) }}</text>
-            <text :class="['pa-meta', trendCls(a.pnl)]">{{ fmtSigned(a.pnl) }}%</text>
-          </view>
-        </view>
-
         <!-- 价格预警：命中行在自选表格内闪烁红/绿提示（见 .tr.alert-up/.alert-down），
              不再使用独立横幅卡片；清除预警请在长按菜单「编辑价格预警」中操作。 -->
 
@@ -663,6 +637,33 @@
         <!-- 设置持仓弹窗（共享组件 PositionForm）：长按菜单打开，按 lpItem 现读/写入 costBasis -->
         <PositionForm ref="posFormRef" :secid="lpSecid" @save="saveLpPosition" @clear="clearLpPosition" />
 
+        <!-- 信号提醒浮层：自选/持仓共有标的（含未设持仓）出现重要仓位信号（加仓/减仓/清仓）时，
+             悬浮在表格可视化区域底部。信号存在期间每次进页都提醒（不做"仅一次"去重），
+             展示 3s 自动消失，也可点 × 手动关闭；点击行跳转个股报告 -->
+        <view v-if="sigAlertList.length" class="sig-toast anim-fade-up">
+          <view class="sg-head">
+            <OutlineIcon type="flag" :size="24" color="var(--warn)" />
+            <text class="sg-title">信号提醒</text>
+            <view class="sg-close" @click="dismissSigAlerts" role="button" aria-label="关闭提醒">
+              <OutlineIcon type="close" :size="24" color="var(--text-3)" />
+            </view>
+          </view>
+          <view
+            v-for="a in sigAlertList"
+            :key="a.code"
+            class="sg-row"
+            role="button"
+            :aria-label="`查看 ${a.name}`"
+            @click="openAlertStock(a)"
+          >
+            <text class="sg-name truncate">{{ a.name }}</text>
+            <text class="sg-code">{{ a.code }}</text>
+            <text :class="['sg-tag', a.level]">{{ a.tag }}</text>
+            <text class="sg-price">{{ fmtPrice(a.price) }}</text>
+            <text :class="['sg-pct', trendCls(a.pct)]">{{ fmtPct(a.pct) }}</text>
+          </view>
+        </view>
+
       </view>
   </view>
 </template>
@@ -689,7 +690,7 @@ import { staleGet, staleSet } from "@/utils/staleCache";
 import { analyze } from "@/utils/analyzer";
 import { toActionChip } from "@/utils/actionSignal";
 import { getKline } from "@/api/sources";
-import { listCostSecids, getPosition, setPosition, clearPosition, listPositions, getLastSignal, setLastSignal, positionsVersion, type Position } from "@/utils/costBasis";
+import { getPosition, setPosition, clearPosition, listPositions, positionsVersion, type Position } from "@/utils/costBasis";
 import { hydrateCloudPositions } from "@/store/holdingsMirror";
 import { saveHolding, dropHolding } from "@/api/holdings";
 
@@ -1120,19 +1121,26 @@ function refreshAlertHits() {
   alertState.value = next;
 }
 
-// ===== 持仓信号巡检：已填持仓（=持仓中）的自选标的，产生买/卖信号时在页内常驻卡片提醒 =====
-// 信号用真实 analyze() 引擎对日 K 计算（与报告页同源）；去重：记录每只上次信号档，
-// 仅信号档发生变化（含首次）才进入提醒卡。卡片常驻展示、点击行跳转个股、手动关闭才消失
-//（替代原 uni.showModal：H5 模态观感与应用风格割裂，且易被误触关掉）。
+// ===== 信号提醒巡检：自选页全部标的（含未设持仓）出现重要仓位信号时，底部浮层提醒 =====
+// 信号用真实 analyze() 引擎对日 K 计算（与报告页同源）；持仓视角下 buy→加仓 / sell→减仓，
+// 空仓视角 sell 视为「清仓/离场」信号同样提醒。不做"仅一次"去重：信号在就提醒，
+// 每次进页都会重新展示；浮层 3s 自动消失，也可手动关闭。
 interface SigAlert {
   code: string;
   name: string;
   level: "buy" | "sell";
+  tag: string; // 信号标签：加仓 / 减仓 / 清仓
   price: number;
-  pnl: number;
+  pct: number; // 当日涨跌幅（来自行情快照）
 }
+const SIG_TOAST_MS = 3000;
 const sigAlertList = ref<SigAlert[]>([]);
+let sigToastTimer: any = null;
 function dismissSigAlerts() {
+  if (sigToastTimer != null) {
+    clearTimeout(sigToastTimer);
+    sigToastTimer = null;
+  }
   sigAlertList.value = [];
 }
 function openAlertStock(a: SigAlert) {
@@ -1142,44 +1150,45 @@ function openAlertStock(a: SigAlert) {
 let scanningSig = false;
 async function scanPositionSignals() {
   if (scanningSig) return;
-  const costSecids = listCostSecids();
-  if (!costSecids.length) {
-    sigAlertList.value = [];
-    return;
-  }
-  const nameBySecid = new Map(
-    list.value.map((it) => [resolveSecid(it.code, it.market as any) as string, it.name || it.code])
-  );
+  if (!list.value.length) return;
   scanningSig = true;
   try {
     const alerts: SigAlert[] = [];
-    for (const secid of costSecids) {
+    for (const it of list.value) {
+      const secid = resolveSecid(it.code, it.market as any) as string;
+      if (!secid) continue;
       try {
         const kls = await getKline(secid, "d");
         if (!kls || kls.length < 60) continue;
         const a = analyze(kls, {}, null, kls, null, secid.split(".")[1], "d");
         const lvl = a.signal.level;
-        const prev = getLastSignal(secid);
-        setLastSignal(secid, lvl);
+        if (lvl !== "buy" && lvl !== "sell") continue;
         // 顺带缓存信号标签供持仓视图复用（同一引擎同一口径，不重复跑 analyze）
         posSigMap.value = { ...posSigMap.value, [secid]: toActionChip(lvl, true) };
-        if ((lvl === "buy" || lvl === "sell") && lvl !== prev) {
-          const cost = getPosition(secid)?.cost;
-          const pnl = cost ? ((a.price - cost) / cost) * 100 : 0;
-          alerts.push({
-            code: secid.split(".")[1] || secid,
-            name: nameBySecid.get(secid) || secid,
-            level: lvl as "buy" | "sell",
-            price: a.price,
-            pnl,
-          });
-        }
+        const hasPos = !!getPosition(secid);
+        const tag = lvl === "buy" ? "加仓" : hasPos ? "减仓" : "清仓";
+        const q = quotes[keyOf(it)];
+        alerts.push({
+          code: secid.split(".")[1] || secid,
+          name: it.name || it.code,
+          level: lvl as "buy" | "sell",
+          tag,
+          price: a.price,
+          pct: q?.pct ?? 0,
+        });
       } catch {
         /* 单只失败不影响其余 */
       }
     }
-    // 仅在有新提醒时替换卡片内容；无提醒且用户已手动关闭（当前为空）则不打扰
-    if (alerts.length) sigAlertList.value = alerts;
+    // 信号在即展示（每次进页都提醒，不做去重基线）；展示后 3s 自动消失
+    if (alerts.length) {
+      sigAlertList.value = alerts;
+      if (sigToastTimer != null) clearTimeout(sigToastTimer);
+      sigToastTimer = setTimeout(() => {
+        sigToastTimer = null;
+        sigAlertList.value = [];
+      }, SIG_TOAST_MS);
+    }
   } finally {
     scanningSig = false;
   }
@@ -1750,7 +1759,7 @@ onMounted(() => {
   preloadRank("today"); // 预加载今日热榜：展开榜单面板零等待（与 RankView 共用同一装载代码）
   // 已登录时以云端持仓簿为准重铺本地缓存（跨设备 / 刷新后图标与盈亏收口到真实数据）
   if (userState.loggedIn) hydrateCloudPositions();
-  scanPositionSignals(); // 持仓信号巡检：进入自选页即检测一次
+  scanPositionSignals(); // 信号巡检：进入自选页即检测一次
 });
 onActivated(() => {
   loadQuotesSafe();
@@ -1766,6 +1775,10 @@ onDeactivated(stopAnomSync);
 onUnmounted(() => {
   stopPolling();
   stopAnomSync();
+  if (sigToastTimer != null) {
+    clearTimeout(sigToastTimer);
+    sigToastTimer = null;
+  }
 });
 watch(
   () => userState.loggedIn,
@@ -1982,6 +1995,8 @@ function removeLp() {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* 相对定位锚点：信号提醒浮层(.sig-toast) absolute 定位以此为基准 */
+  position: relative;
   /* 内容区底边精确落在「今日最热」卡片顶沿：卡片固定位于菜单栏上方，
      距视口底 = 菜单栏110rpx + 卡片76rpx + 安全区 = 186rpx+safe。
      这样表格(scroll-view) 高度 = 顶栏底 → 卡片顶，末行紧贴卡片、无预留空白。 */
@@ -2088,66 +2103,83 @@ function removeLp() {
   50% { opacity: 1; }
 }
 
-/* ===== 持仓信号提醒卡 ===== */
-.pos-alert {
-  margin: 0 24rpx 16rpx;
-  padding: 16rpx 20rpx;
+/* ===== 信号提醒浮层：悬浮在表格可视化区域底部（内容区底沿=今日最热卡片顶沿，
+   故 bottom = 安全区 + 186rpx 底部留白 + 10rpx 间距），不随表格滚动，3s 自动消失 ===== */
+.sig-toast {
+  position: absolute;
+  left: 24rpx;
+  right: 24rpx;
+  bottom: calc(env(safe-area-inset-bottom) + 196rpx);
+  z-index: 35;
+  padding: 14rpx 20rpx;
   background: var(--card);
   border: 1rpx solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
-.pa-head {
+.sg-head {
   display: flex;
   align-items: center;
   gap: 10rpx;
-  margin-bottom: 10rpx;
+  margin-bottom: 6rpx;
 }
-.pa-title {
+.sg-title {
   flex: 1;
   font-size: var(--font-sm);
   color: var(--text);
 }
-.pa-close {
+.sg-close {
   flex: none;
   padding: 6rpx;
 }
-.pa-row {
+.sg-row {
   display: flex;
   align-items: center;
   gap: 14rpx;
   padding: 12rpx 4rpx;
   border-top: 1rpx solid var(--border);
 }
-.pa-name {
+.sg-name {
   flex: 1;
   min-width: 0;
   font-size: var(--font-sm);
   color: var(--text);
 }
-.pa-lv {
+.sg-code {
+  flex: none;
+  font-size: var(--font-xs);
+  color: var(--text-2);
+}
+.sg-tag {
   flex: none;
   font-size: var(--font-xs);
   padding: 4rpx 14rpx;
   border-radius: 8rpx;
 }
-.pa-lv.buy {
+.sg-tag.buy {
   color: var(--up);
   background: rgba(239, 35, 42, 0.12);
 }
-.pa-lv.sell {
+.sg-tag.sell {
   color: var(--down);
   background: rgba(9, 176, 122, 0.12);
 }
-.pa-meta {
+.sg-price {
+  flex: none;
+  font-size: var(--font-xs);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.sg-pct {
   flex: none;
   font-size: var(--font-xs);
   color: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
-/* 预警命中列表的盈亏百分比：trendCls 返回 up/down/flat，需显式着色 */
-.pa-meta.up { color: var(--up); }
-.pa-meta.down { color: var(--down); }
-.pa-meta.flat { color: var(--text-2); }
+/* 涨跌幅着色：trendCls 返回 up/down/flat，需显式对应配色 */
+.sg-pct.up { color: var(--up); }
+.sg-pct.down { color: var(--down); }
+.sg-pct.flat { color: var(--text-2); }
 
 /* ===== 空态 ===== */
 .empty-wrap {
@@ -2273,8 +2305,11 @@ function removeLp() {
   cursor: pointer;
   position: relative;
 }
-/* 表头名称列：与数据列同为固定列（左上角最高层级），背景同数据行；左内边距与顶部栏一致(18rpx) */
+/* 表头名称列：与数据列同为固定列（左上角最高层级），背景同数据行；左内边距与顶部栏一致(18rpx)。
+   显式声明与数据行 .c-name 相同的 160rpx——表头单元格内容为空，不设宽会收缩到仅剩内边距，
+   导致表头第一列与数据行第一列列宽不一致 */
 .th.c-name {
+  width: 160rpx;
   justify-content: flex-start;
   text-align: left;
   position: sticky;

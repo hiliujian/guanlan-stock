@@ -6,23 +6,23 @@
     <template #peek>
       <view class="fl-peek">
         <OutlineIcon type="user" :size="30" color="var(--text-2)" />
-        <text class="fl-peek-t">我的关注</text>
-        <text v-if="followedUsers.length" class="fl-peek-badge">{{ followedUsers.length }}</text>
+        <text class="fl-peek-t">{{ isFans ? "我的粉丝" : "我的关注" }}</text>
+        <text v-if="listUsers.length" class="fl-peek-badge">{{ listUsers.length }}</text>
       </view>
     </template>
 
-    <!-- 展开 / 铺满：我的关注列表（姓名 + 取消关注） -->
+    <!-- 展开 / 铺满：关注 / 粉丝列表（姓名 + 操作按钮） -->
     <template #default>
       <view class="fl-wrap">
         <!-- 头部：复用全局 grp-head + panel-head + sheet-title -->
         <view class="grp-head panel-head fl-bar">
-          <text class="sheet-title">我的关注</text>
+          <text class="sheet-title">{{ isFans ? "我的粉丝" : "我的关注" }}</text>
         </view>
 
-        <!-- 关注列表（可滚动） -->
+        <!-- 列表（可滚动） -->
         <scroll-view scroll-y class="fl-scroll">
           <view
-            v-for="f in followedUsers"
+            v-for="f in listUsers"
             :key="f.id"
             class="fl-item"
           >
@@ -33,14 +33,18 @@
                 <text class="fl-item-name truncate">{{ f.display_name || f.username }}</text>
               </view>
             </view>
-            <!-- 取消关注：点击即移除，列表随 follows 响应式收缩 -->
-            <view class="fl-unfollow" hover-class="fl-unfollow-hover" @click="unfollow(f.id)">
-              <text class="fl-unfollow-t">取消关注</text>
+            <!-- 关注模式：取消关注；粉丝模式：回关 / 已互关（状态随 follows 集合即时切换） -->
+            <view
+              :class="['fl-act', { 'fl-act-on': isFans && isFollowing(f.id) }]"
+              hover-class="fl-act-hover"
+              @click="isFans ? toggleFollow(f.id) : unfollow(f.id)"
+            >
+              <text class="fl-act-t">{{ isFans ? (isFollowing(f.id) ? "已互关" : "回关") : "取消关注" }}</text>
             </view>
           </view>
-          <view v-if="!followedUsers.length" class="fl-empty">
+          <view v-if="!listUsers.length" class="fl-empty">
             <OutlineIcon type="user" :size="80" color="var(--border)" />
-            <text class="empty-title">还没有关注任何人</text>
+            <text class="empty-title">{{ isFans ? "还没有粉丝" : "还没有关注任何人" }}</text>
           </view>
         </scroll-view>
       </view>
@@ -49,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import UserAvatar from "./UserAvatar.vue";
 import PeekSheet from "./PeekSheet.vue";
@@ -59,13 +63,19 @@ import { vipActive } from "@/store/level";
 import { getSupabase } from "@/api/supabase";
 import { vipGatedFrame } from "@/utils/avatarFrame";
 
-withDefaults(defineProps<{ modelValue: boolean; zIndex?: number }>(), { modelValue: false, zIndex: 40 });
+// 弹层方向：following=我关注的用户；fans=关注我的粉丝（复用同一列表框架，仅数据源与操作不同）
+const props = withDefaults(defineProps<{ modelValue: boolean; zIndex?: number; mode?: "following" | "fans" }>(), {
+  modelValue: false,
+  zIndex: 40,
+  mode: "following",
+});
 const emit = defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
+const isFans = computed(() => props.mode === "fans");
 
-const { follows, toggleFollow } = useFollow();
+const { follows, toggleFollow, isFollowing } = useFollow();
 
-// 关注列表：由「我关注的用户 uid 集合」反查 profiles（服务端权威，含头像 / 昵称 / 头像框），
-// 不再依赖社区帖子反查昵称，头像与资料页一致。
+// 列表数据：关注模式=「我关注的 uid 集合」反查 profiles；粉丝模式=follows 表反查 follower_id。
+// 统一由 profiles 表补齐头像 / 昵称 / 头像框（服务端权威，与资料页一致）。
 interface FollowedUser {
   id: string;
   display_name: string;
@@ -75,22 +85,46 @@ interface FollowedUser {
   vip: boolean;
   vip_expires_at: string | null;
 }
-const followedUsers = ref<FollowedUser[]>([]);
-async function loadFollowedUsers() {
-  const ids = Array.from(follows.value);
-  if (!ids.length) {
-    followedUsers.value = [];
-    return;
-  }
+const listUsers = ref<FollowedUser[]>([]);
+async function loadListUsers() {
   const sb = getSupabase();
   if (!sb) return;
-  const { data } = await sb
-    .from("profiles")
-    .select("id, display_name, username, avatar_url, avatar_frame, vip, vip_expires_at")
-    .in("id", ids);
-  followedUsers.value = (data || []) as FollowedUser[];
+  if (isFans.value) {
+    // 粉丝：follows 表 where following_id = 我 → 取全部 follower_id 反查 profiles
+    const myUid = userState.userId;
+    if (!myUid) {
+      listUsers.value = [];
+      return;
+    }
+    const { data: rows } = await sb
+      .from("follows")
+      .select("follower_id")
+      .eq("following_id", myUid);
+    const ids = ((rows as any[]) || []).map((r) => r.follower_id as string);
+    if (!ids.length) {
+      listUsers.value = [];
+      return;
+    }
+    const { data } = await sb
+      .from("profiles")
+      .select("id, display_name, username, avatar_url, avatar_frame, vip, vip_expires_at")
+      .in("id", ids);
+    listUsers.value = (data || []) as FollowedUser[];
+  } else {
+    const ids = Array.from(follows.value);
+    if (!ids.length) {
+      listUsers.value = [];
+      return;
+    }
+    const { data } = await sb
+      .from("profiles")
+      .select("id, display_name, username, avatar_url, avatar_frame, vip, vip_expires_at")
+      .in("id", ids);
+    listUsers.value = (data || []) as FollowedUser[];
+  }
 }
-watch(follows, loadFollowedUsers, { immediate: true });
+// 关注模式随 follows 集合变化（取消关注即时收缩）；粉丝模式仅挂载时加载一次
+watch(follows, () => { if (!isFans.value) loadListUsers(); }, { immediate: true });
 
 /** 取消关注：toggleFollow 在已关注状态下会自动取消。 */
 function unfollow(uid: string) {
@@ -105,7 +139,7 @@ function openProfile(uid: string) {
 const sheet = ref<any>(null);
 // 挂载即展开（ProfileView 已控制跳转社区并置 followPanelOpen，本组件按需挂载）
 onMounted(() => {
-  loadFollowedUsers();
+  loadListUsers();
   sheet.value?.expand();
 });
 
@@ -214,19 +248,22 @@ defineExpose({ animateClose });
   font-size: var(--font-md);
   color: var(--text);
 }
-/* 取消关注：纯文字危险操作，去掉背景与描边，红字与中性信息区分 */
-.fl-unfollow {
+/* 操作按钮：关注模式=取消关注（危险红字）；粉丝模式=回关（主题色高亮）/已互关（灰色） */
+.fl-act {
   flex: none;
   display: inline-flex;
   align-items: center;
   padding: 10rpx 8rpx;
   transition: transform 0.12s ease, opacity 0.12s ease;
 }
-.fl-unfollow-hover {
+.fl-act-hover {
   opacity: 0.6;
 }
-.fl-unfollow-t {
+.fl-act-t {
   font-size: var(--font-sm);
   color: var(--danger);
+}
+.fl-act-on .fl-act-t {
+  color: var(--text-2);
 }
 </style>

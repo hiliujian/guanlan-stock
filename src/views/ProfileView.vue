@@ -58,33 +58,32 @@
         </view>
       </view>
 
-      <!-- 数据概览：仅登录后展示 -->
+      <!-- 数据概览：仅登录后展示（关注 / 粉丝 / 贴子 / 赞过） -->
       <view v-if="showStats" class="pf-stats">
-        <view
-          v-if="isTabEnabled('watch')"
-          class="pf-stat"
-          hover-class="pf-stat-hover"
-          role="button"
-          aria-label="我的自选"
-          @click="goWatch"
-        >
-          <text class="pf-stat-num">{{ watchCount }}</text>
-          <text class="pf-stat-lab">自选股</text>
-        </view>
-        <view v-if="isTabEnabled('watch') && isTabEnabled('community')" class="pf-divider" />
-        <!-- 我的关注：点击跳转「我的社区」并弹出关注列表（复用消息中心 PeekSheet） -->
         <view
           v-if="isTabEnabled('community')"
           class="pf-stat"
           hover-class="pf-stat-hover"
           role="button"
           aria-label="我的关注"
-          @click="goMyFollow"
+          @click="goFollowPanel('following')"
         >
           <text class="pf-stat-num">{{ followCount }}</text>
-          <text class="pf-stat-lab">我的关注</text>
+          <text class="pf-stat-lab">关注</text>
         </view>
-        <view v-if="isTabEnabled('community')" class="pf-divider" />
+        <view class="pf-divider" />
+        <view
+          v-if="isTabEnabled('community')"
+          class="pf-stat"
+          hover-class="pf-stat-hover"
+          role="button"
+          aria-label="我的粉丝"
+          @click="goFollowPanel('fans')"
+        >
+          <text class="pf-stat-num">{{ fansCount }}</text>
+          <text class="pf-stat-lab">粉丝</text>
+        </view>
+        <view class="pf-divider" />
         <view
           v-if="isTabEnabled('community')"
           class="pf-stat"
@@ -94,9 +93,9 @@
           @click="goMyPosts"
         >
           <text class="pf-stat-num">{{ postCount }}</text>
-          <text class="pf-stat-lab">我的帖子</text>
+          <text class="pf-stat-lab">贴子</text>
         </view>
-        <view v-if="isTabEnabled('community')" class="pf-divider" />
+        <view class="pf-divider" />
         <view
           v-if="isTabEnabled('community')"
           class="pf-stat"
@@ -146,7 +145,7 @@
           <OutlineIcon type="arrow-right" :size="28" color="var(--text-2)" />
         </view>
       </view>
-      <text v-else class="foot-note anim-fade-up">登录后同步自选股与云端资料</text>
+      <text v-else class="foot-note anim-fade-up">登录后同步关注与云端资料</text>
     </view>
   </scroll-view>
 
@@ -175,7 +174,6 @@ import { BIO_PLACEHOLDER } from "@/store/bio";
 import { openAuth, goTab } from "@/store/nav";
 import { usePageGuard } from "@/store/guard";
 import { canAccess } from "@/store/access";
-import { useWatchlist, initWatchlist } from "@/store/watchlist";
 import { useCommunity, useCommunityPreset } from "@/store/community";
 import { useFollow, useFollowPanel } from "@/store/follow";
 import { isTabEnabled } from "@/store/appConfig";
@@ -190,14 +188,16 @@ import { VIP_BADGE, vipActive, vipValidityText } from "@/store/level";
 const user = useUser();
 // 全局页面守卫：「我的」页未对游客开放 + 未登录 → 跳转登录页
 usePageGuard("profile");
-const watch = useWatchlist();
 const { posts: communityPosts, load: loadCommunity } = useCommunity();
 // 社区筛选预设：跳转社区前 setPreset，由 CommunityView 激活时消费（如「我的帖子」→「我发布的」）
 const { setPreset } = useCommunityPreset();
-// 关注系统：复用全局关注 store（服务端 uid 维度），驱动「我的关注」计数与跨 tab 打开弹层信号。
+// 关注系统：复用全局关注 store（服务端 uid 维度），驱动「关注」计数与跨 tab 打开弹层信号。
 const { follows } = useFollow();
-const { followPanelOpen } = useFollowPanel();
+const { followPanelOpen, followPanelMode } = useFollowPanel();
 const followCount = computed(() => follows.value.size);
+// 粉丝数：count_followers RPC（服务端权威），进入页面与下拉刷新时更新
+const fansCount = ref(0);
+const { fetchFollowerCount } = useFollow();
 
 // 声明可接收的自定义事件：父级（pages/index）在 watch 激活时向动态组件绑定 open-market，
 // KeepAlive 缓存其它视图后仍可能把该监听透传到本组件。声明为 emit 后 Vue 按自定义事件
@@ -210,7 +210,7 @@ const nameText = computed(() =>
 // 个人简介（profiles.signature，公开可读、持久化到数据库）：登录后为空则展示灰色引导文案
 // 「点击添加简介，让大家认识你」（.pf-sub 已用 --text-2 灰色字，符合系统空态配色）；未登录展示登录引导。
 const subText = computed(() =>
-  user.loggedIn ? (user.profile?.signature?.trim() || BIO_PLACEHOLDER) : "登录后同步自选股与云端资料"
+  user.loggedIn ? (user.profile?.signature?.trim() || BIO_PLACEHOLDER) : "登录后同步关注与云端资料"
 );
 // 「字」头像种子 = 昵称首字（与社区帖子、资料页统一采用昵称首字）
 const avatarName = computed(() =>
@@ -278,42 +278,51 @@ const vipCloseColor = computed(() =>
   isDark.value ? "rgba(240, 205, 110, 0.75)" : "rgba(122, 92, 12, 0.75)"
 );
 
-const watchCount = computed(() => watch.items.length);
 const isMine = (p: { userId?: string | null; author: string }) =>
   user.userId ? p.userId === user.userId : p.author === getMyName();
 const postCount = computed(() => communityPosts.value.filter(isMine).length);
 const likedCount = computed(() => communityPosts.value.filter((p) => p.likedByMe).length);
 
-// 登录后主动拉一次社区，让「我的帖子 / 赞过」计数准确（社区 store 为单例，顺带预热社区页）
+// 登录后主动拉一次社区（我的帖子/赞过计数）与粉丝数，让数据概览准确（社区 store 为单例，顺带预热社区页）
 onMounted(() => {
-  if (user.loggedIn) loadCommunity();
+  if (!user.loggedIn) return;
+  loadCommunity();
+  refreshFans();
 });
 
-// tab 为 keep-alive 常驻：切回「我的」时重拉云端资料，
+// tab 为 keep-alive 常驻：切回「我的」时重拉云端资料与粉丝数，
 // 保证社区行为新增的经验 / 等级、官方调整的 VIP 态即时反映（帖子列表不重拉，避免闪烁丢滚动位）。
 onActivated(() => {
-  if (user.loggedIn) refreshProfile();
+  if (!user.loggedIn) return;
+  refreshProfile();
+  refreshFans();
 });
 
+// 粉丝数：count_followers RPC（服务端权威），仅登录后拉取
+async function refreshFans() {
+  if (!user.userId) {
+    fansCount.value = 0;
+    return;
+  }
+  fansCount.value = await fetchFollowerCount(user.userId);
+}
+
 // 下拉刷新（由 pages/index 的 onPullDownRefresh 路由到本方法）：
-// 重新拉取云端资料（昵称/头像/邮箱/等级）+ 社区帖子（我的帖子/赞过计数），
-// 并刷新自选单例（自选股计数），让「我的」页数据即时同步。无论成功/失败都被
-// index 的 safeRefresh 兜底收尾，不会卡 loading。
+// 重新拉取云端资料（昵称/头像/邮箱/等级）+ 社区帖子（我的帖子/赞过计数）+ 粉丝数，
+// 让「我的」页数据即时同步。无论成功/失败都被 index 的 safeRefresh 兜底收尾，不会卡 loading。
 async function refresh() {
   if (!user.loggedIn) return;
   await Promise.allSettled([
     refreshProfile(),
     loadCommunity(),
-    Promise.resolve(initWatchlist()),
+    refreshFans(),
   ]);
 }
 defineExpose({ refresh });
 
-// 数据概览卡（自选股 / 我的帖子 / 赞过）：均为用户私有数据，仅登录后展示；
-//   子项另受 watch / community 功能开关约束，故需「已登录 且 至少开启一个相关 Tab」才显示。
-const showStats = computed(
-  () => user.loggedIn && (isTabEnabled("watch") || isTabEnabled("community"))
-);
+// 数据概览卡（关注 / 粉丝 / 贴子 / 赞过）：均为用户私有数据，仅登录后展示；
+// 另受 community 功能开关约束，故需「已登录 且 community Tab 开启」才显示。
+const showStats = computed(() => user.loggedIn && isTabEnabled("community"));
 
 // 菜单项与「页面白名单」联动：入口显隐统一用 canAccess(route) 判定，与路由守卫语义一致——
 // 已登录用户一律可见（白名单只约束游客，登录用户不被 open 二次限制）；游客仅能见到
@@ -372,9 +381,6 @@ function goLevel() {
 function goVip() {
   uni.navigateTo({ url: "/pages/profile/vip" });
 }
-function goWatch() {
-  goTab("watch");
-}
 // 赞过：跳转社区并预设筛选项为「我赞过的」（由 CommunityView 激活时消费）
 function goLiked() {
   setPreset("liked");
@@ -385,8 +391,9 @@ function goMyPosts() {
   setPreset("mine");
   goTab("community");
 }
-// 我的关注：先切到社区 tab（触发 CommunityView 挂载），再置共享信号打开「我的关注」弹层。
-function goMyFollow() {
+// 关注 / 粉丝：先切到社区 tab（触发 CommunityView 挂载），再置共享信号与方向打开对应弹层。
+function goFollowPanel(mode: "following" | "fans") {
+  followPanelMode.value = mode;
   goTab("community");
   followPanelOpen.value = true;
 }

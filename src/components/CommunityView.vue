@@ -154,8 +154,8 @@
 
     <!-- 消息中心（通知铃铛触发）：按需挂载为 PeekSheet 卡片，关闭即卸载；与「我的关注」互斥，激活者置顶 -->
     <MessageCenter ref="msgRef" v-if="msgOpen" v-model="msgOpen" :z-index="activePanel === 'msg' ? 42 : 40" />
-    <!-- 我的关注列表（ProfileView 跳转社区后弹出，复用 PeekSheet 卡片，关闭即卸载） -->
-    <FollowListView ref="followRef" v-if="followPanelOpen" v-model="followPanelOpen" :z-index="activePanel === 'follow' ? 42 : 40" />
+    <!-- 关注 / 粉丝列表（ProfileView 跳转社区后弹出，复用 PeekSheet 卡片，关闭即卸载；mode 区分关注/粉丝） -->
+    <FollowListView ref="followRef" v-if="followPanelOpen" v-model="followPanelOpen" :mode="followPanelMode" :z-index="activePanel === 'follow' ? 42 : 40" />
   </view>
 </template>
 
@@ -197,8 +197,8 @@ const msgArrowOpen = ref(false);
 const msgRef = ref<any>(null);
 const followRef = ref<any>(null);
 const postSheet = ref<any>(null);
-// 跨组件打开「我的关注」弹层的共享信号（ProfileView 置 true，CommunityView 监听并挂载 FollowListView）
-const { followPanelOpen } = useFollowPanel();
+// 跨组件打开「关注 / 粉丝」弹层的共享信号（ProfileView 置 open+mode，CommunityView 监听并挂载 FollowListView）
+const { followPanelOpen, followPanelMode } = useFollowPanel();
 
 // 当前激活的底部面板（消息中心 / 我的关注）。同类卡片互斥，仅其一展开；
 // 切换时先收起前一个再挂载下一个，激活者始终置顶（z-index 提高），杜绝两卡同屏 / 层级错乱。
@@ -851,7 +851,8 @@ defineExpose({ refresh });
   100% { box-shadow: 0 0 0 0 rgba(7, 193, 96, 0); }
 }
 .pe-online-t {
-  font-size: var(--font-xs);
+  /* 与折叠行内其他文案统一字号（占位文案为 --font-sm），保证同行字号一致 */
+  font-size: var(--font-sm);
   color: var(--text-2);
 }
 
