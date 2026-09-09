@@ -119,12 +119,12 @@
                 <text class="dp-wl-code">{{ w.code }}</text>
               </view>
             </view>
-            <!-- 对方持仓标识（位于行情区左侧，与 .dp-wl-q 同构对齐：两行右对齐、无背景）——
-                 铜钱图标占两行（垂直居中），右侧第一行持仓收益率（涨红跌绿）、第二行持股数 -->
+            <!-- 对方持仓标识（位于行情区左侧，与 .dp-wl-q 同构分列对齐：两行右对齐、无背景）——
+                 第一行：持仓收益率（涨红跌绿，与现价同字号）；第二行：铜钱图标 + 持股数（与涨跌幅同字号） -->
             <view v-if="w.holdingCost && typeof w.price === 'number'" class="dp-wl-hold">
-              <OutlineIcon type="portfolio" :size="30" color="var(--primary)" />
-              <view class="dp-wl-holddata">
-                <text class="dp-wl-holdpct" :class="holdPct(w) >= 0 ? 'up' : 'down'">{{ holdPctText(w) }}</text>
+              <text class="dp-wl-holdpct" :class="holdPct(w) >= 0 ? 'up' : 'down'">{{ holdPctText(w) }}</text>
+              <view class="dp-wl-holdrow">
+                <OutlineIcon type="portfolio" :size="22" color="var(--primary)" />
                 <text class="dp-wl-shares">{{ holdingShares(w) }} 股</text>
               </view>
             </view>
@@ -813,20 +813,20 @@ function goUserPosts() {
 .dp-wl-pct.flat {
   color: var(--text-2);
 }
-/* 对方持仓标识：与行情区 .dp-wl-q 同构（两行右对齐、无背景），置于其左侧。
-   铜钱图标跨两行垂直居中；两行行高/字号与行情区逐一对应（font-md 行 + font-xs 行），
-   保证同一行内「收益率↔现价」「股数↔涨跌幅」水平线完全对齐 */
+/* 对方持仓标识：与行情区 .dp-wl-q 同构分列（两行右对齐、无背景），置于其左侧。
+   第一行持仓收益率与现价同为 font-md，第二行图标+股数与涨跌幅同为 font-xs、gap 4rpx 一致，
+   两列上下行完全对齐；行内 gap 8rpx 紧凑排布 */
 .dp-wl-hold {
   flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-}
-.dp-wl-holddata {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 4rpx;
+}
+.dp-wl-holdrow {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
 }
 .dp-wl-holdpct {
   font-size: var(--font-md);

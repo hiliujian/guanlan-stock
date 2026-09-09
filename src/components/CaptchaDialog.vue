@@ -16,26 +16,25 @@
         </view>
         <text class="cap-desc">请输入下图中的字符，完成验证后继续</text>
 
-        <view class="modal-row">
-          <!-- 图形验证码：本地随机生成（字符旋转 + 干扰线 + 噪点），点击可刷新 -->
+        <!-- 图形验证码 + 换一张：一体容器（刷新按钮浮层内嵌图片右上角），点击图片/按钮均可刷新 -->
+        <view class="cap-box" role="button" aria-label="验证码图片，点击换一张" @click="regen">
           <svg
             viewBox="0 0 132 44"
             class="cap-svg"
             fill="none"
             v-html="captchaSvg"
-            @click="regen"
           />
-          <view class="cap-refresh flex-center" role="button" aria-label="换一张" @click="regen">
-            <OutlineIcon type="refresh" :size="30" color="var(--text-2)" />
+          <view class="cap-refresh flex-center" role="button" aria-label="换一张" @click.stop="regen">
+            <OutlineIcon type="refresh" :size="28" color="var(--text-2)" />
           </view>
         </view>
 
-        <view class="modal-row">
-          <text class="modal-k">验证码</text>
+        <!-- 验证码标签 + 输入框：一体容器（标签内嵌输入框左侧，同「发送验证码内嵌输入框」风格） -->
+        <view class="cap-field" :class="{ err: inputErr }">
+          <text class="cap-k">验证码</text>
           <input
             v-model="input"
-            class="modal-in"
-            :class="{ err: inputErr }"
+            class="cap-in"
             type="text"
             maxlength="4"
             placeholder="不区分大小写"
@@ -137,26 +136,68 @@ defineExpose({ verify });
 </script>
 
 <style scoped>
-/* 壳/标题/输入/按钮均复用 global.css .modal-*（与设置持仓同款），此处仅留验证码专属样式 */
+/* 壳/标题/按钮复用 global.css .modal-*（与设置持仓同款），此处仅留验证码专属样式 */
 .cap-desc {
   font-size: var(--font-xs);
   color: var(--text-2);
   text-align: center;
 }
-.cap-svg {
-  flex: 1;
+/* 验证码图片 + 换一张：一体容器，刷新按钮浮层内嵌右侧 */
+.cap-box {
+  position: relative;
   height: 88rpx;
   border-radius: 12rpx;
   background: var(--card-2);
+  overflow: hidden;
   cursor: pointer;
 }
+.cap-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 .cap-refresh {
-  flex: none;
-  width: 72rpx;
-  height: 72rpx;
+  position: absolute;
+  right: 10rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 52rpx;
+  height: 52rpx;
   border-radius: 50%;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+/* 验证码标签 + 输入框：一体容器（标签左侧内嵌 + 分隔线），外观对齐 .modal-in */
+.cap-field {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  height: 72rpx;
+  padding: 0 20rpx 0 16rpx;
   background: var(--card-2);
-  cursor: pointer;
+  border-radius: 12rpx;
+}
+.cap-field:focus-within {
+  background: var(--card);
+  box-shadow: 0 0 0 2rpx var(--primary-soft);
+}
+.cap-field.err {
+  box-shadow: 0 0 0 2rpx var(--danger);
+}
+.cap-k {
+  flex: none;
+  font-size: var(--font-sm);
+  color: var(--text-2);
+  padding-right: 12rpx;
+  border-right: 1rpx solid var(--border);
+}
+.cap-in {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  font-size: var(--font-sm);
+  color: var(--text);
+  letter-spacing: 4rpx;
 }
 .cap-err {
   font-size: var(--font-xs);
