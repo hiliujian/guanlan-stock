@@ -424,26 +424,29 @@
                 <text class="sheet-title">{{ groupTitle }}</text>
               </view>
               <scroll-view class="grp-body" scroll-y>
-                <!-- 持仓汇总明细：右上角总收益胶囊点击进入（复用分组面板同窗体） -->
+                <!-- 持仓汇总明细：右上角总收益胶囊点击进入（复用分组面板同窗体）。
+                     卡片复用行情页全球指数面板的 .idx-item 家族（global.css 共享），
+                     「总收益」按指数卡「价格+涨跌幅」的布局拆成 主值+收益率 两段基线对齐 -->
                 <template v-if="groupView === 'possum'">
-                  <view class="stk-grid">
-                    <view class="stk-tile">
-                      <text class="stk-k">持仓市值</text>
-                      <text class="stk-v">{{ fmtAmount(sumValue) }}</text>
+                  <view class="tile-grid possum-grid">
+                    <view class="idx-item">
+                      <view class="idx-item-head"><text class="idx-item-name">持仓市值</text></view>
+                      <view class="idx-item-right"><text class="idx-item-price">{{ fmtAmount(sumValue) }}</text></view>
                     </view>
-                    <view class="stk-tile">
-                      <text class="stk-k">持仓成本</text>
-                      <text class="stk-v">{{ fmtAmount(sumCost) }}</text>
+                    <view class="idx-item">
+                      <view class="idx-item-head"><text class="idx-item-name">持仓成本</text></view>
+                      <view class="idx-item-right"><text class="idx-item-price">{{ fmtAmount(sumCost) }}</text></view>
                     </view>
-                  </view>
-                  <view class="stk-grid">
-                    <view class="stk-tile">
-                      <text class="stk-k">总收益</text>
-                      <text class="stk-v" :class="trendCls(posSummary.pnl)">{{ fmtSigned(posSummary.pnl) }} ({{ fmtPct(posSummary.pnlPct) }})</text>
+                    <view class="idx-item">
+                      <view class="idx-item-head"><text class="idx-item-name">总收益</text></view>
+                      <view class="idx-item-right">
+                        <text class="idx-item-price" :class="trendCls(posSummary.pnl)">{{ fmtSigned(posSummary.pnl) }}</text>
+                        <text class="idx-item-pct" :class="trendCls(posSummary.pnl)">{{ fmtPct(posSummary.pnlPct) }}</text>
+                      </view>
                     </view>
-                    <view class="stk-tile">
-                      <text class="stk-k">持仓数</text>
-                      <text class="stk-v">{{ posSummary.count }} 只</text>
+                    <view class="idx-item">
+                      <view class="idx-item-head"><text class="idx-item-name">持仓数</text></view>
+                      <view class="idx-item-right"><text class="idx-item-price">{{ posSummary.count }} 只</text></view>
                     </view>
                   </view>
                   <text class="grp-tip">总收益 = Σ（现价 − 成本）× 数量；总收益率口径同自选（仅含已设成本/数量的持仓）。点击行可查看个股报告。</text>
@@ -2845,34 +2848,11 @@ function removeLp() {
   background: rgba(9, 176, 122, 0.12);
 }
 
-/* 持仓汇总面板：2×2 指标块 + 提示行 */
-.stk-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16rpx;
+/* 持仓汇总面板：复用 global.css 的 .tile-grid/.idx-item 指标卡家族（与行情页指数面板同款），
+   本地仅补面板内边距（与 grp-tip 等内容区的 26rpx 边距约定一致） */
+.possum-grid {
   padding: 6rpx 26rpx 0;
 }
-.stk-tile {
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
-  padding: 20rpx 22rpx;
-  background: var(--card-2);
-  border-radius: var(--radius-sm);
-}
-.stk-k {
-  font-size: var(--font-xs);
-  color: var(--text-3);
-}
-.stk-v {
-  font-size: var(--font-lg);
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-/* 持仓汇总数值：涨红跌绿（trendCls 返回 up/down/flat，需显式着色，否则无效） */
-.stk-v.up { color: var(--up); }
-.stk-v.down { color: var(--down); }
-.stk-v.flat { color: var(--text-2); }
 .grp-tip {
   display: block;
   margin: 18rpx 26rpx 6rpx;

@@ -173,7 +173,7 @@
                   <text class="idx-grp-t">{{ g.title }}</text>
                   <OutlineIcon type="chevron-up" :size="20" color="var(--text-3)" class="idx-caret" :class="{ closed: collapsedGrps.has(g.title) }" />
                 </view>
-                <view v-show="!collapsedGrps.has(g.title)" class="idx-grp-list">
+                <view v-show="!collapsedGrps.has(g.title)" class="tile-grid">
                   <view v-for="it in g.items" :key="it.secid" class="idx-item" :class="{ 'bkt-clickable': !!qOf(it.secid)?.views }" @click="onItemCardClick(it)">
                     <view class="idx-item-head">
                       <image v-if="it.flag" class="peek-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
@@ -199,7 +199,7 @@
                   <text class="idx-grp-t">期指持仓{{ cffexDateText }}</text>
                   <OutlineIcon type="chevron-up" :size="20" color="var(--text-3)" class="idx-caret" :class="{ closed: collapsedGrps.has('期指持仓') }" />
                 </view>
-                <view v-show="!collapsedGrps.has('期指持仓')" class="idx-grp-list">
+                <view v-show="!collapsedGrps.has('期指持仓')" class="tile-grid">
                   <view class="idx-item">
                     <view class="idx-item-head">
                       <image class="peek-flag" :src="'https://flagcdn.com/w40/cn.png'" mode="aspectFit" />
@@ -1591,35 +1591,8 @@ defineExpose({ refresh: () => refreshFull() });
 .idx-caret.closed {
   transform: rotate(180deg);
 }
-/* 两列网格：宽松呈现各市场主要指数，避免一行三列过于拥挤 */
-.idx-grp-list {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12rpx;
-}
-.idx-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6rpx;
-  padding: 14rpx 16rpx;
-  background: var(--card-2);
-  border-radius: var(--radius-sm);
-}
-.idx-item-head {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-  min-width: 0;
-}
-.idx-item-name {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--font-sm);
-  color: var(--text-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* 卡片本体样式已抽到 global.css（.tile-grid/.idx-item 家族），与自选页持仓汇总共用；
+   此处仅保留本页特有的篮子时段角标与可点击态 */
 /* 篮子状态角标（盘前/盘中/盘后）：小号灰底轻量呈现，仅时段提示不抢视觉 */
 .idx-item-bkt {
   flex: none;
@@ -1630,46 +1603,12 @@ defineExpose({ refresh: () => refreshFull() });
   color: var(--text-3);
   background: var(--card-2);
 }
-.idx-item-right {
-  display: flex;
-  align-items: baseline;
-  gap: 10rpx;
-}
-.idx-item-price {
-  font-size: var(--font-sm);
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
 /* 可点击的时段角标与整卡：指针提示可切换（盘前/盘中/盘后循环） */
 .bkt-switch {
   cursor: pointer;
 }
 .idx-item.bkt-clickable {
   cursor: pointer;
-}
-
-.idx-item-pct {
-  font-size: var(--font-sm);
-  color: var(--text-2);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-/* 涨跌着色：红涨绿跌（默认中性 --text，仅 up/down 覆盖） */
-.idx-item-price.up,
-.idx-item-pct.up {
-  color: var(--up);
-}
-.idx-item-price.down,
-.idx-item-pct.down {
-  color: var(--down);
-}
-/* 缺失报价的指数：价格列降级为「暂无数据」并采用次级文字色（复用项目空态规范 --text-2） */
-.idx-item-price.na {
-  color: var(--text-2);
-}
-/* 篮子所选时段无数据：涨跌幅列「—」占位采用次级文字色（与价格列 .na 同空态规范） */
-.idx-item-pct.na {
-  color: var(--text-2);
 }
 .idx-scroll-pad {
   height: 24rpx;

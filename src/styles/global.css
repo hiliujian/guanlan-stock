@@ -1004,3 +1004,77 @@ html.ps-lock body {
   width: 24rpx;
   height: 24rpx;
 }
+
+/* ===== 指标小卡（tile）：两列网格中的轻量数据卡 =====
+   行情页全球指数面板与自选页「持仓汇总」面板共用同一套卡片样式与布局，
+   保证跨页面视觉统一（此前 MarketView scoped 一份、WatchlistView stk-* 一份，已合并）。
+   结构约定：
+     <view class="tile-grid">
+       <view class="idx-item">
+         <view class="idx-item-head"><text class="idx-item-name">名称</text>(可选角标)</view>
+         <view class="idx-item-right"><text class="idx-item-price">值</text><text class="idx-item-pct">副值</text></view>
+       </view>
+     </view> */
+.tile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12rpx;
+}
+.idx-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+  padding: 14rpx 16rpx;
+  background: var(--card-2);
+  border-radius: var(--radius-sm);
+}
+.idx-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  min-width: 0;
+}
+.idx-item-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-sm);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.idx-item-right {
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
+}
+.idx-item-price,
+.idx-item-pct {
+  font-size: var(--font-sm);
+  font-variant-numeric: tabular-nums;
+}
+.idx-item-price {
+  color: var(--text);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.idx-item-pct {
+  color: var(--text-2);
+  white-space: nowrap;
+}
+/* 涨跌着色：红涨绿跌（默认中性 --text / --text-2，仅 up/down 覆盖） */
+.idx-item-price.up,
+.idx-item-pct.up {
+  color: var(--up);
+}
+.idx-item-price.down,
+.idx-item-pct.down {
+  color: var(--down);
+}
+/* 缺数据的降级展示：与 peek/空态同用次级文字色规范 */
+.idx-item-price.na,
+.idx-item-pct.na {
+  color: var(--text-2);
+}
