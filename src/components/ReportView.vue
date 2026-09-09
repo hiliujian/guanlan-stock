@@ -10,7 +10,7 @@
       <text class="sc-dot">·</text>
       <text class="sc-label">平均收益</text>
       <text :class="['sc-num', sigRetCls]">{{ sigRetText }}</text>
-      <view class="sc-pos" @click="posFormRef?.open()" role="button" aria-label="设置持仓">
+      <view class="sc-pos" @click="openPosForm" role="button" aria-label="设置持仓">
         <OutlineIcon type="portfolio" :size="28" :color="holding ? 'var(--primary)' : 'var(--text-2)'" />
       </view>
     </view>
@@ -395,6 +395,7 @@ import PositionForm from "./PositionForm.vue";
 import type { AnalysisResult } from "@/utils/analyzer";
 import type { Position } from "@/utils/costBasis";
 import { tagNewsItem, type NewsItem, type NewsSignal } from "@/utils/newsSentiment";
+import { requireLogin } from "@/store/nav";
 
 const props = defineProps<{
   result: AnalysisResult;
@@ -742,6 +743,12 @@ const sigRetCls = computed(() => {
 // 保存到 costBasis（按股持久化）：成本驱动报告页持仓状态双视角建议。
 // 引擎信号与胜率回放本身不感知用户成本（成本是个体状态，进引擎会污染胜率口径）。
 const posFormRef = ref<any>(null);
+
+// 未登录游客直接拦到登录页（在弹窗打开前拦截，避免填完表单才被弹回，白填一遍）
+function openPosForm() {
+  if (!requireLogin()) return;
+  posFormRef.value?.open();
+}
 
 // ---------------- 操作信号卡片 · 持仓状态双视角（signalView） ----------------
 // 引擎信号（a.signal）是技术面口径，不感知用户成本；标签与一句话建议按持仓状态翻译：

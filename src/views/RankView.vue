@@ -60,7 +60,7 @@
 <script lang="ts">
 // 模块级装载逻辑：与组件实例解耦，供「进入自选页预加载热榜」（WatchlistView onMounted
 // 调 preloadRank）与组件 load() 共用同一份取数代码，杜绝两处实现漂移。
-import { fetchSnapshot } from "@/api/quote";
+import { fetchSnapshots } from "@/api/quote";
 import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
 import { staleGet, staleSet } from "@/utils/staleCache";
@@ -86,19 +86,20 @@ async function loadRankRows(mode: "today" | "all"): Promise<RankRow[]> {
   // 二者后端各自独立聚合；today 为空时 UI 显示「暂无数据」，不会兜底完整榜单。
   const today = mode === "today";
   const heat = await fetchStockHeat(mode === "all" ? 100 : 20, today);
-  const tasks = heat.map(async (h) => {
-    const secid = resolveSecid(h.code, h.market as any);
+  // 批量取快照：一次批量请求覆盖全部标的（内部对未命中项再逐个回退），
+  // 替代原来「每只一个并发请求」——完整榜单模式下曾一次性打出 100 个并发网络请求。
+  const pairs = heat.map((h) => {
     try {
-      const s = await fetchSnapshot(secid);
-      return { ...h, price: s.price, pct: s.pct, chg: s.chg } as RankRow;
+      return { h, secid: resolveSecid(h.code, h.market as any) || "" };
     } catch {
-      return { ...h, price: null, pct: null, chg: 0 } as RankRow;
+      return { h, secid: "" }; // 无法解析市场（如未支持的美股）→ 跳过报价
     }
   });
-  const res = await Promise.allSettled(tasks);
-  return res
-    .filter((r): r is PromiseFulfilledResult<RankRow> => r.status === "fulfilled")
-    .map((r) => r.value);
+  const map = await fetchSnapshots(pairs.map((p) => p.secid).filter(Boolean));
+  return pairs.map(({ h, secid }) => {
+    const s = secid ? map[secid] : undefined;
+    return { ...h, price: s ? s.price : null, pct: s ? s.pct : null, chg: s ? s.chg : 0 } as RankRow;
+  });
 }
 
 /** 进入自选页时预热今日热榜数据（后台静默，失败无感）；60s 节流防切页刷量 */
@@ -124,6 +125,7 @@ import { ref, watch, onMounted } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import { fmtPrice, fmtPct, trendCls } from "@/utils/format";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
+import { requireLogin } from "@/store/nav";
 
 const props = defineProps<{ mode: "today" | "all" }>();
 const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: string }): void }>();
@@ -131,12 +133,20 @@ const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: s
 const rows = ref<RankRow[]>(staleGet<RankRow[]>("rank:" + props.mode) ?? []);
 const loading = ref(false);
 
+// 代际号：只有「最后一次发起」的 load 才允许写回，防止竞态串数据
+let loadGen = 0;
+
 async function load() {
+  const gen = ++loadGen;
+  const mode = props.mode; // 发起时快照 mode：await 期间用户可能已切换榜单模式
   loading.value = true;
   // 预加载缓存命中：直接上屏（打开面板零等待），随后仍后台刷新最新数据
-  const cached = rankCache[props.mode];
+  const cached = rankCache[mode];
   if (cached?.length) rows.value = cached;
-  const fresh = await loadRankRows(props.mode);
+  const fresh = await loadRankRows(mode);
+  // 期间 mode 已切换：丢弃本次过期结果。否则会把「今日热榜」写进「完整榜单」的
+  // 内存缓存与 stale 键（原实现这两处读的是 await 后已变更的 props.mode）。
+  if (gen !== loadGen) return;
   // 刷新容错：热度接口读失败会伪装成空数组——已有榜单时保留旧榜单（允许数据延迟），
   // 首次为空正常显示「暂无数据」
   if (!fresh.length && rows.value.length) {
@@ -144,9 +154,9 @@ async function load() {
     return;
   }
   rows.value = fresh;
-  rankCache[props.mode] = fresh;
+  rankCache[mode] = fresh;
   // 成功加载后保留到 stale 缓存（按 mode 分键）：切换 tab / 实例重建先展示旧榜单再覆盖
-  staleSet("rank:" + props.mode, rows.value);
+  staleSet("rank:" + mode, rows.value);
   loading.value = false;
 }
 
@@ -180,21 +190,33 @@ function watched(r: { code: string; market: string }): boolean {
   return isWatched(r.code, r.market);
 }
 
+// 在途锁（按标的）：isWatched 要等 store 更新才翻转，连点星标会在异步往返期间
+// 重复进入同一分支 → 重复 insert / 重复 delete。按 code+market 加锁，不阻塞其它行。
+const watchBusy = new Set<string>();
 async function toggleWatch(r: RankRow) {
-  if (isWatched(r.code, r.market)) {
-    await removeWatch(r.code, r.market);
-    uni.showToast({ title: "已移除自选", icon: "none" });
-    return;
+  // 榜单加自选同样需登录（此前漏守卫，游客点星标会静默写本地，登录后自选却是空的）
+  if (!requireLogin()) return;
+  const k = `${r.market}:${r.code}`;
+  if (watchBusy.has(k)) return;
+  watchBusy.add(k);
+  try {
+    if (isWatched(r.code, r.market)) {
+      await removeWatch(r.code, r.market);
+      uni.showToast({ title: "已移除自选", icon: "none" });
+      return;
+    }
+    const res = await addWatch({
+      code: r.code,
+      market: r.market,
+      name: r.name,
+      note: "",
+      group: "",
+    });
+    if (res.ok) uni.showToast({ title: "已加入自选", icon: "none" });
+    else uni.showToast({ title: res.error || "加入自选失败", icon: "none" });
+  } finally {
+    watchBusy.delete(k);
   }
-  const res = await addWatch({
-    code: r.code,
-    market: r.market,
-    name: r.name,
-    note: "",
-    group: "",
-  });
-  if (res.ok) uni.showToast({ title: "已加入自选", icon: "none" });
-  else uni.showToast({ title: res.error || "加入自选失败", icon: "none" });
 }
 
 function openRow(r: { code: string; market: string }) {

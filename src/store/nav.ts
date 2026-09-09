@@ -11,6 +11,7 @@ import type { Market } from "@/utils/period";
 import type { TabKey } from "@/config/app";
 import { isTabEnabled } from "@/store/appConfig";
 import { canAccess } from "@/store/access";
+import { userState } from "@/store/user";
 
 export const navState = reactive<{
   pendingCode: string;
@@ -79,6 +80,24 @@ export function goTab(key: TabKey) {
 
 export function openAuth(mode: "login" | "register" = "login") {
   uni.navigateTo({ url: `/pages/auth/${mode}` });
+}
+
+/**
+ * 「需登录动作」统一守卫（页面内操作层，与 canAccess 的路由层互补）。
+ * 用于加自选 / 设置持仓 / 价格预警等会写用户数据的动作：这些动作即使发生在
+ * 对游客开放的页面（如行情页），也必须先登录，否则数据落在本地、登录后看不到，
+ * 造成「加了却没有」的错觉。
+ *
+ * 判定与 canAccess 保持同一语义，避免逻辑分叉：
+ * - 未配置后端（无登录能力）→ 放行，纯本地模式照常可用；
+ * - 已登录 → 放行；
+ * - 未登录 → 跳转登录页并返回 false，调用方 `if (!requireLogin()) return;` 即可中止。
+ */
+export function requireLogin(): boolean {
+  if (!userState.supabaseEnabled) return true;
+  if (userState.loggedIn) return true;
+  openAuth("login");
+  return false;
 }
 
 /**

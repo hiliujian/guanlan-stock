@@ -62,3 +62,6 @@ supabase/.temp/
 
 # 部署脚本含硬编码 PAT，禁止入库
 scripts_dbquery.py
+
+# 临时分析/回测脚本（与应用代码无关，不属于 src/，不进版本库）
+_analyze/

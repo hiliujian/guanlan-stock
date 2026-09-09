@@ -270,9 +270,9 @@ import { analyze, type AnalysisResult, type MarketContext } from "@/utils/analyz
 import { scoreNews, filterNews, type NewsSignal } from "@/utils/newsSentiment";
 import { visibleMarketCards, type MarketCardMeta, type CardId } from "@/utils/cardLayout";
 import { addWatch, removeWatch, isWatched } from "@/store/watchlist";
-import { useUser, userState } from "@/store/user";
+import { userState } from "@/store/user";
 import { saveHolding, dropHolding } from "@/api/holdings";
-import { navState, openAuth } from "@/store/nav";
+import { navState, requireLogin } from "@/store/nav";
 
 const code = ref("");
 
@@ -286,6 +286,9 @@ const preClose = ref(0);
 const pos = ref<Position | null>(null);
 watch(secid, (s) => { pos.value = getPosition(s); }, { immediate: true });
 async function onSavePosition(p: Position) {
+  // 持仓属用户数据（且会自动加自选）→ 未登录一律拦截并跳登录页，
+  // 与 toggleWatch / 自选页门禁同一守卫（requireLogin），避免游客写本地后登录看不到
+  if (!requireLogin()) return;
   setPosition(secid.value, p);
   pos.value = getPosition(secid.value);
   // 已登录：持仓簿同步写回云端（跨设备 / 刷新后恢复）；未登录保持纯本地
@@ -302,6 +305,7 @@ async function onSavePosition(p: Position) {
   uni.showToast({ title: "持仓已保存", icon: "none" });
 }
 function onClearPosition() {
+  if (!requireLogin()) return;
   clearPosition(secid.value);
   pos.value = null;
   // 已登录：同步删除云端持仓簿对应行
@@ -637,8 +641,6 @@ function mktLabel(code: string): string {
   if (/^[489]/.test(c)) return "京A"; // 92 开头为北交所新代码段（与 resolveSecid 同口径）
   return "股票";
 }
-
-const user = useUser();
 
 // 分时序列最新价（与走势图同源）：头部实时价的回退来源，确保头部与走势图永远同一数值
 const lastTrendPrice = computed(() => {
@@ -977,28 +979,33 @@ if (!bundle.value) {
   }
 }
 
+// 在途锁：addWatch/removeWatch 是异步的，watched 要等 store 更新才翻转，
+// 连点会在往返期间重复进入同一分支 → 产生重复 insert / 重复 delete。
+let watchBusy = false;
 async function toggleWatch() {
-  if (!result.value) return;
+  if (!result.value || watchBusy) return;
   // 自选功能需登录：未登录游客直接跳转登录页（与自选页门禁一致），避免「加了却看不到」
-  if (!user.loggedIn && user.supabaseEnabled) {
-    openAuth("login");
-    return;
-  }
-  if (watched.value) {
-    await removeWatch(curCode.value, curMarket.value);
-    uni.showToast({ title: "已移除自选", icon: "none" });
-  } else {
-    const r = await addWatch({
-      code: curCode.value,
-      market: curMarket.value,
-      name: name.value,
-      note: "",
-    });
-    if (r.ok) {
-      uni.showToast({ title: "已加入自选", icon: "success" });
+  if (!requireLogin()) return;
+  watchBusy = true;
+  try {
+    if (watched.value) {
+      await removeWatch(curCode.value, curMarket.value);
+      uni.showToast({ title: "已移除自选", icon: "none" });
     } else {
-      uni.showToast({ title: r.error || "加入失败", icon: "none" });
+      const r = await addWatch({
+        code: curCode.value,
+        market: curMarket.value,
+        name: name.value,
+        note: "",
+      });
+      if (r.ok) {
+        uni.showToast({ title: "已加入自选", icon: "success" });
+      } else {
+        uni.showToast({ title: r.error || "加入失败", icon: "none" });
+      }
     }
+  } finally {
+    watchBusy = false;
   }
 }
 

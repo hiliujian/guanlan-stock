@@ -280,7 +280,7 @@ export async function applyGroupOrder(group: string, orderedKeys: string[]): Pro
     const sb = getSupabase()!;
     const col = global ? "global_sort_order" : "sort_order";
     const pick = (i: WatchItem) => (global ? i.globalOrder : i.order) ?? 0;
-    await Promise.all(
+    const res = await Promise.all(
       state.items
         .filter(
           (i) =>
@@ -290,6 +290,13 @@ export async function applyGroupOrder(group: string, orderedKeys: string[]): Pro
         )
         .map((i) => sb.from("watchlists").update({ [col]: pick(i) }).eq("id", i.id))
     );
+    // 逐行 update 中任一条失败都会造成本地顺序与云端静默分叉（用户下次登录顺序又跳回去）,
+    // 因此必须检查每条的 error 并给出提示，不能「发了就算成功」。
+    const failed = res.filter((r) => r.error);
+    if (failed.length) {
+      console.warn("[watchlist] 排序同步部分失败", failed.length, failed[0]?.error);
+      uni.showToast({ title: "排序同步失败", icon: "none" });
+    }
   } else {
     saveLocal(state.items);
   }

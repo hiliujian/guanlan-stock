@@ -186,7 +186,7 @@ import { vipGatedFrame } from "@/utils/avatarFrame";
 import { formatLoginCity } from "@/utils/geo";
 import { useDmTarget, useCommunityUserTarget } from "@/store/community";
 import { useFollow } from "@/store/follow";
-import { goTab, openAuth, openInMarket } from "@/store/nav";
+import { goTab, openAuth, openInMarket, requireLogin } from "@/store/nav";
 import { communityRepo, formatRelative, unpackCards, type CommunityPost } from "@/api/community";
 
 const user = useUser();
@@ -458,10 +458,7 @@ function openStock(w: WatchRow) {
 /** 资料页自选星标：仿行情页 .qh-star 逻辑，点击加入/移除自选（不触发整卡跳转，已 @click.stop）。
  *  未登录且后端开启时引导登录，避免「加了却看不到」。 */
 async function toggleWatch(w: WatchRow) {
-  if (!user.loggedIn && user.supabaseEnabled) {
-    openAuth("login");
-    return;
-  }
+  if (!requireLogin()) return;
   if (isWatched(w.code, w.market)) {
     await removeWatch(w.code, w.market);
     uni.showToast({ title: "已移除自选", icon: "none" });

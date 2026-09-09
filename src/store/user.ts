@@ -80,6 +80,9 @@ export function useUser() {
           state.loggedIn = true;
           state.userId = user.id;
           state.email = user.email ?? null;
+          // token 自动刷新（约每小时一次）不需要重跑「加载资料 → 签到 → 再加载资料」三连：
+          // 账号未变且资料已在内存 → 直接返回，省掉 3 个串行请求。
+          if (event === "TOKEN_REFRESHED" && state.profile?.id === user.id) return;
           await loadProfile(user.id);
           // 每日登录签到：发放经验后刷新资料，让「我的-等级」立即展示最新 exp / level
           // （后端 award_daily_signin RPC 幂等，当日已签到则不重复发放）

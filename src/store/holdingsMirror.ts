@@ -23,6 +23,10 @@ export function hydrateCloudPositions(): Promise<void> {
   if (inFlight) return inFlight;
   inFlight = (async () => {
     const rows = await listMyHoldings();
+    // 读取失败（表缺失 / RLS / 超时）时 listMyHoldings 会「伪装成空数组」而非抛错。
+    // 此时若本机已有持仓，必须放弃本次重建 —— 否则会把用户全部持仓清空且不可恢复。
+    // 口径与项目其它地方一致：读失败保留旧数据，只在「确实读到记录」或「本机本就为空」时重建。
+    if (!rows.length && listCostSecids().length) return;
     // 以云端为事实来源整表重建：先清空本地持仓，再逐条铺入云端记录。
     // 这样「换了设备登录 / 云端被删」后本机不会残留旧持仓（图标/盈亏即时收口）。
     for (const s of listCostSecids()) clearPosition(s);

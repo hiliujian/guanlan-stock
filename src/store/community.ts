@@ -19,6 +19,8 @@ import { userState } from "@/store/user";
 const posts = ref<CommunityPost[]>([]);
 const loading = ref(false);
 const searchResults = ref<CommunityPost[]>([]);
+// 搜索独立 loading：与信息流 loading 分离，避免两者互相阻塞（触底续拉 / 搜索并发）
+const searchLoading = ref(false);
 // 主信息流分页（无限滚动）：游标 = 本页末条 createdAt(ms)；feedDone=true 表示已全部加载
 const FEED_PAGE_SIZE = 10;
 const feedCursor = ref<number | null>(null);
@@ -148,15 +150,17 @@ export function useCommunity() {
       searchResults.value = [];
       return;
     }
-    loading.value = true;
+    // 独立 loading：与信息流 loading 分开。共用同一个 ref 会导致
+    // 「搜索进行中触底加载被吞」/「加载中发起搜索互相阻塞」。
+    searchLoading.value = true;
     try {
       searchResults.value = await communityRepo.searchPosts(q);
     } finally {
-      loading.value = false;
+      searchLoading.value = false;
     }
   }
 
-  return { posts, loading, searchResults, load, loadMore, feedDone, publish, like, reply, remove, updateMyAuthorAssets, search };
+  return { posts, loading, searchLoading, searchResults, load, loadMore, feedDone, publish, like, reply, remove, updateMyAuthorAssets, search };
 }
 
 // =====================================================================
@@ -290,23 +294,29 @@ function persistSeenComment() {
 
 // 通知（点赞 / 评论）由后端实时派生，无独立通知表，故「删除」只能在本机隐藏：
 // 记录被忽略的通知 id，列表过滤时不展示。切换账号 / 登出时清空（reset 中处理）。
-const DISMISSED_KEY = "gl_dismissed_notif_ids";
-const dismissedNotifIds = ref<string[]>(
-  (() => {
-    try {
-      const arr = JSON.parse(uni.getStorageSync(DISMISSED_KEY) || "[]");
-      return Array.isArray(arr) ? arr : [];
-    } catch {
-      return [];
-    }
-  })()
-);
+// 键按 uid 隔离（与 seenKey 同一口径）：全局单键会让「上一个账号忽略的通知」串到新账号。
+function dismissedKey(): string {
+  return `gl_dismissed_notif_ids_${userState.userId || "anon"}`;
+}
+function readDismissed(): string[] {
+  try {
+    const arr = JSON.parse(uni.getStorageSync(dismissedKey()) || "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+const dismissedNotifIds = ref<string[]>(readDismissed());
 function persistDismissed() {
   try {
-    uni.setStorageSync(DISMISSED_KEY, JSON.stringify(dismissedNotifIds.value));
+    uni.setStorageSync(dismissedKey(), JSON.stringify(dismissedNotifIds.value));
   } catch {
     /* 持久化失败不影响内存态 */
   }
+}
+// 登录态变化后按当前账号重新读回；reset() 清空时必须落盘，否则冷启动会读回旧账号的忽略列表。
+function ensureDismissedLoaded() {
+  dismissedNotifIds.value = readDismissed();
 }
 function dismissNotification(id: string) {
   if (!dismissedNotifIds.value.includes(id)) {
@@ -429,6 +439,7 @@ function unsubscribeMessageRealtime() {
 export function initMessageRealtime() {
   // 登录态变化（含重新登录）时先恢复已读基线，使顶部角标即时正确，无需等进消息中心
   ensureSeenLoaded();
+  ensureDismissedLoaded(); // 忽略列表同口径：按当前账号重新读回，避免跨账号串数据
   if (userState.loggedIn && userState.userId && getSupabase()) {
     subscribeMessageRealtime();
   } else {
@@ -495,6 +506,7 @@ export function useMessageCenter() {
     activeThread.value = [];
     dmThreadPeer = "";
     dismissedNotifIds.value = [];
+    persistDismissed(); // 必须落盘：只清内存会在冷启动时读回上一个账号的忽略列表
     // 重置基线，使下次加载按「首次加载」逻辑重新校准（适配切换账号）。
     seenLikeAt.value = 0;
     seenCommentAt.value = 0;

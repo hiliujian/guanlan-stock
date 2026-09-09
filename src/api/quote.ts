@@ -29,12 +29,20 @@ interface CacheEntry<T> {
   data: T;
 }
 const _cache = new Map<string, CacheEntry<any>>();
+// 容量上限：搜索联想 / 榜单 / 自选轮换浏览会不断产生新 key，只 set 不 delete 会让 Map 单调膨胀。
+// 命中即刷新位置（先 delete 再 set 移到队尾），超限淘汰最久未使用者（简易 LRU）。
+const CACHE_MAX = 300;
 function cget<T>(key: string, ttl: number): T | null {
   const e = _cache.get(key);
   if (e && Date.now() - e.ts < ttl) return e.data as T;
   return null;
 }
 function cset<T>(key: string, data: T): void {
+  if (_cache.has(key)) _cache.delete(key);
+  else if (_cache.size >= CACHE_MAX) {
+    const oldest = _cache.keys().next().value;
+    if (oldest != null) _cache.delete(oldest);
+  }
   _cache.set(key, { ts: Date.now(), data });
 }
 
@@ -185,16 +193,31 @@ export interface SnapResult {
   pct: number;
 }
 
+// 在途请求去重：异动监测（应用级 15s）与自选页轮询（15s）是两个互不感知的定时器，
+// 相位错开时会对同一 secid 各发一次请求（此时 20s 缓存恰好失效）。
+// 同一 secid 复用同一个 Promise，杜绝重复打上游。
+const _inflight = new Map<string, Promise<SnapResult>>();
+
 export async function fetchSnapshot(secid: string): Promise<SnapResult> {
   const ck = "snap:" + secid;
   const hit = cget<SnapResult>(ck, 20_000); // 实时价 20s 内复用，避免列表页反复打接口
   if (hit) return hit;
-  const rt: RawRealtime = await getRealtime(secid);
-  const chg = rt.price - rt.preClose;
-  const pct = rt.preClose ? (chg / rt.preClose) * 100 : 0;
-  const snap: SnapResult = { ...rt, chg, pct };
-  cset(ck, snap);
-  return snap;
+  const pending = _inflight.get(secid);
+  if (pending) return pending;
+  const task = (async () => {
+    const rt: RawRealtime = await getRealtime(secid);
+    const chg = rt.price - rt.preClose;
+    const pct = rt.preClose ? (chg / rt.preClose) * 100 : 0;
+    const snap: SnapResult = { ...rt, chg, pct };
+    cset(ck, snap);
+    return snap;
+  })();
+  _inflight.set(secid, task);
+  try {
+    return await task;
+  } finally {
+    _inflight.delete(secid);
+  }
 }
 
 // 批量实时快照：一次 ulist 请求取全部 secid（自选列表 / 异动监测 / 持仓卡共用），

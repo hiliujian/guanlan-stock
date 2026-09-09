@@ -9,23 +9,11 @@
       :brand-clickable="true"
       @brand-click="toggleView"
     >
-      <!-- #right：自选视图=分组胶囊；持仓视图=总收益胶囊（组合级：涨跌数量/收益率/收益金额，实时计算） -->
+      <!-- #right：自选 / 持仓共用同一枚「分组 + 涨跌家数」胶囊（同样式、同内容、同点击行为），
+           点击展开分组面板 → 持仓页也能切换 / 新建 / 管理分组，与自选页完全一致。
+           涨跌家数始终统计「当前视图当前分组」内的标的，胶囊永远描述其下方的列表。 -->
       <template #right>
-        <view
-          v-if="mainView === 'pos' && posSummary.count"
-          class="cm-me"
-          role="button"
-          aria-label="持仓收益"
-          @click="openPosSheet"
-        >
-          <view class="cm-avatar flex-center" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
-            <OutlineIcon type="portfolio" :size="24" color="#fff" />
-          </view>
-          <text class="cm-name truncate">持仓</text>
-          <text :class="['cm-val', trendCls(posSummary.pnl)]">{{ fmtPct(posSummary.pnlPct) }}</text>
-          <OutlineIcon type="pulldown" :size="18" color="var(--text-2)" />
-        </view>
-        <view v-else class="cm-me" role="button" aria-label="分组切换" @click="openGroups">
+        <view class="cm-me" role="button" aria-label="分组切换" @click="openGroups">
           <view class="cm-avatar flex-center" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
             <OutlineIcon type="layers" :size="24" color="#fff" />
           </view>
@@ -85,9 +73,17 @@
               <view class="empty-ic flex-center">
                 <OutlineIcon type="portfolio" :size="60" color="var(--primary)" />
               </view>
-              <text class="empty-title">还没有持仓</text>
-              <text class="empty-s">在「行情」页报告卡或自选页长按菜单中设置持仓成本与数量，收益与操作信号将同步展示在这里。</text>
-              <button class="btn-primary empty-btn" @click="toggleView">切换到自选</button>
+              <!-- 有持仓但当前分组筛空 → 提示切回「全部」，避免误判为「持仓丢了」 -->
+              <template v-if="posRowsAll.length">
+                <text class="empty-title">「{{ upDown.currentGroup }}」暂无持仓</text>
+                <text class="empty-s">该分组内没有已设持仓的标的，切回「全部」即可查看所有持仓。</text>
+                <button class="btn-primary empty-btn" @click="pickGroup('__all__')">查看全部持仓</button>
+              </template>
+              <template v-else>
+                <text class="empty-title">还没有持仓</text>
+                <text class="empty-s">在「行情」页报告卡或自选页长按菜单中设置持仓成本与数量，收益与操作信号将同步展示在这里。</text>
+                <button class="btn-primary empty-btn" @click="toggleView">切换到自选</button>
+              </template>
             </view>
           </view>
           <view v-else class="wl-wrap">
@@ -185,15 +181,24 @@
           </view>
         </view>
 
-        <!-- 空态 -->
-        <view v-if="mainView === 'watch' && !list.length" class="empty-wrap anim-fade-up">
+        <!-- 空态：条件必须与表格一致（rows = 按分组筛选后）。
+             否则「组内标的被全部移出」时两个条件都不成立 → 整页空白（既无空态也无表格）。
+             再按 list.length 区分「完全没自选」与「当前分组暂无」，后者给「查看全部」出口 -->
+        <view v-if="mainView === 'watch' && !rows.length" class="empty-wrap anim-fade-up">
           <view class="empty-card glass">
             <view class="empty-ic flex-center">
               <OutlineIcon type="star" :size="60" color="var(--primary)" />
             </view>
-            <text class="empty-title">还没有自选股</text>
-            <text class="empty-s">在「行情」页搜索分析后点击星标加入自选，实时价格与价格预警将同步展示在这里。</text>
-            <button class="btn-primary empty-btn" @click="goPickMarket">去行情页选股</button>
+            <template v-if="list.length">
+              <text class="empty-title">「{{ upDown.currentGroup }}」暂无自选</text>
+              <text class="empty-s">该分组内还没有标的，切回「全部」即可查看所有自选股。</text>
+              <button class="btn-primary empty-btn" @click="pickGroup('__all__')">查看全部自选</button>
+            </template>
+            <template v-else>
+              <text class="empty-title">还没有自选股</text>
+              <text class="empty-s">在「行情」页搜索分析后点击星标加入自选，实时价格与价格预警将同步展示在这里。</text>
+              <button class="btn-primary empty-btn" @click="goPickMarket">去行情页选股</button>
+            </template>
           </view>
         </view>
 
@@ -412,7 +417,6 @@
             <!-- 我的分组：主视图 / 新建 / 移入 / 管理 共用同一内容容器，按 groupView 切换 -->
             <template v-else-if="activePanel === 'group'">
               <view class="grp-head panel-head">
-                <view v-if="groupView !== 'main'" class="grp-back" role="button" aria-label="返回" @click="groupBack"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
                 <text class="sheet-title">{{ groupTitle }}</text>
               </view>
               <scroll-view class="grp-body" scroll-y>
@@ -499,7 +503,7 @@
                   <view class="grp-list">
                     <view class="grp-item" hover-class="grp-item-hover" @click="doMoveTarget('')">
                       <text class="grp-label">默认分组</text>
-                      <OutlineIcon v-if="selectedGroup === '__all__'" type="check" :size="30" color="var(--primary)" />
+                      <OutlineIcon v-if="selectedGroup === ''" type="check" :size="30" color="var(--primary)" />
                     </view>
                     <view v-for="g in groups" :key="g" class="grp-item" hover-class="grp-item-hover" @click="doMoveTarget(g)">
                       <text class="grp-label">{{ g }}</text>
@@ -604,7 +608,6 @@
             <!-- 编辑价格预警子面板：展示实时价供参考；高于/低于改为选项下方内联输入（替代原 uni-modal 弹窗） -->
             <template v-else-if="activePanel === 'alert'">
               <view class="grp-head panel-head">
-                <view class="grp-back" role="button" aria-label="返回" @click="activePanel = 'actions'"><OutlineIcon type="arrow-left" :size="32" color="var(--text-2)" /></view>
                 <text class="sheet-title">价格预警</text>
               </view>
               <!-- 实时价参考：进入面板即拉取最新成交价，供用户设定阈值时对照 -->
@@ -684,6 +687,9 @@ const lpItem = ref<WatchItem | null>(null);
 function onSheetCollapse() {
   // 下拉拖拽收起 / 程序化 collapse() 时复位面板状态（回到榜单），并清空长按目标
   activePanel.value = "rank";
+  // 分组面板子视图一并复位：头部返回按钮已移除，若不复位，下次展开会停在
+  // 新建/移入/管理/持仓汇总等子视图且无路可退
+  groupView.value = "main";
   sheetExpanded.value = false;
   lpItem.value = null;
   // 收起即露出「今日最热」预览卡：此时刷新，保证与展开态「今日热榜」数据一致、不陈旧
@@ -839,6 +845,11 @@ const groupRows = computed(() => {
   const rows: { label: string; key: string; active: boolean }[] = [
     { label: "全部", key: "__all__", active: selectedGroup.value === "__all__" },
   ];
+  // 「移入分组」允许把标的移到「默认分组」，但筛选面板原本只有具名分组 →
+  // 移进去后就再也筛不到它（只能在「全部」里翻）。存在无分组标的时补一行「默认分组」。
+  if (list.value.some((it) => !it.group)) {
+    rows.push({ label: "默认分组", key: "", active: selectedGroup.value === "" });
+  }
   for (const g of groups.value) {
     rows.push({ label: g, key: g, active: selectedGroup.value === g });
   }
@@ -1046,6 +1057,15 @@ async function loadQuotes() {
       quotes[k] = { ...old, loading: false };
     }
   }
+  // 删除自选后回收其行情条目：quotes 只增不删会让键集合随历史自选单调膨胀，
+  // 且每轮轮询都把整份（含已删除标的）写回 stale 缓存。按当前 list 重建键集合。
+  const alive = new Set(items.map(keyOf));
+  for (const k of Object.keys(quotes)) {
+    if (!alive.has(k)) {
+      delete quotes[k];
+      delete prevPrices[k];
+    }
+  }
   // 保留本次成功快照到 stale 缓存（排除 loading 态）：实例重建时先展示旧数据
   const staleClean: Record<string, Snap> = {};
   for (const k of Object.keys(quotes)) {
@@ -1189,6 +1209,11 @@ interface PosRow {
   pnlPct: number;
   sigText: string;
   sigCls: string;
+  /* 所属分组（取自对应自选项，"" = 默认分组）：持仓视图与自选视图共用同一套分组筛选 */
+  group: string;
+  /* 当日涨跌额与行情装载态：供顶部胶囊统计「当前分组涨/跌家数」，口径与自选视图一致 */
+  chg: number;
+  loading: boolean;
 }
 // 信号缓存（secid → {text, cls}）：scanPositionSignals 已对每只持仓算过 analyze，
 // 在此顺带缓存信号标签，持仓视图直接复用，不重复跑引擎
@@ -1200,7 +1225,8 @@ const SIG_META: Record<string, { text: string; cls: string }> = {
   watch: { text: "关注", cls: "watch" },
   wait: { text: "观望", cls: "wait" },
 };
-const posRows = computed<PosRow[]>(() => {
+// 全量持仓行（未按分组筛选）：供「该分组无持仓」空态判断与分组筛选的基集
+const posRowsAll = computed<PosRow[]>(() => {
   void positionsVersion.value; // 持仓变更（设置/清除）后立即重算，修复「设了持仓却显示无持仓」
   const out: PosRow[] = [];
   for (const p of listPositions()) {
@@ -1227,6 +1253,9 @@ const posRows = computed<PosRow[]>(() => {
       pnlPct,
       sigText: sig.text,
       sigCls: sig.cls,
+      group: it?.group || "",
+      chg: q?.chg ?? 0,
+      loading: q?.loading ?? true,
     });
   }
   // 持仓拖拽重排：按持久化的 secid 顺序重排；新持仓（不在序列中）落到末尾
@@ -1242,6 +1271,13 @@ const posRows = computed<PosRow[]>(() => {
     });
   }
   return out;
+});
+// 持仓视图渲染集：与自选视图共用 selectedGroup（顶部同一枚分组胶囊），
+// 「全部」不筛选；选定分组时只留该分组内的持仓，保证胶囊上的分组名/涨跌家数与列表一致
+const posRows = computed<PosRow[]>(() => {
+  if (selectedGroup.value === "__all__") return posRowsAll.value;
+  const grp = selectedGroup.value; // "" = 默认分组
+  return posRowsAll.value.filter((r) => r.group === grp);
 });
 // 右上角汇总：总盈亏 = Σ(现价−成本)×数量；总收益率 = 总盈亏 / Σ(成本×数量)（成本加权，口径一致）
 const posSummary = computed(() => {
@@ -1643,16 +1679,27 @@ onUnmounted(() => {
   document.removeEventListener("touchmove", wlGuardMove);
 });
 
-// 顶部右侧：当前分组名（默认「全部」）+ 当前分组内实时涨/跌个股个数（随行情刷新）
+// 顶部右侧：当前分组名（默认「全部」）+ 当前分组内实时涨/跌个股个数（随行情刷新）。
+// 自选 / 持仓共用同一枚胶囊，故统计源随视图切换（始终等于胶囊下方正在渲染的那张表），
+// 口径统一为「当日涨跌额 chg 的正负」，不掺入持仓盈亏，避免两页含义分叉。
 const upDown = computed(() => {
   const g = selectedGroup.value;
-  const currentGroup = !g || g === "__all__" ? "全部" : g;
+  // "" = 默认分组（与「全部」是两回事，胶囊上必须区分开）
+  const currentGroup = g === "__all__" ? "全部" : g || "默认分组";
   let up = 0;
   let down = 0;
-  for (const r of rows.value) {
-    if (r.q.loading) continue;
-    if (r.q.chg > 0) up++;
-    else if (r.q.chg < 0) down++;
+  if (mainView.value === "pos") {
+    for (const r of posRows.value) {
+      if (r.loading) continue;
+      if (r.chg > 0) up++;
+      else if (r.chg < 0) down++;
+    }
+  } else {
+    for (const r of rows.value) {
+      if (r.q.loading) continue;
+      if (r.q.chg > 0) up++;
+      else if (r.q.chg < 0) down++;
+    }
   }
   return { currentGroup, counts: { up, down } };
 });
@@ -2086,6 +2133,10 @@ function removeLp() {
   font-size: var(--font-xs);
   color: var(--text-2);
 }
+/* 预警命中列表的盈亏百分比：trendCls 返回 up/down/flat，需显式着色 */
+.pa-meta.up { color: var(--up); }
+.pa-meta.down { color: var(--down); }
+.pa-meta.flat { color: var(--text-2); }
 
 /* ===== 空态 ===== */
 .empty-wrap {
@@ -2257,7 +2308,7 @@ function removeLp() {
   align-items: center;
   justify-content: flex-start;
   gap: 6rpx;
-  width: 180rpx;
+  width: 160rpx;
   padding: 0 10rpx 0 18rpx;
   text-align: left;
   background: var(--bg-2);
@@ -2308,16 +2359,14 @@ function removeLp() {
 }
 /* ===== 分组切换面板：与「头像设置」BottomSheet 头部共用同一套 .panel-head 样式 ===== */
 /* grp-head 直接复用全局 .panel-head（padding 6rpx 28rpx 16rpx + 下框线），
-   与 .bs-head 完全一致：居中标题 + 相同头部高度(72rpx)，消除重复多写一套样式；
-   position:relative 仅为承载绝对定位的返回按钮(grp-back)，不影响标题居中 */
+   与 .bs-head 完全一致：居中标题 + 相同头部高度(72rpx)，消除重复多写一套样式。
+   标题排版复用全局 .sheet-title（font-md / 500 / text-2）：容器内普通流式文本，
+   由 .panel-head 的 align-items/justify-content 居中。原左上角返回按钮(grp-back)已移除
+   ——各面板均一步可达，收起窗体即复位（onSheetCollapse），与其它展开页保持一致的无返回样式。 */
 .grp-head {
-  position: relative;
   justify-content: center;
   height: 72rpx;
 }
-/* 标题排版复用全局 .sheet-title（font-md / 500 / text-2），与 .bs-head 标题完全一致；
-   不再绝对定位——改为容器内普通流式文本，由 .panel-head 的 align-items/justify-content 居中。
-   返回按钮经 .grp-back 绝对定位浮于左侧，标题仍可精确居中于整窗头部（保留原诉求） */
 .grp-body {
   flex: 1;
   min-height: 0;
@@ -2360,26 +2409,6 @@ function removeLp() {
 }
 .grp-item.active .grp-label {
   color: var(--primary);
-}
-/* 返回按钮绝对浮于头部左侧（与 .panel-head 28rpx 内边距对齐），不占 flex 空间，
-   保证标题仍精确居中于整窗头部（无论有无返回按钮，标题位置一致），与 BottomSheet 头部机制统一 */
-.grp-back {
-  position: absolute;
-  left: 28rpx;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
-  width: 48rpx;
-  height: 48rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-.grp-back:active {
-  background: var(--card-2);
 }
 /* 价格预警：实时价参考条 */
 .alert-rt {
@@ -2774,9 +2803,10 @@ function removeLp() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6rpx 16rpx;
+  padding: 6rpx 14rpx;
   border-radius: 999rpx;
-  font-size: var(--font-xs);
+  /* 字号与同表其它数值列（stock-table.css .st-num）完全一致，避免信号列偏小显得错行 */
+  font-size: var(--font-md);
   line-height: 1;
   white-space: nowrap;
 }
@@ -2800,18 +2830,6 @@ function removeLp() {
   color: var(--text-3);
   background: var(--card-2);
 }
-
-/* 持仓胶囊「值」：仅收益率，与自选胶囊视觉一致（头像 + 标签 + 值 + 下拉），不额外加粗 */
-.cm-val {
-  font-size: var(--font-md); /* 与 .cm-name 字号一致，保持胶囊内标签/数据对齐 */
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-3);
-  line-height: 1.3;
-}
-.cm-val.up { color: var(--up); }
-.cm-val.down { color: var(--down); }
-.cm-val.flat { color: var(--text-2); }
 
 /* 持仓汇总面板：2×2 指标块 + 提示行 */
 .stk-grid {
@@ -2837,6 +2855,10 @@ function removeLp() {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
+/* 持仓汇总数值：涨红跌绿（trendCls 返回 up/down/flat，需显式着色，否则无效） */
+.stk-v.up { color: var(--up); }
+.stk-v.down { color: var(--down); }
+.stk-v.flat { color: var(--text-2); }
 .grp-tip {
   display: block;
   margin: 18rpx 26rpx 6rpx;

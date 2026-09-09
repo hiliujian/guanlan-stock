@@ -105,6 +105,15 @@ function bumpActivity() {
     if (channel && imOnline.value) untrackSelf();
   }, IDLE_MS);
 }
+// scroll 在滚动期间每帧触发，直接绑 bumpActivity 会高频 clearTimeout + setTimeout。
+// 它只用于「重置空闲计时」，无需帧级精度 → 节流到 1s 即可。
+let lastScrollBump = 0;
+function onScrollActivity() {
+  const now = Date.now();
+  if (now - lastScrollBump < 1000) return;
+  lastScrollBump = now;
+  bumpActivity();
+}
 
 /** 初始化在线统计（幂等；未配置后端时自动退订）。登录态变化时调用。
  *  注意：频道「始终订阅」——即使未登录（访客）也能接收其他会员的在线状态并展示人数；
@@ -145,7 +154,7 @@ export function initPresence() {
     window.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pointerdown", bumpActivity, true);
     window.addEventListener("keydown", bumpActivity, true);
-    window.addEventListener("scroll", bumpActivity, true);
+    window.addEventListener("scroll", onScrollActivity, true);
   }
   bumpActivity();
 }
@@ -165,7 +174,7 @@ function stopPresence() {
     window.removeEventListener("visibilitychange", onVisibility);
     window.removeEventListener("pointerdown", bumpActivity, true);
     window.removeEventListener("keydown", bumpActivity, true);
-    window.removeEventListener("scroll", bumpActivity, true);
+    window.removeEventListener("scroll", onScrollActivity, true);
   }
   if (sb && channel) {
     try {
