@@ -786,6 +786,7 @@ function goUserPosts() {
   align-items: flex-end;
   gap: 4rpx;
   flex: none;
+  width: 180rpx; /* 与持仓列同宽：固定列宽保证上下行的持仓信息/行情信息右边缘完全对齐 */
 }
 .dp-wl-price {
   font-size: var(--font-md);
@@ -815,9 +816,12 @@ function goUserPosts() {
 }
 /* 对方持仓标识：与行情区 .dp-wl-q 同构分列（两行右对齐、无背景），置于其左侧。
    第一行持仓收益率与现价同为 font-md，第二行图标+股数与涨跌幅同为 font-xs、gap 4rpx 一致，
-   两列上下行完全对齐；行内 gap 8rpx 紧凑排布 */
+   两列上下行完全对齐；行内 gap 8rpx 紧凑排布。
+   ⚠️ hold 与 q 必须固定同宽：flex 布局下若宽度随内容浮动，
+   不同行的「行情列」宽窄不一，会把持仓列的右边缘顶得上下错位 */
 .dp-wl-hold {
   flex: none;
+  width: 180rpx;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
