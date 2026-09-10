@@ -1087,7 +1087,9 @@ html.ps-lock body {
   color: var(--text-2);
 }
 
-/* ===== 居中模态弹窗（modal）：「设置持仓」「人机验证」等卡片式弹窗共用 =====
+/* ===== 居中模态弹窗（modal）：「人机验证」等卡片式弹窗共用 =====
+   「设置持仓」已统一改造为底部弹层（BottomSheet，见 components/PositionForm.vue），
+   不再使用本 modal 家族；此处仅保留 CaptchaDialog 等仍在用的通用居中壳。
    结构约定：
      <view class="modal-mask" @click.self="close">
        <view class="modal-card">
@@ -1096,7 +1098,8 @@ html.ps-lock body {
          <view class="modal-actions"><view class="modal-btn ghost">…</view><view class="modal-btn ok">…</view></view>
        </view>
      </view>
-   （原 PositionForm scoped 的 pos-mask/pos-form/pf-* 一份、CaptchaDialog 自写一份，已合并上移） */
+   （原 PositionForm scoped 的 pos-mask/pos-form/pf-* 一份、CaptchaDialog 自写一份，已合并上移；
+     PositionForm 改 BottomSheet 后，pos-mask/pos-form 随旧居中弹窗一并移除，此处不再有持仓专用规则） */
 .modal-mask {
   position: fixed;
   inset: 0;
