@@ -263,19 +263,6 @@ const props = withDefaults(
   { editPost: null }
 );
 const isEditing = computed(() => !!props.editPost);
-watch(
-  () => props.editPost,
-  (p) => {
-    if (p) {
-      text.value = p.content || "";
-      visibility.value = p.visibility || "public";
-      // 编辑态清空草稿干扰，避免旧草稿覆盖预填正文
-      clearDraft();
-      holdings.value = [];
-    }
-  },
-  { immediate: true }
-);
 
 // 可见范围（后端 community_posts.visibility：public/followers/private，RLS + definer 函数同口径裁决）
 // 复用 api/community 的 POST_VISIBILITY_OPTIONS（发布设置 / 「设置访问权限」共用同一份，避免两处各写）
@@ -321,6 +308,25 @@ const text = ref("");
 // 附加持仓：一条帖可携带多张（逐张独立展示现价 / 收益率，可单独移除）。
 // 提交时由 packCard() 打包：1 张→单卡原结构（兼容存量），多张→holdings 包。
 const holdings = ref<HoldingCard[]>([]);
+
+// 编辑模式预填：长按自己的帖子「编辑帖子」进入，以原帖正文 + 可见范围作为初始草稿，
+// 用户在其基础上继续修改，保存时走 edit 通道（emit("edit")，仍更新原帖而非新建）。
+// 注意：必须声明在 text / visibility / holdings 之后 —— 编辑流是「先设 editPost 再展开卡片」，
+// 组件挂载时 editPost 已非空，immediate watch 会在 setup 期间同步执行，
+// 若引用未初始化的 ref 会直接 ReferenceError 导致整个编辑器挂载失败（表现为编辑区空白）。
+watch(
+  () => props.editPost,
+  (p) => {
+    if (p) {
+      text.value = p.content || "";
+      visibility.value = p.visibility || "public";
+      // 编辑态清空草稿干扰，避免旧草稿覆盖预填正文
+      clearDraft();
+      holdings.value = [];
+    }
+  },
+  { immediate: true }
+);
 // 卡片编辑面板是否打开（仅持仓一种）
 const editKind = ref<"holding" | null>(null);
 // + 操作菜单开关

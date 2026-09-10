@@ -308,7 +308,7 @@
               <view class="peek-info">
                 <view class="peek-main">
                   <text class="peek-name">持仓 {{ posSummary.count }}</text>
-                  <text class="peek-code">市值 ¥{{ fmtAmount(sumValue) }}</text>
+                  <text class="peek-code">市值 ¥{{ fmtMV(sumValue) }}</text>
                 </view>
                 <view class="peek-right">
                   <text class="peek-price" :class="trendCls(posSummary.pnl)">{{ posSummary.count ? fmtSigned(posSummary.pnl) : '--' }}</text>
@@ -409,7 +409,7 @@
                   <view class="tile-grid possum-grid">
                     <view class="idx-item">
                       <view class="idx-item-head"><text class="idx-item-name">持仓市值</text></view>
-                      <view class="idx-item-right"><text class="idx-item-price">{{ fmtAmount(sumValue) }}</text></view>
+                      <view class="idx-item-right"><text class="idx-item-price">{{ fmtMV(sumValue) }}</text></view>
                     </view>
                     <view class="idx-item">
                       <view class="idx-item-head"><text class="idx-item-name">持仓成本</text></view>
@@ -686,7 +686,7 @@ import { fetchSnapshot, fetchSnapshots, type SnapResult } from "@/api/quote";
 import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor, marketFromSecid } from "@/utils/period";
 import { getMarketStatus } from "@/utils/marketStatus";
-import { fmtPrice, fmtPct, fmtSigned, fmtAmount, trendCls } from "@/utils/format";
+import { fmtPrice, fmtPct, fmtSigned, fmtAmount, fmtMV, trendCls } from "@/utils/format";
 import { anomalies, type AnomalyRecord, ANOMALY_META } from "@/store/anomaly";
 import { staleGet, staleSet } from "@/utils/staleCache";
 import { analyze } from "@/utils/analyzer";

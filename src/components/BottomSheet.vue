@@ -16,8 +16,8 @@
         @mouseup.stop="onUp"
         @mouseleave.stop="onUp"
       >
-        <view class="bs-grip" />
-        <view class="bs-head panel-head">
+        <view class="bs-grip" @click="onTopClick" />
+        <view class="bs-head panel-head" @click="onTopClick">
           <text class="sheet-title">{{ title }}</text>
         </view>
         <view class="bs-body">
@@ -74,6 +74,7 @@ function ptY(e: any): number {
 function onDown(e: any) {
   dragging.value = true;
   dragY.value = 0;
+  dragMoved = false;
   startY = ptY(e);
 }
 function onMove(e: any) {
@@ -85,6 +86,7 @@ function onMove(e: any) {
     return;
   }
   dragY.value = dy;
+  dragMoved = true;
   // 拖拽期间阻止页面级下拉刷新 / 滚动误触发
   if (e.cancelable) {
     try {
@@ -100,6 +102,19 @@ function onUp() {
   // 位移超过阈值（约 70px）才认定为下拉收起；否则回弹归位（不触发关闭）
   if (dy > 70) close();
 }
+
+// 顶部（手柄 + 标题栏）点击收起：与 PeekSheet「点击手柄收起」同语义。
+// 拖拽回弹（位移超阈值但未达收起线）不算点击：松手仍会派发 click，
+// 用 dragMoved 标记区分「真点击」与「拖了一下松手」，避免小幅下拉松手卡片却被收起。
+let dragMoved = false;
+
+function onTopClick() {
+  if (dragMoved) {
+    dragMoved = false;
+    return;
+  }
+  close();
+}
 </script>
 
 <style scoped>
@@ -109,7 +124,9 @@ function onUp() {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 0;
+  /* 底部间距与 PeekSheet 底部卡片（.peek-card）完全一致：菜单栏（110rpx + 安全区）上方统一向上弹出，
+     不再贴死视口底部盖住 tabbar —— 帖子操作菜单 / 设置持仓 / 头像设置等所有 BottomSheet 同步对齐 */
+  bottom: calc(env(safe-area-inset-bottom) + 110rpx);
   /* 公共层级 --z-sheet(950)：高于底部导航栏(--z-tabbar 900)，低于确认弹层(--z-dialog)/居中模态(--z-modal) */
   z-index: var(--z-sheet);
   width: 100%;

@@ -26,6 +26,13 @@ export function fmtSigned(v: number | null | undefined, digits = 2): string {
   return s + v.toFixed(digits);
 }
 
+// 市值（元）：全项目市值展示统一口径 —— 一律保留两位小数（如 ¥2751 → ¥2751.00），
+// 不走 fmtAmount 的万/亿缩写，避免自选页汇总卡与资料页持仓明细等页面精度不一致。
+export function fmtMV(v: number | null | undefined): string {
+  if (v == null || isNaN(v)) return "--";
+  return v.toFixed(2);
+}
+
 // 成交额（元）→ 亿 / 万 自适应
 export function fmtAmount(v: number | null | undefined): string {
   if (v == null || isNaN(v)) return "--";

@@ -275,6 +275,7 @@ import { useDmTarget, useCommunityUserTarget, usePostTarget } from "@/store/comm
 import { useFollow } from "@/store/follow";
 import { goTab, openAuth, openInMarket, requireLogin } from "@/store/nav";
 import { communityRepo, formatRelative, unpackCards, type CommunityPost } from "@/api/community";
+import { fmtMV } from "@/utils/format";
 
 const user = useUser();
 
@@ -665,10 +666,10 @@ function holdPnlText(w: WatchRow): string {
   const v = holdPnl(w);
   return `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
 }
-/** 持仓市值（元）＝现价×股数；千分位整数展示 */
+/** 持仓市值（元）＝现价×股数；统一走 fmtMV 两位小数口径（与自选页持仓汇总一致） */
 function holdValueText(w: WatchRow): string {
   if (typeof w.price !== "number" || !w.holdingShares) return "--";
-  return Math.round(w.price * w.holdingShares).toLocaleString("en-US");
+  return fmtMV(w.price * w.holdingShares);
 }
 function openStock(w: WatchRow) {
   openInMarket(w.code, w.market as Market);
@@ -1152,9 +1153,9 @@ function goUserPosts() {
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
-/* 「查看更多」入口：整行可点，与主色呼应 */
+/* 「查看更多」入口：整行可点，与主色呼应；占满整行后内容居中 */
 .dp-posts-more {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 6rpx;
