@@ -6,7 +6,7 @@
 //      四个角色价位与选中簇必须完全相同（修正只影响展示评级，绝不影响选簇与门槛）；
 //   B) 图表 → 报告：computeAutoLevelsFromSeries（图表画线，含周期/开关过滤）
 //      的每根价格线，报告侧同角色条目存在且同价；sub「已破位」⇔ isBroken、
-//      sub「参考位/弱参考」⇔ status=ref/weak；数据充足时四类线必须存在；
+//      sub「弱参考」⇔ status=weak、src 含「兜底」⇔ status=ref；数据充足时四类线必须存在；
 //   C) 报告 → 图表：报告侧每个非空条目，图表侧同角色同价线存在；
 //   D) 离线合成数据回归（不依赖网络）。
 // ============================================================================
@@ -94,12 +94,12 @@ function auditSeries(tag: string, series: any[], period: "d" | "w" | "M"): numbe
       fail(`${tag} ${roleName} 价位不一致：图 ${fmtN(lv.price)} vs 报告 ${fmtN(it.price)}`);
       missing++; continue;
     }
-    // 状态一致性：已破位 ⇔ isBroken；参考位 ⇔ status=ref；弱参考 ⇔ status=weak
+    // 状态一致性：已破位 ⇔ isBroken；兜底(src 含「兜底」) ⇔ status=ref；弱参考 ⇔ status=weak
     if (lv.sub === "已破位" !== it.isBroken) {
       fail(`${tag} ${roleName}@${fmtN(lv.price)} 破位状态不一致：图 sub=${lv.sub || "无"} vs 报告 isBroken=${it.isBroken}`);
       statusMismatch++;
     }
-    const refMatch = (lv.sub === "参考位") !== (it.status === "ref");
+    const refMatch = ((lv.src ?? "").includes("兜底")) !== (it.status === "ref");
     const weakMatch = (lv.sub === "弱参考") !== (it.status === "weak");
     if (refMatch || weakMatch) {
       fail(`${tag} ${roleName}@${fmtN(lv.price)} 降级状态不一致：图 sub=${lv.sub || "无"} vs 报告 status=${it.status}`);
@@ -175,7 +175,7 @@ async function main() {
   for (const n of [12, 40, 120]) {
     totalBad += auditSeries(`合成 n=${n} seed=${n * 7}`, synthSeries(n, n * 7), "d");
   }
-  // 边角：全程单边上行 / 单边下行（摆动点稀少，触发参考位兜底）
+  // 边角：全程单边上行 / 单边下行（摆动点稀少，触发兜底价）
   const monotonic = (dir: 1 | -1) =>
     Array.from({ length: 60 }, (_, i) => {
       const c = 10 + dir * i * 0.3;

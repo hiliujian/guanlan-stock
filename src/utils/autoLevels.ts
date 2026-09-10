@@ -21,7 +21,7 @@ const MIN_BARS = SWING_WIN * 2 + 1; // 最少 K 线数（5）：低于该数形�
 const SWING_FREQ_MAX = 40;// 触碰频次满分
 const SWING_REV_MAX = 35; // 反转反应满分
 const SWING_SWAP_MAX = 25;// 角色互换满分
-const MIN_TOUCH_COUNT = 2;   // 合格价格簇最低摆动点个数；不足者不形成簇（交易线改走最近摆动点/窗口极值兜底，降级为参考位）
+const MIN_TOUCH_COUNT = 2;   // 合格价格簇最低摆动点个数；不足者不形成簇（交易线改走最近摆动点/窗口极值兜底，降级为弱参考）
 export const MIN_TOTAL_SCORE = 30;  // S/B 合格簇总分门槛：<30 或触碰<2 仍渲染但降级为淡化「弱参考」，不驱动买卖信号
 const BREAK_CONFIRM_CNT = 2; // 连续 N 根实体收盘击穿判定价位失效（仅尾部连续计入；单根影线/历史破位已收回不计）
 const VOL_MULTIPLE = 1.3;    // 放量阈值（相对 VMA20）：触碰时量能 > VMA20*1.3 视为放量确认
@@ -394,7 +394,7 @@ function buildRawLevels(series: any[], guard: PeriodGuard, ctx?: LevelCtx): RawL
   // 点位取值：结构线取拐点 K 实体边缘（横盘取平台中轴）；交易参考线取筹码密集中枢
   const structSupPrice = supStruct ? (band === "box" ? supStruct.cl.center : bodyEdge(supStruct.cl, "support")) : null;
   const structPresPrice = presStruct ? (band === "box" ? presStruct.cl.center : bodyEdge(presStruct.cl, "pressure")) : null;
-  // 失效不再在原始层隐藏：破位/错误侧由 ensureStructLine/ensureTradeLine 统一降级渲染（淡化 + 已破位/弱参考/参考位）。
+  // 失效不再在原始层隐藏：破位/错误侧由 ensureStructLine/ensureTradeLine 统一降级渲染（淡化 + 已破位/弱参考/兜底）。
 
   return {
     band, breakDown, boxBottom, boxTop, highs, lows,
@@ -453,7 +453,7 @@ function fadeColor(hex: string, alpha: number): string {
 }
 
 // 结构线「必须画出」：优先有效簇价；破位（实体击穿/箱体破位）→ 仍显示原价但淡化+「已破位」标注；
-// 无簇 → 最近摆动点，再无 → 窗口极值，淡化 +「参考位」标注。返回 null 仅当数据不足/周期禁结构线。
+// 无簇 → 最近摆动点，再无 → 窗口极值，淡化兜底（不渲染子标签）。返回 null 仅当数据不足/周期禁结构线。
 function ensureStructLine(
   series: any[], raw: RawLevels, role: "support" | "pressure", guard: PeriodGuard
 ): { price: number; tag: string; sub: string; label: string; src: string; degraded: boolean } | null {
@@ -486,11 +486,11 @@ function ensureStructLine(
     if (!sl.length) return null;
     price = role === "support" ? Math.min(...sl) : Math.max(...sl);
   }
-  return { price, tag: base.tag, sub: "参考位", label: base.name, src: `${srcBase}·参考位（簇缺失兜底）`, degraded: true };
+  return { price, tag: base.tag, sub: "", label: base.name, src: `${srcBase}·兜底（簇缺失）`, degraded: true };
 }
 
 // 交易参考线状态：ok=合格可执行参考；broken=破位/现价错误侧（淡化+已破位）；
-// weak=簇存在但触碰/打分证据不足（淡化+弱参考）；ref=无簇兜底最近短线摆动点/窗口极值（淡化+参考位）。
+// weak=簇存在但触碰/打分证据不足（淡化+弱参考）；ref=无簇兜底最近短线摆动点/窗口极值（淡化兜底）。
 export type TradeLineStatus = "ok" | "broken" | "weak" | "ref";
 export interface TradeLineState {
   price: number;
@@ -502,7 +502,7 @@ export interface TradeLineState {
   sc: ClusterScore | null;
 }
 // 交易参考线「必须画出」：合格簇 → 正常动作提示；破位/错误侧 → 淡化「已破位」；
-// 证据不足（低分/少触碰）→ 淡化「弱参考」；无簇 → 最近短线摆动点 → 短线窗口极值，淡化「参考位」。
+// 证据不足（低分/少触碰）→ 淡化「弱参考」；无簇 → 最近短线摆动点 → 短线窗口极值，淡化兜底。
 // 与结构线同一兜底哲学：任何情况下日 K 都给得出 S/B 两条参考，但不可执行的降级线绝不动作话术误导。
 function ensureTradeLine(
   series: any[], raw: RawLevels, role: "support" | "pressure", guard: PeriodGuard
@@ -525,7 +525,7 @@ function ensureTradeLine(
       ? `${srcBase}·短线${sideText}簇 No.1`
       : status === "broken"
         ? `${srcBase}·已破位（原价位 ${r.price.toFixed(3)}）`
-        : `${srcBase}·弱参考位（触碰/反转证据不足）`;
+        : `${srcBase}·弱参考（触碰/反转证据不足）`;
     return { price: r.price, status, tag: base.tag, sub, label: base.name, src, sc: r.sc };
   }
   // 簇缺失 → 最近短线摆动点；若其已在现价错误侧（突破/破位行情）改用短线窗口极值
@@ -540,7 +540,7 @@ function ensureTradeLine(
     if (!sl.length) return null;
     price = role === "support" ? Math.min(...sl) : Math.max(...sl);
   }
-  return { price, status: "ref", tag: base.tag, sub: "参考位", label: base.name, src: `${srcBase}·参考位（簇缺失兜底）`, sc: null };
+  return { price, status: "ref", tag: base.tag, sub: "", label: base.name, src: `${srcBase}·兜底（簇缺失）`, sc: null };
 }
 
 // 跨角色同价位去重：支撑与压力价位差 ≤TOL_PCT 时（实测如纺织服饰支@13665.82/压@13666.33），
@@ -694,14 +694,14 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
     const it = mk(role, rl, tag, name, "");
     if (it) return it;
     // 走到这里必然是簇缺失（rl.price == null，mk 已放行有效/破位路径），
-    // ensureStructLine 非 null 即兜底参考位；数据不足与图表一致地缺省
+    // ensureStructLine 非 null 即兜底价；数据不足与图表一致地缺省
     const ensureRole = role === "structSupport" ? "support" : "pressure";
     const sl = ensureStructLine(series, raw, ensureRole, guard);
     if (!sl) return null;
     return {
       price: sl.price, totalScore: 0, touchCount: 0,
       isBroken: false, status: "ref", level: "弱",
-      volDesc: "", labelTag: tag, desc: "参考位（簇缺失兜底）",
+      volDesc: "", labelTag: tag, desc: "兜底（簇缺失）",
     };
   };
   let sS = structMk("structSupport", raw.structSupport, L.sS.tag, L.sS.name);
@@ -719,7 +719,7 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
     if (st.status === "ref" || !st.sc) {
       return {
         price: st.price, totalScore: 0, touchCount: 0, isBroken: false,
-        status: "ref", level: "弱", volDesc: "", labelTag: tag, desc: "参考位（簇缺失兜底）",
+        status: "ref", level: "弱", volDesc: "", labelTag: tag, desc: "兜底（簇缺失）",
       };
     }
     const finalScore = st.sc.score + (inBox ? 4 : 0);

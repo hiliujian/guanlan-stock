@@ -903,12 +903,15 @@ html.ps-lock body {
 .peek-row:active {
   background: var(--card-2);
 }
-/* 左侧固定标签（如「股市行情」「今日最热」） */
+/* 左侧固定标签（如「股市行情」「今日最热」）：显式撑高并垂直居中，与同行 .peek-name/.peek-code 同基线 */
 .peek-label {
   flex: none;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
   white-space: nowrap;
   font-size: var(--font-sm);
+  line-height: 1;
   color: var(--text-3);
 }
 /* 右侧展开箭头 */

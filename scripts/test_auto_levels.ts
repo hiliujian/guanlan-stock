@@ -71,9 +71,9 @@ function checkLevels(levels: AutoLevel[], cur: number, tag: string, series: any[
     if (!(typeof l.price === "number" && isFinite(l.price) && l.price > 0))
       bad(`${tag} 价格非法`, `price=${l.price}`);
   }
-  // 降级识别：轴标签恒为 压/支/S/B，破位/弱参考/兜底由小字 sub（已破位/弱参考/参考位）承载，
+  // 降级识别：轴标签恒为 压/支/S/B，破位/弱参考/兜底由小字 sub（已破位/弱参考）或 src（含「兜底」）承载，
   // 均为淡化参考线，不做有效线方位检查。
-  const degraded = (l: AutoLevel) => l.sub === "已破位" || l.sub === "参考位" || l.sub === "弱参考" || l.tag?.includes("破") || l.tag?.includes("参");
+  const degraded = (l: AutoLevel) => l.sub === "已破位" || l.sub === "弱参考" || (l.src ?? "").includes("兜底") || l.tag?.includes("破");
   // 方位合理性：非降级支撑不得悬在现价上方 / 压力不得坠在现价下方
   // （与算法同口径：cur<=0 的深度前复权历史截面属数据级负价，方位判定无意义，跳过）
   for (const l of sup)
@@ -315,8 +315,8 @@ console.log("\n💥 场景5：支撑破位 → 淡化+破标注（不隐藏）")
   else caution("合成·破位 支撑未标破", `tag=${sup.tag} line=${sup.price?.toFixed(2)} 现价=${cur.toFixed(2)}`);
 }
 
-// 场景6：单根深针脉冲（仅 1 个摆动低点）→ S 不隐藏，降级为「参考位」淡化兜底
-console.log("\n📌 场景6：单脉冲插针 → S 降级参考位（必须渲染，不隐藏）");
+// 场景6：单根深针脉冲（仅 1 个摆动低点）→ S 不隐藏，降级为兜底淡化线
+console.log("\n📌 场景6：单脉冲插针 → S 降级兜底（必须渲染，不隐藏）");
 {
   const base = up(15, 10, 0.8, 0.3);
   const p = base[14].close;
@@ -327,10 +327,10 @@ console.log("\n📌 场景6：单脉冲插针 → S 降级参考位（必须渲�
   const sLine = levels.find((l) => l.role === "tradeSupport");
   const bLine = levels.find((l) => l.role === "tradePressure");
   if (!sLine) bad("合成·单脉冲 S 线缺失（违反必须渲染规则）");
-  else if (sLine.sub === "参考位") ok("合成·单脉冲 S 降级参考位", `price=${sLine.price?.toFixed(2)}（深针摆动点兜底）`);
-  else caution("合成·单脉冲 S 非参考位降级", `sub=${sLine.sub} price=${sLine.price?.toFixed(2)}`);
+  else if ((sLine.src ?? "").includes("兜底")) ok("合成·单脉冲 S 降级兜底", `price=${sLine.price?.toFixed(2)}（深针摆动点兜底）`);
+  else caution("合成·单脉冲 S 非兜底降级", `sub=${sLine.sub} src=${sLine.src} price=${sLine.price?.toFixed(2)}`);
   if (!bLine) bad("合成·单脉冲 B 线缺失（违反必须渲染规则）");
-  else if (bLine.sub === "参考位" || bLine.sub === "弱参考") ok("合成·单脉冲 B 降级渲染", `sub=${bLine.sub} price=${bLine.price?.toFixed(2)}`);
+  else if ((bLine.src ?? "").includes("兜底") || bLine.sub === "弱参考") ok("合成·单脉冲 B 降级渲染", `sub=${bLine.sub} price=${bLine.price?.toFixed(2)}`);
   else caution("合成·单脉冲 B 非降级态", `sub=${bLine.sub} price=${bLine.price?.toFixed(2)}`);
 }
 
@@ -371,7 +371,7 @@ console.log("\n💥 场景9：单根击穿中枢 → 错误侧降级（非连续
   else caution("合成·单根击穿 结构支撑未降级", `tag=${ss.tag} line=${ss.price?.toFixed(2)} 现价=${cur.toFixed(2)}`);
   if (!s) bad("合成·单根击穿 S 交易支撑缺失（必须渲染规则）");
   else if (s.sub === "已破位") ok("合成·单根击穿 S 交易支撑错误侧降级", `tag=${s.tag} sub=${s.sub} line=${s.price?.toFixed(2)}`);
-  else if (s.sub === "弱参考" || s.sub === "参考位") ok("合成·单根击穿 S 以降级态渲染", `tag=${s.tag} sub=${s.sub} line=${s.price?.toFixed(2)}`);
+  else if (s.sub === "弱参考" || (s.src ?? "").includes("兜底")) ok("合成·单根击穿 S 以降级态渲染", `tag=${s.tag} sub=${s.sub} line=${s.price?.toFixed(2)}`);
   else caution("合成·单根击穿 S 为有效态", `tag=${s.tag} line=${s.price?.toFixed(2)}（仅 1 根击穿需核实门槛）`);
 }
 

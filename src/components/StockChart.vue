@@ -89,14 +89,12 @@ function clampBoxW(text: string, size: number, availW: number): number | undefin
 
 // 右侧 y 轴彩色实底白字标签统一构造（自动支压线 / 手绘横线 / 趋势线端点共用，消除重复样式块；
 // fib 标签画在图内左缘、结构不同，不共用）
-// 盒宽恒为整条价格轴宽：短文案行（如 sub「已破位」「参考位」）若只包住文字，同 y 的原生
-// 价格刻度会在右侧露出残片（实测「1,298.00」被切成「98/.00」与标签连成怪文案），整轴宽
-// 实底把该行刻度整体盖住，与原生最后价标签的遮罩行为一致。
+// 盒宽按内容自适应（与价格刻度一致：多少内容多大宽度），仅当超出轴宽时才钳到可视宽度。
 function axisTagFig(text: string, y: number, bg: string, availW: number, opts?: { size?: number }) {
   const size = opts?.size ?? 10;
   return {
     type: "text",
-    attrs: { x: 0, y, text, align: "left", baseline: "middle", width: availW || clampBoxW(text, size, availW) },
+    attrs: { x: 0, y, text, align: "left", baseline: "middle", width: clampBoxW(text, size, availW) },
     styles: {
       color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
       ...TEXT_PAD, size,
@@ -1168,7 +1166,7 @@ function drawAutoLevels() {
         const sub = lv.sub || "";
         chart.createOverlay({
           id, name: "autoLevelLine", points: [{ timestamp: t0, value: lv.price }], lock: true,
-          extendData: { text: main, sub, bg: lv.bg, extra: extras.get(lv) },
+          extendData: { text: main, sub, bg: lv.bg, role: lv.role, extra: extras.get(lv) },
           styles: { line: { color: lv.color, style: lv.dashed ? "dashed" : "solid", size: lv.size || 1, dashedValue: [4, 3] } },
         } as never);
       }
@@ -1232,8 +1230,10 @@ function buildYAxisLabelLayout(boundH: number): Map<string, number> {
     const y = toPaneY(o.points?.[0]?.value);
     if (y == null || y < 0 || y >= boundH) continue;
     // 主标签（含 sub 两行 33，否则 20）+ 同价位并入的交易角色标签（支+S 标签栈）
+    // 结构线（structSupport/structPressure）标签下方不带子标签，高度恒为 TAG_H。
     const ed = o.extendData;
-    let h = ed?.sub ? TAG_SUB_H : TAG_H;
+    const isStruct = ed?.role === "structSupport" || ed?.role === "structPressure";
+    let h = (!isStruct && ed?.sub) ? TAG_SUB_H : TAG_H;
     if (ed?.extra) h += ed.extra.sub ? TAG_SUB_H : TAG_H;
     items.push({ key: id, y, h });
   }
@@ -1340,10 +1340,13 @@ function ensureTrendOverlay() {
         const top = buildYAxisLabelLayout(bounding.height).get(String(overlay?.id)) ?? coordinates[0].y;
         // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角；标签恒贴左(x:0, align:left)不位移，
         // 仅当盒宽会越过右边界时限宽（clampBoxW），文字自动缩放居中于盒内，永不溢出被裁剪。
-        // 标签（含价格）统一 size 10；下方 sub 提示统一 size 8（无论结构线/交易参考线/S/B/支压）。
+        // 标签（含价格）统一 size 10；下方 sub 提示统一 size 8（仅交易参考线渲染 sub）。
+        // 结构线（structSupport/structPressure）标签下方不带子标签——破位等状态由淡化线色表达。
+        const role = overlay?.extendData?.role;
+        const isStruct = role === "structSupport" || role === "structPressure";
         const bg = overlay?.extendData?.bg || overlay?.styles?.line?.color || "#888";
         const main = overlay?.extendData?.text || "";
-        const sub = overlay?.extendData?.sub || "";
+        const sub = isStruct ? "" : (overlay?.extendData?.sub || "");
         const figs: any[] = [axisTagFig(main, top, bg, bounding.width)];
         if (sub) figs.push(axisTagFig(sub, top + 13, bg, bounding.width, { size: 8 }));
         // 同价位并入的交易角色标签（支+S 双角色标签栈）：用交易色底，紧接主标签之下
@@ -1954,7 +1957,6 @@ function buildChart() {
     chart = init(chartEl.value, {
       layout: buildLayout(),
       styles: buildStyles(),
-      precision: { price: 3, volume: 0 }, // 价格全局口径 3 位小数（轴标签/十字光标/图例同步）
       customApi: {
         formatDate: (_dt: Intl.DateTimeFormat, timestamp: number, format: string) => {
           const d = new Date(timestamp);
@@ -1980,6 +1982,12 @@ function buildChart() {
     return;
   }
   if (!chart) return;
+
+  // 价格全局口径 3 位小数（轴标签/十字光标/图例同步）。
+  // klinecharts 的 init() 选项不读 precision 字段（ChartStore 构造函数仅解构 locale/timezone/styles/
+  // customApi/thousandsSeparator/decimalFoldThreshold），默认 price=2 导致轴标签只显示 2 位小数；
+  // 必须在实例创建后显式 setPriceVolumePrecision 才生效。
+  chart.setPriceVolumePrecision(3, 0);
 
   // 显式开启主图拖拽（横向滚动）与捏合/滚轮缩放——klinecharts 默认开启，但保险起见强制开启，
   // 避免任何状态下被意外禁用导致「主图不能拖拽/缩放」。
