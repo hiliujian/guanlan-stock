@@ -1,7 +1,7 @@
 <template>
   <teleport to="body">
-    <!-- 面板：自底部上滑 / 下拉收起；无遮罩层、无 × 图标，结构/背景与自选页「今日最热」卡片一致；
-         整体可下拉收起（拖拽下移预览，松手超过阈值即收起），与 PeekSheet 下拉收起语义对齐 -->
+    <!-- 面板：原地轻微上浮淡入展开 / 下移淡出收起（与发帖卡片 PeekSheet 同款）；无遮罩层、无 × 图标，
+         结构/背景与自选页「今日最热」卡片一致；整体可下拉收起（拖拽下移预览，松手超过阈值即收起） -->
     <Transition name="bs-slide">
       <view
         v-if="modelValue"
@@ -167,13 +167,17 @@ function onTopClick() {
   -webkit-overflow-scrolling: touch;
 }
 
-/* 动画：面板自底部上滑 / 下滑收起（保留居中 translateX(-50%)） */
+/* 动画：与发帖卡片 PeekSheet 的 peekIn 完全同款——最终位置轻微上浮 24rpx + 淡入，
+   收起反向（轻微下移 + 淡出），不再整面板从屏幕外滑入；所有底部弹层（帖子操作 / 设置持仓 /
+   头像设置等）展开收起观感与发帖卡片一致。保留居中 translateX(-50%)。 */
 .bs-slide-enter-active,
 .bs-slide-leave-active {
-  transition: transform var(--dur) var(--ease-out);
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .bs-slide-enter-from,
 .bs-slide-leave-to {
-  transform: translateX(-50%) translateY(100%);
+  transform: translateX(-50%) translateY(24rpx);
+  opacity: 0;
 }
 </style>

@@ -30,7 +30,7 @@ const CASES: { secid: string; name: string }[] = [
 const PERIODS = ["d", "w", "M"] as const;
 
 // 报告侧角色 → 名称映射（与 PriceLevelGroup 字段一一对应）
-const ROLES = ["structSupport", "structPressure", "tradeSupportS", "tradePressureB"] as const;
+const ROLES = ["structSupport", "structPressure", "tradeSupportB", "tradePressureS"] as const;
 const roleReport = (pl: PriceLevelGroup, r: typeof ROLES[number]) => (pl as any)[r] as PriceLevelGroup[typeof ROLES[number]] | null;
 
 // 图表侧过滤（复刻 StockChart.drawAutoLevels：默认开关全开 → 仅受周期守卫约束）
@@ -47,8 +47,8 @@ function chartPriceLines(series: any[], period: "d" | "w" | "M") {
 const chartRoleToReport: Record<string, (typeof ROLES)[number]> = {
   structSupport: "structSupport",
   structPressure: "structPressure",
-  tradeSupport: "tradeSupportS",
-  tradePressure: "tradePressureB",
+  tradeSupport: "tradeSupportB",
+  tradePressure: "tradePressureS",
 };
 
 function fmtN(v: number | null | undefined): string {
@@ -134,14 +134,14 @@ function auditSeries(tag: string, series: any[], period: "d" | "w" | "M"): numbe
   // 周期守卫：禁交易周期两侧都不得有交易线
   if (guard.disableTrade) {
     const tChart = chartLines.filter((x) => x.role === "tradeSupport" || x.role === "tradePressure").length;
-    const tReport = [pl.tradeSupportS, pl.tradePressureB].filter(Boolean).length;
+    const tReport = [pl.tradeSupportB, pl.tradePressureS].filter(Boolean).length;
     if (tChart || tReport) {
       fail(`${tag} 周期应禁交易线：图 ${tChart} 条 / 报告 ${tReport} 条`); missing++;
     }
   }
   const rows = ROLES.map((r) => {
     const it = roleReport(pl, r);
-    const tag = r === "structSupport" ? "支" : r === "structPressure" ? "压" : r === "tradeSupportS" ? "B" : "S";
+    const tag = r === "structSupport" ? "支" : r === "structPressure" ? "压" : r === "tradeSupportB" ? "B" : "S";
     const mark = !it ? "" : it.isBroken ? "(破)" : it.status === "ref" ? "(参)" : it.status === "weak" ? "(弱)" : "";
     return `${tag}:${fmtN(it?.price)}${mark}`;
   }).join(" ");

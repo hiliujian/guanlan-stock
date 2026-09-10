@@ -360,8 +360,8 @@ interface RawLevels {
   tradeLows: SwingPt[];  // 短线窗口摆动低点
   structSupport: RawLevel;
   structPressure: RawLevel;
-  tradeSupportS: RawLevel;
-  tradePressureB: RawLevel;
+  tradeSupportB: RawLevel;
+  tradePressureS: RawLevel;
 }
 function emptyRaw(): RawLevels {
   return {
@@ -369,8 +369,8 @@ function emptyRaw(): RawLevels {
     highs: [], lows: [], tradeHighs: [], tradeLows: [],
     structSupport: { price: null, cluster: null, sc: null, broken: false },
     structPressure: { price: null, cluster: null, sc: null, broken: false },
-    tradeSupportS: { price: null, cluster: null, sc: null, broken: false },
-    tradePressureB: { price: null, cluster: null, sc: null, broken: false },
+    tradeSupportB: { price: null, cluster: null, sc: null, broken: false },
+    tradePressureS: { price: null, cluster: null, sc: null, broken: false },
   };
 }
 function buildRawLevels(series: any[], guard: PeriodGuard, ctx?: LevelCtx): RawLevels {
@@ -424,13 +424,13 @@ function buildRawLevels(series: any[], guard: PeriodGuard, ctx?: LevelCtx): RawL
       sc: presStruct?.sc ?? null,
       broken: presStruct?.sc.broken ?? false,
     },
-    tradeSupportS: {
+    tradeSupportB: {
       price: supTrade ? supTrade.cl.center : null,
       cluster: supTrade?.cl ?? null,
       sc: supTrade?.sc ?? null,
       broken: supTrade?.sc.broken ?? false,
     },
-    tradePressureB: {
+    tradePressureS: {
       price: presTrade ? presTrade.cl.center : null,
       cluster: presTrade?.cl ?? null,
       sc: presTrade?.sc ?? null,
@@ -521,7 +521,7 @@ function ensureTradeLine(
   series: any[], raw: RawLevels, role: "support" | "pressure", guard: PeriodGuard
 ): TradeLineState | null {
   if (guard.disableTrade || !series || series.length < MIN_BARS) return null;
-  const r = role === "support" ? raw.tradeSupportS : raw.tradePressureB;
+  const r = role === "support" ? raw.tradeSupportB : raw.tradePressureS;
   const cur = series[series.length - 1]?.close ?? 0;
   const base = tradeBandLabels(raw, role);
   const srcBase = role === "support" ? "交易参考支撑" : "交易参考压力";
@@ -601,16 +601,16 @@ export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard): 
       size: 1, dashed: true, tag: st.tag, sub: st.sub, label: st.label, src: st.src,
     };
   };
-  let tS = mkTrade(ensureTradeLine(series, raw, "support", guard), "tradeSupport", TRADE_SUPPORT_COLOR);
-  let tP = mkTrade(ensureTradeLine(series, raw, "pressure", guard), "tradePressure", TRADE_PRESSURE_COLOR);
+  let tB = mkTrade(ensureTradeLine(series, raw, "support", guard), "tradeSupport", TRADE_SUPPORT_COLOR);
+  let tS = mkTrade(ensureTradeLine(series, raw, "pressure", guard), "tradePressure", TRADE_PRESSURE_COLOR);
   // 跨角色同价位（B≈S）只保留现价正确侧那根
-  [tS, tP] = pruneCrossRole(tS, tP, cur);
+  [tB, tS] = pruneCrossRole(tB, tS, cur);
 
   const out: AutoLevel[] = [];
   if (sSup) out.push(sSup);
   if (sPres) out.push(sPres);
+  if (tB) out.push(tB);
   if (tS) out.push(tS);
-  if (tP) out.push(tP);
 
   // 趋势线：仅主升 uptrend 连 3 个抬升摆动低点；主跌连 3 个降低摆动高点；
   // pullback(走弱回调)/bounce/box 禁止绘制上升趋势线（防假多头视觉误导，对齐风控硬规则）
@@ -653,8 +653,8 @@ export interface PriceLevelGroup {
   boxTop: number | null;                 // 箱体上沿
   structSupport: PriceLevelItem | null;   // sS 结构支撑
   structPressure: PriceLevelItem | null;  // sP 结构压力
-  tradeSupportS: PriceLevelItem | null;   // tS B 交易支撑（B=Buy 买入信号）
-  tradePressureB: PriceLevelItem | null;  // tP S 交易压力（S=Sell 卖出信号）
+  tradeSupportB: PriceLevelItem | null;   // tB 交易支撑（B=Buy 买入信号，红）
+  tradePressureS: PriceLevelItem | null;  // tS 交易压力（S=Sell 卖出信号，绿）
 }
 export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: LevelCtx): PriceLevelGroup {
   const raw = buildRawLevels(series, guard, ctxIn);
@@ -721,11 +721,11 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
   // 交易参考线与图表 100% 同源同状态（ensureTradeLine：ok/broken/weak/ref 四级必出线），
   // 弱参考/兜底位不进任何买卖信号判定（analyzer 侧仅认 status==="ok"），只作价位展示。
   const tradeMk = (
-    role: "tradeSupportS" | "tradePressureB",
+    role: "tradeSupportB" | "tradePressureS",
     st: TradeLineState | null
   ): PriceLevelItem | null => {
     if (!st) return null;
-    const base = tradeBandLabels(raw, role === "tradeSupportS" ? "support" : "pressure");
+    const base = tradeBandLabels(raw, role === "tradeSupportB" ? "support" : "pressure");
     if (st.status === "ref" || !st.sc) {
       return {
         price: st.price, totalScore: 0, touchCount: 0, isBroken: false,
@@ -747,11 +747,11 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
       desc,
     };
   };
-  let tS = tradeMk("tradeSupportS", ensureTradeLine(series, raw, "support", guard));
-  let tP = tradeMk("tradePressureB", ensureTradeLine(series, raw, "pressure", guard));
+  let tB = tradeMk("tradeSupportB", ensureTradeLine(series, raw, "support", guard));
+  let tS = tradeMk("tradePressureS", ensureTradeLine(series, raw, "pressure", guard));
   // 结构/交易同价位不再隐藏交易线：图表侧同价时合并为一根线 + 双角色标签栈；
   // 报告侧两个价位条目并存（pickMainLevels/信号判定只取 status==="ok"）。跨角色同价位仍只留正确侧。
-  [tS, tP] = pruneCrossRole(tS, tP, cur);
+  [tB, tS] = pruneCrossRole(tB, tS, cur);
   return {
     band: raw.band,
     breakDown: raw.breakDown,
@@ -759,7 +759,7 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
     boxTop: raw.boxTop,
     structSupport: sS,
     structPressure: sP,
-    tradeSupportS: tS,
-    tradePressureB: tP,
+    tradeSupportB: tB,
+    tradePressureS: tS,
   };
 }

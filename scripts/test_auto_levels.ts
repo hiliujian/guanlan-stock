@@ -135,16 +135,16 @@ function runOnce(series: any[], period: "d" | "w" | "M", tag: string) {
   }
   // 日 K：交易参考 B/S 必须画出（仅 B≈S 跨角色同价去重可缺一侧，图/报告需同步）
   if (period === "d" && series.length >= 5) {
-    const chartS = sup.some((l) => l.role === "tradeSupport");
-    const chartB = pres.some((l) => l.role === "tradePressure");
-    if (chartS !== !!pl.tradeSupportS) bad(`${tag} B 线（支撑） 图/报告 presence 不一致（图${chartS} 报告${!!pl.tradeSupportS}）`);
-    if (chartB !== !!pl.tradePressureB) bad(`${tag} S 线（压力） 图/报告 presence 不一致（图${chartB} 报告${!!pl.tradePressureB}）`);
-    if (!chartS && !chartB && !(pl.tradeSupportS == null && pl.tradePressureB == null))
+    const chartB = sup.some((l) => l.role === "tradeSupport");
+    const chartS = pres.some((l) => l.role === "tradePressure");
+    if (chartB !== !!pl.tradeSupportB) bad(`${tag} B 线（支撑） 图/报告 presence 不一致（图${chartB} 报告${!!pl.tradeSupportB}）`);
+    if (chartS !== !!pl.tradePressureS) bad(`${tag} S 线（压力） 图/报告 presence 不一致（图${chartS} 报告${!!pl.tradePressureS}）`);
+    if (!chartB && !chartS && !(pl.tradeSupportB == null && pl.tradePressureS == null))
       bad(`${tag} B/S 同时缺失且非跨角色去重（必须渲染规则）`);
   }
 
   // 交易线合格门槛复核：仅 status=ok 必须满足打分/触碰/未破位；降级态（broken/weak/ref）只核状态自洽
-  for (const key of ["tradeSupportS", "tradePressureB"] as const) {
+  for (const key of ["tradeSupportB", "tradePressureS"] as const) {
     const item = pl[key];
     if (!item) continue;
     if (item.status === "ok") {
@@ -161,7 +161,7 @@ function runOnce(series: any[], period: "d" | "w" | "M", tag: string) {
     }
   }
   // 报告侧方位一致性观察：仅 ok 态参与（broken/weak/ref 允许位于任意一侧）
-  for (const key of ["structSupport", "tradeSupportS", "structPressure", "tradePressureB"] as const) {
+  for (const key of ["structSupport", "tradeSupportB", "structPressure", "tradePressureS"] as const) {
     const it = pl[key];
     if (!it || it.status !== "ok") continue;
     const isSup = key.includes("Support");
@@ -183,8 +183,8 @@ function runOnce(series: any[], period: "d" | "w" | "M", tag: string) {
   }
   // 报告/图表逐价一致：每根图表价格线必须在报告同角色找到同价条目（同角色同价不再互相隐藏）
   for (const [role, key] of [
-    ["tradeSupport", "tradeSupportS"],
-    ["tradePressure", "tradePressureB"],
+    ["tradeSupport", "tradeSupportB"],
+    ["tradePressure", "tradePressureS"],
     ["structSupport", "structSupport"],
     ["structPressure", "structPressure"],
   ] as const) {
@@ -320,8 +320,8 @@ console.log("\n📈 场景4b：下跌结构上破前高 → 反转 uptrend");
     else caution("合成·反转 B 子文案非「回调低吸」", `sub=${s?.sub ?? "—"}（status 非 ok 时属正确降级）`);
     if (b && b.sub === "止盈减仓") ok("合成·反转 S 子文案切多头语境", `sub=${b.sub}`);
     else caution("合成·反转 S 子文案非「止盈减仓」", `sub=${b?.sub ?? "—"}（status 非 ok 时属正确降级）`);
-    if (pl.tradeSupportS && pl.tradeSupportS.status === "ok" && pl.tradeSupportS.desc !== "回调低吸")
-      bad("合成·反转 报告 B（支撑）desc 与图表不同源", pl.tradeSupportS.desc);
+    if (pl.tradeSupportB && pl.tradeSupportB.status === "ok" && pl.tradeSupportB.desc !== "回调低吸")
+      bad("合成·反转 报告 B（支撑）desc 与图表不同源", pl.tradeSupportB.desc);
   }
 }
 
@@ -414,7 +414,7 @@ console.log("\n🧯 场景10：前复权负价 → 无非正价位线");
   if (badPrice.length) bad("合成·负价 输出非正价位线", badPrice.map((l) => `${l.tag}@${l.price}`).join(" "));
   else ok("合成·负价 图表无非正价位线", `${levels.filter((l) => l.kind !== "trend").length} 条价位线全部为正`);
   const pl = computePriceLevels(series, resolvePeriodGuard("d"));
-  const negRep = (["structSupport", "structPressure", "tradeSupportS", "tradePressureB"] as const)
+  const negRep = (["structSupport", "structPressure", "tradeSupportB", "tradePressureS"] as const)
     .filter((k) => pl[k] && pl[k]!.price <= 0);
   if (negRep.length) bad("合成·负价 报告侧非正价位", negRep.join(" "));
   else ok("合成·负价 报告侧无非正价位");

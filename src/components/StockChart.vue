@@ -1193,11 +1193,12 @@ function drawAutoLevels() {
   const mergedTrade = new Set<AutoLevel>();
   const extras = new Map<AutoLevel, { text: string; sub: string; bg: string; onTop?: boolean }>();
   if (cfg.structLine && cfg.tradeLine) {
-    const pairs: ["structSupport", "tradeSupport", "structPressure", "tradePressure"] =
-      ["structSupport", "tradeSupport", "structPressure", "tradePressure"];
-    for (let pi = 0; pi < 2; pi++) {
-      const sRole = pairs[pi * 2] as "structSupport" | "structPressure";
-      const tRole = pairs[pi * 2 + 1] as "tradeSupport" | "tradePressure";
+    // 结构角色 ↔ 交易角色配对（支撑对 B 买入线、压力对 S 卖出线）
+    const pairs: Array<["structSupport" | "structPressure", "tradeSupport" | "tradePressure"]> = [
+      ["structSupport", "tradeSupport"],
+      ["structPressure", "tradePressure"],
+    ];
+    for (const [sRole, tRole] of pairs) {
       const sLv = visible.find((l) => l.role === sRole);
       const tLv = visible.find((l) => l.role === tRole);
       if (sLv && tLv && typeof sLv.price === "number" && typeof tLv.price === "number" &&

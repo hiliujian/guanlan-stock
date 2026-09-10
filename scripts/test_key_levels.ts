@@ -72,7 +72,7 @@ async function backtestStock(secid: string, name: string) {
     if (isNaN(a.buyLow) || (a.buyLow < a.buyHigh && a.buyHigh > 0)) G.zoneOk++;
 
     // 兜底来源统计（主支撑是否来自 priceLevels 候选）
-    const cands = [a.priceLevels.structSupport, a.priceLevels.tradeSupportS].filter((x): x is NonNullable<typeof x> => !!x && !x.isBroken && x.price < base);
+    const cands = [a.priceLevels.structSupport, a.priceLevels.tradeSupportB].filter((x): x is NonNullable<typeof x> => !!x && !x.isBroken && x.price < base);
     const fromCandidate = cands.some((c) => Math.abs(c.price - a.support) < 1e-9) || a.priceLevels.boxBottom === a.support;
     if (!fromCandidate) G.fallback++;
 
@@ -100,7 +100,7 @@ async function backtestStock(secid: string, name: string) {
       if (!brokeDown(closes, c.price)) G.altHold++;
     }
     // 压力候选按评分分桶
-    const resCands = [a.priceLevels.structPressure, a.priceLevels.tradePressureB].filter((x): x is NonNullable<typeof x> => !!x && !x.isBroken && x.price > base);
+    const resCands = [a.priceLevels.structPressure, a.priceLevels.tradePressureS].filter((x): x is NonNullable<typeof x> => !!x && !x.isBroken && x.price > base);
     for (const c of resCands) {
       const b = resByScore[scoreBucket(c.totalScore)];
       b.n++;

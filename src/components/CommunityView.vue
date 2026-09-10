@@ -317,7 +317,6 @@ function isMine(p: CommunityPost): boolean {
 // ---------------- 帖子长按操作（底部弹层菜单，需求⑦⑧⑨⑩） ----------------
 // 复用通用 SheetMenu（与「设置持仓」「编辑价格预警」同款底部弹层卡片样式）。
 // 本人帖：编辑帖子 / 设置访问权限；他人帖：不感兴趣 / 屏蔽用户 / 举报内容。
-// 推荐类（减少作者推荐 / 减少同类内容）仅预留扩展位，本版不与「不感兴趣」强行同实现。
 const postMenuOpen = ref(false);
 const postMenuItems = ref<SheetMenuItem[]>([]);
 const postMenuTarget = ref<CommunityPost | null>(null);
@@ -336,8 +335,8 @@ function onPostLongPress(post: CommunityPost) {
     ];
   } else {
     postMenuItems.value = [
-      { key: "hide", label: "不感兴趣", icon: "minus", desc: "减少此类内容" },
-      { key: "block", label: "屏蔽用户", icon: "close", desc: "不再看到 TA 的帖子" },
+      { key: "hide", label: "不感兴趣", icon: "minus" },
+      { key: "block", label: "屏蔽用户", icon: "close" },
       { key: "report", label: "举报内容", icon: "flag", danger: true },
     ];
   }
@@ -356,7 +355,7 @@ function onPostMenuSelect(key: string) {
   }
   if (key === "hide") {
     hidePost(p.id);
-    uni.showToast({ title: "已减少此类内容", icon: "none" });
+    uni.showToast({ title: "已标记为不感兴趣", icon: "none" });
   } else if (key === "block") {
     if (p.userId) {
       blockUser(p.userId);

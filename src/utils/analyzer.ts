@@ -534,7 +534,7 @@ function pickMainLevels(
   // 交易参考线：仅 status==="ok"（合格簇）可进主支撑/压力挑选，弱参考/破位/簇缺失兜底不得驱动信号。
   const supportCands = [
     priceLevels.structSupport && !priceLevels.structSupport.isBroken ? priceLevels.structSupport : null,
-    priceLevels.tradeSupportS?.status === "ok" ? priceLevels.tradeSupportS : null,
+    priceLevels.tradeSupportB?.status === "ok" ? priceLevels.tradeSupportB : null,
   ]
     .filter((x): x is NonNullable<typeof x> => !!x)
     .filter((x) => x.price < price);
@@ -545,7 +545,7 @@ function pickMainLevels(
       : Math.min(...recent.map((k) => k.low));
   const resistCands = [
     priceLevels.structPressure && !priceLevels.structPressure.isBroken ? priceLevels.structPressure : null,
-    priceLevels.tradePressureB?.status === "ok" ? priceLevels.tradePressureB : null,
+    priceLevels.tradePressureS?.status === "ok" ? priceLevels.tradePressureS : null,
   ]
     .filter((x): x is NonNullable<typeof x> => !!x)
     .filter((x) => x.price > price);
@@ -1050,11 +1050,11 @@ function replaySignalStats(daily: Kline[] | undefined, code: string | undefined)
     const shape = candleShape(prefix[plen - 1], atrArr[plen - 1] ?? 0);
     const supportFromPivot = !!(
       (priceLevels.structSupport && !priceLevels.structSupport.isBroken && priceLevels.structSupport.price < price) ||
-      (priceLevels.tradeSupportS?.status === "ok" && priceLevels.tradeSupportS.price < price)
+      (priceLevels.tradeSupportB?.status === "ok" && priceLevels.tradeSupportB.price < price)
     );
     const resistanceFromPivot = !!(
       (priceLevels.structPressure && !priceLevels.structPressure.isBroken && priceLevels.structPressure.price > price) ||
-      (priceLevels.tradePressureB?.status === "ok" && priceLevels.tradePressureB.price > price)
+      (priceLevels.tradePressureS?.status === "ok" && priceLevels.tradePressureS.price > price)
     );
     const breakdown = supportFromPivot && price < support * 0.985 && volRatio > 0.9;
     // 短波量化：突破确认放宽——刚站上压力(0.5%)且量能温和放大即算，追求第一时间上车；
@@ -1592,11 +1592,11 @@ export function analyze(
   //   · 跌破要求 VMA5/VMA20 > 0.9（至少接近均量，排除无量假跌破）
   const supportFromPivot = !!(
     (priceLevels.structSupport && !priceLevels.structSupport.isBroken && priceLevels.structSupport.price < price) ||
-    (priceLevels.tradeSupportS?.status === "ok" && priceLevels.tradeSupportS.price < price)
+    (priceLevels.tradeSupportB?.status === "ok" && priceLevels.tradeSupportB.price < price)
   );
   const resistanceFromPivot = !!(
     (priceLevels.structPressure && !priceLevels.structPressure.isBroken && priceLevels.structPressure.price > price) ||
-    (priceLevels.tradePressureB?.status === "ok" && priceLevels.tradePressureB.price > price)
+    (priceLevels.tradePressureS?.status === "ok" && priceLevels.tradePressureS.price > price)
   );
   const breakdown = supportFromPivot && price < support * 0.985 && volRatio > 0.9;
   // 与回放路径同口径（防漂移）：突破确认放宽至 0.5% + 温和放量，短波第一时间上车
@@ -1723,13 +1723,13 @@ export function analyze(
     if (chipR.peakPrice && price > chipR.peakPrice * 1.1) risks.push(`现价已远离筹码密集峰（${chipR.peakPrice.toFixed(3)}），乖离偏大，获利回吐与向峰回归的压力逐步显现。`);
   }
   // 智能标注联动风险（与图表同源）：破位支撑 / 弱势支撑 / 放量压力
-  if (priceLevels.structSupport?.isBroken || priceLevels.tradeSupportS?.isBroken) {
+  if (priceLevels.structSupport?.isBroken || priceLevels.tradeSupportB?.isBroken) {
     risks.push("近期关键支撑位已被有效跌破，原支撑或转为压力，注意下行风险。");
   }
-  if ((priceLevels.structSupport?.level === "弱" || priceLevels.tradeSupportS?.level === "弱") && trend === "down") {
+  if ((priceLevels.structSupport?.level === "弱" || priceLevels.tradeSupportB?.level === "弱") && trend === "down") {
     risks.push("当前支撑有效性偏弱且处于下跌趋势，反弹力度或有限，抄底需严格控制仓位。");
   }
-  const volPressureDesc = (priceLevels.structPressure?.volDesc ?? "") + (priceLevels.tradePressureB?.volDesc ?? "");
+  const volPressureDesc = (priceLevels.structPressure?.volDesc ?? "") + (priceLevels.tradePressureS?.volDesc ?? "");
   if (volPressureDesc.includes("放量")) {
     risks.push("上方压力位伴随放量，遇阻回落概率较高，突破需放量确认。");
   }
