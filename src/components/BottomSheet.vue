@@ -1,6 +1,7 @@
 <template>
   <teleport to="body">
-    <!-- 面板：原地轻微上浮淡入展开 / 下移淡出收起（与发帖卡片 PeekSheet 同款）；无遮罩层、无 × 图标，
+    <!-- 面板：自屏幕下沿滑入展开 / 向下滑出收起（与全球市场指数等 PeekSheet 卡片的展开收起同一套
+         时长与缓动，纯位移不做淡入淡出）；无遮罩层、无 × 图标，
          结构/背景与自选页「今日最热」卡片一致；整体可下拉收起（拖拽下移预览，松手超过阈值即收起） -->
     <Transition name="bs-slide">
       <view
@@ -191,17 +192,17 @@ function onTopClick() {
   -webkit-overflow-scrolling: touch;
 }
 
-/* 动画：与发帖卡片 PeekSheet 的 peekIn 完全同款——最终位置轻微上浮 24rpx + 淡入，
-   收起反向（轻微下移 + 淡出），不再整面板从屏幕外滑入；所有底部弹层（帖子操作 / 设置持仓 /
-   头像设置等）展开收起观感与发帖卡片一致。保留居中 translateX(-50%)。 */
+/* 展开/收起动效：与 PeekSheet（全球市场指数 / 今日最热等底部卡片）完全同一套节奏——
+   纯位移滑入滑出，复用同一时长 --dur(0.32s) 与缓动 --ease-out，不带任何淡入淡出。
+   面板 bottom 停在 tabbar 上方（110rpx + 安全区），故收起位需下移「自身高度 + 底部间距」
+   才能完全没入屏幕下沿，展开则自该位置滑回。所有 BottomSheet（帖子操作 / 设置持仓 /
+   头像设置等）观感与 PeekSheet 一致。保留居中 translateX(-50%)。 */
 .bs-slide-enter-active,
 .bs-slide-leave-active {
-  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform var(--dur) var(--ease-out);
 }
 .bs-slide-enter-from,
 .bs-slide-leave-to {
-  transform: translateX(-50%) translateY(24rpx);
-  opacity: 0;
+  transform: translateX(-50%) translateY(calc(100% + 110rpx + env(safe-area-inset-bottom)));
 }
 </style>
