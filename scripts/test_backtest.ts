@@ -140,7 +140,7 @@ async function backtestStock(secid: string, name: string): Promise<Agg> {
   const cuts: { base: number; win: { high: number; low: number; close: number }[]; ret10: number }[] = [];
   for (let T = MIN_HIST; T + 10 < data.length; T += STEP) {
     const cut = data.slice(0, T + 1);
-    const a = analyze(cut, {}, null, cut, null, code, "d");
+    const a = analyze(cut, {}, null, cut, null, code);
     const win = data.slice(T + 1, T + 11).map((d: any) => ({ high: d.high, low: d.low, close: d.close }));
     const base = a.price;
     const ret10 = win[win.length - 1].close / base - 1;

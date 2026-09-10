@@ -769,14 +769,16 @@ function applyPeriod(p: PeriodKey) {
         sector: b.marketCtx.sector,
       }
     : null;
+  // 分析报告固定日K数据（b.klines.d，已含今日）：实时行情只喂头部价格/涨跌展示，
+  // 图表周期切换（实时/日K/周K/月K）只改 klines.value（图表显示），绝不进入分析——
+  // 旧实现把当前周期 K 线和 period 传进 analyze，压力位随「实时⇄日K」在 1263/2980 间跳变。
   result.value = analyze(
-    klines.value,
+    b.klines.d,
     b.flowMap,
     newsSig.value,
     b.klines.d,
     marketCtx,
-    secid.value ? codeFromSecid(secid.value) : undefined,
-    period.value
+    secid.value ? codeFromSecid(secid.value) : undefined
   );
 }
 

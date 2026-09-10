@@ -62,12 +62,31 @@ const HOLD_VIEW: Record<EngineSignalLevel, ActionSignal> = {
  * 把引擎技术信号翻译为持仓感知的仓位动作。
  * @param level 引擎信号档位（analyze().signal.level）
  * @param hasPosition 是否已设置持仓成本
+ * @param trend 中期趋势（analyze().trend：up/shake_up/shake/down/shake_down）：
+ *   「watch（关注）」是唯一与趋势强相关的档位——上升趋势=偏强等回踩，
+ *   下跌/震荡偏弱=等企稳，必须分开措辞。旧实现一律说「偏强运行」，
+ *   弱势股会出现与走势相反的偏多建议（02513 港股单日 -10% 仍显示「偏强运行」）。
  */
 export function toActionSignal(
   level: EngineSignalLevel,
-  hasPosition: boolean
+  hasPosition: boolean,
+  trend?: string
 ): ActionSignal {
   const table = hasPosition ? HOLD_VIEW : FLAT_VIEW;
+  const weak = trend === "down" || trend === "shake_down";
+  const range = trend === "shake";
+  if (level === "watch") {
+    if (weak) {
+      return hasPosition
+        ? { level: "hold", label: "持有", text: "趋势偏弱，暂不加仓，反弹至压力可减仓" }
+        : { level: "watch", label: "关注", text: "趋势偏弱，等待企稳信号，暂不急于介入" };
+    }
+    if (range) {
+      return hasPosition
+        ? { level: "hold", label: "持有", text: "区间震荡，持有观察，跌破支撑再减仓" }
+        : { level: "watch", label: "关注", text: "区间震荡，等待方向明朗后再介入" };
+    }
+  }
   return table[level] || table.wait;
 }
 

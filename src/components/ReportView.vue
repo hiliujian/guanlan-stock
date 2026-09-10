@@ -99,7 +99,7 @@
       <text class="base-note">基准分 50，按技术面多空因子加权得出（范围 5–95）；仅反映技术动能，非投资评级。</text>
     </view>
 
-    <!-- 关键价位 · 操作建议（支撑/操作建议/压力 + 决策标签，小白最关心的「在哪买卖」紧跟评分） -->
+    <!-- 关键价位 · 操作建议（压力/操作建议/支撑 + 决策标签，小白最关心的「在哪买卖」紧跟评分） -->
     <view class="panel anim-fade-up" :style="{ animationDelay: '40ms' }">
       <view class="panel-title">
         <OutlineIcon type="bars" :size="28" color="var(--primary)" />
@@ -107,11 +107,11 @@
       </view>
       <view class="levels">
         <view class="lv subsection">
-          <text class="lv-k">支撑位</text>
+          <text class="lv-k">压力位</text>
           <view class="lv-right">
-            <PriceText :value="a.support" :neutral="true" :size="24" :weight="400" :class="supPriceCls" />
-            <text v-if="a.breakdown" class="lv-tag bad">已跌破</text>
-            <text v-else-if="a.nearSup" class="lv-tag warn">临近</text>
+            <PriceText :value="a.resistance" :neutral="true" :size="24" :weight="400" :class="resPriceCls" />
+            <text v-if="a.breakout" class="lv-tag ok">已突破</text>
+            <text v-else-if="a.nearRes" class="lv-tag warn">临近</text>
           </view>
         </view>
         <view class="lv subsection">
@@ -121,11 +121,11 @@
           </view>
         </view>
         <view class="lv subsection">
-          <text class="lv-k">压力位</text>
+          <text class="lv-k">支撑位</text>
           <view class="lv-right">
-            <PriceText :value="a.resistance" :neutral="true" :size="24" :weight="400" :class="resPriceCls" />
-            <text v-if="a.breakout" class="lv-tag ok">已突破</text>
-            <text v-else-if="a.nearRes" class="lv-tag warn">临近</text>
+            <PriceText :value="a.support" :neutral="true" :size="24" :weight="400" :class="supPriceCls" />
+            <text v-if="a.breakdown" class="lv-tag bad">已跌破</text>
+            <text v-else-if="a.nearSup" class="lv-tag warn">临近</text>
           </view>
         </view>
       </view>
@@ -768,7 +768,9 @@ const pnlPct = computed(() => {
 // 操作信号：统一走 utils/actionSignal 的持仓感知映射（与自选页持仓表同一份实现），
 // 保证「行情页看到的建议」与「持仓表里的操作」永远一致，不会两处各说各话。
 // 同一技术判断按持仓状态切换视角：空仓=买点/关注/观望，持仓=加仓/持有/减仓（视角内互斥）。
-const signalView = computed(() => toActionSignal(a.value.signal.level, holding.value));
+// 第三参传入中期趋势：watch 档措辞与趋势强相关——弱势下跌不得输出「偏强运行/等回调买入」
+// 的偏多表述（02513 港股单日 -10% 仍显示「偏强运行」即漏传 trend 所致）。
+const signalView = computed(() => toActionSignal(a.value.signal.level, holding.value, a.value.trend));
 
 // ---------------- 持仓盈亏行（成本感知）：信号卡内的成本/浮动盈亏展示行 ----------------
 const posView = computed(() => {

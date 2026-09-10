@@ -85,7 +85,7 @@ async function main() {
   }
 
   // 引擎对拍
-  const r = analyze(kl, {}, null, kl, null, "603580", "d");
+  const r = analyze(kl, {}, null, kl, null, "603580");
   const m = r.macd;
   const n = closes.length;
   let maxDif = 0, maxDea = 0;

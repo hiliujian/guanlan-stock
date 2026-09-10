@@ -1170,7 +1170,7 @@ async function scanPositionSignals() {
         const [kls, flow] = await Promise.all([getKline(secid, "d"), getFlow(secid)]);
         if (!kls || kls.length < 60) continue;
         // 与 MarketView 完全同参：日 K + 资金流 + dailyKlines + 股票代码，保证两页信号同口径
-        const a = analyze(kls, flow, null, kls, null, secid.split(".")[1], "d");
+        const a = analyze(kls, flow, null, kls, null, secid.split(".")[1]);
         const lvl = a.signal.level;
         // 持仓表只展示已持仓标的，固定按持仓视角取标签（加仓/持有/减仓），全档缓存
         posSigMap.value = { ...posSigMap.value, [secid]: toActionChip(lvl, true) };

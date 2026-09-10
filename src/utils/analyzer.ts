@@ -2,7 +2,7 @@
 // 分析引擎（纯函数，跨端通用，无任何 DOM / 平台依赖）
 // 指标计算 + 综合研判 + 白话报告所需的全部数据结构
 // =====================================================================
-import type { Kline, PeriodKey } from "./period";
+import type { Kline } from "./period";
 import { UP, DOWN } from "./colors";
 import { computePriceLevels, resolvePeriodGuard, type LevelCtx } from "@/utils/autoLevels";
 import type { NewsSignal } from "./newsSentiment";
@@ -247,7 +247,7 @@ function chip(klines: Kline[], winDays: number) {
   return { cats, vals, colors, avgCost, peakPrice, profitRatio, cur, minP, maxP, percentiles };
 }
 
-// ---------------- 今日盘中走势（A 股特有：涨停/跌停/炸板）----------------
+// ---------------- 今日盘中走势（按市场规则隔离：涨停/跌停/炸板为 A 股特有）----------------
 // A 股涨跌停是极强的短线信号：
 //   · 封涨停：多头极强，次日溢价概率高
 //   · 炸板（曾封涨停但打开）：多空分歧剧烈，短期波动风险大
@@ -257,17 +257,20 @@ function chip(klines: Kline[], winDays: number) {
 // 涨跌停阈值优先按「股票代码」精确判定（唯一可靠依据，避免把创业板/科创板当主板）：
 //   · 沪深主板（60xxxx / 00xxxx）：±10%
 //   · 科创板（688xxx / 689xxx）/ 创业板（300xxx / 301xxx）：±20%
-//   · 北交所（8xxxxx / 4xxxxx）：±30%
+//   · 北交所（8xxxxx / 4xxxxx / 920xxx）：±30%
 //   · ST 主板股票为 ±5%：代码判定无法识别，此处按 10% 处理（边界场景，影响极小）
+//   · 港股（5 位代码，如 02513/00700）：无统一涨跌停制度，禁止生成涨停/跌停/开板结论
 // 无代码时（如回测脚本）回退到「历史 K 线最大涨跌幅」推断板块。
 function limitPctForCode(code?: string): number | null {
   if (!code) return null;
   const c = String(code).replace(/^[a-zA-Z]+/, ""); // 去掉可能的前缀（sh/sz/bj）
+  if (/^\d{5}$/.test(c)) return null; // 港股 5 位代码：无涨跌停（须先于 A 股板块规则判定——港股 0/3 开头与深市撞段）
   if (/^(688|689)/.test(c)) return 0.2; // 科创板
   if (/^(300|301)/.test(c)) return 0.2; // 创业板
+  if (/^92/.test(c)) return 0.3; // 北交所新代码段（920xxx）
   if (/^(8|4)/.test(c)) return 0.3; // 北交所
   if (/^(6|0)/.test(c)) return 0.1; // 沪深主板
-  return null; // 港股等无涨跌停，交由调用方按无特殊走势处理
+  return null; // 其余未知代码段：按无涨跌停处理（宁可不识别，不套用 A 股规则）
 }
 
 function inferLimitPct(klines: Kline[]): number {
@@ -293,7 +296,25 @@ function detectLimitMove(klines: Kline[], code?: string) {
   const preClose = prev.close;
   if (!preClose) return empty;
   const pct = (last.close - preClose) / preClose;
-  const limitPct = limitPctForCode(code) ?? inferLimitPct(klines);
+  // 市场规则隔离：代码可判定且属于无统一涨跌停制度的市场（港股 5 位代码、未知代码段）→
+  // 跳过涨停/跌停/开板形态识别（宁可不生成，不可套用 A 股 ±10% 规则误导——
+  // 此前港股 02513 单日 -10.34% 被误判「跌停开板·恐慌释放」即源于此），
+  // 仅保留「今日大涨/大跌」的涨跌幅异动警示（阈值与 A 股主板 60% 档一致 = ±6%）。
+  const codePct = limitPctForCode(code);
+  if (codePct == null && code) {
+    return {
+      pct,
+      isLimitUp: false,
+      isLimitDown: false,
+      isBrokenLimitUp: false,
+      isBrokenLimitDown: false,
+      isBigUp: pct >= 0.06,
+      isBigDown: pct <= -0.06,
+      limitPct: 0,
+      offLimitPct: null,
+    };
+  }
+  const limitPct = codePct ?? inferLimitPct(klines);
   // 涨跌停价（A 股按 preClose × (1±limitPct) 四舍五入到分）
   const limitUpPrice = Math.round(preClose * (1 + limitPct) * 100) / 100;
   const limitDownPrice = Math.round(preClose * (1 - limitPct) * 100) / 100;
@@ -348,6 +369,8 @@ export interface AnalysisResult {
   maState: string;
   support: number;
   resistance: number;
+  // 分层支撑/压力引擎原始结果（主支撑/主压力的挑选来源，回测脚本按候选逐条统计有效性用）
+  priceLevels: ReturnType<typeof computePriceLevels>;
   nearSup: boolean;
   nearRes: boolean;
   f5: FlowSummary;
@@ -1053,17 +1076,20 @@ function replaySignalStats(daily: Kline[] | undefined, code: string | undefined)
       intraday
     );
     const fwd = daily[i + H].close / price - 1;
-    // 可成交性过滤：一字板发出的交易信号实际无法成交（一字涨停买不进 / 一字跌停卖不出），
-    // 不计入统计——否则会把「看得对但做不了」的信号算进胜率，虚高真实可用性。
-    const kBar = prefix[plen - 1];
-    const preClose = prefix[plen - 2] ? prefix[plen - 2].close : 0;
-    const limitPct = intraday.limitPct || 0.1;
-    const limitUpPrice = Math.round(preClose * (1 + limitPct) * 100) / 100;
-    const limitDownPrice = Math.round(preClose * (1 - limitPct) * 100) / 100;
-    const oneWordUp = kBar.low >= limitUpPrice - 0.011; // 全天无低于涨停价的价格 → 买不进
-    const oneWordDown = kBar.high <= limitDownPrice + 0.011; // 全天无高于跌停价的价格 → 卖不出
-    if ((signal.level === "buy" || signal.level === "hold") && oneWordUp) continue;
-    if (signal.level === "sell" && oneWordDown) continue;
+    // 可成交性过滤（仅 A 股等有涨跌停制度的市场）：一字板发出的交易信号实际无法成交
+    // （一字涨停买不进 / 一字跌停卖不出），不计入统计——否则会把「看得对但做不了」的
+    // 信号算进胜率，虚高真实可用性。港股等无板市场不存在一字板，limitPct=0 时跳过。
+    if (intraday.limitPct > 0) {
+      const kBar = prefix[plen - 1];
+      const preClose = prefix[plen - 2] ? prefix[plen - 2].close : 0;
+      const limitPct = intraday.limitPct;
+      const limitUpPrice = Math.round(preClose * (1 + limitPct) * 100) / 100;
+      const limitDownPrice = Math.round(preClose * (1 - limitPct) * 100) / 100;
+      const oneWordUp = kBar.low >= limitUpPrice - 0.011; // 全天无低于涨停价的价格 → 买不进
+      const oneWordDown = kBar.high <= limitDownPrice + 0.011; // 全天无高于跌停价的价格 → 卖不出
+      if ((signal.level === "buy" || signal.level === "hold") && oneWordUp) continue;
+      if (signal.level === "sell" && oneWordDown) continue;
+    }
     // 胜负与执行收益（贴近实盘）：
     //   · 买点（开/加仓）：方向收益 fwd 扣双边摩擦后 > 0 为胜
     //   · 持有（继续持有，无新交易）：不扣摩擦，fwd > 0 为胜
@@ -1123,8 +1149,7 @@ export function analyze(
   market?: MarketContext | null,
   // 股票代码（如 "300394"）：用于精确判定涨跌停阈值（创业板/科创板 20%、北交所 30%），
   // 避免按历史波动推断把创业板当主板、误报「炸板」。缺失时回退 K 线推断。
-  stockCode?: string,
-  period?: PeriodKey // K 线周期（d/w/M/m）：决定智能标注周期隔离，与图表完全一致
+  stockCode?: string
 ): AnalysisResult {
   // 边界条件：样本过少时任何指标都无意义，直接抛清晰错误交由上层提示，
   // 避免后续 klines[len-1] 等越界访问产生 NaN/崩溃（此前空 K 线会静默崩在 Math.min 上）。
@@ -1307,7 +1332,10 @@ export function analyze(
 
   // 分层支撑/压力引擎（与图表 StockChart 智能标注 100% 同源：同一套 findSwings/clusterSwings/scoreCluster/detectBandType/BAND_LABELS）。
   // 四维权重修正：量能 VMA20 / 筹码密集峰·成本重心 / DMI 趋势强度；箱体区间内统一 +4。
-  const guard = resolvePeriodGuard(period ?? "d");
+  // 口径固定日 K（resolvePeriodGuard("d")）：分析报告的数据源与图表周期完全隔离——
+  // 旧实现按传入 period（d/w/M/m）切换 guard，用户在「实时/日K/周K」间切换图表会把
+  // 压力位从 1263 污染成 2980（02513 案例）。现在报告一律日K口径，周期隔离只属于图表标注。
+  const guard = resolvePeriodGuard("d");
   const levelCtx: LevelCtx = {
     vma20Last: vma20[len - 1] ?? undefined,
     chipPeak: chipR?.peakPrice,
@@ -1615,6 +1643,10 @@ export function analyze(
   //   · 买入上沿取「最贴近现价的有效回踩锚」（MA5 / 支撑+0.6ATR），保证回调 1~3% 即触及；
   //   · 买入下沿取「最高的支撑锚」（MA20、MA10、swing 支撑），并用 4%~12%（随 ATR 缩放）
   //     的最大回撤深度兜底，杜绝深不见底的区间；
+  //   · 现价下方无有效支撑（支撑 ≥ 现价，如单日暴跌击穿全部近期低点）时「回调至支撑买入」
+  //     不成立，不输出区间——UI 走「等待回调低吸」的非激活提示，避免与上方支撑位自相矛盾；
+  //   · 区间下沿永不深破支撑缓冲带（支撑-0.25ATR）：旧逻辑挤压时把下沿拖到 u-minW，
+  //     会产出低于支撑位的挂单带（02513 案例：支撑 807 却挂 723~755）；
   //   · 卖出区间由引擎直接输出（破位=现价~原支撑回抽位；高位/近压=现价~压力×1.02），
   //     UI 不再临时拼卖出带。
   let buyLow = NaN;
@@ -1622,7 +1654,7 @@ export function analyze(
   let sellLow = NaN;
   let sellHigh = NaN;
   const r3 = (x: number) => +x.toFixed(3);
-  if (!breakdown && sigLevel !== "sell") {
+  if (!breakdown && sigLevel !== "sell" && support < price) {
     const minW = Math.max(price * 0.004, atrNow * 0.25);
     const upAnchors: number[] = [support + atrNow * 0.6];
     if (trend === "up") { upAnchors.push(ma5Now * 0.995, price - atrNow * 0.5); }
@@ -1630,15 +1662,20 @@ export function analyze(
     else { upAnchors.push(price - atrNow * 0.5); }
     let u = Math.max(...upAnchors.filter((x) => x < price * 0.999));
     u = Math.min(u, resistance * 0.995, price * 0.998);
+    const maxDrop = Math.min(0.12, Math.max(0.04, (atrPct / 100) * 1.5));
+    // 下沿锚只取现价下方者：下跌趋势中 MA20/MA10 已被跌穿（在现价上方），
+    // 不能把「回调低吸」区间锚在跌穿的均线上。
     const lowAnchors = [
       ma20_now - atrNow * 0.3,
       ma10Now - atrNow * 0.15,
-      support - atrNow * 0.25,
-    ];
-    let l = Math.max(...lowAnchors);
-    const maxDrop = Math.min(0.12, Math.max(0.04, (atrPct / 100) * 1.5));
-    l = Math.max(l, price * (1 - maxDrop));
-    if (l > u - minW) l = u - minW;
+    ].filter((x) => x < price);
+    // 硬下限 = 支撑缓冲带（支撑-0.25ATR）与最大回撤深度中的更高者：区间永不深破支撑。
+    let l = Math.max(...lowAnchors, support - atrNow * 0.25, price * (1 - maxDrop));
+    if (l > u - minW) {
+      // 挤压（上沿容不下最小宽度）：把上沿贴着下沿抬升（仍低于现价），
+      // 而不是把下沿拖到支撑下方——若贴锚后仍与现价无间距则不输出区间。
+      u = Math.min(price * 0.998, l + minW);
+    }
     if (u - l >= minW * 0.5 && u < price && l > 0) {
       buyLow = r3(l);
       buyHigh = r3(u);
@@ -2056,6 +2093,7 @@ export function analyze(
     maState,
     support,
     resistance,
+    priceLevels,
     nearSup,
     nearRes,
     f5,

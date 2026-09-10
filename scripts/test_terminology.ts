@@ -119,7 +119,7 @@ async function backtestStock(secid: string, name: string) {
   let cuts = 0;
   for (let T = MIN_HIST; T + 20 < data.length; T += STEP) {
     const cut = data.slice(0, T + 1);
-    const a = analyze(cut, {}, null, cut, null, code, "d");
+    const a = analyze(cut, {}, null, cut, null, code);
     cuts++;
     const base = a.price;
     const win = data.slice(T + 1, T + 21);

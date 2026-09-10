@@ -310,7 +310,7 @@ async function auditStock(secid: string, name: string, idxKl: any[]) {
   const flowMap = await fetchFlowMap(secid);
   const appKl = toApp(ks);
   const marketCtx: MarketContext = { indexKlines: idxKl, indexName: "上证指数", indexRealtime: null };
-  const a = analyze(appKl, flowMap, null, appKl, marketCtx, code, "d");
+  const a = analyze(appKl, flowMap, null, appKl, marketCtx, code);
 
   const len = ks.length;
   const close = ks.map((k) => k.close);
@@ -591,7 +591,7 @@ async function auditStock(secid: string, name: string, idxKl: any[]) {
   if (a.risks.length) check("风险提示均非空", a.risks.every((r: string) => r.trim().length > 0));
 
   // 18) env 缺数据回归（bug 修复验证）：不给指数 → 不得出现误导句
-  const aNoEnv = analyze(appKl, flowMap, null, appKl, null, code, "d");
+  const aNoEnv = analyze(appKl, flowMap, null, appKl, null, code);
   const cNoEnv = buildConclusion(aNoEnv);
   check("指数缺数据 → 结论无「市场环境偏弱/大盘逆风」误导句",
     aNoEnv.marketEnv.indexTrend === "暂无数据" && cNoEnv.indexOf("市场环境偏弱") < 0 && cNoEnv.indexOf("大盘逆风") < 0 && cNoEnv.indexOf("行业逆风") < 0

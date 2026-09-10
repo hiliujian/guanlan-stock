@@ -8,12 +8,15 @@
  *  D. 封涨停日：signal=持有，决策不得为 reduce
  *  E. 炸板日：signal=卖点，决策∈{reduce,wait}
  *  E2. 跌停开板日：signal=关注，决策不得为 add/build（催加仓）
+ *  E3. 港股（5 位代码）单日暴跌 ≈-10%：禁止生成涨停/跌停/开板形态（A 股同形态对照应识别），
+ *      仅保留「今日大跌」涨跌幅警示，且无「较板」幅度数据（02513 港股误判「跌停开板」回归）
  *  F. 400 种子随机游走 sweep：全局不变量
  *     - 不抛异常；score∈[5,95]
  *     - decision=reduce ⇒ signal=卖点；decision∈{add,build} ⇒ signal≠卖点
  *     - breakout ⇒ signal=买点（除非被涨跌停/炸板覆盖）
  *     - breakdown ⇒ signal=卖点（除非被涨停覆盖）
  *     - intraday 极端标志互斥
+ *     - 买入带不深破支撑（02513 案例：支撑 807 却挂 723~755 回归）
  */
 import { analyze } from "../src/utils/analyzer";
 import type { Kline } from "../src/utils/period";
@@ -81,7 +84,7 @@ run("A. OBV 负窗口·价与 OBV 同步新高 → 不报顶背离", () => {
     ks.push(mkKline(p, c, p * 1.004, c * 0.996, 1e7 + i * 1e5));
     p = c;
   }
-  const r = analyze(ks, {}, null, ks, null, "600000", "d");
+  const r = analyze(ks, {}, null, ks, null, "600000");
   check("A1 divergence===null", r.divergence === null, `got ${r.divergence}, price=${r.price.toFixed(2)}`);
 });
 
@@ -97,7 +100,7 @@ run("B. 价创新高 + OBV 掉坑 → 报顶背离", () => {
     ks.push(mkKline(p, c, Math.max(p, c) * 1.002, Math.min(p, c) * 0.998, v));
     p = c;
   }
-  const r = analyze(ks, {}, null, ks, null, "600000", "d");
+  const r = analyze(ks, {}, null, ks, null, "600000");
   check("B1 divergence===top", r.divergence === "top", `got ${r.divergence}`);
 });
 
@@ -113,7 +116,7 @@ run("C. 周线末周大涨 + 日K平盘 → 不报「今日大涨」", () => {
   const daily: Kline[] = [];
   let dp = 20;
   for (let i = 0; i < 240; i++) { const dc = dp * (1 + (rnd() - 0.5) * 0.004); daily.push(mkKline(dp, dc, Math.max(dp, dc) * 1.002, Math.min(dp, dc) * 0.998, 5e6)); dp = dc; }
-  const r = analyze(wk, {}, null, daily, null, "600000", "w");
+  const r = analyze(wk, {}, null, daily, null, "600000");
   check("C1 label===''", r.intradayMove.label === "", `got "${r.intradayMove.label}"`);
   check("C2 !isBigUp", !r.intradayMove.isBigUp, `pct=${r.intradayMove.pct}`);
   check("C3 !isLimitUp", !r.intradayMove.isLimitUp);
@@ -128,7 +131,7 @@ run("D. 封涨停 → 持有，决策≠reduce", () => {
   for (let i = 0; i < 99; i++) { const c = p * 1.01; ks.push(mkKline(p, c, c * 1.003, c * 0.997, 4e6 + rnd() * 1e6)); p = c; }
   const limit = Math.round(p * 1.10 * 100) / 100;
   ks.push(mkKline(p, limit, limit, limit * 0.995, 6e6));
-  const r = analyze(ks, {}, null, ks, null, "600000", "d");
+  const r = analyze(ks, {}, null, ks, null, "600000");
   check("D1 isLimitUp", r.intradayMove.isLimitUp, `close=${r.price.toFixed(2)} label="${r.intradayMove.label}"`);
   check("D2 signal=hold", r.signal.level === "hold", `got ${r.signal.level}`);
   check("D3 decision≠reduce", r.decision !== "reduce", `got ${r.decision}`);
@@ -144,7 +147,7 @@ run("E. 炸板 → 卖点，决策∈{reduce,wait}", () => {
   const limit = Math.round(p * 1.10 * 100) / 100;
   const close = Math.round(p * 1.05 * 100) / 100;
   ks.push(mkKline(p, close, limit, close * 0.99, 9e6)); // 触板未封住
-  const r = analyze(ks, {}, null, ks, null, "600000", "d");
+  const r = analyze(ks, {}, null, ks, null, "600000");
   check("E1 isBrokenLimitUp", r.intradayMove.isBrokenLimitUp, `label="${r.intradayMove.label}"`);
   check("E2 !isLimitUp", !r.intradayMove.isLimitUp);
   check("E3 signal=sell", r.signal.level === "sell", `got ${r.signal.level}`);
@@ -161,16 +164,47 @@ run("E2. 跌停开板 → 关注，决策∉{add,build}", () => {
   const limitDn = Math.round(p * 0.90 * 100) / 100;
   const close = Math.round(p * 0.93 * 100) / 100;
   ks.push(mkKline(p, close, close * 1.002, limitDn, 9e6)); // 触跌停后开板
-  const r = analyze(ks, {}, null, ks, null, "600000", "d");
+  const r = analyze(ks, {}, null, ks, null, "600000");
   check("E2.1 isBrokenLimitDown", r.intradayMove.isBrokenLimitDown, `label="${r.intradayMove.label}"`);
   check("E2.2 !isLimitDown", !r.intradayMove.isLimitDown);
   check("E2.3 signal=watch", r.signal.level === "watch", `got ${r.signal.level}`);
   check("E2.4 decision∉{add,build}", r.decision !== "add" && r.decision !== "build", `got ${r.decision}`);
 });
 
+// ---------- 场景 E3：港股暴跌禁止套用 A 股涨跌停形态 ----------
+run("E3. 港股 02513 单日 -10.3% → 无涨跌停/开板形态，仅「今日大跌」", () => {
+  const rnd = mulberry32(43);
+  dateCursor = 0;
+  const ks: Kline[] = [];
+  let p = 30;
+  for (let i = 0; i < 99; i++) { const c = p * 0.995; ks.push(mkKline(p, c, c * 1.004, c * 0.996, 3e6 + rnd() * 1e6)); p = c; }
+  // 暴跌日：最低触到 preClose×0.89（A 股口径即「触及跌停」），收盘跌 10.33%
+  const pre = p;
+  const close = pre * 0.8967;
+  const low = pre * 0.89;
+  ks.push(mkKline(pre, close, pre * 1.002, low, 9e6));
+  const hk = analyze(ks, {}, null, ks, null, "02513");
+  const m = hk.intradayMove;
+  check("E3.1 港股 !isLimitDown", !m.isLimitDown, `pct=${m.pct}`);
+  check("E3.2 港股 !isBrokenLimitDown", !m.isBrokenLimitDown);
+  check("E3.3 港股 !isLimitUp && !isBrokenLimitUp", !m.isLimitUp && !m.isBrokenLimitUp);
+  check("E3.4 港股 label=今日大跌", m.label === "今日大跌", `got "${m.label}"`);
+  check("E3.5 港股无较板幅度", m.offLimitPct == null, `got ${m.offLimitPct}`);
+  check("E3.6 港股无异动加分形态", !hk.scoreReasons.some((x) => x.label.includes("跌停") || x.label.includes("涨停") || x.label.includes("恐慌")), JSON.stringify(hk.scoreReasons.map((x) => x.label)));
+  // 对照组：完全相同的价格形态 + A 股主板代码 → 必须识别为跌停开板（证明分支由市场规则驱动）
+  dateCursor = 0;
+  const ks2: Kline[] = [];
+  let q = 30;
+  for (let i = 0; i < 99; i++) { const c = q * 0.995; ks2.push(mkKline(q, c, c * 1.004, c * 0.996, 3e6 + rnd() * 1e6)); q = c; }
+  const pre2 = q;
+  ks2.push(mkKline(pre2, pre2 * 0.8967, pre2 * 1.002, pre2 * 0.89, 9e6));
+  const ashare = analyze(ks2, {}, null, ks2, null, "600000");
+  check("E3.7 A股对照组 isBrokenLimitDown", ashare.intradayMove.isBrokenLimitDown, `label="${ashare.intradayMove.label}"`);
+});
+
 // ---------- 场景 F：400 种子 sweep ----------
 run("F. sweep 400 种子全局不变量", () => {
-  const codes = ["600000", "000001", "300394", "688111", "830799"];
+  const codes = ["600000", "000001", "300394", "688111", "830799", "02513"];
   let n = 0;
   for (let seed = 1; seed <= 400; seed++) {
     const rnd = mulberry32(seed * 7919);
@@ -193,7 +227,7 @@ run("F. sweep 400 种子全局不变量", () => {
     const code = codes[seed % codes.length];
     let r: ReturnType<typeof analyze>;
     try {
-      r = analyze(ks, flow, null, ks, null, code, "d");
+      r = analyze(ks, flow, null, ks, null, code);
     } catch (e) {
       check(`F seed=${seed} 不抛异常`, false, String(e));
       continue;
@@ -229,6 +263,11 @@ run("F. sweep 400 种子全局不变量", () => {
       check(`F9 卖点无买入带 ${tag}`, !fin(r.buyLow), `buyLow=${r.buyLow}`);
     } else {
       check(`F9 非卖点无卖出带 ${tag}`, !fin(r.sellLow), `sellLow=${r.sellLow}`);
+    }
+    // F11 买入带不深破支撑（02513 案例：支撑 807 却挂 723~755）：
+    // 引擎硬约束=区间下沿 ≥ 支撑缓冲带（支撑-0.25ATR）。ATR 极端时也禁止脱离支撑 10% 以上的深坑。
+    if (fin(r.buyLow) && r.support < r.price) {
+      check(`F11 买入带不深破支撑 ${tag}`, r.buyLow >= r.support * 0.9, `buyLow=${r.buyLow} support=${r.support.toFixed(2)}`);
     }
     // F10 走势预测与信号同向（单源派生不变量）：卖点不得配「突破上攻/企稳反弹/震荡上行」；
     // 买点不得配「破位下行/承压回落/震荡下行/反弹乏力」。
