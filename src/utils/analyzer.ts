@@ -939,21 +939,20 @@ function applyIntradayOverride(
 // 评估窗口 20 个交易日（约 1 个月，主流量化工具对短线 swing 信号的常用前瞻周期）；
 // 回放范围近 250 个交易日（约一年）；样本不足（日线缺失）返回 null，UI 不展示。
 //
-// 分档统计（本次审计修正）：只统计**可执行交易类信号**，且多空分桶——
-//   · long 桶 = 买点（开/加仓，收益扣双边摩擦）+ 持有（继续持有，不产生新交易、不扣摩擦）
-//   · sell 桶 = 卖点（减/清仓，规避收益 -fwd 扣卖出侧摩擦）
+// 统计口径：只统计**可执行交易类信号**（买点/持有/卖点），合并为单一「综合」桶——
+//   · 买点（开/加仓，收益扣双边摩擦）+ 持有（继续持有，不扣摩擦）+ 卖点（减/清仓，
+//     规避收益 -fwd 扣卖出侧摩擦）三类操作合并累计，给出整体胜率与平均收益。
 //   · 关注/观望（watch/wait）不产生持仓动作，旧口径把它们按「方向猜对」计入胜率、
 //     收益却记 0 摊进均值，震荡市会同时给出「胜率 65% · 平均收益 -0.8%」的自相矛盾数字，
 //     且对交易者无操作意义，故整体剔除。
 export interface SignalClassStat {
-  count: number; // 该档信号样本数
-  winRate: number; // 0~1：long=扣成本后20日上涨占比；sell=扣成本后20日规避下跌占比
-  avgRet: number; // 平均20日前瞻收益（小数，0.042=+4.2%，已按档位口径扣交易成本）
+  count: number; // 样本数
+  winRate: number; // 0~1：所有可交易操作（买点/持有/卖点）20 日方向正确率占比
+  avgRet: number; // 平均20日前瞻收益（小数，0.042=+4.2%，买点/卖点均已按对应口径扣交易成本）
 }
 export interface SignalWinRateResult {
   horizon: number; // 前瞻评估窗口（交易日）
-  long: SignalClassStat; // 做多类（买点 + 持有）
-  sell: SignalClassStat; // 减仓类（卖点）
+  combined: SignalClassStat; // 买点 + 持有 + 卖点合并统计
 }
 function replaySignalStats(daily: Kline[] | undefined, code: string | undefined): SignalWinRateResult | null {
   const H = 20; // 前瞻评估窗口：20 根日 K（收盘→收盘），与均线 MA20 同一计数口径（交易日，非自然日）
@@ -968,11 +967,8 @@ function replaySignalStats(daily: Kline[] | undefined, code: string | undefined)
   if (!daily || daily.length < WARMUP + H + 5) return null;
   const n = daily.length;
   const from = Math.max(WARMUP, n - WINDOW);
-  // long 桶（买点/持有）、sell 桶（卖点）各自独立累计
-  const acc = {
-    long: { count: 0, win: 0, retSum: 0 },
-    sell: { count: 0, win: 0, retSum: 0 },
-  };
+  // 综合桶：买点/持有/卖点合并累计，给出整体胜率与平均收益
+  const acc = { combined: { count: 0, win: 0, retSum: 0 } };
   for (let i = from; i < n - H; i++) {
     const prefix = daily.slice(Math.max(0, i - PREFIX_CAP + 1), i + 1);
     const plen = prefix.length;
@@ -1073,30 +1069,27 @@ function replaySignalStats(daily: Kline[] | undefined, code: string | undefined)
     //   · 持有（继续持有，无新交易）：不扣摩擦，fwd > 0 为胜
     //   · 卖点（减/清仓）：规避的下跌 -fwd 扣卖出侧摩擦后 > 0 为胜
     //   · 关注/观望：不产生持仓动作，不纳入统计（见函数头注释）
-    let bucket: { count: number; win: number; retSum: number } | null = null;
     let payoff = 0;
     if (signal.level === "buy") {
-      bucket = acc.long;
       payoff = fwd - FRICTION;
     } else if (signal.level === "hold") {
-      bucket = acc.long;
       payoff = fwd;
     } else if (signal.level === "sell") {
-      bucket = acc.sell;
       payoff = -fwd - FRICTION;
     } else {
       continue; // watch / wait 不交易，剔除
     }
+    const bucket = acc.combined;
     bucket.count++;
     bucket.retSum += payoff;
     if (payoff > 0) bucket.win++;
   }
-  if (acc.long.count === 0 && acc.sell.count === 0) return null;
+  if (acc.combined.count === 0) return null;
   const statOf = (b: { count: number; win: number; retSum: number }): SignalClassStat =>
     b.count === 0
       ? { count: 0, winRate: 0, avgRet: 0 }
       : { count: b.count, winRate: b.win / b.count, avgRet: b.retSum / b.count };
-  return { horizon: H, long: statOf(acc.long), sell: statOf(acc.sell) };
+  return { horizon: H, combined: statOf(acc.combined) };
 }
 
 // 大盘 · 市场环境上下文：由调用方（行情页 / 报告页）获取相关指数日 K 后传入，

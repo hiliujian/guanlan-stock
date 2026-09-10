@@ -1,26 +1,16 @@
 <template>
   <view class="report">
-    <!-- 历史胜率提示（与信号卡同一引擎在近 250 个交易日逐日回放；可交易信号多空分桶）：
-         long 桶=买点+持有、sell 桶=卖点，关注/观望不交易不统计；样本 <3 的桶不展示。
+    <!-- 历史胜率提示（与信号卡同一引擎在近 250 个交易日逐日回放；买点+持有+卖点合并统计）：
+         关注/观望不交易不统计；样本 <3 不展示。
          Tip 图标 + 文案左对齐 · 分隔；标签无色，仅数字按涨红/跌绿着色：
-         胜率 ≥50% 红 / <50% 绿，收益/规避 + 红 / − 绿；右端持仓图标弹出设置持仓（已持仓=主色，未持仓=灰） -->
-    <view v-if="wrLong || wrSell" class="sig-confidence">
+         胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿；右端持仓图标弹出设置持仓（已持仓=主色，未持仓=灰） -->
+    <view v-if="wr" class="sig-confidence">
       <OutlineIcon type="tip" :size="26" color="var(--warn)" />
-      <template v-if="wrLong">
-        <text class="sc-label">买点信号·20日胜率</text>
-        <text :class="['sc-num', wrLong.winRate >= 0.5 ? 'rate-up' : 'rate-down']">{{ pctText(wrLong.winRate) }}</text>
-        <text class="sc-dot">·</text>
-        <text class="sc-label">平均收益</text>
-        <text :class="['sc-num', wrLong.avgRet >= 0 ? 'ret-up' : 'ret-down']">{{ signedPct(wrLong.avgRet) }}</text>
-      </template>
-      <template v-if="wrLong && wrSell"><text class="sc-dot">·</text></template>
-      <template v-if="wrSell">
-        <text class="sc-label">卖点信号·20日胜率</text>
-        <text :class="['sc-num', wrSell.winRate >= 0.5 ? 'rate-up' : 'rate-down']">{{ pctText(wrSell.winRate) }}</text>
-        <text class="sc-dot">·</text>
-        <text class="sc-label">平均规避</text>
-        <text :class="['sc-num', wrSell.avgRet >= 0 ? 'ret-up' : 'ret-down']">{{ signedPct(wrSell.avgRet) }}</text>
-      </template>
+      <text class="sc-label">20交易日胜率</text>
+      <text :class="['sc-num', wr.winRate >= 0.5 ? 'rate-up' : 'rate-down']">{{ pctText(wr.winRate) }}</text>
+      <text class="sc-dot">·</text>
+      <text class="sc-label">收益率</text>
+      <text :class="['sc-num', wr.avgRet >= 0 ? 'ret-up' : 'ret-down']">{{ signedPct(wr.avgRet) }}</text>
       <view class="sc-pos" @click="openPosForm" role="button" aria-label="设置持仓">
         <OutlineIcon type="portfolio" :size="28" :color="holding ? 'var(--primary)' : 'var(--text-2)'" />
       </view>
@@ -726,18 +716,14 @@ const rangePosColor = computed(() =>
   a.value.rangePos > 80 ? "var(--down)" : a.value.rangePos < 20 ? "var(--up)" : "var(--r-ink)"
 );
 
-// ---------------- 历史胜率提示（与信号卡同一引擎的回放统计；可交易信号多空分桶） ----------------
+// ---------------- 历史胜率提示（与信号卡同一引擎的回放统计；买点+持有+卖点合并） ----------------
 // 「20 个交易日」与均线 MA20 同一计数口径：都是 20 根日 K（非自然日）。
-// long 桶 = 买点 + 持有（做多方向），sell 桶 = 卖点（规避下跌方向）；关注/观望不交易不统计。
-// 样本 <3 次的桶不展示：小样本胜率噪声极大，展示反而误导。
-// 标签恒为中性色，仅数字按涨红/跌绿着色：胜率 ≥50% 红 / <50% 绿，收益/规避 + 红 / − 绿。
-const wrLong = computed(() => {
+// 所有可交易操作（买点/持有/卖点）合并为单一综合桶，关注/观望不交易不统计。
+// 样本 <3 不展示：小样本胜率噪声极大，展示反而误导。
+// 标签恒为中性色，仅数字按涨红/跌绿着色：胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿。
+const wr = computed(() => {
   const wr = a.value.signalWinRate;
-  return wr && wr.long.count >= 3 ? wr.long : null;
-});
-const wrSell = computed(() => {
-  const wr = a.value.signalWinRate;
-  return wr && wr.sell.count >= 3 ? wr.sell : null;
+  return wr && wr.combined.count >= 3 ? wr.combined : null;
 });
 function pctText(v: number) {
   return (v * 100).toFixed(0) + "%";
