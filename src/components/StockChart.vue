@@ -1171,7 +1171,7 @@ function drawAutoLevels() {
   if (!props.autoDraw || !chart || !cfg) return;
   if (!(cfg.structLine || cfg.tradeLine || cfg.trend)) return;
 
-  // 分时视图不绘制任何智能标注线（结构支撑/压力、交易参考 S/B、趋势线）。
+  // 分时视图不绘制任何智能标注线（结构支撑/压力、交易参考 B/S、趋势线）。
   // 原因：分时价格轴自适应当日窄幅，且做T价位与日K不同源；曾尝试复用日K价位但落在轴外被裁、
   // 钳制贴边后又与分时走势脱节产生误导。权衡后统一不在分时显示智能标注，杜绝误导性信号。
   if (props.mode === "intraday") return;
@@ -1188,10 +1188,10 @@ function drawAutoLevels() {
     return true;
   });
   // 同角色价位重合（≤TOL_PCT，实测 ETF/指数极常见）：结构线与交易线画两条只会重叠描边，
-  // 故合并为「一根结构线 + 两枚角色标签栈（支 / S）」——四类线种永远可见又不产生重叠虚线。
-  // 仅当两个开关都开时合并；只开交易线时 S/B 仍独立画线。
+  // 故合并为「一根结构线 + 两枚角色标签栈（支 / B）」——四类线种永远可见又不产生重叠虚线。
+  // 仅当两个开关都开时合并；只开交易线时 B/S 仍独立画线。
   const mergedTrade = new Set<AutoLevel>();
-  const extras = new Map<AutoLevel, { text: string; sub: string; bg: string }>();
+  const extras = new Map<AutoLevel, { text: string; sub: string; bg: string; onTop?: boolean }>();
   if (cfg.structLine && cfg.tradeLine) {
     const pairs: ["structSupport", "tradeSupport", "structPressure", "tradePressure"] =
       ["structSupport", "tradeSupport", "structPressure", "tradePressure"];
@@ -1203,7 +1203,8 @@ function drawAutoLevels() {
       if (sLv && tLv && typeof sLv.price === "number" && typeof tLv.price === "number" &&
         Math.abs(sLv.price - tLv.price) / Math.max(sLv.price, tLv.price) <= TOL_PCT) {
         mergedTrade.add(tLv);
-        extras.set(sLv, { text: `${tLv.tag ?? ""} ${tLv.price!.toFixed(3)}`, sub: tLv.sub || "", bg: tLv.bg });
+        // onTop：标签栈「价高者在上」——并入的交易角色价高于结构主线价时，其标签排在结构标签上方
+        extras.set(sLv, { text: `${tLv.tag ?? ""} ${tLv.price!.toFixed(3)}`, sub: tLv.sub || "", bg: tLv.bg, onTop: tLv.price! > sLv.price! });
       }
     }
   }
@@ -1288,7 +1289,7 @@ function buildYAxisLabelLayout(boundH: number): Map<string, number> {
     if (!o || o.name !== "autoLevelLine") continue;
     const y = toPaneY(o.points?.[0]?.value);
     if (y == null || y < 0 || y >= boundH) continue;
-    // 主标签（含 sub 两行 33，否则 20）+ 同价位并入的交易角色标签（支+S 标签栈）
+    // 主标签（含 sub 两行 33，否则 20）+ 同价位并入的交易角色标签（支+B 标签栈）
     // 结构线（structSupport/structPressure）标签下方不带子标签，高度恒为 TAG_H。
     const ed = o.extendData;
     const isStruct = ed?.role === "structSupport" || ed?.role === "structPressure";
@@ -1312,6 +1313,14 @@ function buildYAxisLabelLayout(boundH: number): Map<string, number> {
         items.push({ key: `${id}:${i}`, y, h: TAG_H });
       }
     }
+  }
+  // 原生最后价标签（priceMark.last 彩底白字，如「1,285.130」）恒显示且无法移动，必须避让：
+  // 否则标签行与其同行重叠时会露出残尾（实测茅台 S 线 sub「止盈减仓」盖不住 1,285.130，
+  // 右侧露出「30」）。预留其所在行，让全部标签行绕行。
+  const lastClose = Number((dataList[dataList.length - 1] as any)?.close);
+  if (isFinite(lastClose)) {
+    const y = toPaneY(lastClose);
+    if (y != null && y >= 0 && y < boundH) items.push({ key: "__lastPrice", y, h: TAG_H });
   }
   const map = new Map<string, number>();
   if (!items.length) return map;
@@ -1408,14 +1417,24 @@ function ensureTrendOverlay() {
         const bg = overlay?.extendData?.bg || overlay?.styles?.line?.color || "#888";
         const main = overlay?.extendData?.text || "";
         const sub = isStruct ? "" : (overlay?.extendData?.sub || "");
-        const figs: any[] = [axisTagFig(main, top + TAG_H / 2, bg, bounding.width)];
-        if (sub) figs.push(axisTagFig(sub, top + TAG_H + TAG_SUB_BOX_H / 2, bg, bounding.width, { size: 8 }));
-        // 同价位并入的交易角色标签（支+S 双角色标签栈）：用交易色底，紧接主标签栈之下
-        const extra = overlay?.extendData?.extra as { text: string; sub: string; bg: string } | undefined;
-        if (extra) {
-          const eTop = top + (sub ? TAG_SUB_H : TAG_H);
-          figs.push(axisTagFig(extra.text, eTop + TAG_H / 2, extra.bg, bounding.width));
-          if (extra.sub) figs.push(axisTagFig(extra.sub, eTop + TAG_H + TAG_SUB_BOX_H / 2, extra.bg, bounding.width, { size: 8 }));
+        const figs: any[] = [];
+        // 同价位并入的交易角色标签（支+B / 压+S 双角色标签栈）：用交易色底。
+        // 排序与全局布局同规则「价高者在上」：onTop（并入角色价 > 主线价）时排在主标签栈之上，
+        // 否则紧接主标签栈之下。栈内盒高恒定，两种顺序总高一致，不影响统一错位布局的高度预算。
+        const extra = overlay?.extendData?.extra as { text: string; sub: string; bg: string; onTop?: boolean } | undefined;
+        if (extra?.onTop) {
+          const eH = extra.sub ? TAG_SUB_H : TAG_H;
+          figs.push(axisTagFig(extra.text, top + TAG_H / 2, extra.bg, bounding.width));
+          if (extra.sub) figs.push(axisTagFig(extra.sub, top + TAG_H + TAG_SUB_BOX_H / 2, extra.bg, bounding.width, { size: 8 }));
+          figs.push(axisTagFig(main, top + eH + TAG_H / 2, bg, bounding.width));
+        } else {
+          figs.push(axisTagFig(main, top + TAG_H / 2, bg, bounding.width));
+          if (sub) figs.push(axisTagFig(sub, top + TAG_H + TAG_SUB_BOX_H / 2, bg, bounding.width, { size: 8 }));
+          if (extra) {
+            const eTop = top + (sub ? TAG_SUB_H : TAG_H);
+            figs.push(axisTagFig(extra.text, eTop + TAG_H / 2, extra.bg, bounding.width));
+            if (extra.sub) figs.push(axisTagFig(extra.sub, eTop + TAG_H + TAG_SUB_BOX_H / 2, extra.bg, bounding.width, { size: 8 }));
+          }
         }
         return figs;
       },

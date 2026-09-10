@@ -30,8 +30,8 @@ const VOL_MULTIPLE = 1.3;    // 放量阈值（相对 VMA20）：触碰时量能
 // 而 --up/--down 为主题不变量（浅/深主题值相同），这里直接复用 colors 常量即得等价色。
 const SUPPORT_COLOR = DOWN;        // 结构支撑（绿，对应 desc「红压力/绿支撑」）
 const PRESSURE_COLOR = UP;         // 结构压力（红，对应 desc「红压力/绿支撑」）
-const TRADE_SUPPORT_COLOR = UP;    // 交易参考支撑 S（红，买入信号，对应 desc「红S买入」）
-const TRADE_PRESSURE_COLOR = DOWN; // 交易参考压力 B（绿，卖出信号，对应 desc「绿B卖出」）
+const TRADE_SUPPORT_COLOR = UP;    // 交易参考支撑 B（红，买入信号，对应 desc「红B买入」，B=Buy 对齐股市通用符号）
+const TRADE_PRESSURE_COLOR = DOWN; // 交易参考压力 S（绿，卖出信号，对应 desc「绿S卖出」，S=Sell）
 
 // 摆动点（pivot）：以 win 根为窗口取严格局部极值；窗口天然把相邻极值隔开 ≥win 根，无需额外 gap 过滤
 // 全局强制约束：K 线靠近图表首尾不足 win 根则不生成摆动点（findSwings 循环边界已保证）。
@@ -112,7 +112,7 @@ function detectBandType(highs: SwingPt[], lows: SwingPt[], series: any[], curren
   if (hh && hl) {
     const pulledBack = !!lastH && current < lastH.value;  // 从近端高位回落
     const prevLow = prevL ? prevL.value : (lastL ? lastL.value : -Infinity);
-    if (current < prevLow) return { band: "box", breakDown: true }; // 跌破前低→结构破坏：支撑/S 全部按「已破位」淡化，B 压力线正常保留
+    if (current < prevLow) return { band: "box", breakDown: true }; // 跌破前低→结构破坏：支撑/B 全部按「已破位」淡化，S 压力线正常保留
     if (pulledBack && current >= prevLow) return { band: "pullback", breakDown: false }; // 未跌破近端前低
     return { band: "uptrend", breakDown: false };
   }
@@ -264,38 +264,38 @@ const BAND_LABELS: Record<BandType, {
 }> = {
   uptrend: {
     sS: { tag: "支", name: "结构支撑" },
-    tS: { tag: "S", sub: "回调低吸", name: "交易参考支撑 S" },
+    tS: { tag: "B", sub: "回调低吸", name: "交易参考支撑 B" },
     sP: { tag: "压", name: "结构压力" },
-    tP: { tag: "B", sub: "止盈减仓", name: "交易参考压力 B" },
+    tP: { tag: "S", sub: "止盈减仓", name: "交易参考压力 S" },
   },
   pullback: {
     sS: { tag: "支", name: "结构支撑" },
-    tS: { tag: "S", sub: "轻仓试多", name: "交易参考支撑 S" },
+    tS: { tag: "B", sub: "轻仓试多", name: "交易参考支撑 B" },
     sP: { tag: "压", name: "结构压力" },
-    tP: { tag: "B", sub: "止盈减仓", name: "交易参考压力 B" },
+    tP: { tag: "S", sub: "止盈减仓", name: "交易参考压力 S" },
   },
   downtrend: {
     sP: { tag: "压", name: "结构压力" },
-    tP: { tag: "B", sub: "逢高离场", name: "交易参考压力 B" },
+    tP: { tag: "S", sub: "逢高离场", name: "交易参考压力 S" },
     sS: { tag: "支", name: "结构支撑" },
-    tS: { tag: "S", sub: "轻仓反弹", name: "交易参考支撑 S" },
+    tS: { tag: "B", sub: "轻仓反弹", name: "交易参考支撑 B" },
   },
   bounce: {
     sP: { tag: "压", name: "结构压力" },
-    tP: { tag: "B", sub: "反弹减仓", name: "交易参考压力 B" },
+    tP: { tag: "S", sub: "反弹减仓", name: "交易参考压力 S" },
     sS: { tag: "支", name: "结构支撑" },
-    tS: { tag: "S", sub: "短线反弹", name: "交易参考支撑 S" },
+    tS: { tag: "B", sub: "短线反弹", name: "交易参考支撑 B" },
   },
   box: {
     sS: { tag: "支", name: "结构支撑" },
-    tS: { tag: "S", sub: "区间低吸", name: "交易参考支撑 S" },
+    tS: { tag: "B", sub: "区间低吸", name: "交易参考支撑 B" },
     sP: { tag: "压", name: "结构压力" },
-    tP: { tag: "B", sub: "区间高抛", name: "交易参考压力 B" },
+    tP: { tag: "S", sub: "区间高抛", name: "交易参考压力 S" },
   },
 };
 
 // 交易线波段文案选取（图表 ensureTradeLine 与报告 computePriceLevels 共用，保证两侧子文案同源）：
-// 上涨结构已破位（band=box+breakDown）时，上方 B 线不宜再提示箱体「区间高抛」——
+// 上涨结构已破位（band=box+breakDown）时，上方 S 线不宜再提示箱体「区间高抛」——
 // 结构破坏后低吸高抛预期不再成立，统一改用下跌语境「逢高离场」；
 // 支撑侧破位话术由 ensureTradeLine 的 status=broken「已破位」覆盖，无需在此处理。
 function tradeBandLabels(raw: { band: BandType; breakDown: boolean }, role: "support" | "pressure") {
@@ -304,12 +304,12 @@ function tradeBandLabels(raw: { band: BandType; breakDown: boolean }, role: "sup
   return role === "support" ? L.tS : L.tP;
 }
 
-// 多周期前置隔离守卫：不同 K 线周期的窗口参数与可绘制线种完全不同，防止周/月 K 出现 S/B 买卖标签误导。
+// 多周期前置隔离守卫：不同 K 线周期的窗口参数与可绘制线种完全不同，防止周/月 K 出现 B/S 买卖标签误导。
 // PeriodKey 为 "m"|"d"|"w"|"M"（无年 K）。
 //   · d（日 K，默认）：bandWin=30 / tradeWin=20，结构线 + 交易线 + 趋势线全开
-//   · w（周 K）：bandWin=60，禁用交易参考线 S/B（仅结构线 + 合规趋势线）
+//   · w（周 K）：bandWin=60，禁用交易参考线 B/S（仅结构线 + 合规趋势线）
 //   · M（月 K）：bandWin=80，禁用交易参考线 + 趋势线（仅长期结构线）
-//   · m（分时）：复用日线数据计算，但仅展示交易参考线 S/B，隐藏结构支撑/压力 + 趋势线
+//   · m（分时）：复用日线数据计算，但仅展示交易参考线 B/S，隐藏结构支撑/压力 + 趋势线
 // 纯函数：不再依赖组件 props，由调用方传入 period。
 interface PeriodGuard {
   bandWin: number;
@@ -332,7 +332,7 @@ export function resolvePeriodGuard(period: string = "d"): PeriodGuard {
     disableTrade = true;
     disableTrend = true; // 月 K：仅长期结构线
   } else if (period === "m") {
-    disableStruct = true; // 分时：仅展示 S/B 交易参考线，隐藏结构支撑/压力
+    disableStruct = true; // 分时：仅展示 B/S 交易参考线，隐藏结构支撑/压力
     disableTrend = true;
   }
   // 日 K（默认）保持 bandWin=30 / tradeWin=20，全开
@@ -570,7 +570,7 @@ function pruneCrossRole<T extends { price?: number }>(
 /**
  * 图表智能标注映射。
  * 结构线与交易参考线「各自必出」：即使价位重合（≤TOL_PCT）也不互相隐藏，
- * 重合时由 StockChart 绘制层把交易标签并入结构线标签栈（同一条线显示支+S 两枚角色标签），
+ * 重合时由 StockChart 绘制层把交易标签并入结构线标签栈（同一条线显示支+B 两枚角色标签），
  * 既保证四类线种永远可见，又不画重叠虚线。跨角色（支≈压）仍只保留现价正确侧那根。
  */
 export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard): AutoLevel[] {
@@ -591,7 +591,7 @@ export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard): 
   // 跨角色同价位（支≈压）只保留现价正确侧那根
   [sSup, sPres] = pruneCrossRole(sSup, sPres, cur);
 
-  // 交易参考 S/B「必须画出」：ok=正常动作色 + 动作提示；broken/weak/ref 一律淡化展示中性话术，
+  // 交易参考 B/S「必须画出」：ok=正常动作色 + 动作提示；broken/weak/ref 一律淡化展示中性话术，
   // 绝不以可执行的「低吸/减仓」话术呈现弱位。与结构线同价时两根线都保留（绘制层合并为标签栈）。
   const mkTrade = (st: TradeLineState | null, role: "tradeSupport" | "tradePressure", baseColor: string): AutoLevel | null => {
     if (!st) return null;
@@ -603,7 +603,7 @@ export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard): 
   };
   let tS = mkTrade(ensureTradeLine(series, raw, "support", guard), "tradeSupport", TRADE_SUPPORT_COLOR);
   let tP = mkTrade(ensureTradeLine(series, raw, "pressure", guard), "tradePressure", TRADE_PRESSURE_COLOR);
-  // 跨角色同价位（S≈B）只保留现价正确侧那根
+  // 跨角色同价位（B≈S）只保留现价正确侧那根
   [tS, tP] = pruneCrossRole(tS, tP, cur);
 
   const out: AutoLevel[] = [];
@@ -644,7 +644,6 @@ interface PriceLevelItem {
   status: "ok" | "broken" | "weak" | "ref"; // 与图表一一对应：ok=正常 / broken=已破位 / weak=证据不足弱参考 / ref=簇缺失兜底
   level: "强" | "中" | "弱"; // 强弱评级
   volDesc: string;        // 量能描述：放量确认/缩量触碰
-  labelTag: string;       // 对应图表标签：支/压/S/B
   desc: string;           // 行情定性：回调低吸/逢高离场等（复用 BAND_LABELS 文案）
 }
 export interface PriceLevelGroup {
@@ -654,8 +653,8 @@ export interface PriceLevelGroup {
   boxTop: number | null;                 // 箱体上沿
   structSupport: PriceLevelItem | null;   // sS 结构支撑
   structPressure: PriceLevelItem | null;  // sP 结构压力
-  tradeSupportS: PriceLevelItem | null;   // tS S 交易支撑
-  tradePressureB: PriceLevelItem | null;  // tP B 交易压力
+  tradeSupportS: PriceLevelItem | null;   // tS B 交易支撑（B=Buy 买入信号）
+  tradePressureB: PriceLevelItem | null;  // tP S 交易压力（S=Sell 卖出信号）
 }
 export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: LevelCtx): PriceLevelGroup {
   const raw = buildRawLevels(series, guard, ctxIn);
@@ -665,7 +664,7 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
   const mk = (
     role: "structSupport" | "structPressure",
     rl: RawLevel,
-    tag: string, name: string, sub: string
+    name: string, sub: string
   ): PriceLevelItem | null => {
     // 结构线专用：破位（含错误侧）也照常产出 broken 项，报告与图表降级展示同价同状态；
     // 交易线不走本函数（由 tradeMk + ensureTradeLine 产出 ok/broken/weak/ref 四态）。
@@ -691,7 +690,6 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
       status: isBroken ? "broken" : "ok",
       level,
       volDesc,
-      labelTag: tag,
       desc: sub || name,
     };
   };
@@ -701,9 +699,9 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
   const structMk = (
     role: "structSupport" | "structPressure",
     rl: RawLevel,
-    tag: string, name: string
+    name: string
   ): PriceLevelItem | null => {
-    const it = mk(role, rl, tag, name, "");
+    const it = mk(role, rl, name, "");
     if (it) return it;
     // 走到这里必然是簇缺失（rl.price == null，mk 已放行有效/破位路径），
     // ensureStructLine 非 null 即兜底价；数据不足与图表一致地缺省
@@ -713,11 +711,11 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
     return {
       price: sl.price, totalScore: 0, touchCount: 0,
       isBroken: false, status: "ref", level: "弱",
-      volDesc: "", labelTag: tag, desc: "兜底（簇缺失）",
+      volDesc: "", desc: "兜底（簇缺失）",
     };
   };
-  let sS = structMk("structSupport", raw.structSupport, L.sS.tag, L.sS.name);
-  let sP = structMk("structPressure", raw.structPressure, L.sP.tag, L.sP.name);
+  let sS = structMk("structSupport", raw.structSupport, L.sS.name);
+  let sP = structMk("structPressure", raw.structPressure, L.sP.name);
   // 跨角色同价位与图表同口径：支≈压时只保留现价正确侧那根
   [sS, sP] = pruneCrossRole(sS, sP, cur);
   // 交易参考线与图表 100% 同源同状态（ensureTradeLine：ok/broken/weak/ref 四级必出线），
@@ -728,11 +726,10 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
   ): PriceLevelItem | null => {
     if (!st) return null;
     const base = tradeBandLabels(raw, role === "tradeSupportS" ? "support" : "pressure");
-    const tag = base.tag;
     if (st.status === "ref" || !st.sc) {
       return {
         price: st.price, totalScore: 0, touchCount: 0, isBroken: false,
-        status: "ref", level: "弱", volDesc: "", labelTag: tag, desc: "兜底（簇缺失）",
+        status: "ref", level: "弱", volDesc: "", desc: "兜底（簇缺失）",
       };
     }
     const finalScore = st.sc.score + (inBox ? 4 : 0);
@@ -747,7 +744,7 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
     return {
       price: st.price, totalScore: Math.round(finalScore), touchCount: st.sc.touches,
       isBroken: st.status === "broken", status: st.status, level, volDesc,
-      labelTag: tag, desc,
+      desc,
     };
   };
   let tS = tradeMk("tradeSupportS", ensureTradeLine(series, raw, "support", guard));

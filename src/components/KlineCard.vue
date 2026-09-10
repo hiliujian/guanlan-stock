@@ -73,12 +73,12 @@ function toggleAuxOpen() {
   if (next) toolsOpen.value = false;
 }
 // 智能标注各线元数据（颜色 + 描述），供二级列表渲染
-// 分组：结构线（结构支撑+结构压力）/ 交易参考线（S 支撑+B 压力）/ 趋势线
+// 分组：结构线（结构支撑+结构压力）/ 交易参考线（B 支撑+S 压力）/ 趋势线
 // dotSplit：图标用左红右绿双色圆点（红=压力，绿=支撑），趋势线为蓝单色
 type AuxKey = "structLine" | "tradeLine" | "trend";
 const auxItems: { key: AuxKey; label: string; desc: string; dotSplit?: [string, string]; color?: string }[] = [
   { key: "structLine", label: "结构线", desc: "红压力/绿支撑", dotSplit: [cssColor("--up", UP), cssColor("--down", DOWN)] },
-  { key: "tradeLine", label: "交易参考线", desc: "红S买入/绿B卖出", dotSplit: [cssColor("--up", UP), cssColor("--down", DOWN)] },
+  { key: "tradeLine", label: "交易参考线", desc: "红B买入/绿S卖出", dotSplit: [cssColor("--up", UP), cssColor("--down", DOWN)] },
   { key: "trend", label: "趋势线", desc: "蓝色箭头：上行 / 下行方向", color: TREND },
 ];
 // 与图表 MA 线颜色一致（见 colors.ts INDICATOR_LINE_COLORS 顺序：MA5橙/MA10蓝/MA20紫/MA60绿/MA250品红）

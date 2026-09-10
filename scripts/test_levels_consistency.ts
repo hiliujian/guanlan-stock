@@ -128,7 +128,7 @@ function auditSeries(tag: string, series: any[], period: "d" | "w" | "M"): numbe
     if (chartStruct === 0 || reportStruct === 0) {
       fail(`${tag} 数据充足但结构线全缺（图 ${chartStruct} / 报告 ${reportStruct}，跨角色去重也至少留一根）`); missing++;
     }
-    // 日 K：S/B 交易参考线「必须渲染」（ensureTradeLine 四级兜底）。唯一例外是 S≈B 跨角色
+    // 日 K：B/S 交易参考线「必须渲染」（ensureTradeLine 四级兜底）。唯一例外是 B≈S 跨角色
     // 同价去重（pruneCrossRole，极窄区间），此时图/报告两侧同步缺失即一致（上方 B/C 已双向核对）。
   }
   // 周期守卫：禁交易周期两侧都不得有交易线
@@ -141,7 +141,7 @@ function auditSeries(tag: string, series: any[], period: "d" | "w" | "M"): numbe
   }
   const rows = ROLES.map((r) => {
     const it = roleReport(pl, r);
-    const tag = r === "structSupport" ? "支" : r === "structPressure" ? "压" : r === "tradeSupportS" ? "S" : "B";
+    const tag = r === "structSupport" ? "支" : r === "structPressure" ? "压" : r === "tradeSupportS" ? "B" : "S";
     const mark = !it ? "" : it.isBroken ? "(破)" : it.status === "ref" ? "(参)" : it.status === "weak" ? "(弱)" : "";
     return `${tag}:${fmtN(it?.price)}${mark}`;
   }).join(" ");
