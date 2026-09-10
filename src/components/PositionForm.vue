@@ -6,9 +6,9 @@
     <!-- 实时价参考：进入即拉取最新成交价（按 secid），行情页无 secid 时回退到传入的参考价 -->
     <view class="alert-rt" v-if="refPrice != null">
       <text class="alert-rt-label">当前实时价</text>
-      <text class="alert-rt-price" :class="refCls">{{ fmtPrice(refPrice) }}</text>
-      <text class="alert-rt-sub" :class="refCls" v-if="refChg != null && refPct != null">{{ fmtSigned(refChg) }} · {{ fmtPct(refPct) }}</text>
-      <text class="alert-rt-sub" v-else>仅供参考</text>
+      <text class="alert-rt-price" :class="trendCls(refChg)">{{ fmtPrice(refPrice) }}</text>
+      <text class="alert-rt-sub" :class="trendCls(refChg)" v-if="refChg != null && refPct != null">{{ fmtSigned(refChg) }} · {{ fmtPct(refPct) }}</text>
+      <text class="alert-rt-hint" v-else>仅供参考</text>
     </view>
 
     <view class="pf-fields">
@@ -33,6 +33,7 @@
 import { ref, computed } from "vue";
 import BottomSheet from "./BottomSheet.vue";
 import { fetchSnapshot, type SnapResult } from "@/api/quote";
+import { fmtPrice, fmtSigned, fmtPct, trendCls } from "@/utils/format";
 import type { Position } from "@/utils/costBasis";
 import { getPosition } from "@/utils/costBasis";
 
@@ -62,21 +63,6 @@ const refPrice = computed<number | null>(() => {
 });
 const refChg = computed<number | null>(() => (live.value ? live.value.chg ?? null : null));
 const refPct = computed<number | null>(() => (live.value ? live.value.pct ?? null : null));
-const refCls = computed(() => {
-  const c = refChg.value;
-  if (c == null) return "flat";
-  return c > 0 ? "up" : c < 0 ? "down" : "flat";
-});
-
-function fmtPrice(v: number): string {
-  return v.toFixed(2);
-}
-function fmtSigned(v: number): string {
-  return (v >= 0 ? "+" : "") + v.toFixed(2);
-}
-function fmtPct(v: number): string {
-  return (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
-}
 
 async function loadRef() {
   live.value = null;
@@ -96,9 +82,6 @@ function open() {
   pfQty.value = p?.qty ? String(p.qty) : "";
   visible.value = true;
   loadRef();
-}
-function close() {
-  visible.value = false;
 }
 function onPfCost(e: any) {
   pfCost.value = String(e?.detail?.value ?? "");
@@ -132,7 +115,8 @@ defineExpose({ open });
 </script>
 
 <style scoped>
-/* 两个录入字段：与全局 .alert-input 同款输入框；标签小字在上、输入框在下，层级统一 */
+/* 两个录入字段：输入框直接复用全局 .alert-input（与「编辑价格预警」内联输入框同尺寸/同字号）；
+   字段标签与预警卡选项标题同为 font-md，保证两张卡片字号层级一致。 */
 .pf-fields {
   padding: 6rpx 0 4rpx;
 }
@@ -141,8 +125,8 @@ defineExpose({ open });
 }
 .pf-k {
   display: block;
-  font-size: var(--font-sm);
-  color: var(--text-2);
+  font-size: var(--font-md);
+  color: var(--text);
   margin-bottom: 10rpx;
 }
 </style>

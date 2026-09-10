@@ -600,7 +600,7 @@
                 <text class="alert-rt-label">当前实时价</text>
                 <text class="alert-rt-price" :class="trendCls(alertRT?.chg)">{{ alertRT ? fmtPrice(alertRT.price) : '—' }}</text>
                 <text class="alert-rt-sub" :class="trendCls(alertRT?.chg)" v-if="alertRT">{{ fmtSigned(alertRT.chg) }} · {{ fmtPct(alertRT.pct) }}</text>
-                <text class="alert-rt-sub" v-else>实时价获取中…</text>
+                <text class="alert-rt-hint" v-else>实时价获取中…</text>
               </view>
               <view class="grp-list">
                 <view class="grp-item" :class="{ active: alertEdit === 'above' }" role="button" @click="startEdit('above')">
@@ -1886,8 +1886,7 @@ const lpSecid = computed(() => {
 });
 function openPosForm() {
   if (!lpSecid.value) return;
-  // 先收起操作菜单（PeekSheet），避免「设置持仓」底部弹层与菜单叠加
-  sheet.value?.collapse();
+  // 无需手动收起操作菜单：BottomSheet 打开时全局卡片栈自动互斥收起 PeekSheet（onSheetCollapse 复位面板）
   posFormRef.value?.open();
 }
 async function saveLpPosition(p: Position) {
@@ -2435,160 +2434,14 @@ function removeLp() {
   max-width: 80rpx;
   /* 截断属性已提升至全局 .truncate */
 }
-/* ===== 分组切换面板：与「头像设置」BottomSheet 头部共用同一套 .panel-head 样式 ===== */
-/* grp-head 直接复用全局 .panel-head（padding 6rpx 28rpx 16rpx + 下框线），
-   与 .bs-head 完全一致：居中标题 + 相同头部高度(72rpx)，消除重复多写一套样式。
-   标题排版复用全局 .sheet-title（font-md / 500 / text-2）：容器内普通流式文本，
-   由 .panel-head 的 align-items/justify-content 居中。原左上角返回按钮(grp-back)已移除
-   ——各面板均一步可达，收起窗体即复位（onSheetCollapse），与其它展开页保持一致的无返回样式。 */
-.grp-head {
-  justify-content: center;
-  height: 72rpx;
-}
-.grp-body {
-  flex: 1;
-  min-height: 0;
-  padding: 6rpx 0;
-}
+/* 分组 / 操作菜单 / 预警等 PeekSheet 面板的 grp-head / grp-list / grp-item / alert-* /
+   grp-foot / grp-btn 等样式全部复用 global.css 的底部弹层通用规则，此处仅保留本页专用项。 */
 /* scroll-view 真实内容容器：H5 下为 .uni-scroll-view-content，组件默认 height:100%。
    改用 height:auto：内容不足一屏时（如仅一个「分组名」输入框）容器按内容高度撑开，
    由外层 scroll-view 在真正溢出时才滚动，避免内容很少却仍出现滚动条的视觉问题；
    内容超一屏时容器随内容增高，正常滚动。与 .wl-grid 同款修复保持一致。 */
 .grp-body :deep(.uni-scroll-view-content) {
   height: auto;
-}
-.grp-item {
-  display: flex;
-  align-items: center;
-  gap: 14rpx;
-  min-height: 88rpx;
-  padding: 0 26rpx;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-.grp-item:active,
-.grp-item-hover {
-  background: var(--card-2);
-}
-/* 我的分组列表：仅此区块底部保留一条分隔线，其余边框全部取消 */
-.grp-section {
-  border-bottom: 1rpx solid var(--border);
-}
-.grp-list {
-  padding: 6rpx 0;
-}
-.grp-label {
-  flex: 1;
-  font-size: var(--font-md);
-  color: var(--text);
-}
-.grp-label.danger {
-  color: #ff3b30;
-}
-.grp-item.active .grp-label {
-  color: var(--primary);
-}
-/* 价格预警：实时价参考条 */
-.alert-rt {
-  display: flex;
-  align-items: baseline;
-  gap: 12rpx;
-  padding: 14rpx 26rpx;
-  margin: 4rpx 20rpx 10rpx;
-  background: var(--card-2);
-  border-radius: 14rpx;
-}
-.alert-rt-label {
-  font-size: var(--font-sm);
-  color: var(--text-2);
-}
-.alert-rt-price {
-  /* 统一字号层级：实时价不再单独放大，与涨跌额/涨跌幅同为 font-md，避免卡片字号混乱 */
-  font-size: var(--font-md);
-  color: var(--text);
-}
-.alert-rt-price.up { color: var(--up); }
-.alert-rt-price.down { color: var(--down); }
-.alert-rt-price.flat { color: var(--text); }
-.alert-rt-sub {
-  margin-left: auto;
-  font-size: var(--font-md);
-  color: var(--text-3);
-}
-.alert-rt-sub.up { color: var(--up); }
-.alert-rt-sub.down { color: var(--down); }
-.alert-rt-sub.flat { color: var(--text-3); }
-/* 已设阈值回显（选项标题内联） */
-.alert-cur {
-  color: var(--text-2);
-  font-size: var(--font-sm);
-}
-/* 选项下方动态内联输入区（替代原 uni-modal 弹窗） */
-.alert-edit {
-  padding: 0 26rpx 16rpx;
-}
-.alert-input {
-  height: 84rpx;
-  padding: 0 20rpx;
-  background: var(--card-2);
-  border-radius: 14rpx;
-  font-size: var(--font-md);
-  color: var(--text);
-}
-.alert-edit-btns {
-  display: flex;
-  gap: 16rpx;
-  margin-top: 14rpx;
-}
-/* 文本输入框（新建 / 重命名 / 移动内联新建） */
-.grp-input {
-  height: 84rpx;
-  margin: 16rpx 26rpx;
-  padding: 0 20rpx;
-  background: var(--card-2);
-  border-radius: 14rpx;
-  font-size: var(--font-md);
-  color: var(--text);
-}
-/* 底部操作条（取消 / 确定等）：无边框线，纯间距区分 */
-.grp-foot {
-  flex: none;
-  display: flex;
-  gap: 16rpx;
-  padding: 16rpx 26rpx calc(env(safe-area-inset-bottom) + 16rpx);
-}
-.grp-btn {
-  flex: 1;
-  text-align: center;
-  padding: 20rpx 0;
-  border-radius: 999rpx;
-  font-size: var(--font-md);
-  /* 幽灵按钮：描边 + 主色字，与绿色 primary 按钮视觉协调，比灰底更有品质感 */
-  color: var(--primary);
-  background: transparent;
-  border: 2rpx solid var(--primary);
-  cursor: pointer;
-  transition: background 0.14s ease, color 0.14s ease, opacity 0.12s ease;
-}
-.grp-btn:active {
-  background: rgba(7, 193, 96, 0.08);
-}
-.grp-btn.primary {
-  color: #fff;
-  background: var(--primary);
-  border-color: var(--primary);
-}
-.grp-btn.primary:active {
-  background: var(--primary-dark, #06a752);
-  border-color: var(--primary-dark, #06a752);
-}
-.grp-btn.danger {
-  color: var(--danger);
-  background: transparent;
-  border: 2rpx solid var(--danger);
-}
-.grp-btn.danger:active {
-  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 /* ===== 展开态：榜单面板（外壳与拖拽手柄由 PeekSheet 统一提供） ===== */

@@ -37,18 +37,39 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, onDeactivated } from "vue";
 import { usePreventPageScroll } from "@/composables/usePreventPageScroll";
+import { pushSheet, popSheet, sheetLift } from "@/composables/useSheetStack";
 import { rpx } from "@/utils/rpx";
 
 // 纯持久窗体：始终渲染，折叠露出卡片(peek)；父组件通过 expand/collapse 控制展开/收起，
 // 下拉收起 / 点击手柄收起时 emit('collapse') 供父组件复位面板状态（如 activePanel）。
 const emit = defineEmits<{ (e: "collapse"):  void; (e: "expand"): void }>();
 
-// 可覆盖的层级：同类卡片（消息中心 / 我的关注 / 发帖）互斥时，当前激活的卡片需置顶，
-// 避免切换瞬间两个卡片短暂同屏而旧卡片盖住新卡片（DOM 顺序无法保证覆盖）。
+// 基础层级：消息中心 / 我的关注等全屏卡片传 940（高于普通底部卡片 40、低于 BottomSheet 950）。
+// 同层多卡切换时的「最新打开者置顶」不再靠调用方手动抬 z，统一由全局卡片栈增量 sheetLift 提供。
 const props = withDefaults(defineProps<{ zIndex?: number }>(), { zIndex: 40 });
 
 type Mode = "collapsed" | "expanded" | "max";
 const mode = ref<Mode>("collapsed");
+
+// 全局底部卡片栈：展开即入栈（互斥收起其它卡片 + 置顶增量），折叠 / 卸载即出栈。
+// 折叠态的常驻 peek 卡片不算「打开的卡片」，不参与互斥。
+let sheetId = 0;
+function joinStack() {
+  // 已在栈中（已展开时程序化再次 expand，如长按另一行切换操作面板）：
+  // 先出再入，使本卡成为最新者，并互斥收起期间可能打开的其它卡片。
+  if (sheetId) popSheet(sheetId);
+  sheetId = pushSheet(forceCollapse);
+}
+function leaveStack() {
+  if (sheetId) {
+    popSheet(sheetId);
+    sheetId = 0;
+  }
+}
+// 栈互斥回调：被其它新卡片顶替时自动收起（仅展开态需要动作）
+function forceCollapse() {
+  if (mode.value !== "collapsed") collapse();
+}
 
 // 展开 / 铺满态锁定背景页面滚动（window 级），折叠态（仅露出常驻卡片）允许背景正常滚动。
 // 逻辑统一由 usePreventPageScroll 提供，避免各页面重复实现。
@@ -76,6 +97,7 @@ onMounted(() => {
   }
 });
 onUnmounted(() => {
+  leaveStack();
   if (typeof window !== "undefined") {
     window.removeEventListener("resize", measure);
     window.removeEventListener("orientationchange", measure);
@@ -103,7 +125,9 @@ const shellStyle = computed(() => {
 });
 
 const cardStyle = computed(() => {
-  return { zIndex: props.zIndex, ...shellStyle.value };
+  // 基础层级 + 卡片栈置顶增量（最新打开的同级卡片压在旧卡片之上）
+  const zIndex = props.zIndex + (sheetId ? sheetLift(sheetId) : 0);
+  return { zIndex, ...shellStyle.value };
 });
 
 function ptY(e: any): number {
@@ -192,14 +216,17 @@ function onUp() {
   const prev = mode.value;
   if (movedUp) {
     // 上滑：展开（折叠 → 半屏 → 铺满）
-    if (prev === "collapsed") mode.value = "expanded";
-    else if (prev === "expanded") mode.value = "max";
-    if (prev === "collapsed") emit("expand");
+    if (prev === "collapsed") {
+      joinStack();
+      mode.value = "expanded";
+      emit("expand");
+    } else if (prev === "expanded") mode.value = "max";
   } else {
     // 下滑：收起（铺满 → 半屏 → 折叠露出）
     if (prev === "max") mode.value = "expanded";
     else {
       mode.value = "collapsed";
+      leaveStack();
       emit("collapse");
     }
   }
@@ -213,16 +240,19 @@ function onGripClick() {
   if (mode.value === "max") {
     mode.value = "expanded";
   } else {
-    mode.value = "collapsed";
-    emit("collapse");
+    collapse();
   }
 }
 function expand() {
+  // 折叠→展开需入栈；已展开时再次调用（如长按另一行切换面板）重新入栈，
+  // 保证成为最新卡片并互斥收起期间打开的其它卡片
+  joinStack();
   mode.value = "expanded";
   emit("expand");
 }
 function collapse() {
   mode.value = "collapsed";
+  leaveStack();
   emit("collapse");
 }
 // 页面切换（tab 切换 / 跳转子页）时自动收起：各视图均包裹在 keep-alive 内，

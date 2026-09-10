@@ -29,8 +29,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, watch, onUnmounted, onDeactivated } from "vue";
 import { usePreventPageScroll } from "@/composables/usePreventPageScroll";
+import { pushSheet, popSheet, sheetLift } from "@/composables/useSheetStack";
 
 const props = withDefaults(
   defineProps<{
@@ -51,15 +52,38 @@ function close() {
   emit("update:modelValue", false);
 }
 
+// 全局底部卡片栈：打开即注册（自动互斥收起其它卡片并取得置顶增量），关闭 / 卸载即出栈
+let sheetId = 0;
+watch(
+  () => props.modelValue,
+  (v) => {
+    if (v) {
+      sheetId = pushSheet(close);
+    } else {
+      popSheet(sheetId);
+      sheetId = 0;
+    }
+  }
+);
+onUnmounted(() => popSheet(sheetId));
+// tab 切换（keep-alive 失活）时自动收起：弹层 teleport 到 body 不会随子树隐藏，
+// 不主动关闭会残留到其它页面之上；与 PeekSheet 的 onDeactivated 收起保持一致。
+onDeactivated(() => {
+  if (props.modelValue) close();
+});
+
 // 下拉收起手势：拖动面板下移预览，松手超过阈值即收起（与 PeekSheet 下拉收起语义一致）
 const dragging = ref(false);
 const dragY = ref(0);
 let startY = 0;
 
-// 拖拽预览偏移：拖拽中实时跟随手指（仅下拉 dy>0），松手后由 base 过渡回弹 / 离开动画接管
+// 拖拽预览偏移：拖拽中实时跟随手指（仅下拉 dy>0），松手后由 base 过渡回弹 / 离开动画接管。
+// z-index 始终内联（基础层级 --z-sheet + 栈置顶增量），拖拽态切换 style 对象时层级不丢失。
 const panelStyle = computed(() => {
-  if (!dragging.value || dragY.value <= 0) return {};
+  const zIndex = `calc(var(--z-sheet) + ${sheetId ? sheetLift(sheetId) : 0})`;
+  if (!dragging.value || dragY.value <= 0) return { zIndex };
   return {
+    zIndex,
     transform: `translateX(-50%) translateY(${dragY.value}px)`,
     transition: "none",
   };

@@ -154,10 +154,11 @@
       </template>
     </PeekSheet>
 
-    <!-- 消息中心（通知铃铛触发）：按需挂载为 PeekSheet 卡片，关闭即卸载；与「我的关注」互斥，激活者置顶 -->
-    <MessageCenter ref="msgRef" v-if="msgOpen" v-model="msgOpen" :z-index="activePanel === 'msg' ? 940 : 920" />
+    <!-- 消息中心（通知铃铛触发）：按需挂载为 PeekSheet 卡片，关闭即卸载。
+         多卡互斥 / 置顶由全局底部卡片栈统一处理（useSheetStack），此处固定基础层级即可。 -->
+    <MessageCenter ref="msgRef" v-if="msgOpen" v-model="msgOpen" :z-index="940" />
     <!-- 关注 / 粉丝列表（ProfileView 跳转社区后弹出，复用 PeekSheet 卡片，关闭即卸载；mode 区分关注/粉丝） -->
-    <FollowListView ref="followRef" v-if="followPanelOpen" v-model="followPanelOpen" :mode="followPanelMode" :z-index="activePanel === 'follow' ? 940 : 920" />
+    <FollowListView v-if="followPanelOpen" v-model="followPanelOpen" :mode="followPanelMode" :z-index="940" />
 
     <!-- 帖子长按操作菜单（底部弹层）：本人 / 他人分支不同（需求⑦⑧⑩） -->
     <SheetMenu v-model="postMenuOpen" title="操作" :items="postMenuItems" @select="onPostMenuSelect" />
@@ -206,32 +207,15 @@ const { unreadTotal, loadConversations, loadNotifications } = useMessageCenter()
 const msgOpen = ref(false);
 const msgArrowOpen = ref(false);
 const msgRef = ref<any>(null);
-const followRef = ref<any>(null);
 const postSheet = ref<any>(null);
 // 跨组件打开「关注 / 粉丝」弹层的共享信号（ProfileView 置 open+mode，CommunityView 监听并挂载 FollowListView）
 const { followPanelOpen, followPanelMode } = useFollowPanel();
 
-// 当前激活的底部面板（消息中心 / 我的关注）。同类卡片互斥，仅其一展开；
-// 切换时先收起前一个再挂载下一个，激活者始终置顶（z-index 提高），杜绝两卡同屏 / 层级错乱。
-const activePanel = ref<"msg" | "follow" | null>(null);
-
-// 收起「其它」同类卡片（消息中心 / 我的关注 / 发帖卡片），保持互斥。
-// except 为当前即将激活的面板，不参与收起。
-function closeOtherPanels(except: "msg" | "follow") {
-  if (except !== "msg" && msgOpen.value) {
-    msgArrowOpen.value = false;
-    msgRef.value?.animateClose();
-  }
-  if (except !== "follow" && followPanelOpen.value) {
-    followRef.value?.animateClose();
-  }
-  // 发帖卡片折叠（同样属于底部同类卡片，同一时间只显示一个）
-  if (postSheet.value) postSheet.value.collapse();
-}
-
 // 消息入口：点击切换展开/收起。展开时再点 → 触发卡片带过渡的收起（与其他底部卡片一致）；
 // 收起后再点 → 重新挂载并展开。箭头「是否展开」用独立状态 msgArrowOpen，点击瞬间即翻转
 // （不等待卡片收起动画），避免视觉延迟、不跟手。
+// 多卡互斥（消息中心 / 我的关注 / 发帖卡片 / 各类操作菜单）由全局底部卡片栈自动处理，
+// 新卡片打开即收起其它卡片，无需本页再逐个调用 close。
 function toggleMsg() {
   if (msgOpen.value) {
     msgArrowOpen.value = false;
@@ -239,21 +223,10 @@ function toggleMsg() {
   } else {
     msgOpen.value = true;
     msgArrowOpen.value = true;
-    activePanel.value = "msg";
-    // 互斥：打开消息中心时收起其它同类卡片（我的关注 / 发帖）
-    closeOtherPanels("msg");
   }
 }
-// 卡片自身关闭（关闭按钮 / 拖拽收起）走 emit 改 msgOpen → 同步箭头态
+// 卡片自身关闭（关闭按钮 / 拖拽收起 / 被其它卡片互斥收起）走 emit 改 msgOpen → 同步箭头态
 watch(msgOpen, (v) => { msgArrowOpen.value = v; });
-
-// 「我的关注」由 ProfileView 经 store 跨 tab 打开：挂载前先收起消息中心 / 发帖卡片，保证互斥与置顶
-watch(followPanelOpen, (v) => {
-  if (v) {
-    activePanel.value = "follow";
-    closeOtherPanels("follow");
-  }
-});
 
 // 全局页面守卫：本页未对游客开放 + 未登录 → 跳转登录页（统一由 src/store/guard.ts 处理）
 usePageGuard("community");
