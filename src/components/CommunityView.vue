@@ -89,6 +89,7 @@
       @like="like"
       @reply="reply"
       @remove="askRemove"
+      @longpress="onPostLongPress"
     />
 
     <!-- 空态（有用户名片命中时不展示，避免与上方用户区矛盾） -->
@@ -148,15 +149,22 @@
       </template>
       <template #default>
         <scroll-view scroll-y class="pe-body">
-          <PostComposer @publish="onPublish" />
+          <PostComposer :edit-post="editingPost" @publish="onPublish" @edit="onEditPost" />
         </scroll-view>
       </template>
     </PeekSheet>
 
     <!-- 消息中心（通知铃铛触发）：按需挂载为 PeekSheet 卡片，关闭即卸载；与「我的关注」互斥，激活者置顶 -->
-    <MessageCenter ref="msgRef" v-if="msgOpen" v-model="msgOpen" :z-index="activePanel === 'msg' ? 42 : 40" />
+    <MessageCenter ref="msgRef" v-if="msgOpen" v-model="msgOpen" :z-index="activePanel === 'msg' ? 940 : 920" />
     <!-- 关注 / 粉丝列表（ProfileView 跳转社区后弹出，复用 PeekSheet 卡片，关闭即卸载；mode 区分关注/粉丝） -->
-    <FollowListView ref="followRef" v-if="followPanelOpen" v-model="followPanelOpen" :mode="followPanelMode" :z-index="activePanel === 'follow' ? 42 : 40" />
+    <FollowListView ref="followRef" v-if="followPanelOpen" v-model="followPanelOpen" :mode="followPanelMode" :z-index="activePanel === 'follow' ? 940 : 920" />
+
+    <!-- 帖子长按操作菜单（底部弹层）：本人 / 他人分支不同（需求⑦⑧⑩） -->
+    <SheetMenu v-model="postMenuOpen" title="操作" :items="postMenuItems" @select="onPostMenuSelect" />
+    <!-- 设置访问权限（本人帖）：公开 / 仅粉丝 / 仅自己 -->
+    <SheetMenu v-model="visMenuOpen" title="设置访问权限" :items="visMenuItems" @select="onVisSelect" />
+    <!-- 举报内容原因选择（复用 store.reportPost） -->
+    <SheetMenu v-model="reportMenuOpen" title="举报内容" :items="reportMenuItems" @select="onReportSelect" />
   </view>
 </template>
 
@@ -172,6 +180,7 @@ import PostCard from "./PostCard.vue";
 import UserCard from "./UserCard.vue";
 import UserAvatar from "./UserAvatar.vue";
 import PeekSheet from "./PeekSheet.vue";
+import SheetMenu from "./SheetMenu.vue";
 import MessageCenter from "./MessageCenter.vue";
 import FollowListView from "./FollowListView.vue";
 import { useCommunity, useMessageCenter, useCommunityPreset, useDmTarget, useCommunityUserTarget, usePostTarget, type CommunityFilterKey, type CommunityUserTarget, type CommunityPostTarget } from "@/store/community";
@@ -184,10 +193,11 @@ import { userState } from "@/store/user";
 import { vipActive } from "@/store/level";
 import { avatarSeed } from "@/utils/avatar";
 import { vipGatedFrame } from "@/utils/avatarFrame";
-import { communityRepo, type CommunityPost, type PostCard as PostCardData, type Topic, type PostVisibility } from "@/api/community";
+import { communityRepo, POST_VISIBILITY_OPTIONS, type CommunityPost, type PostCard as PostCardData, type Topic, type PostVisibility } from "@/api/community";
 import { searchUsersByUsername, type UsernameLookup } from "@/api/user";
+import type { SheetMenuItem } from "./SheetMenu.vue";
 
-const { posts, loading, searchResults, load, loadMore, feedDone, publish, like, reply, remove, search } = useCommunity();
+const { posts, loading, searchResults, load, loadMore, feedDone, publish, like, reply, remove, search, hidePost, blockUser, reportPost, updatePost, isPostHidden } = useCommunity();
 // 评论区互斥展开：提供 closeReply 用于切换筛选 / 重新激活时收起已展开的评论框
 const { closeReply, openReply } = useReplyExpansion();
 
@@ -302,6 +312,133 @@ function isMine(p: CommunityPost): boolean {
   }
   // 未登录：按本地昵称判定
   return p.author === myName.value;
+}
+
+// ---------------- 帖子长按操作（底部弹层菜单，需求⑦⑧⑨⑩） ----------------
+// 复用通用 SheetMenu（与「设置持仓」「编辑价格预警」同款底部弹层卡片样式）。
+// 本人帖：编辑帖子 / 设置访问权限；他人帖：不感兴趣 / 屏蔽用户 / 举报内容。
+// 推荐类（减少作者推荐 / 减少同类内容）仅预留扩展位，本版不与「不感兴趣」强行同实现。
+const postMenuOpen = ref(false);
+const postMenuItems = ref<SheetMenuItem[]>([]);
+const postMenuTarget = ref<CommunityPost | null>(null);
+
+function visLabelOf(v: PostVisibility): string {
+  return (POST_VISIBILITY_OPTIONS.find((o) => o.value === v) || POST_VISIBILITY_OPTIONS[0]).label;
+}
+
+/** 长按帖子：按是否本人区分操作项，弹出底部菜单。 */
+function onPostLongPress(post: CommunityPost) {
+  postMenuTarget.value = post;
+  if (isMine(post)) {
+    postMenuItems.value = [
+      { key: "edit", label: "编辑帖子", icon: "edit" },
+      { key: "visibility", label: "设置访问权限", icon: "globe", desc: visLabelOf(post.visibility) },
+    ];
+  } else {
+    postMenuItems.value = [
+      { key: "hide", label: "不感兴趣", icon: "minus", desc: "减少此类内容" },
+      { key: "block", label: "屏蔽用户", icon: "close", desc: "不再看到 TA 的帖子" },
+      { key: "report", label: "举报内容", icon: "flag", danger: true },
+    ];
+  }
+  postMenuOpen.value = true;
+}
+
+/** 主菜单选择分发。 */
+function onPostMenuSelect(key: string) {
+  const p = postMenuTarget.value;
+  if (!p) return;
+  postMenuOpen.value = false;
+  if (isMine(p)) {
+    if (key === "edit") startEditPost(p);
+    else if (key === "visibility") openVisMenu(p);
+    return;
+  }
+  if (key === "hide") {
+    hidePost(p.id);
+    uni.showToast({ title: "已减少此类内容", icon: "none" });
+  } else if (key === "block") {
+    if (p.userId) {
+      blockUser(p.userId);
+      uni.showToast({ title: "已屏蔽该用户", icon: "none" });
+    }
+  } else if (key === "report") {
+    openReportMenu(p);
+  }
+}
+
+// ---------------- 设置访问权限（本人帖） ----------------
+const visMenuOpen = ref(false);
+const visMenuItems = ref<SheetMenuItem[]>([]);
+const visMenuTarget = ref<CommunityPost | null>(null);
+function openVisMenu(p: CommunityPost) {
+  visMenuTarget.value = p;
+  visMenuItems.value = POST_VISIBILITY_OPTIONS.map((o) => ({
+    key: o.value,
+    label: o.label,
+    desc: o.desc,
+    icon: o.icon,
+    checked: o.value === p.visibility,
+  }));
+  visMenuOpen.value = true;
+}
+async function onVisSelect(key: string) {
+  const p = visMenuTarget.value;
+  visMenuOpen.value = false;
+  if (!p) return;
+  try {
+    await updatePost(p.id, { visibility: key as PostVisibility });
+    uni.showToast({ title: "访问权限已更新", icon: "none" });
+  } catch {
+    uni.showToast({ title: "更新失败，请重试", icon: "none" });
+  }
+}
+
+// ---------------- 举报内容（复用 store.reportPost，best-effort） ----------------
+const reportMenuOpen = ref(false);
+const reportMenuItems = ref<SheetMenuItem[]>([]);
+const reportMenuTarget = ref<CommunityPost | null>(null);
+const REPORT_REASONS: { key: string; label: string }[] = [
+  { key: "spam", label: "垃圾广告 / 刷屏" },
+  { key: "porn", label: "色情低俗" },
+  { key: "illegal", label: "违法违规信息" },
+  { key: "fraud", label: "诈骗 / 虚假信息" },
+  { key: "other", label: "其他不适内容" },
+];
+function openReportMenu(p: CommunityPost) {
+  reportMenuTarget.value = p;
+  reportMenuItems.value = REPORT_REASONS.map((r) => ({ key: r.key, label: r.label }));
+  reportMenuOpen.value = true;
+}
+async function onReportSelect(key: string) {
+  const p = reportMenuTarget.value;
+  reportMenuOpen.value = false;
+  if (!p) return;
+  try {
+    await reportPost(p.id, key);
+    uni.showToast({ title: "举报已提交，感谢反馈", icon: "none" });
+  } catch {
+    uni.showToast({ title: "提交失败，请稍后再试", icon: "none" });
+  }
+}
+
+// ---------------- 编辑本人帖（复用发帖卡片 editPost 模式） ----------------
+const editingPost = ref<CommunityPost | null>(null);
+function startEditPost(p: CommunityPost) {
+  editingPost.value = p;
+  // 展开底部发帖卡片进入编辑态：PostComposer 监听 editPost 预填正文与访问权限
+  nextTick(() => postSheet.value?.expand());
+}
+async function onEditPost(payload: { id: string; content?: string; visibility: PostVisibility }) {
+  try {
+    await updatePost(payload.id, { content: payload.content, visibility: payload.visibility });
+    uni.showToast({ title: "已保存", icon: "none" });
+  } catch (e: any) {
+    uni.showToast({ title: e?.message || "保存失败，请重试", icon: "none" });
+  } finally {
+    editingPost.value = null;
+    postSheet.value?.collapse();
+  }
 }
 
 // ---------------- 信息流筛选（最新动态 / 关注的人 / 我参与的 / 我发布的） ----------------
@@ -544,9 +681,15 @@ const filteredPosts = computed(() => {
 });
 
 // ---------------- 信息流（展示筛选结果；搜索态优先展示搜索结果；用户模式展示该用户帖子） ----------------
+// 统一过滤负反馈：不感兴趣（单帖）/ 屏蔽用户（该用户全部帖）由 store 的 hidden/blocked 集驱动，
+// 这里在展示层兜底过滤，使其立即从信息流消失（无需刷新）。
 const displayPosts = computed(() => {
-  if (viewingUser.value) return userPosts.value;
-  return searching.value ? searchResults.value : filteredPosts.value;
+  const list = viewingUser.value
+    ? userPosts.value
+    : searching.value
+    ? searchResults.value
+    : filteredPosts.value;
+  return list.filter((p) => !isPostHidden(p));
 });
 
 // 空态文案：随筛选 / 搜索 / 用户模式变化
@@ -964,11 +1107,11 @@ defineExpose({ refresh });
 
 /* 删除确认弹层：与公告弹窗（AnnouncementOverlay）同一套设计语言——
    透明遮罩不压暗背景 + 不透明实心卡片（浅 #fff / 深 #11161f）+ 药丸按钮；
-   z-index 80：高于底部卡片(40)/筛选栏(61)，低于 BottomSheet(91)。 */
+   z-index 1000：作为确认类弹层高于 BottomSheet(950)/底部卡片(40)/筛选栏(61)，低于 modal(9999)。 */
 .cm-mask {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;

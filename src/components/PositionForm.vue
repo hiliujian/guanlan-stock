@@ -1,36 +1,38 @@
 <template>
-  <!-- 设置持仓弹窗（持仓成本/持仓数量均必填）：teleport 到 body —— 避免被任何
-       transform/backdrop-filter 祖先变成「相对元素定位」，导致弹窗出现在页面中部。
-       行情页报告卡与自选页长按菜单共用此组件 -->
-  <teleport to="body">
-    <view v-if="visible" class="modal-mask" @click="close">
-      <view class="modal-card" @click.stop>
-        <view class="modal-head">
-          <text class="modal-title">设置持仓</text>
-          <view class="modal-close" @click="close" role="button" aria-label="关闭">
-            <OutlineIcon type="close" :size="26" color="var(--text-3)" />
-          </view>
-        </view>
-        <view class="modal-row">
-          <text class="modal-k">持仓成本</text>
-          <input class="modal-in" type="digit" :value="pfCost" placeholder="元/股（必填）" @input="onPfCost" />
-        </view>
-        <view class="modal-row">
-          <text class="modal-k">持仓数量</text>
-          <input class="modal-in" type="number" :value="pfQty" placeholder="股（必填）" @input="onPfQty" />
-        </view>
-        <view class="modal-actions">
-          <view class="modal-btn ghost" @click="clear" role="button" aria-label="清除持仓">清除持仓</view>
-          <view class="modal-btn ok" @click="save" role="button" aria-label="保存持仓">保存</view>
-        </view>
+  <!-- 设置持仓：与「编辑价格预警」一致的底部弹层卡片样式（复用 BottomSheet 外壳 + 全局 grp/alert 样式），
+       teleport 到 body，确保层级高于底部导航栏；保留当前实时价作录入成本参考。
+       行情页报告卡与自选页长按菜单共用此组件，所有入口统一这一套底部弹层。 -->
+  <BottomSheet v-model="visible" title="设置持仓">
+    <!-- 实时价参考：进入即拉取最新成交价（按 secid），行情页无 secid 时回退到传入的参考价 -->
+    <view class="alert-rt" v-if="refPrice != null">
+      <text class="alert-rt-label">当前实时价</text>
+      <text class="alert-rt-price" :class="refCls">{{ fmtPrice(refPrice) }}</text>
+      <text class="alert-rt-sub" :class="refCls" v-if="refChg != null && refPct != null">{{ fmtSigned(refChg) }} · {{ fmtPct(refPct) }}</text>
+      <text class="alert-rt-sub" v-else>仅供参考</text>
+    </view>
+
+    <view class="pf-fields">
+      <view class="pf-field">
+        <text class="pf-k">持仓成本（元/股）</text>
+        <input class="alert-input" type="digit" :value="pfCost" placeholder="必填，如 12.50" @input="onPfCost" />
+      </view>
+      <view class="pf-field">
+        <text class="pf-k">持仓数量（股）</text>
+        <input class="alert-input" type="number" :value="pfQty" placeholder="必填，如 1000" @input="onPfQty" />
       </view>
     </view>
-  </teleport>
+
+    <view class="grp-foot">
+      <view class="grp-btn danger" role="button" aria-label="清除持仓" @click="clear">清除持仓</view>
+      <view class="grp-btn primary" role="button" aria-label="保存持仓" @click="save">保存</view>
+    </view>
+  </BottomSheet>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import OutlineIcon from "./OutlineIcon.vue";
+import { ref, computed } from "vue";
+import BottomSheet from "./BottomSheet.vue";
+import { fetchSnapshot, type SnapResult } from "@/api/quote";
 import type { Position } from "@/utils/costBasis";
 import { getPosition } from "@/utils/costBasis";
 
@@ -39,6 +41,8 @@ import { getPosition } from "@/utils/costBasis";
 const props = defineProps<{
   secid?: string;
   position?: Position | null;
+  /** 行情页无 secid 时的参考价（分析报告当前价） */
+  refPrice?: number | null;
 }>();
 const emit = defineEmits<{
   (e: "save", p: Position): void;
@@ -49,11 +53,49 @@ const visible = ref(false);
 const pfCost = ref("");
 const pfQty = ref("");
 
+// 实时价参考（进入弹层即拉取；无 secid 时回退到传入参考价）
+const live = ref<SnapResult | null>(null);
+const refPrice = computed<number | null>(() => {
+  if (live.value && live.value.price) return live.value.price;
+  if (props.refPrice != null) return props.refPrice;
+  return null;
+});
+const refChg = computed<number | null>(() => (live.value ? live.value.chg ?? null : null));
+const refPct = computed<number | null>(() => (live.value ? live.value.pct ?? null : null));
+const refCls = computed(() => {
+  const c = refChg.value;
+  if (c == null) return "flat";
+  return c > 0 ? "up" : c < 0 ? "down" : "flat";
+});
+
+function fmtPrice(v: number): string {
+  return v.toFixed(2);
+}
+function fmtSigned(v: number): string {
+  return (v >= 0 ? "+" : "") + v.toFixed(2);
+}
+function fmtPct(v: number): string {
+  return (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
+}
+
+async function loadRef() {
+  live.value = null;
+  if (props.secid) {
+    try {
+      const s = await fetchSnapshot(props.secid);
+      if (s && s.price) live.value = s;
+    } catch {
+      live.value = null;
+    }
+  }
+}
+
 function open() {
   const p = props.secid ? getPosition(props.secid) : props.position;
   pfCost.value = p?.cost ? String(p.cost) : "";
   pfQty.value = p?.qty ? String(p.qty) : "";
   visible.value = true;
+  loadRef();
 }
 function close() {
   visible.value = false;
@@ -86,7 +128,21 @@ function clear() {
   visible.value = false;
 }
 
-// 遮罩点击关闭由模板 @click（遮罩）+ @click.stop（卡片）处理，无需全局监听
-
 defineExpose({ open });
 </script>
+
+<style scoped>
+/* 两个录入字段：与全局 .alert-input 同款输入框；标签小字在上、输入框在下，层级统一 */
+.pf-fields {
+  padding: 6rpx 0 4rpx;
+}
+.pf-field {
+  padding: 10rpx 26rpx 14rpx;
+}
+.pf-k {
+  display: block;
+  font-size: var(--font-sm);
+  color: var(--text-2);
+  margin-bottom: 10rpx;
+}
+</style>

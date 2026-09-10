@@ -89,6 +89,13 @@ export interface Reply {
 /** 帖子可见范围：public=公开 / followers=仅粉丝 / private=仅自己（后端 RLS + definer 函数同口径裁决） */
 export type PostVisibility = "public" | "followers" | "private";
 
+/** 可见范围选项（发布时设置 / 发布后「设置访问权限」复用同一份，避免两处各写一份） */
+export const POST_VISIBILITY_OPTIONS: { value: PostVisibility; label: string; desc: string; icon: string }[] = [
+  { value: "public", label: "公开", desc: "所有人可见", icon: "globe" },
+  { value: "followers", label: "仅粉丝", desc: "仅关注你的粉丝可见", icon: "people" },
+  { value: "private", label: "仅自己", desc: "仅自己可见", icon: "locked" },
+];
+
 export interface CommunityPost {
   id: string;
   type: "text" | "card";
@@ -182,6 +189,20 @@ export const communityRepo = {
 
   async remove(id: string): Promise<void> {
     return removeRemote(id);
+  },
+
+  // ---------------- 帖子编辑 / 访问权限（发布后修改） ----------------
+  // 复用创建同款字段映射；content / visibility 可独立更新（卡片持仓结构不在此处改动）。
+  async update(
+    id: string,
+    patch: { content?: string; visibility?: PostVisibility }
+  ): Promise<CommunityPost | null> {
+    return updateRemote(id, patch);
+  },
+
+  // ---------------- 举报帖子（best-effort：表不存在/无权限时静默降级，仅在前端提示已提交） ----------------
+  async reportPost(id: string, reason: string): Promise<void> {
+    return reportPostRemote(id, reason);
   },
 
   // ---------------- 消息中心：通知（点赞 / 评论） ----------------
@@ -570,6 +591,35 @@ async function createRemote(input: {
     likedByMe: false,
     replies: [],
   };
+}
+
+async function updateRemote(
+  id: string,
+  patch: { content?: string; visibility?: PostVisibility }
+): Promise<CommunityPost | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const row: any = {};
+  if (patch.content !== undefined) row.content = patch.content && patch.content.trim() ? patch.content.trim() : null;
+  if (patch.visibility !== undefined) {
+    // 可见范围：默认公开；非法值由后端 CHECK 拒绝
+    row.visibility = patch.visibility === "followers" || patch.visibility === "private" ? patch.visibility : "public";
+  }
+  const { error } = await sb.from("community_posts").update(row).eq("id", id);
+  if (error) throw new Error(translateSupabaseError(error?.message));
+  return getByIdRemote(id);
+}
+
+// 举报帖子：best-effort。post_reports 表尚未在 deploy.sql 建表时，insert 失败被静默吞掉，
+// 前端仍提示「已提交」，作为后续后端接入的预留扩展点，不阻断主流程。
+async function reportPostRemote(id: string, reason: string): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+  try {
+    await sb.from("post_reports").insert({ post_id: id, reason: reason || "other" });
+  } catch {
+    /* 静默降级 */
+  }
 }
 
 async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {

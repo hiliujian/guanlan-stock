@@ -202,7 +202,7 @@
       <text class="cp-count">{{ charCount }}/500</text>
       <view :class="['cp-send', canSend && !sending ? '' : 'disabled']" @click="send">
         <OutlineIcon type="send" :size="ICON_SIZE_FILLED" :color="canSend && !sending ? '#fff' : 'rgba(255,255,255,0.6)'" />
-        <text class="cp-send-t">发布</text>
+        <text class="cp-send-t">{{ isEditing ? '保存' : '发布' }}</text>
       </view>
     </view>
     </view>
@@ -224,7 +224,7 @@ import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from
 import OutlineIcon from "./OutlineIcon.vue";
 import EmojiPanel from "./EmojiPanel.vue";
 import PostCardView from "./PostCard.vue";
-import { packCard, type CommunityPost, type HoldingCard, type PostCard, type PostVisibility } from "@/api/community";
+import { packCard, POST_VISIBILITY_OPTIONS, type CommunityPost, type HoldingCard, type PostCard, type PostVisibility } from "@/api/community";
 import { listMyHoldings, saveHolding, dropHolding, type SavedHolding } from "@/api/holdings";
 import { localSuggest, searchStocks, fetchSnapshot, LOCAL_STOCKS, type SearchHit } from "@/api/quote";
 import { marketCharFor, resolveSecid } from "@/utils/period";
@@ -245,14 +245,33 @@ const ICON_SIZE_FILLED = 32;
 
 const emit = defineEmits<{
   (e: "publish", payload: { content?: string; card?: PostCard; images?: string[]; visibility: PostVisibility }): void;
+  (e: "edit", payload: { id: string; content?: string; visibility: PostVisibility }): void;
 }>();
 
+// 编辑模式：长按自己的帖子「编辑帖子」进入，预填正文 + 可见范围，保存时走 edit 而非 publish。
+// 持仓卡内容不在此编辑（保持原卡），仅改正文与访问权限。
+const props = withDefaults(
+  defineProps<{ editPost?: CommunityPost | null }>(),
+  { editPost: null }
+);
+const isEditing = computed(() => !!props.editPost);
+watch(
+  () => props.editPost,
+  (p) => {
+    if (p) {
+      text.value = p.content || "";
+      visibility.value = p.visibility || "public";
+      // 编辑态清空草稿干扰，避免旧草稿覆盖预填正文
+      clearDraft();
+      holdings.value = [];
+    }
+  },
+  { immediate: true }
+);
+
 // 可见范围（后端 community_posts.visibility：public/followers/private，RLS + definer 函数同口径裁决）
-const VIS_OPTIONS: { value: PostVisibility; label: string; desc: string; icon: string }[] = [
-  { value: "public", label: "公开", desc: "所有人可见", icon: "globe" },
-  { value: "followers", label: "仅粉丝", desc: "仅关注你的粉丝可见", icon: "people" },
-  { value: "private", label: "仅自己", desc: "仅自己可见", icon: "locked" },
-];
+// 复用 api/community 的 POST_VISIBILITY_OPTIONS（发布设置 / 「设置访问权限」共用同一份，避免两处各写）
+const VIS_OPTIONS = POST_VISIBILITY_OPTIONS;
 const visibility = ref<PostVisibility>("public");
 const visOpen = ref(false);
 const visMeta = computed(() => VIS_OPTIONS.find((o) => o.value === visibility.value) || VIS_OPTIONS[0]);
@@ -914,12 +933,21 @@ async function send() {
   try {
     const uploaded = await uploadImages();
     if (uploaded === null) return;
-    emit("publish", {
-      content: text.value.trim() || undefined,
-      card: packedCard.value,
-      images: uploaded.length ? uploaded : undefined,
-      visibility: visibility.value,
-    });
+    if (isEditing.value && props.editPost) {
+      // 编辑模式：仅更新正文与访问权限（持仓卡保持原样），走 edit 通道
+      emit("edit", {
+        id: props.editPost.id,
+        content: text.value.trim() || undefined,
+        visibility: visibility.value,
+      });
+    } else {
+      emit("publish", {
+        content: text.value.trim() || undefined,
+        card: packedCard.value,
+        images: uploaded.length ? uploaded : undefined,
+        visibility: visibility.value,
+      });
+    }
     // 复位（含表情面板：发布完成回到干净输入态）
     text.value = "";
     imagePaths.value = [];

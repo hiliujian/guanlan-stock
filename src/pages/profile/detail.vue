@@ -161,27 +161,33 @@
         </view>
       </view>
 
-      <!-- TA 的动态：帖子 + 持仓操作事件（建仓/加仓/减仓/清仓）合并时间线，按时间倒序取前 8 条；
-           事件行点击 → 行情页查看该股；查看更多 → 社区该用户全部帖子 -->
+      <!-- TA 的动态：帖子 + 持仓操作事件（建仓/加仓/减仓/清仓）合并时间线，按时间倒序取前 20 条；
+           事件行点击 → 行情页查看该股；帖子行点击 → 社区定位该帖（滚动 + 高亮，而非仅跳首页）；
+           条目超 10 条时该区块独立滚动；查看更多常驻可跳社区全量 -->
       <view class="dp-section">
         <text class="dp-label">TA 的动态</text>
         <view v-if="recentLoading" class="dp-wl-loading"><view class="cl-spin" /></view>
         <view v-else-if="activityFeed.length === 0" class="dp-wl-empty">暂无动态</view>
-        <view v-else class="dp-posts">
+        <view v-else>
           <view
-            v-for="(a, i) in activityFeed"
-            :key="a.type + '-' + i"
-            class="dp-post-row"
-            :class="{ tappable: a.type === 'event' }"
-            @click="a.type === 'event' && openEventStock(a.ev!)"
+            class="dp-posts"
+            :class="{ 'dp-posts-scroll': activityFeed.length > 10 }"
           >
-            <text class="dp-post-time">{{ formatRelative(a.time) }}</text>
-            <view v-if="a.type === 'event' && a.ev" class="dp-ev">
-              <text :class="['dp-ev-tag', evCls(a.ev.kind)]">{{ evLabel(a.ev.kind) }}</text>
-              <text class="dp-ev-name truncate">{{ a.ev.name }}</text>
-              <text class="dp-ev-shares">{{ fmtShareNum(a.ev.shares) }}股</text>
+            <view
+              v-for="(a, i) in activityFeed"
+              :key="a.type + '-' + i"
+              class="dp-post-row"
+              :class="{ tappable: a.type === 'event' || a.type === 'post' }"
+              @click="onActivityClick(a)"
+            >
+              <text class="dp-post-time">{{ formatRelative(a.time) }}</text>
+              <view v-if="a.type === 'event' && a.ev" class="dp-ev">
+                <text :class="['dp-ev-tag', evCls(a.ev.kind)]">{{ evLabel(a.ev.kind) }}</text>
+                <text class="dp-ev-name truncate">{{ a.ev.name }}</text>
+                <text class="dp-ev-shares">{{ fmtShareNum(a.ev.shares) }}股</text>
+              </view>
+              <text v-else class="dp-post-sum truncate">{{ postSummary(a.post!) }}</text>
             </view>
-            <text v-else class="dp-post-sum truncate">{{ postSummary(a.post!) }}</text>
           </view>
           <view class="dp-posts-more" hover-class="dp-btn-hover" role="button" @click="goUserPosts">
             <text>查看更多</text>
@@ -230,12 +236,13 @@
             <text class="hd-v">{{ holdValueText(holdDetail) }}</text>
           </view>
         </view>
-        <!-- 该股近期操作动态：holdEvents 已含全量事件（RPC 拉取 10 条），按 code 过滤即得 -->
+        <!-- 该股近期操作动态：holdEvents 已含全量事件（RPC 拉取 10 条），按 code 过滤即得；
+             记录超 5 条时该区域独立滚动（.dp-hd-ev-list 限制高度），避免弹窗被无限撑高 -->
         <view class="hd-ev-head">
           <text class="hd-k">近期操作</text>
         </view>
         <view v-if="holdDetailEvents.length === 0" class="dp-wl-empty">暂无该股操作动态</view>
-        <view v-else class="dp-posts">
+        <view v-else class="dp-hd-ev-list">
           <view v-for="(e, i) in holdDetailEvents" :key="i" class="dp-post-row">
             <text class="dp-post-time">{{ formatRelative(e.createdAt) }}</text>
             <view class="dp-ev">
@@ -264,7 +271,7 @@ import { useUser, userState } from "@/store/user";
 import { vipActive } from "@/store/level";
 import { vipGatedFrame } from "@/utils/avatarFrame";
 import { formatLoginCity } from "@/utils/geo";
-import { useDmTarget, useCommunityUserTarget } from "@/store/community";
+import { useDmTarget, useCommunityUserTarget, usePostTarget } from "@/store/community";
 import { useFollow } from "@/store/follow";
 import { goTab, openAuth, openInMarket, requireLogin } from "@/store/nav";
 import { communityRepo, formatRelative, unpackCards, type CommunityPost } from "@/api/community";
@@ -518,7 +525,7 @@ async function loadHoldingEvents() {
   }
 }
 
-/** 动态合并时间线：帖子 + 持仓事件按时间倒序取前 8 条 */
+/** 动态合并时间线：帖子 + 持仓事件按时间倒序取前 20 条（超 20 条由「查看更多」跳社区全量） */
 interface ActivityItem {
   time: number;
   type: "post" | "event";
@@ -534,7 +541,7 @@ const activityFeed = computed<ActivityItem[]>(() => {
     })),
     ...holdEvents.value.map((e) => ({ time: e.createdAt, type: "event" as const, ev: e })),
   ];
-  return items.sort((a, b) => b.time - a.time).slice(0, 8);
+  return items.sort((a, b) => b.time - a.time).slice(0, 20);
 });
 
 // 事件文案与着色：建仓/加仓=红（做多方向）、减仓/清仓=绿（离场方向），与全站涨红跌绿一致
@@ -553,22 +560,38 @@ function evCls(k: EvKind): string {
 function openEventStock(e: HoldEvent) {
   openInMarket(e.code, "auto");
 }
+// 帖子深链目标（跨页定位）：写入 CommunityView 消费，复用其 focusPost 滚动 + 高亮
+const { setPostTarget } = usePostTarget();
+/** 动态区点击分发：事件行 → 行情页该股；帖子行 → 社区定位该帖（而非仅跳社区首页）。 */
+function onActivityClick(a: ActivityItem) {
+  if (a.type === "event" && a.ev) openEventStock(a.ev);
+  else if (a.type === "post" && a.post) openPost(a.post);
+}
+/** 点击某条帖子：写入帖子深链目标 → 切社区 tab → 返回（社区页消费目标滚动定位到该帖）。 */
+function openPost(p: CommunityPost) {
+  setPostTarget({ postId: p.id, expandComments: false });
+  goTab("community");
+  uni.navigateBack({
+    delta: 1,
+    fail: () => uni.reLaunch({ url: "/pages/index/index" }),
+  });
+}
 /** 股数展示：整数千分位、非整数保留两位小数 */
 function fmtShareNum(n: number): string {
   return Number.isInteger(n) ? n.toLocaleString("en-US") : n.toFixed(2);
 }
 
-/** 拉取 TA 的最新动态（最多 5 条）：走社区 listByUser 服务端按 user_id 过滤，
+/** 拉取 TA 的最新动态（最多 20 条）：走社区 listByUser 服务端按 user_id 过滤，
  *  与社区页「该用户帖子模式」同源，保证点赞 / 头像权威一致。 */
 async function loadRecentPosts() {
   if (!uid.value) return;
   recentLoading.value = true;
   try {
-    const res = await communityRepo.listByUser(uid.value, { limit: 5 });
+    const res = await communityRepo.listByUser(uid.value, { limit: 20 });
     // 刷新容错：读失败伪装成空数组——已有动态时保留旧列表（允许数据延迟），
     // 首次为空正常显示「暂无动态」；页面实例与 uid 一一对应，无串用户风险
     if (res.length === 0 && recentPosts.value.length > 0) return;
-    recentPosts.value = res.slice(0, 5);
+    recentPosts.value = res.slice(0, 20);
   } catch {
     // 异常时保留旧动态，不主动清空
   } finally {
@@ -1051,10 +1074,22 @@ function goUserPosts() {
   color: var(--text-2);
 }
 
-/* TA 的动态（最多 5 条：发布时间 + 内容摘要；底部「查看更多」） */
+/* TA 的动态（最多 20 条：发布时间 + 内容摘要；底部「查看更多」常驻） */
 .dp-posts {
   display: flex;
   flex-direction: column;
+}
+/* TA 的动态：条目超 10 条时该区块独立滚动（最多 20 条，查看更多常驻可跳社区全量） */
+.dp-posts-scroll {
+  max-height: 720rpx;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+/* 持仓详情弹窗内「近期操作」：记录超 5 条时该区域独立滚动，避免弹窗被无限撑高 */
+.dp-hd-ev-list {
+  max-height: 340rpx;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .dp-post-row {
   display: flex;

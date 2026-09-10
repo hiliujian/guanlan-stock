@@ -1189,3 +1189,143 @@ html.ps-lock body {
   color: var(--text-2);
   background: var(--card-2);
 }
+
+/* ===== 底部弹层通用面板（grp / alert 家族）：原仅 WatchlistView scoped，
+   现提升为全局复用（设置持仓 / 帖子操作菜单 / 举报 / 访问权限 等底部弹层共用同一套视觉），
+   避免每处重复硬编码。结构：.grp-head(.panel-head 居中标题) + .grp-list + .grp-item(.grp-label)
+   + .alert-rt(实时价参考条) + .grp-input / .alert-input + .grp-foot + .grp-btn ===== */
+.grp-head {
+  justify-content: center;
+  height: 72rpx;
+}
+.grp-body {
+  flex: 1;
+  min-height: 0;
+  padding: 6rpx 0;
+}
+.grp-section {
+  border-bottom: 1rpx solid var(--border);
+}
+.grp-list {
+  padding: 6rpx 0;
+}
+.grp-item {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  min-height: 88rpx;
+  padding: 0 26rpx;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.grp-item:active,
+.grp-item-hover {
+  background: var(--card-2);
+}
+.grp-label {
+  flex: 1;
+  font-size: var(--font-md);
+  color: var(--text);
+}
+.grp-label.danger {
+  color: #ff3b30;
+}
+.grp-item.active .grp-label {
+  color: var(--primary);
+}
+/* 价格预警 / 设置持仓：实时价参考条（统一字号层级，price/sub 同用 font-md，label 作说明用 font-sm） */
+.alert-rt {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  padding: 14rpx 26rpx;
+  margin: 4rpx 20rpx 10rpx;
+  background: var(--card-2);
+  border-radius: 14rpx;
+}
+.alert-rt-label {
+  font-size: var(--font-sm);
+  color: var(--text-2);
+}
+.alert-rt-price {
+  font-size: var(--font-md);
+  color: var(--text);
+}
+.alert-rt-price.up { color: var(--up); }
+.alert-rt-price.down { color: var(--down); }
+.alert-rt-price.flat { color: var(--text); }
+.alert-rt-sub {
+  margin-left: auto;
+  font-size: var(--font-md);
+  color: var(--text-3);
+}
+.alert-rt-sub.up { color: var(--up); }
+.alert-rt-sub.down { color: var(--down); }
+.alert-rt-sub.flat { color: var(--text-3); }
+.alert-cur {
+  color: var(--text-2);
+  font-size: var(--font-sm);
+}
+.alert-edit {
+  padding: 0 26rpx 16rpx;
+}
+.alert-input {
+  height: 84rpx;
+  padding: 0 20rpx;
+  background: var(--card-2);
+  border-radius: 14rpx;
+  font-size: var(--font-md);
+  color: var(--text);
+}
+.alert-edit-btns {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 14rpx;
+}
+.grp-input {
+  height: 84rpx;
+  margin: 16rpx 26rpx;
+  padding: 0 20rpx;
+  background: var(--card-2);
+  border-radius: 14rpx;
+  font-size: var(--font-md);
+  color: var(--text);
+}
+.grp-foot {
+  flex: none;
+  display: flex;
+  gap: 16rpx;
+  padding: 16rpx 26rpx calc(env(safe-area-inset-bottom) + 16rpx);
+}
+.grp-btn {
+  flex: 1;
+  text-align: center;
+  padding: 20rpx 0;
+  border-radius: 999rpx;
+  font-size: var(--font-md);
+  color: var(--primary);
+  background: transparent;
+  border: 2rpx solid var(--primary);
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease, opacity 0.12s ease;
+}
+.grp-btn:active {
+  background: rgba(7, 193, 96, 0.08);
+}
+.grp-btn.primary {
+  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.grp-btn.primary:active {
+  background: var(--primary-dark, #06a752);
+  border-color: var(--primary-dark, #06a752);
+}
+.grp-btn.danger {
+  color: var(--danger);
+  background: transparent;
+  border: 2rpx solid var(--danger);
+}
+.grp-btn.danger:active {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}

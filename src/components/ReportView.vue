@@ -16,8 +16,9 @@
       </view>
     </view>
 
-    <!-- 设置持仓弹窗（共享组件 PositionForm）：持仓成本/数量必填，保存/清除经父页写入 costBasis -->
-    <PositionForm ref="posFormRef" :position="position" @save="p => emit('save-position', p)" @clear="emit('clear-position')" />
+    <!-- 设置持仓弹窗（共享组件 PositionForm）：持仓成本/数量必填，保存/清除经父页写入 costBasis；
+         底部弹层样式与「编辑价格预警」一致，refPrice 传入分析报告当前价作成本参考 -->
+    <PositionForm ref="posFormRef" :position="position" :ref-price="a?.price ?? null" @save="p => emit('save-position', p)" @clear="emit('clear-position')" />
 
     <!-- 直白操作信号：报告的操作结论以此卡为唯一来源（原顶部横幅已移除，避免两套判定相互矛盾）。
          标签/一句话建议由 utils/actionSignal 按持仓状态翻译（与自选页持仓表同一份实现）：

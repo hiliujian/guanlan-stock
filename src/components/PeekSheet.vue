@@ -1,4 +1,5 @@
 <template>
+  <teleport to="body">
   <view class="peek">
     <view
       class="peek-card"
@@ -32,6 +33,7 @@
       </view>
     </view>
   </view>
+  </teleport>
 </template>
 
 <script setup lang="ts">

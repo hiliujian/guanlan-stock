@@ -1,5 +1,5 @@
 <template>
-  <view :id="`cm-post-${post.id}`" :class="['post', 'glass', 'anim-fade-up', preview ? 'as-preview' : '', replyEmojiOpen ? 'emoji-open' : '']" @click="onRootClick">
+  <view :id="`cm-post-${post.id}`" :class="['post', 'glass', 'anim-fade-up', preview ? 'as-preview' : '', replyEmojiOpen ? 'emoji-open' : '']" @click="onRootClick" @longpress="onLongPress">
     <!-- 头部：头像 + 昵称 + 时间 + 话题 + 删除 -->
     <view class="p-head">
       <view
@@ -187,6 +187,7 @@ const emit = defineEmits<{
   (e: "like", id: string): void;
   (e: "reply", id: string, content: string, replyTo?: { name: string; userId?: string | null }): void;
   (e: "remove", id: string): void;
+  (e: "longpress", post: CommunityPost): void;
 }>();
 
 // 关注 / 取消关注：仅对非本人帖子（且有账号 id）展示。follows 为响应式 uid 集合，
@@ -300,6 +301,13 @@ function onRootClick(e: any) {
   const t = e?.target as HTMLElement | null;
   if (t && typeof (t as any).closest === "function" && (t as any).closest(".p-replies")) return;
   clearReplyTo();
+}
+
+/** 卡片长按：唤起底部操作菜单（本人 / 他人分支由父级 CommunityView 区分）。
+ *  预览态不触发，避免干扰发帖预览编辑。 */
+function onLongPress() {
+  if (props.preview) return;
+  emit("longpress", props.post);
 }
 
 /** 点击评论中的昵称 → 跳转该用户资料页（与帖子头像同一范式：本人→编辑页，他人→公开资料）。 */

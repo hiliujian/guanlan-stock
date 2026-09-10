@@ -656,8 +656,10 @@
             :aria-label="`查看 ${a.name}`"
             @click="openAlertStock(a)"
           >
-            <text class="sg-name truncate">{{ a.name }}</text>
-            <text class="sg-code">{{ a.code }}</text>
+            <view class="sg-id">
+              <text class="sg-name truncate">{{ a.name }}</text>
+              <text class="sg-code">{{ a.code }}</text>
+            </view>
             <text :class="['sg-tag', a.level]">{{ a.tag }}</text>
             <text class="sg-price">{{ fmtPrice(a.price) }}</text>
             <text :class="['sg-pct', trendCls(a.pct)]">{{ fmtPct(a.pct) }}</text>
@@ -1884,6 +1886,8 @@ const lpSecid = computed(() => {
 });
 function openPosForm() {
   if (!lpSecid.value) return;
+  // 先收起操作菜单（PeekSheet），避免「设置持仓」底部弹层与菜单叠加
+  sheet.value?.collapse();
   posFormRef.value?.open();
 }
 async function saveLpPosition(p: Position) {
@@ -2152,8 +2156,15 @@ function removeLp() {
   padding: 12rpx 4rpx;
   border-top: 1rpx solid var(--border);
 }
-.sg-name {
+/* 名称+代码成组占据左侧弹性空间，代码紧贴名称（增强关联），其余信息右对齐 */
+.sg-id {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
+}
+.sg-name {
   min-width: 0;
   font-size: var(--font-sm);
   color: var(--text);
@@ -2492,7 +2503,8 @@ function removeLp() {
   color: var(--text-2);
 }
 .alert-rt-price {
-  font-size: var(--font-lg);
+  /* 统一字号层级：实时价不再单独放大，与涨跌额/涨跌幅同为 font-md，避免卡片字号混乱 */
+  font-size: var(--font-md);
   color: var(--text);
 }
 .alert-rt-price.up { color: var(--up); }
@@ -2500,7 +2512,7 @@ function removeLp() {
 .alert-rt-price.flat { color: var(--text); }
 .alert-rt-sub {
   margin-left: auto;
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   color: var(--text-3);
 }
 .alert-rt-sub.up { color: var(--up); }

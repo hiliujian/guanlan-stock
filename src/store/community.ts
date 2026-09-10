@@ -20,6 +20,31 @@ import { userState } from "@/store/user";
 const posts = ref<CommunityPost[]>([]);
 const loading = ref(false);
 const searchResults = ref<CommunityPost[]>([]);
+// ---------------- 信息流负反馈（本地会话级，不触达后端推荐） ----------------
+// 不感兴趣：从当前信息流隐藏指定帖；屏蔽用户：隐藏该用户全部帖。二者仅影响展示，
+// 不做复杂推荐逻辑；切换账号 / 登出由 resetFeedPrefs() 清空。模块级单例，跨组件调用共享。
+const hiddenPostIds = ref<Set<string>>(new Set());
+const blockedUserIds = ref<Set<string>>(new Set());
+
+function hidePost(id: string) {
+  if (!hiddenPostIds.value.has(id)) {
+    hiddenPostIds.value = new Set([...hiddenPostIds.value, id]);
+  }
+}
+function blockUser(uid: string) {
+  if (uid && !blockedUserIds.value.has(uid)) {
+    blockedUserIds.value = new Set([...blockedUserIds.value, uid]);
+  }
+}
+function isPostHidden(p: CommunityPost): boolean {
+  if (hiddenPostIds.value.has(p.id)) return true;
+  if (p.userId && blockedUserIds.value.has(p.userId)) return true;
+  return false;
+}
+function resetFeedPrefs() {
+  hiddenPostIds.value = new Set();
+  blockedUserIds.value = new Set();
+}
 // 搜索独立 loading：与信息流 loading 分离，避免两者互相阻塞（触底续拉 / 搜索并发）
 const searchLoading = ref(false);
 // 主信息流分页（无限滚动）：游标 = 本页末条 createdAt(ms)；feedDone=true 表示已全部加载
@@ -119,6 +144,21 @@ export function useCommunity() {
     posts.value = posts.value.filter((x) => x.id !== id);
   }
 
+  /** 举报帖子：best-effort（后端 post_reports 未建表时静默降级），前端提示已提交 */
+  async function reportPost(id: string, reason: string): Promise<void> {
+    await communityRepo.reportPost(id, reason);
+  }
+
+  /** 编辑帖子 / 修改访问权限：更新 content / visibility，并就地同步信息流与搜索缓存 */
+  async function updatePost(
+    id: string,
+    patch: { content?: string; visibility?: PostVisibility }
+  ): Promise<CommunityPost | null> {
+    const p = await communityRepo.update(id, patch);
+    if (p) replace(p);
+    return p;
+  }
+
   /**
    * 本人改昵称 / 换头像 / 头像框后就地同步缓存中的「我的」帖子与评论（信息流 + 搜索结果）：
    * 模块级 posts 为跨页缓存，资料页改完回来若无此补丁会一直显示旧值（需整页刷新才更新）。
@@ -163,7 +203,29 @@ export function useCommunity() {
     }
   }
 
-  return { posts, loading, searchLoading, searchResults, load, loadMore, feedDone, publish, like, reply, remove, updateMyAuthorAssets, search };
+  return {
+    posts,
+    loading,
+    searchLoading,
+    searchResults,
+    hiddenPostIds,
+    blockedUserIds,
+    load,
+    loadMore,
+    feedDone,
+    publish,
+    like,
+    reply,
+    remove,
+    hidePost,
+    blockUser,
+    isPostHidden,
+    resetFeedPrefs,
+    reportPost,
+    updatePost,
+    updateMyAuthorAssets,
+    search,
+  };
 }
 
 // =====================================================================
@@ -541,6 +603,8 @@ export function useMessageCenter() {
     // 重置基线，使下次加载按「首次加载」逻辑重新校准（适配切换账号）。
     seenLikeAt.value = 0;
     seenCommentAt.value = 0;
+    // 清除信息流负反馈（不感兴趣 / 屏蔽），避免跨账号串数据
+    resetFeedPrefs();
   }
 
   /** 未读点赞数：kind === 'like' 且创建时间晚于点赞已读基线。 */
