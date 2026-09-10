@@ -886,7 +886,8 @@ html.ps-lock body {
 }
 
 /* ============ PeekSheet 折叠卡预览行（市场页 / 自选页共用，统一一套） ============ */
-/* 折叠态一行：左侧固定标签 + 中部滚动切换容器 + 右侧展开箭头，整体不换行、溢出裁切、垂直居中 */
+/* 折叠态一行：左侧固定标签 + 中部滚动切换容器 + 右侧展开箭头，整体不换行、溢出裁切、垂直居中。
+   行内所有文案统一 --font-sm（根字号兜底，任何漏网的 text 也不会大一号）。 */
 .peek-row {
   flex: 1;
   height: 76rpx;
@@ -895,6 +896,7 @@ html.ps-lock body {
   flex-wrap: nowrap;
   gap: 12rpx;
   padding: 0 28rpx;
+  font-size: var(--font-sm);
   cursor: pointer;
   overflow: hidden;
 }
@@ -965,17 +967,18 @@ html.ps-lock body {
   flex: 1;
   min-width: 0;
   font-size: var(--font-sm);
-  /* 行高与折叠行等高：文字在行内绝对垂直居中，不依赖 RollSwap 内层 100% 高度链 */
-  line-height: 76rpx;
+  /* 由 .roll-item / .peek-row 的 flex align-items:center 负责垂直居中；
+     line-height 取正常值，避免等高行高在部分机型上把字形视觉顶偏 */
+  line-height: 1.2;
   color: var(--text-3);
   /* 截断已由全局 .truncate 提供 */
 }
-/* 右侧价格 / 涨跌幅区：贴右对齐 */
+/* 右侧价格 / 涨跌幅区：贴右对齐；行内统一垂直居中（含异动胶囊标签这种带 padding 的元素） */
 .peek-right {
   flex: none;
   margin-left: auto;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10rpx;
 }
 .peek-price,

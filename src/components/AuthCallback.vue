@@ -12,8 +12,8 @@
   </view>
 
   <!-- 结果态：沿用毛玻璃遮罩弹窗（成功 / 过期 / 已确认 / 错误），不再有加载圈 -->
-  <view v-else-if="authFlow.callback.active" class="ac-mask">
-    <view class="ac-card anim-card">
+  <view v-else-if="authFlow.callback.active" class="ac-mask" @click="closeCallback">
+    <view class="ac-card anim-card" @click.stop>
       <!-- 成功 -->
       <template v-if="authFlow.callback.status === 'success'">
         <view class="ac-ic ok"><OutlineIcon type="check" :size="46" color="#fff" /></view>

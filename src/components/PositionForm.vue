@@ -3,8 +3,8 @@
        transform/backdrop-filter 祖先变成「相对元素定位」，导致弹窗出现在页面中部。
        行情页报告卡与自选页长按菜单共用此组件 -->
   <teleport to="body">
-    <view v-if="visible" ref="maskRef" class="modal-mask" @click.self="close">
-      <view class="modal-card">
+    <view v-if="visible" class="modal-mask" @click="close">
+      <view class="modal-card" @click.stop>
         <view class="modal-head">
           <text class="modal-title">设置持仓</text>
           <view class="modal-close" @click="close" role="button" aria-label="关闭">
@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from "vue";
+import { ref } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import type { Position } from "@/utils/costBasis";
 import { getPosition } from "@/utils/costBasis";
@@ -86,26 +86,7 @@ function clear() {
   visible.value = false;
 }
 
-// 点击遮罩或遮罩外部关闭。均在弹窗可见时挂全局监听
-const maskRef = ref<any>(null);
-function onDocPointerDown(e: Event) {
-  const r = maskRef.value as any;
-  const el: HTMLElement | null =
-    r instanceof HTMLElement ? r : r?.$el instanceof HTMLElement ? r.$el : null;
-  // 遮罩自身（@click.self 已覆盖）或遮罩外区域视为点击外部
-  if (el && (e.target as Node) === el) return;
-  if (el && !el.contains(e.target as Node)) visible.value = false;
-}
-watch(visible, (v) => {
-  if (v) {
-    document.addEventListener("pointerdown", onDocPointerDown, true);
-  } else {
-    document.removeEventListener("pointerdown", onDocPointerDown, true);
-  }
-});
-onUnmounted(() => {
-  document.removeEventListener("pointerdown", onDocPointerDown, true);
-});
+// 遮罩点击关闭由模板 @click（遮罩）+ @click.stop（卡片）处理，无需全局监听
 
 defineExpose({ open });
 </script>

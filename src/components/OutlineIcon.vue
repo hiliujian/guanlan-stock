@@ -103,6 +103,18 @@ const ICONS: Record<string, { body: string; filled?: boolean }> = {
     body: '<polyline points="3 6 21 6"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/>',
   },
   person: { body: '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>' },
+  // 多人（粉丝 / 仅粉丝可见）
+  people: {
+    body:
+      '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>' +
+      '<path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  },
+  // 地球（公开可见）
+  globe: {
+    body:
+      '<circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/>' +
+      '<path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/>',
+  },
   locked: { body: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>' },
   shield: {
     body: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><polyline points="9 12 11 14 15 9.5"/>',

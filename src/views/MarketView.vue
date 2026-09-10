@@ -189,7 +189,7 @@
                       <!-- 篮子无点位概念（price 恒 null），仅展示涨跌幅；但初始加载/无数据时与普通卡片
                            统一空态：价格槽位同样降级显示「暂无数据」，保证整体视觉一致 -->
                       <text v-else-if="!bktHasData(it)" class="idx-item-price na">暂无数据</text>
-                      <text class="idx-item-pct" :class="bktCls(it)">{{ bktPct(it) }}</text>
+                      <text v-if="bktHasData(it)" class="idx-item-pct" :class="bktCls(it)">{{ bktPct(it) }}</text>
                     </view>
                   </view>
                 </view>
@@ -459,7 +459,7 @@ function qNa(secid: string): boolean {
 
 
 // 美股篮子时段切换：点击角标在 盘前→盘中→盘后 间循环，展示所选时段的等权涨跌幅；
-// 所选时段无数据（如非该时段窗口）则 pct 显示「—」占位且不渲染时段角标，不误导。
+// 所选时段无数据（如非该时段窗口）时模板直接不渲染涨跌幅（价格槽位统一显示「暂无数据」），不误导。
 // 默认展示实际所处阶段。
 type BktView = 'pre' | 'regular' | 'post';
 const BKT_CYCLE: BktView[] = ['pre', 'regular', 'post'];
@@ -510,7 +510,7 @@ function bktLabel(it: { secid: string }): string {
 }
 function bktPct(it: { secid: string }): string {
   const d = bktData(it);
-  if (!d || d.pct == null || !Number.isFinite(d.pct)) return '--';
+  if (!d || d.pct == null || !Number.isFinite(d.pct)) return ""; // 无数据不渲染（模板 v-if 守卫），统一由价格槽位显示「暂无数据」
   return (d.pct >= 0 ? '+' : '') + d.pct.toFixed(2) + '%';
 }
 function bktCls(it: { secid: string }): string {

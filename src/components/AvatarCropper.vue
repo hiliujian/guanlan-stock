@@ -1,6 +1,6 @@
 <template>
-  <view v-if="modelValue" class="ac-mask mask-blur" @click.self="onCancel" @touchmove.prevent>
-    <view class="ac-card" role="dialog" aria-modal="true">
+  <view v-if="modelValue" class="ac-mask mask-blur" @click="onCancel" @touchmove.prevent>
+    <view class="ac-card" role="dialog" aria-modal="true" @click.stop>
       <view class="ac-title">{{ title }}</view>
 
       <!-- 裁剪工作区：图片 + 暗色蒙层（四周半透明 + 中央圆形镂空） -->

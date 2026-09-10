@@ -1,6 +1,6 @@
 <template>
-  <view v-if="modelValue" class="cd-mask mask-blur" @click.self="onCancel">
-    <view class="cd-card" role="dialog" aria-modal="true">
+  <view v-if="modelValue" class="cd-mask mask-blur" @click="onCancel">
+    <view class="cd-card" role="dialog" aria-modal="true" @click.stop>
       <view class="cd-icon" :style="{ background: tintBg, color: tintColor }">
         <OutlineIcon :type="icon || 'info'" :size="34" :color="tintColor" />
       </view>

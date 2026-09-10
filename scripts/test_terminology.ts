@@ -6,9 +6,9 @@
 //      · 多头/空头排列 ⇔ MA5>MA10>MA20>MA60（严格 3/3 配对）
 //      · MACD 金叉/死叉 ⇔ 最近 8 根内 DIF/DEA 实际发生交叉
 //      · KDJ 超买/超卖 ⇔ J>100||K>80 / J<0||K<20
-//      · RSI 超买/偏高/超卖/偏弱 ⇔ RSI12 阈值（>80/>70/<35/<50）
-//      · MACD 红柱/绿柱放大/多头/空头排列 ⇔ dif-dea 符号
-//      · 临近支撑/临近压力 ⇔ 距离 < 5%
+//      · RSI 超买/超卖 ⇔ RSI12 阈值（>70/<30，与研判格同口径）
+//      · MACD 红柱·多头/绿柱·空头 ⇔ dif-dea 符号
+//      · 临近支撑/临近压力 ⇔ 距离 < 5%/3%
 //   B) 后验有效性（该术语在切点出现后 10 个交易日的真实走势）：
 //      · 趋势方向 5 档 → 前瞻收益应单调（up 最好、down 最差）
 //      · KDJ 超买 → 应回调（负漂移）；超卖 → 应反弹（正漂移）
@@ -49,6 +49,36 @@ function crossDir(dif: (number | null)[], dea: (number | null)[], recent: number
   return null;
 }
 
+// analyze 结果不导出均线数组/KDJ，审核需按引擎同口径独立复算
+function sma(vals: number[], p: number): (number | null)[] {
+  const out: (number | null)[] = new Array(vals.length).fill(null);
+  let s = 0;
+  for (let i = 0; i < vals.length; i++) {
+    s += vals[i];
+    if (i >= p) s -= vals[i - p];
+    if (i >= p - 1) out[i] = s / p;
+  }
+  return out;
+}
+function kdjOf(ks: { high: number; low: number; close: number }[]) {
+  const n = 9;
+  const K = new Array(ks.length).fill(50);
+  const D = new Array(ks.length).fill(50);
+  const J = new Array(ks.length).fill(50);
+  for (let i = 0; i < ks.length; i++) {
+    if (i < n - 1) continue;
+    let hh = -Infinity, ll = Infinity;
+    for (let j = i - n + 1; j <= i; j++) { hh = Math.max(hh, ks[j].high); ll = Math.min(ll, ks[j].low); }
+    const rsv = hh === ll ? 50 : ((ks[i].close - ll) / (hh - ll)) * 100;
+    const k = i === n - 1 ? 50 : K[i - 1];
+    const d = i === n - 1 ? 50 : D[i - 1];
+    K[i] = (2 / 3) * k + (1 / 3) * rsv;
+    D[i] = (2 / 3) * d + (1 / 3) * K[i];
+    J[i] = 3 * K[i] - 2 * D[i];
+  }
+  return { K, D, J };
+}
+
 // 分桶统计器：术语值 → 前瞻样本（同时记 10 日与 20 日）
 class Buckets {
   m = new Map<string, { n: number; r10: number[]; r20: number[]; drets: number[][]; lows: number[] }>();
@@ -71,7 +101,7 @@ class Buckets {
 }
 const B = {
   trend: new Buckets(), maState: new Buckets(), kdj: new Buckets(), macdX: new Buckets(),
-  rsi: new Buckets(), stage: new Buckets(), band: new Buckets(), near: new Buckets(), risk: new Buckets(),
+  rsi: new Buckets(), stage: new Buckets(), signal: new Buckets(), near: new Buckets(), risk: new Buckets(),
 };
 // 定义审核错配计数
 const audit: Record<string, { ok: number; bad: number }> = {};
@@ -99,8 +129,9 @@ async function backtestStock(secid: string, name: string) {
     const worstLow = Math.min(...win.slice(0, 10).map((d: any) => d.low)) / base - 1;
 
     // ---- A) 定义审核（术语 vs 其自身底层指标）----
-    const last = <T,>(arr: (T | null)[]): T | null => (arr.length ? (arr[arr.length - 1] ?? null) : null);
-    const m5 = last(a.ma5), m10 = last(a.ma10), m20 = last(a.ma20), m60 = last(a.ma60);
+    const closes = (cut as any[]).map((d) => d.close);
+    const m5 = sma(closes, 5).at(-1), m10 = sma(closes, 10).at(-1),
+      m20 = sma(closes, 20).at(-1), m60 = sma(closes, 60).at(-1);
     if (m5 != null && m10 != null && m20 != null && m60 != null) {
       const up = m5 > m10 && m10 > m20 && m20 > m60;
       const dn = m5 < m10 && m10 < m20 && m20 < m60;
@@ -111,26 +142,25 @@ async function backtestStock(secid: string, name: string) {
     const truthCross = crossDir(dif, dea, 8);
     chk("MACD金叉死叉", a.macdCross === truthCross, true);
     B.macdX.add(a.macdCross === "gold" ? "MACD金叉" : a.macdCross === "dead" ? "MACD死叉" : "无交叉", ret10, ret20, dailyRets, worstLow);
-    const kL = a.kd.K[a.kd.K.length - 1], jL = a.kd.J[a.kd.J.length - 1];
+    const kdjNow = kdjOf(cut as any[]);
+    const kL = kdjNow.K.at(-1) ?? 50, jL = kdjNow.J.at(-1) ?? 50;
     const truthKdj = jL > 100 || kL > 80 ? "超买" : jL < 0 || kL < 20 ? "超卖" : "中性";
     chk("KDJ超买超卖", a.kdjState === truthKdj, true);
     B.kdj.add(a.kdjState, ret10, ret20, dailyRets, worstLow);
     const rLabel = a.scoreReasons.find((r) => r.label.startsWith("RSI"))?.label ?? "";
     if (a.rsiValid) {
       const r = a.rNow;
-      // 注意：addReason 仅在 delta≠0 时写入评分依据 → RSI 50~70（delta 0）不出现任何 RSI 术语，期望标签为空
-      const truthR = r > 80 ? "RSI超买" : r > 70 ? "RSI偏高" : r < 35 ? "RSI超卖" : r < 50 ? "RSI偏弱" : "";
+      // 评分依据仅在 delta≠0 时写入：RSI >70 记「RSI超买」、<30 记「RSI超卖」，其余不出现 RSI 术语
+      const truthR = r > 70 ? "RSI超买" : r < 30 ? "RSI超卖" : "";
       chk("RSI术语", rLabel === truthR, true);
       B.rsi.add(rLabel, ret10, ret20, dailyRets, worstLow);
     }
     const difL = dif[dif.length - 1]!, deaL = dea[dea.length - 1]!;
-    const barL = difL - deaL;
     const macdLabel = a.scoreReasons.find((r) => r.label.startsWith("MACD"))?.label ?? "";
-    // MACD持平（dif==dea，delta 0）同样不写入评分依据
+    // MACD持平（dif==dea，delta 0）不写入评分依据
     const truthMacd = macdLabel === "MACD金叉" || macdLabel === "MACD死叉" ? macdLabel
       : difL === deaL ? ""
-      : difL > deaL && barL > 0 ? "MACD红柱放大" : difL > deaL ? "MACD多头排列"
-      : difL < deaL && barL < 0 ? "MACD绿柱放大" : "MACD空头排列";
+      : difL > deaL ? "MACD红柱·多头" : "MACD绿柱·空头";
     chk("MACD柱/排列术语", macdLabel === truthMacd, true);
     // 临近支撑：定义 dist < 5%；临近压力：定义 dist < 3%（压力侧收紧，避免半根涨停外误标「临近」）
     chk("临近支撑", a.nearSup === (a.support > 0 && (a.price - a.support) / a.price < 0.05), true);
@@ -139,7 +169,7 @@ async function backtestStock(secid: string, name: string) {
     // ---- B) 后验有效性分桶 ----
     B.trend.add(a.trendText || a.trend, ret10, ret20, dailyRets, worstLow);
     B.stage.add(a.stageText, ret10, ret20, dailyRets, worstLow);
-    B.band.add(a.priceLevels.band, ret10, ret20, dailyRets, worstLow);
+    B.signal.add(a.signal.label, ret10, ret20, dailyRets, worstLow);
     if (a.nearSup) B.near.add("临近支撑", ret10, ret20, dailyRets, worstLow);
     if (a.nearRes) B.near.add("临近压力", ret10, ret20, dailyRets, worstLow);
     B.risk.add(`风险${a.riskLevel}`, ret10, ret20, dailyRets, worstLow);
@@ -164,7 +194,7 @@ async function main() {
   B.kdj.print("KDJ 状态");
   B.rsi.print("RSI 分档");
   B.stage.print("量价阶段");
-  B.band.print("波段类型");
+  B.signal.print("信号档位");
   B.near.print("关键位临近");
   B.risk.print("风险等级");
   console.log(`\n合计 ${total} 切点`);

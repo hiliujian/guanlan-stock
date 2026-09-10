@@ -173,7 +173,8 @@ defineExpose({ animateClose });
   padding: 0 26rpx;
 }
 .fl-peek-t {
-  font-size: var(--font-md);
+  /* 与全部底部折叠卡（今日最热 / 股市行情 / 分享观点）统一字号 */
+  font-size: var(--font-sm);
   color: var(--text);
 }
 .fl-peek-badge {

@@ -6,13 +6,13 @@
 //      四个角色价位与选中簇必须完全相同（修正只影响展示评级，绝不影响选簇与门槛）；
 //   B) 图表 → 报告：computeAutoLevelsFromSeries（图表画线，含周期/开关过滤）
 //      的每根价格线，报告侧同角色条目存在且同价；sub「已破位」⇔ isBroken、
-//      sub「参考位」⇔ status=ref；结构线在数据充足时必须存在；
-//   C) 报告 → 图表：报告侧每个非空条目，图表侧同角色同价线存在（含同向去重口径）；
+//      sub「参考位/弱参考」⇔ status=ref/weak；数据充足时四类线必须存在；
+//   C) 报告 → 图表：报告侧每个非空条目，图表侧同角色同价线存在；
 //   D) 离线合成数据回归（不依赖网络）。
 // ============================================================================
 import {
   computeAutoLevelsFromSeries, computePriceLevels, resolvePeriodGuard,
-  TOL_PCT, type LevelCtx, type PriceLevelGroup,
+  type LevelCtx, type PriceLevelGroup,
 } from "../src/utils/autoLevels";
 import { fetchAny, toSeries } from "./quote_fetch";
 
@@ -36,7 +36,7 @@ const roleReport = (pl: PriceLevelGroup, r: typeof ROLES[number]) => (pl as any)
 // 图表侧过滤（复刻 StockChart.drawAutoLevels：默认开关全开 → 仅受周期守卫约束）
 function chartPriceLines(series: any[], period: "d" | "w" | "M") {
   const guard = resolvePeriodGuard(period);
-  const levels = computeAutoLevelsFromSeries(series, guard, true);
+  const levels = computeAutoLevelsFromSeries(series, guard);
   return levels.filter((lv) => {
     if (lv.kind === "trend") return false; // 趋势线无报告对应物（域不同），跳过
     if (guard.disableTrade && (lv.role === "tradeSupport" || lv.role === "tradePressure")) return false;
@@ -71,8 +71,8 @@ function auditSeries(tag: string, series: any[], period: "d" | "w" | "M"): numbe
   const withCtx = computePriceLevels(series, guard, heavyCtx);
   for (const r of ROLES) {
     const a = roleReport(noCtx, r), b = roleReport(withCtx, r);
-    if (fmtN(a?.price) !== fmtN(b?.price) || (a?.isBroken ?? false) !== (b?.isBroken ?? false)) {
-      fail(`${tag} ctx 改变选簇/状态：${r} ${fmtN(a?.price)}/${a?.isBroken ? "破" : "有"} → ${fmtN(b?.price)}/${b?.isBroken ? "破" : "有"}`);
+    if (fmtN(a?.price) !== fmtN(b?.price) || (a?.isBroken ?? false) !== (b?.isBroken ?? false) || (a?.status ?? "") !== (b?.status ?? "")) {
+      fail(`${tag} ctx 改变选簇/状态：${r} ${fmtN(a?.price)}/${a?.status ?? "无"} → ${fmtN(b?.price)}/${b?.status ?? "无"}`);
       bad++;
     }
   }
@@ -94,13 +94,15 @@ function auditSeries(tag: string, series: any[], period: "d" | "w" | "M"): numbe
       fail(`${tag} ${roleName} 价位不一致：图 ${fmtN(lv.price)} vs 报告 ${fmtN(it.price)}`);
       missing++; continue;
     }
-    // 状态一致性：已破位 ⇔ isBroken；参考位 ⇔ status=ref
+    // 状态一致性：已破位 ⇔ isBroken；参考位 ⇔ status=ref；弱参考 ⇔ status=weak
     if (lv.sub === "已破位" !== it.isBroken) {
       fail(`${tag} ${roleName}@${fmtN(lv.price)} 破位状态不一致：图 sub=${lv.sub || "无"} vs 报告 isBroken=${it.isBroken}`);
       statusMismatch++;
     }
-    if ((lv.sub === "参考位") !== (it.status === "ref")) {
-      fail(`${tag} ${roleName}@${fmtN(lv.price)} 参考位状态不一致：图 sub=${lv.sub || "无"} vs 报告 status=${it.status}`);
+    const refMatch = (lv.sub === "参考位") !== (it.status === "ref");
+    const weakMatch = (lv.sub === "弱参考") !== (it.status === "weak");
+    if (refMatch || weakMatch) {
+      fail(`${tag} ${roleName}@${fmtN(lv.price)} 降级状态不一致：图 sub=${lv.sub || "无"} vs 报告 status=${it.status}`);
       statusMismatch++;
     }
   }
@@ -118,14 +120,16 @@ function auditSeries(tag: string, series: any[], period: "d" | "w" | "M"): numbe
       missing++;
     }
   }
-  // 结构线必须存在（数据充足时 ensureStructLine 恒有输出）
-  if (series.length >= 12) {
-    if (!chartLines.some((x) => x.role === "structSupport") || !pl.structSupport) {
-      fail(`${tag} 数据充足但结构支撑缺失（图/报告任一侧）`); missing++;
+  // 结构线必须存在（≥MIN_BARS(5) 时）：跨角色同价去重会成对地剪掉其中一侧（图/报告同步），
+  // 但任一侧至少保留一根结构线；逐角色的图↔报告有无一致性已由上方 B/C 双向核对覆盖。
+  if (series.length >= 5) {
+    const chartStruct = chartLines.filter((x) => x.role === "structSupport" || x.role === "structPressure").length;
+    const reportStruct = [pl.structSupport, pl.structPressure].filter(Boolean).length;
+    if (chartStruct === 0 || reportStruct === 0) {
+      fail(`${tag} 数据充足但结构线全缺（图 ${chartStruct} / 报告 ${reportStruct}，跨角色去重也至少留一根）`); missing++;
     }
-    if (!chartLines.some((x) => x.role === "structPressure") || !pl.structPressure) {
-      fail(`${tag} 数据充足但结构压力缺失（图/报告任一侧）`); missing++;
-    }
+    // 日 K：S/B 交易参考线「必须渲染」（ensureTradeLine 四级兜底）。唯一例外是 S≈B 跨角色
+    // 同价去重（pruneCrossRole，极窄区间），此时图/报告两侧同步缺失即一致（上方 B/C 已双向核对）。
   }
   // 周期守卫：禁交易周期两侧都不得有交易线
   if (guard.disableTrade) {
@@ -135,7 +139,12 @@ function auditSeries(tag: string, series: any[], period: "d" | "w" | "M"): numbe
       fail(`${tag} 周期应禁交易线：图 ${tChart} 条 / 报告 ${tReport} 条`); missing++;
     }
   }
-  const rows = ROLES.map((r) => `${r === "structSupport" ? "支" : r === "structPressure" ? "压" : r === "tradeSupportS" ? "S" : "B"}:${fmtN(roleReport(pl, r)?.price)}${roleReport(pl, r)?.isBroken ? "(破)" : roleReport(pl, r)?.status === "ref" ? "(参)" : ""}`).join(" ");
+  const rows = ROLES.map((r) => {
+    const it = roleReport(pl, r);
+    const tag = r === "structSupport" ? "支" : r === "structPressure" ? "压" : r === "tradeSupportS" ? "S" : "B";
+    const mark = !it ? "" : it.isBroken ? "(破)" : it.status === "ref" ? "(参)" : it.status === "weak" ? "(弱)" : "";
+    return `${tag}:${fmtN(it?.price)}${mark}`;
+  }).join(" ");
   if (missing === 0 && statusMismatch === 0) ok(`${tag} 图↔报告 ${chartLines.length} 根价格线全一致 [${rows}]`);
   else fail(`${tag} 缺失/异价 ${missing} 项，状态不符 ${statusMismatch} 项`);
   return bad + missing + statusMismatch;

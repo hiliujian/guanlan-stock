@@ -6,8 +6,8 @@
        纯前端校验：验证码仅在本机生成与比对，用于抬高自动化脚本的批量攻击成本；
        真正的限流兜底仍由后端（Supabase Auth 自带限流）承担。 -->
   <teleport to="body">
-    <view v-if="visible" class="modal-mask" @click.self="cancel">
-      <view class="modal-card">
+    <view v-if="visible" class="modal-mask" @click="cancel">
+      <view class="modal-card" @click.stop>
         <view class="modal-head">
           <text class="modal-title">人机验证</text>
           <view class="modal-close" @click="cancel" role="button" aria-label="关闭">

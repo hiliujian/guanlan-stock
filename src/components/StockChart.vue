@@ -52,7 +52,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } 
 import { init, dispose, registerIndicator, registerOverlay, ActionType } from "klinecharts";
 import { isDark } from "@/utils/theme";
 import { UP as UP_FALLBACK, DOWN as DOWN_FALLBACK, NO_CHANGE, TREND, INDICATOR_LINE_COLORS, cssColor } from "@/utils/colors";
-import { computeAutoLevelsFromSeries, resolvePeriodGuard, type AutoLevel } from "@/utils/autoLevels";
+import { computeAutoLevelsFromSeries, resolvePeriodGuard, TOL_PCT, type AutoLevel } from "@/utils/autoLevels";
 import type { Kline, Trend, PeriodKey } from "@/utils/period";
 import type { ChartAuxConfig } from "@/store/chartAux";
 import { MA_PERIODS, type ChartMaConfig } from "@/store/chartMa";
@@ -89,11 +89,14 @@ function clampBoxW(text: string, size: number, availW: number): number | undefin
 
 // 右侧 y 轴彩色实底白字标签统一构造（自动支压线 / 手绘横线 / 趋势线端点共用，消除重复样式块；
 // fib 标签画在图内左缘、结构不同，不共用）
+// 盒宽恒为整条价格轴宽：短文案行（如 sub「已破位」「参考位」）若只包住文字，同 y 的原生
+// 价格刻度会在右侧露出残片（实测「1,298.00」被切成「98/.00」与标签连成怪文案），整轴宽
+// 实底把该行刻度整体盖住，与原生最后价标签的遮罩行为一致。
 function axisTagFig(text: string, y: number, bg: string, availW: number, opts?: { size?: number }) {
   const size = opts?.size ?? 10;
   return {
     type: "text",
-    attrs: { x: 0, y, text, align: "left", baseline: "middle", width: clampBoxW(text, size, availW) },
+    attrs: { x: 0, y, text, align: "left", baseline: "middle", width: availW || clampBoxW(text, size, availW) },
     styles: {
       color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
       ...TEXT_PAD, size,
@@ -653,22 +656,55 @@ function buildLayout(): any[] {
   return layout;
 }
 
-// ---- 实时价同步（仅分时）----
+// ---- 实时价同步（分时 + K 线末根）----
+// 分时：末根按 tick 演进 close/high/low，量柱按「上一分钟收盘价」为 open 着色方向；
+// K 线：末根代表当日/周/月，open 为当日开盘价（不应随 tick 变化），仅 close/high/low 随实时价演进，
+// 让日 K 最后一根随 5s 实时快照跳动，不必等 60s refreshFull 整图刷新。
+// 同周期守卫：仅当末根属于「当前周期」时才更新（日 K 末根须为今日、周 K 末根须在本周、月 K 末根须在本月）。
+// 否则在周期切换日开盘（如日 K 换日 / 周 K 换周）的 refreshFull 到达前，会把上一周期末根误更新成今日价。
+function isLastBarCurrentPeriod(): boolean {
+  if (!dataList.length) return false;
+  const barTs = dataList[dataList.length - 1].timestamp;
+  const last = new Date(barTs);
+  const now = new Date();
+  const pk = props.period ?? "d";
+  if (pk === "d") {
+    return last.getFullYear() === now.getFullYear()
+      && last.getMonth() === now.getMonth()
+      && last.getDate() === now.getDate();
+  }
+  if (pk === "w") {
+    const day = now.getDay() || 7; // 周日 0 → 7
+    const weekStart = new Date(now);
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(now.getDate() - (day - 1)); // 本周一 00:00
+    return barTs >= weekStart.getTime();
+  }
+  if (pk === "M") {
+    return last.getFullYear() === now.getFullYear()
+      && last.getMonth() === now.getMonth();
+  }
+  return false; // 未知周期不更新，等 refreshFull 整图刷新
+}
+
 function applyLivePrice() {
-  if (props.mode !== "intraday" || !chart || !dataList.length) return;
+  if (!chart || !dataList.length) return;
   const lp = props.livePrice;
   if (typeof lp !== "number" || !isFinite(lp) || lp <= 0) return;
+  // K 线模式：末根不属于当前周期（如换日/换周/换月瞬间旧缓存）则跳过，等 refreshFull 拉到新末根再更新
+  if (props.mode === "kline" && !isLastBarCurrentPeriod()) return;
   const last = dataList[dataList.length - 1];
-  if (last) {
-    // 同步本地 dataList 末根（chart.updateData 只改图表），使累计「当日最高/最低」图例随实时价更新
-    last.high = Math.max(last.high, lp);
-    last.low = Math.min(last.low, lp);
-    last.close = lp;
-  }
+  if (!last) return;
+  // 同步本地 dataList 末根（chart.updateData 只改图表），使累计「当日最高/最低」图例随实时价更新
+  last.high = Math.max(last.high, lp);
+  last.low = Math.min(last.low, lp);
+  last.close = lp;
+  // open：分时取上一分钟收盘价（分钟级着色，量柱按 tick 方向判定）；
+  // K 线取当日/周/月 open（日线 open 不随 tick 变化），仅 close/high/low 随实时价演进
+  const openVal = props.mode === "intraday" ? (last.open ?? props.preClose ?? 0) : (last.open ?? 0);
   chart.updateData({
     timestamp: lastTs,
-    // open 保留上一分钟收盘价（分钟级着色），使实时最后一根的量柱颜色仍按 tick 方向判定
-    open: last.open ?? props.preClose ?? 0,
+    open: openVal,
     high: Math.max(last.high, lp),
     low: Math.min(last.low, lp),
     close: lp,
@@ -1087,18 +1123,38 @@ function drawAutoLevels() {
   if (props.mode === "intraday") return;
   const guard = resolvePeriodGuard(props.period ?? "d");
   const series = dataList as Kline[];
-  // 同方向价位去重仅在「结构线 + 交易线都开启」时生效：只开 S/B 或只开结构线时不去重，
-  // 否则交易线会被隐藏的结构线价位误伤（见 computeAutoLevelsFromSeries 的 dedupe 参数）
-  const levels = computeAutoLevelsFromSeries(series, guard, !!(cfg.structLine && cfg.tradeLine));
-  for (const lv of levels) {
-    // 多周期隔离：对应周期禁用的线种直接跳过（周禁 T；月禁 T/趋势）
-    if (guard.disableTrade && (lv.role === "tradeSupport" || lv.role === "tradePressure")) continue;
-    if (guard.disableTrend && lv.kind === "trend") continue;
-    // 结构线开关 → 结构支撑 + 结构压力（与交易参考线同色：绿/红）
-    if ((lv.role === "structSupport" || lv.role === "structPressure") && !cfg.structLine) continue;
-    // 交易参考线开关 → S 交易参考支撑 + B 交易参考压力（浅绿/浅红）
-    if ((lv.role === "tradeSupport" || lv.role === "tradePressure") && !cfg.tradeLine) continue;
-    if (lv.kind === "trend" && !cfg.trend) continue;
+  const levels = computeAutoLevelsFromSeries(series, guard);
+  // 多周期隔离 + 独立开关过滤
+  const visible = levels.filter((lv) => {
+    if (guard.disableTrade && (lv.role === "tradeSupport" || lv.role === "tradePressure")) return false;
+    if (guard.disableTrend && lv.kind === "trend") return false;
+    if ((lv.role === "structSupport" || lv.role === "structPressure") && !cfg.structLine) return false;
+    if ((lv.role === "tradeSupport" || lv.role === "tradePressure") && !cfg.tradeLine) return false;
+    if (lv.kind === "trend" && !cfg.trend) return false;
+    return true;
+  });
+  // 同角色价位重合（≤TOL_PCT，实测 ETF/指数极常见）：结构线与交易线画两条只会重叠描边，
+  // 故合并为「一根结构线 + 两枚角色标签栈（支 / S）」——四类线种永远可见又不产生重叠虚线。
+  // 仅当两个开关都开时合并；只开交易线时 S/B 仍独立画线。
+  const mergedTrade = new Set<AutoLevel>();
+  const extras = new Map<AutoLevel, { text: string; sub: string; bg: string }>();
+  if (cfg.structLine && cfg.tradeLine) {
+    const pairs: ["structSupport", "tradeSupport", "structPressure", "tradePressure"] =
+      ["structSupport", "tradeSupport", "structPressure", "tradePressure"];
+    for (let pi = 0; pi < 2; pi++) {
+      const sRole = pairs[pi * 2] as "structSupport" | "structPressure";
+      const tRole = pairs[pi * 2 + 1] as "tradeSupport" | "tradePressure";
+      const sLv = visible.find((l) => l.role === sRole);
+      const tLv = visible.find((l) => l.role === tRole);
+      if (sLv && tLv && typeof sLv.price === "number" && typeof tLv.price === "number" &&
+        Math.abs(sLv.price - tLv.price) / Math.max(sLv.price, tLv.price) <= TOL_PCT) {
+        mergedTrade.add(tLv);
+        extras.set(sLv, { text: `${tLv.tag ?? ""} ${tLv.price!.toFixed(3)}`, sub: tLv.sub || "", bg: tLv.bg });
+      }
+    }
+  }
+  for (const lv of visible) {
+    if (mergedTrade.has(lv)) { autoLevels.push(lv); continue; } // 标签已并入结构线，不另画 overlay（悬浮提示仍保留）
     const id = `auto_${lv.kind}_${Math.random().toString(36).slice(2, 7)}`;
     try {
       if (lv.kind === "trend" && lv.points) {
@@ -1112,7 +1168,7 @@ function drawAutoLevels() {
         const sub = lv.sub || "";
         chart.createOverlay({
           id, name: "autoLevelLine", points: [{ timestamp: t0, value: lv.price }], lock: true,
-          extendData: { text: main, sub, bg: lv.bg },
+          extendData: { text: main, sub, bg: lv.bg, extra: extras.get(lv) },
           styles: { line: { color: lv.color, style: lv.dashed ? "dashed" : "solid", size: lv.size || 1, dashedValue: [4, 3] } },
         } as never);
       }
@@ -1122,6 +1178,29 @@ function drawAutoLevels() {
       /* noop */
     }
   }
+  scheduleAutoVerify();
+}
+
+// 绘制后核验：applyNewData 异步解析、整图重建等时序下偶发 createOverlay 落不上（用户反馈"偶尔不显示"）。
+// 下一帧逐个核验 overlay 是否存活，缺失即整组补画一次（最多每帧一次，成本 ≤6 条线，可忽略）。
+let autoVerifyQueued = false;
+let autoVerifyMisses = 0;
+function scheduleAutoVerify() {
+  if (autoVerifyQueued || typeof requestAnimationFrame !== "function" || !autoIds.length) return;
+  autoVerifyQueued = true;
+  requestAnimationFrame(() => {
+    autoVerifyQueued = false;
+    if (!chart || !props.autoDraw) { autoVerifyMisses = 0; return; }
+    const expected = autoIds.slice();
+    const alive = expected.filter((id) => {
+      try { return !!chart!.getOverlayById(id); } catch { return false; }
+    }).length;
+    if (alive === expected.length) {
+      autoVerifyMisses = 0;
+    } else if (autoVerifyMisses++ < 2) {
+      drawAutoLevels(); // 最多连续补画 2 次，防止极端时序下自我追帧
+    }
+  });
 }
 
 // ---- 右侧 y 轴标签统一错位布局 ----
@@ -1152,7 +1231,11 @@ function buildYAxisLabelLayout(boundH: number): Map<string, number> {
     if (!o || o.name !== "autoLevelLine") continue;
     const y = toPaneY(o.points?.[0]?.value);
     if (y == null || y < 0 || y >= boundH) continue;
-    items.push({ key: id, y, h: o.extendData?.sub ? TAG_SUB_H : TAG_H });
+    // 主标签（含 sub 两行 33，否则 20）+ 同价位并入的交易角色标签（支+S 标签栈）
+    const ed = o.extendData;
+    let h = ed?.sub ? TAG_SUB_H : TAG_H;
+    if (ed?.extra) h += ed.extra.sub ? TAG_SUB_H : TAG_H;
+    items.push({ key: id, y, h });
   }
   // 手绘横线（kcHLine）与趋势线端点（kcTrend，每端点一枚标签）
   for (const id of overlayIds) {
@@ -1263,6 +1346,13 @@ function ensureTrendOverlay() {
         const sub = overlay?.extendData?.sub || "";
         const figs: any[] = [axisTagFig(main, top, bg, bounding.width)];
         if (sub) figs.push(axisTagFig(sub, top + 13, bg, bounding.width, { size: 8 }));
+        // 同价位并入的交易角色标签（支+S 双角色标签栈）：用交易色底，紧接主标签之下
+        const extra = overlay?.extendData?.extra as { text: string; sub: string; bg: string } | undefined;
+        if (extra) {
+          const eTop = top + (sub ? TAG_SUB_H : TAG_H);
+          figs.push(axisTagFig(extra.text, eTop, extra.bg, bounding.width));
+          if (extra.sub) figs.push(axisTagFig(extra.sub, eTop + 13, extra.bg, bounding.width, { size: 8 }));
+        }
         return figs;
       },
     } as never);

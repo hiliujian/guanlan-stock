@@ -6,8 +6,8 @@
 //   A. 真实行情（东财公开接口，与 App 同源）：22 只不同风格个股/指数（大盘股/成长/周期/
 //      科创/银行/券商/医药/指数），日/周/月三周期 + 历史滚动多截面，核验画线硬规则与交易合理性。
 //   B. 合成场景（已知答案 Ground-Truth）：上升/下降趋势线、回调禁画、
-//      破位降级、单脉冲过滤、数据不足空态、dedupe。
-//   C. 规则不变量：S/B 准入门槛、周期隔离、报告/图表一致性（dedupe 感知）。
+//      破位降级、单脉冲兜底、数据不足空态、同角色同价双出（绘制层合并标签）。
+//   C. 规则不变量：S/B 合格门槛（仅 status=ok 可驱动信号）、周期隔离、报告/图表逐价一致、四线必出。
 // ============================================================================
 import {
   computeAutoLevelsFromSeries,
@@ -71,9 +71,9 @@ function checkLevels(levels: AutoLevel[], cur: number, tag: string, series: any[
     if (!(typeof l.price === "number" && isFinite(l.price) && l.price > 0))
       bad(`${tag} 价格非法`, `price=${l.price}`);
   }
-  // 降级识别对齐 f2bdf6d 设计：轴标签恒为 压/支/S/B，破位/兜底由小字 sub（已破位/参考位）承载。
-  // 两者均为淡化参考线，不再按有效线做方位检查。
-  const degraded = (l: AutoLevel) => l.sub === "已破位" || l.sub === "参考位" || l.tag?.includes("破") || l.tag?.includes("参");
+  // 降级识别：轴标签恒为 压/支/S/B，破位/弱参考/兜底由小字 sub（已破位/弱参考/参考位）承载，
+  // 均为淡化参考线，不做有效线方位检查。
+  const degraded = (l: AutoLevel) => l.sub === "已破位" || l.sub === "参考位" || l.sub === "弱参考" || l.tag?.includes("破") || l.tag?.includes("参");
   // 方位合理性：非降级支撑不得悬在现价上方 / 压力不得坠在现价下方
   // （与算法同口径：cur<=0 的深度前复权历史截面属数据级负价，方位判定无意义，跳过）
   for (const l of sup)
@@ -109,11 +109,11 @@ function checkLevels(levels: AutoLevel[], cur: number, tag: string, series: any[
   return { sup, pres, trend };
 }
 
-// ---------- 一轮完整断言（周期隔离 + 结构必画 + 门槛复核 + 报告一致性） ----------
-function runOnce(series: any[], period: "d" | "w" | "M", tag: string, dedupe = true) {
+// ---------- 一轮完整断言（周期隔离 + 四线必出 + ok 门槛复核 + 报告一致性） ----------
+function runOnce(series: any[], period: "d" | "w" | "M", tag: string) {
   const guard = resolvePeriodGuard(period);
-  let levels = computeAutoLevelsFromSeries(series, guard, dedupe);
-  // 模拟 StockChart 渲染层过滤（StockChart.vue:927）：guard.disableTrend 时趋势线不渲染
+  let levels = computeAutoLevelsFromSeries(series, guard);
+  // 模拟 StockChart 渲染层过滤：guard.disableTrend 时趋势线不渲染
   if (guard.disableTrend) levels = levels.filter((l) => l.kind !== "trend");
   const cur = series[series.length - 1].close;
   const { sup, pres, trend } = checkLevels(levels, cur, tag, series);
@@ -124,26 +124,46 @@ function runOnce(series: any[], period: "d" | "w" | "M", tag: string, dedupe = t
     bad(`${tag} ${period}K 不应出现 S/B 交易参考线`);
   if (period === "M" && trend.length) bad(`${tag} 月K不应出现趋势线`);
 
-  // 结构线必须画出（series≥12 时）
-  if (series.length >= 12) {
-    if (!sup.some((l) => l.role === "structSupport")) bad(`${tag} 结构支撑缺失（必须画出规则）`);
-    if (!pres.some((l) => l.role === "structPressure")) bad(`${tag} 结构压力缺失（必须画出规则）`);
+  // 结构线必须画出（series≥MIN_BARS=5 时）：跨角色同价去重允许成对缺一侧，但至少留一根，
+  // 且图/报告逐角色有无必须同步（下方逐价一致循环 + 此处 presence 核对）
+  if (series.length >= 5) {
+    const chartSS = sup.some((l) => l.role === "structSupport");
+    const chartSP = pres.some((l) => l.role === "structPressure");
+    if (!chartSS && !chartSP) bad(`${tag} 结构线全缺（跨角色去重也至少留一根）`);
+    if (chartSS !== !!pl.structSupport) bad(`${tag} 结构支撑 图/报告 presence 不一致（图${chartSS} 报告${!!pl.structSupport}）`);
+    if (chartSP !== !!pl.structPressure) bad(`${tag} 结构压力 图/报告 presence 不一致（图${chartSP} 报告${!!pl.structPressure}）`);
+  }
+  // 日 K：交易参考 S/B 必须画出（仅 S≈B 跨角色同价去重可缺一侧，图/报告需同步）
+  if (period === "d" && series.length >= 5) {
+    const chartS = sup.some((l) => l.role === "tradeSupport");
+    const chartB = pres.some((l) => l.role === "tradePressure");
+    if (chartS !== !!pl.tradeSupportS) bad(`${tag} S 线 图/报告 presence 不一致（图${chartS} 报告${!!pl.tradeSupportS}）`);
+    if (chartB !== !!pl.tradePressureB) bad(`${tag} B 线 图/报告 presence 不一致（图${chartB} 报告${!!pl.tradePressureB}）`);
+    if (!chartS && !chartB && !(pl.tradeSupportS == null && pl.tradePressureB == null))
+      bad(`${tag} S/B 同时缺失且非跨角色去重（必须渲染规则）`);
   }
 
-  // 交易线准入门槛复核
+  // 交易线合格门槛复核：仅 status=ok 必须满足打分/触碰/未破位；降级态（broken/weak/ref）只核状态自洽
   for (const key of ["tradeSupportS", "tradePressureB"] as const) {
     const item = pl[key];
-    if (item) {
-      if (item.totalScore < MIN_TOTAL_SCORE) bad(`${tag} ${key} 总分${item.totalScore} < ${MIN_TOTAL_SCORE} 仍输出`);
-      if (item.touchCount < 2) bad(`${tag} ${key} 单脉冲（触碰${item.touchCount}次）仍输出`);
-      if (item.isBroken) bad(`${tag} ${key} 已破位仍在报告输出`);
+    if (!item) continue;
+    if (item.status === "ok") {
+      if (item.totalScore < MIN_TOTAL_SCORE) bad(`${tag} ${key} status=ok 但总分${item.totalScore} < ${MIN_TOTAL_SCORE}`);
+      if (item.touchCount < 2) bad(`${tag} ${key} status=ok 但触碰${item.touchCount}<2（单脉冲）`);
+      if (item.isBroken) bad(`${tag} ${key} status=ok 但 isBroken=true`);
+    } else if (item.status === "broken") {
+      if (!item.isBroken) bad(`${tag} ${key} status=broken 但 isBroken=false`);
+    } else if (item.status === "weak") {
+      if (item.isBroken) bad(`${tag} ${key} status=weak 不应 isBroken`);
+      if (item.level !== "弱") bad(`${tag} ${key} status=weak 评级应为弱`);
+    } else if (item.status === "ref") {
+      if (item.touchCount !== 0 || item.totalScore !== 0) bad(`${tag} ${key} status=ref 应为零分零触碰`);
     }
   }
-  // 报告侧方位一致性观察：isBroken=false 的支撑/压力应位于现价正确侧（当前报告无外部消费者，仅观察）
-  // status=ref（参考位·簇缺失兜底）为降级展示位，与图表淡化线同口径，允许位于任意一侧，不参与方位观察
+  // 报告侧方位一致性观察：仅 ok 态参与（broken/weak/ref 允许位于任意一侧）
   for (const key of ["structSupport", "tradeSupportS", "structPressure", "tradePressureB"] as const) {
     const it = pl[key];
-    if (!it || it.isBroken || it.status === "ref") continue;
+    if (!it || it.status !== "ok") continue;
     const isSup = key.includes("Support");
     if (isSup && it.price > cur * 1.001)
       caution(`${tag} 报告·${key} 有效支撑高于现价`, `${it.price.toFixed(2)} > 现价 ${cur.toFixed(2)}`);
@@ -161,19 +181,17 @@ function runOnce(series: any[], period: "d" | "w" | "M", tag: string, dedupe = t
         caution(`${tag} 下行趋势线但现价已高于最近递降高点`, `${cur.toFixed(2)} > ${lastVal.toFixed(2)}`);
     }
   }
-  // 报告/图表一致性（dedupe 感知：图表 S/B 被 dedupe 隐藏属设计行为）
-  for (const [key, role, structKey] of [
-    ["tradeSupportS", "tradeSupport", "structSupport"],
-    ["tradePressureB", "tradePressure", "structPressure"],
+  // 报告/图表逐价一致：每根图表价格线必须在报告同角色找到同价条目（同角色同价不再互相隐藏）
+  for (const [role, key] of [
+    ["tradeSupport", "tradeSupportS"],
+    ["tradePressure", "tradePressureB"],
+    ["structSupport", "structSupport"],
+    ["structPressure", "structPressure"],
   ] as const) {
-    const inChart = levels.some((l) => l.role === role);
-    const item = pl[key];
-    if (item && !inChart && dedupe && period === "d") {
-      const sp = pl[structKey]?.price;
-      const overlapped = sp != null && Math.abs(item.price - sp) / sp <= TOL_PCT;
-      if (!overlapped) bad(`${tag} 图表无${role}且非 dedupe 重叠（报告价 ${item.price.toFixed(2)} vs 结构 ${sp?.toFixed(2)}）`);
-    } else if (!!inChart !== !!item && !(item && !inChart)) {
-      bad(`${tag} 图表有${role}但报告无（不同步）`);
+    for (const lv of levels.filter((l) => l.role === role)) {
+      const it = (pl as any)[key];
+      if (!it || it.price !== lv.price)
+        bad(`${tag} 图表${role}@${lv.price?.toFixed(2)} 与报告${key}@${it?.price?.toFixed(2)} 不一致`);
     }
   }
   return { levels, cur, sup, pres, trend, pl };
@@ -226,7 +244,7 @@ for (const [secid, name] of STOCKS) {
     for (const cut of [30, 60, 90, 120, 180, 250]) {
       if (pk.length < cut + 40) continue;
       const hist = toSeries(pk.slice(0, pk.length - cut));
-      checkLevels(computeAutoLevelsFromSeries(hist, resolvePeriodGuard(period), true), hist[hist.length - 1].close, `${name}·${period}·T-${cut}`, hist);
+      checkLevels(computeAutoLevelsFromSeries(hist, resolvePeriodGuard(period)), hist[hist.length - 1].close, `${name}·${period}·T-${cut}`, hist);
     }
   }
 }
@@ -289,8 +307,7 @@ console.log("\n📉 场景4：阶梯回落 → 下降趋势线");
 console.log("\n💥 场景5：支撑破位 → 淡化+破标注（不隐藏）");
 {
   const series = [...zigzag(8, 10), ...dn(6, 10, -3.5, 0.5)];
-  const guard = resolvePeriodGuard("d");
-  const levels = computeAutoLevelsFromSeries(series, guard, true);
+  const levels = computeAutoLevelsFromSeries(series, resolvePeriodGuard("d"));
   const cur = series[series.length - 1].close;
   const sup = levels.find((l) => l.role === "structSupport");
   if (!sup) bad("合成·破位 结构支撑缺失");
@@ -298,58 +315,64 @@ console.log("\n💥 场景5：支撑破位 → 淡化+破标注（不隐藏）")
   else caution("合成·破位 支撑未标破", `tag=${sup.tag} line=${sup.price?.toFixed(2)} 现价=${cur.toFixed(2)}`);
 }
 
-// 场景6：单根深针脉冲（仅 1 个摆动低点）→ 不生成 S 线
-console.log("\n📌 场景6：单脉冲插针 → 无 S/B");
+// 场景6：单根深针脉冲（仅 1 个摆动低点）→ S 不隐藏，降级为「参考位」淡化兜底
+console.log("\n📌 场景6：单脉冲插针 → S 降级参考位（必须渲染，不隐藏）");
 {
   const base = up(15, 10, 0.8, 0.3);
   const p = base[14].close;
   const spike = bar(p, p * 0.985, p * 1.002, p * 0.92); // 单根 -8% 深针
   const recover = up(3, p * 0.985, 0.8, 0.3);
   const series = [...base, spike, ...recover];
-  const levels = computeAutoLevelsFromSeries(series, resolvePeriodGuard("d"), true);
+  const levels = computeAutoLevelsFromSeries(series, resolvePeriodGuard("d"));
   const sLine = levels.find((l) => l.role === "tradeSupport");
   const bLine = levels.find((l) => l.role === "tradePressure");
-  if (sLine) caution("合成·单脉冲 出现 S 线（若簇≥2 次触碰则合理）", `price=${sLine.price?.toFixed(2)}`);
-  else ok("合成·单脉冲 无 S 线");
-  if (bLine) caution("合成·单脉冲 出现 B 线", `price=${bLine.price?.toFixed(2)}`);
+  if (!sLine) bad("合成·单脉冲 S 线缺失（违反必须渲染规则）");
+  else if (sLine.sub === "参考位") ok("合成·单脉冲 S 降级参考位", `price=${sLine.price?.toFixed(2)}（深针摆动点兜底）`);
+  else caution("合成·单脉冲 S 非参考位降级", `sub=${sLine.sub} price=${sLine.price?.toFixed(2)}`);
+  if (!bLine) bad("合成·单脉冲 B 线缺失（违反必须渲染规则）");
+  else if (bLine.sub === "参考位" || bLine.sub === "弱参考") ok("合成·单脉冲 B 降级渲染", `sub=${bLine.sub} price=${bLine.price?.toFixed(2)}`);
+  else caution("合成·单脉冲 B 非降级态", `sub=${bLine.sub} price=${bLine.price?.toFixed(2)}`);
 }
 
-// 场景7：数据不足（<12 根）→ 空输出
+// 场景7：数据不足（<MIN_BARS=5 根）→ 空输出
 console.log("\n🚫 场景7：数据不足 → 空输出");
 {
-  const levels = computeAutoLevelsFromSeries(up(8, 10), resolvePeriodGuard("d"), true);
-  if (levels.length) bad("合成·短数据 仍输出画线", `${levels.length} 条`);
+  const empty = computeAutoLevelsFromSeries(up(3, 10), resolvePeriodGuard("d"));
+  if (empty.length) bad("合成·短数据(3根) 仍输出画线", `${empty.length} 条`);
   else ok("合成·短数据 空输出");
+  const enough = computeAutoLevelsFromSeries(up(5, 10), resolvePeriodGuard("d"));
+  if (enough.some((l) => l.kind !== "trend")) ok("合成·5根 触发兜底输出价格线");
+  else caution("合成·5根 未输出任何价格线");
 }
 
-// 场景8：dedupe 开关 — S 与结构支撑同价时仅留结构线；dedupe=false 时 S 保留
-console.log("\n🎯 场景8：同价去重 dedupe");
+// 场景8：同角色同价 — 映射层 S 与结构支撑同价时两根线都输出（绘制层 StockChart 合并为双标签）
+console.log("\n🎯 场景8：同角色同价双出（映射层不隐藏）");
 {
   const series = zigzag(9, 15);
-  const on = computeAutoLevelsFromSeries(series, resolvePeriodGuard("d"), true);
-  const off = computeAutoLevelsFromSeries(series, resolvePeriodGuard("d"), false);
-  const sOn = on.find((l) => l.role === "tradeSupport");
-  const sOff = off.find((l) => l.role === "tradeSupport");
-  const ss = on.find((l) => l.role === "structSupport");
-  if (sOn && ss && Math.abs(sOn.price! - ss.price!) / ss.price! <= TOL_PCT)
-    bad("合成·dedupe S 与结构支撑同价未去重");
-  else ok("合成·dedupe 同价去重正确", `S(on)=${!!sOn} S(off)=${!!sOff} 结构=${!!ss}`);
+  const out = computeAutoLevelsFromSeries(series, resolvePeriodGuard("d"));
+  const s = out.find((l) => l.role === "tradeSupport");
+  const ss = out.find((l) => l.role === "structSupport");
+  if (!s) bad("合成·同价 S 线缺失（映射层必须输出，合并由绘制层负责）");
+  else if (ss && Math.abs(s.price! - ss.price!) / ss.price! <= TOL_PCT)
+    ok("合成·同价 S 与结构支撑双出", `S=${s.price?.toFixed(2)} 支=${ss.price?.toFixed(2)}（绘制层合并标签）`);
+  else ok("合成·同价 S 正常输出（本例未与结构线重合）", `S=${s.price?.toFixed(2)} 支=${ss?.price?.toFixed(2)}`);
 }
 
-// 场景9：单根击穿中枢（不足连续2根）→ 错误侧守卫：结构线与 S 降级「破」而非显示有效
+// 场景9：单根击穿中枢（不足连续2根）→ 错误侧守卫：结构线与 S 不应显示为有效
 console.log("\n💥 场景9：单根击穿中枢 → 错误侧降级（非连续2根破位）");
 {
   const series = [...zigzag(8, 10), bar(9.95, 9.85, 9.98, 9.8)]; // 末根收盘 9.85 < 支撑中枢 9.88，仅 1 根
   const cur = series[series.length - 1].close;
-  const levels = computeAutoLevelsFromSeries(series, resolvePeriodGuard("d"), false);
+  const levels = computeAutoLevelsFromSeries(series, resolvePeriodGuard("d"));
   const ss = levels.find((l) => l.role === "structSupport");
   const s = levels.find((l) => l.role === "tradeSupport");
   if (!ss) bad("合成·单根击穿 结构支撑缺失");
   else if (ss.sub === "已破位") ok("合成·单根击穿 结构支撑错误侧降级", `tag=${ss.tag} sub=${ss.sub} line=${ss.price?.toFixed(2)} 现价=${cur.toFixed(2)}`);
   else caution("合成·单根击穿 结构支撑未降级", `tag=${ss.tag} line=${ss.price?.toFixed(2)} 现价=${cur.toFixed(2)}`);
-  if (s && s.sub === "已破位") ok("合成·单根击穿 S 交易支撑错误侧降级", `tag=${s.tag} sub=${s.sub} line=${s.price?.toFixed(2)}`);
-  else if (s) caution("合成·单根击穿 S 未降级", `tag=${s.tag} line=${s.price?.toFixed(2)}`);
-  else ok("合成·单根击穿 无 S（准入未过/失效）", "S 未输出亦满足不误导");
+  if (!s) bad("合成·单根击穿 S 交易支撑缺失（必须渲染规则）");
+  else if (s.sub === "已破位") ok("合成·单根击穿 S 交易支撑错误侧降级", `tag=${s.tag} sub=${s.sub} line=${s.price?.toFixed(2)}`);
+  else if (s.sub === "弱参考" || s.sub === "参考位") ok("合成·单根击穿 S 以降级态渲染", `tag=${s.tag} sub=${s.sub} line=${s.price?.toFixed(2)}`);
+  else caution("合成·单根击穿 S 为有效态", `tag=${s.tag} line=${s.price?.toFixed(2)}（仅 1 根击穿需核实门槛）`);
 }
 
 // 场景10：前复权负价（高分红股深度历史，如实测中远海控月/周K）→ 不输出非正价位线
@@ -364,7 +387,7 @@ console.log("\n🧯 场景10：前复权负价 → 无非正价位线");
     p = c;
   }
   const series = [...neg, ...good];
-  const levels = computeAutoLevelsFromSeries(series, resolvePeriodGuard("d"), false);
+  const levels = computeAutoLevelsFromSeries(series, resolvePeriodGuard("d"));
   const badPrice = levels.filter((l) => l.kind !== "trend" && (l.price == null || l.price <= 0));
   if (badPrice.length) bad("合成·负价 输出非正价位线", badPrice.map((l) => `${l.tag}@${l.price}`).join(" "));
   else ok("合成·负价 图表无非正价位线", `${levels.filter((l) => l.kind !== "trend").length} 条价位线全部为正`);

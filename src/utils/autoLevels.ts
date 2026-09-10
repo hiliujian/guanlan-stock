@@ -17,11 +17,12 @@ const BAND_WIN = 30;      // 波段观测窗口：结构支撑/压力计算，�
 const TRADE_WIN = 20;     // 短线观测窗口：交易参考支撑/压力计算，滚动右移
 export const TOL_PCT = 0.008;    // 价格聚类容差：abs(p1-p2)/max(p1,p2) ≤0.008 视为同一价格簇，一簇仅输出 1 条线
 const SWING_WIN = 2;      // 摆动点左右确认 K 线：左右各 2 根验证；靠近首尾不足则不生成摆动点
+const MIN_BARS = SWING_WIN * 2 + 1; // 最少 K 线数（5）：低于该数形态无统计意义，不产生任何价位；次新股/周月K短历史也能兜底出位
 const SWING_FREQ_MAX = 40;// 触碰频次满分
 const SWING_REV_MAX = 35; // 反转反应满分
 const SWING_SWAP_MAX = 25;// 角色互换满分
-const MIN_TOUCH_COUNT = 2;   // S/B 最低触碰次数（价格簇摆动点个数）：单根插针脉冲（仅 1 个摆动点）不生成 S/B
-export const MIN_TOTAL_SCORE = 30;  // S/B 总分最低合格门槛：综合打分 < 30 不渲染（杜绝弱位错出买卖信号）
+const MIN_TOUCH_COUNT = 2;   // 合格价格簇最低摆动点个数；不足者不形成簇（交易线改走最近摆动点/窗口极值兜底，降级为参考位）
+export const MIN_TOTAL_SCORE = 30;  // S/B 合格簇总分门槛：<30 或触碰<2 仍渲染但降级为淡化「弱参考」，不驱动买卖信号
 const BREAK_CONFIRM_CNT = 2; // 连续 N 根实体收盘击穿判定价位失效（仅尾部连续计入；单根影线/历史破位已收回不计）
 const VOL_MULTIPLE = 1.3;    // 放量阈值（相对 VMA20）：触碰时量能 > VMA20*1.3 视为放量确认
 
@@ -64,7 +65,7 @@ function median(arr: number[]): number {
 type BandType = "uptrend" | "downtrend" | "pullback" | "bounce" | "box";
 
 // 判定当前所处波段类型（5 类），输入 highs/lows 来自 30 根波段窗口。
-// breakDown：箱体/上涨结构但现价跌破前摆动低点→结构已破坏，统一判定支撑失效（结构支撑 + 交易S 全部隐藏），压力线保留。
+// breakDown：箱体/上涨结构但现价跌破前摆动低点→结构已破坏，相关支撑统一判为「已破位」淡化展示（不隐藏），压力线正常保留。
 function detectBandType(highs: SwingPt[], lows: SwingPt[], series: any[], current: number): { band: BandType; breakDown: boolean } {
   const has2H = highs.length >= 2;
   const has2L = lows.length >= 2;
@@ -108,7 +109,7 @@ function detectBandType(highs: SwingPt[], lows: SwingPt[], series: any[], curren
   if (hh && hl) {
     const pulledBack = !!lastH && current < lastH.value;  // 从近端高位回落
     const prevLow = prevL ? prevL.value : (lastL ? lastL.value : -Infinity);
-    if (current < prevLow) return { band: "box", breakDown: true }; // 跌破前低→结构已破坏，降级箱体，屏蔽全部 S 交易参考线、仅保留 B 压力线
+    if (current < prevLow) return { band: "box", breakDown: true }; // 跌破前低→结构破坏：支撑/S 全部按「已破位」淡化，B 压力线正常保留
     if (pulledBack && current >= prevLow) return { band: "pullback", breakDown: false }; // 未跌破近端前低
     return { band: "uptrend", breakDown: false };
   }
@@ -333,8 +334,7 @@ interface RawLevel {
   price: number | null;
   cluster: PriceCluster | null;
   sc: ClusterScore | null;
-  broken: boolean;  // 原始破位（连续实体击穿）
-  invalid: boolean; // 实际失效应隐藏：结构线 = broken||breakDown；交易线 = 同上 || 总分<门槛
+  broken: boolean;  // 原始破位（连续实体击穿）；降级展示与否由 ensure*Line 统一裁决
 }
 interface RawLevels {
   band: BandType;
@@ -343,6 +343,8 @@ interface RawLevels {
   boxTop: number | null;
   highs: SwingPt[];
   lows: SwingPt[];
+  tradeHighs: SwingPt[]; // 短线窗口（20 根）摆动高点：交易参考线簇缺失时兜底用
+  tradeLows: SwingPt[];  // 短线窗口摆动低点
   structSupport: RawLevel;
   structPressure: RawLevel;
   tradeSupportS: RawLevel;
@@ -351,17 +353,17 @@ interface RawLevels {
 function emptyRaw(): RawLevels {
   return {
     band: "box", breakDown: false, boxBottom: null, boxTop: null,
-    highs: [], lows: [],
-    structSupport: { price: null, cluster: null, sc: null, broken: false, invalid: true },
-    structPressure: { price: null, cluster: null, sc: null, broken: false, invalid: true },
-    tradeSupportS: { price: null, cluster: null, sc: null, broken: false, invalid: true },
-    tradePressureB: { price: null, cluster: null, sc: null, broken: false, invalid: true },
+    highs: [], lows: [], tradeHighs: [], tradeLows: [],
+    structSupport: { price: null, cluster: null, sc: null, broken: false },
+    structPressure: { price: null, cluster: null, sc: null, broken: false },
+    tradeSupportS: { price: null, cluster: null, sc: null, broken: false },
+    tradePressureB: { price: null, cluster: null, sc: null, broken: false },
   };
 }
 function buildRawLevels(series: any[], guard: PeriodGuard, ctx?: LevelCtx): RawLevels {
   const last = series[series.length - 1];
   const current = last?.close ?? 0;
-  if (!series || series.length < 12) return emptyRaw();
+  if (!series || series.length < MIN_BARS) return emptyRaw();
   const bandSeries = guard.bandWin > 0 ? series.slice(-guard.bandWin) : [];
   const tradeSeries = guard.tradeWin > 0 ? series.slice(-guard.tradeWin) : [];
   const sw = findSwings(bandSeries, SWING_WIN);
@@ -392,44 +394,34 @@ function buildRawLevels(series: any[], guard: PeriodGuard, ctx?: LevelCtx): RawL
   // 点位取值：结构线取拐点 K 实体边缘（横盘取平台中轴）；交易参考线取筹码密集中枢
   const structSupPrice = supStruct ? (band === "box" ? supStruct.cl.center : bodyEdge(supStruct.cl, "support")) : null;
   const structPresPrice = presStruct ? (band === "box" ? presStruct.cl.center : bodyEdge(presStruct.cl, "pressure")) : null;
-
-  // 统一失效判定（破位隐藏）：结构/交易支撑线在「连续2根实体击穿(sc.broken)」或「箱体破位(breakDown)」任一成立时即视为失效，
-  // 全部过滤不渲染，不再区分两套隐藏规则；仅保留未被击穿的有效价位线。压力线仅受自身 sc.broken 约束（箱体破位不影响上沿阻力）。
-  const supInvalid = (supStruct?.sc.broken ?? false) || breakDown;
-  const presInvalid = presStruct?.sc.broken ?? false;
-  const supTradeInvalid = (supTrade?.sc.broken ?? false) || breakDown;
-  const presTradeInvalid = presTrade?.sc.broken ?? false;
+  // 失效不再在原始层隐藏：破位/错误侧由 ensureStructLine/ensureTradeLine 统一降级渲染（淡化 + 已破位/弱参考/参考位）。
 
   return {
     band, breakDown, boxBottom, boxTop, highs, lows,
+    tradeHighs: tradeSwings.highs, tradeLows: tradeSwings.lows,
     structSupport: {
       price: structSupPrice,
       cluster: supStruct?.cl ?? null,
       sc: supStruct?.sc ?? null,
       broken: supStruct?.sc.broken ?? false,
-      invalid: !(supStruct && !supInvalid && structSupPrice != null),
     },
     structPressure: {
       price: structPresPrice,
       cluster: presStruct?.cl ?? null,
       sc: presStruct?.sc ?? null,
       broken: presStruct?.sc.broken ?? false,
-      invalid: !(presStruct && !presInvalid && structPresPrice != null),
     },
     tradeSupportS: {
       price: supTrade ? supTrade.cl.center : null,
       cluster: supTrade?.cl ?? null,
       sc: supTrade?.sc ?? null,
       broken: supTrade?.sc.broken ?? false,
-      // 门槛用 baseScore（与四维修正解耦）：图表（无 ctx）与报告（有 ctx）判同一有效性
-      invalid: !(supTrade && !supTradeInvalid && supTrade.sc.baseScore >= MIN_TOTAL_SCORE && supTrade.cl.center != null),
     },
     tradePressureB: {
       price: presTrade ? presTrade.cl.center : null,
       cluster: presTrade?.cl ?? null,
       sc: presTrade?.sc ?? null,
       broken: presTrade?.sc.broken ?? false,
-      invalid: !(presTrade && !presTradeInvalid && presTrade.sc.baseScore >= MIN_TOTAL_SCORE && presTrade.cl.center != null),
     },
   };
 }
@@ -460,32 +452,33 @@ function fadeColor(hex: string, alpha: number): string {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
-// 结构线「必须画出」：优先有效簇价；破位（实体击穿/箱体破位）→ 仍显示原价但淡化+「破」标注；
-// 无簇 → 最近摆动点，再无 → 窗口极值，仅淡化展示（不渲染「参考位」小字标签，避免干扰视图）。
-// 返回 null 仅当数据不足（buildRawLevels 空态）。
+// 结构线「必须画出」：优先有效簇价；破位（实体击穿/箱体破位）→ 仍显示原价但淡化+「已破位」标注；
+// 无簇 → 最近摆动点，再无 → 窗口极值，淡化 +「参考位」标注。返回 null 仅当数据不足/周期禁结构线。
 function ensureStructLine(
   series: any[], raw: RawLevels, role: "support" | "pressure", guard: PeriodGuard
 ): { price: number; tag: string; sub: string; label: string; src: string; degraded: boolean } | null {
   const r = role === "support" ? raw.structSupport : raw.structPressure;
-  // 数据不足（buildRawLevels 空态）→ 不画，尊重原逻辑
-  if (!series || series.length < 12) return null;
+  // 数据不足（少于 MIN_BARS）或周期守卫禁结构线（分时）→ 不画
+  if (guard.disableStruct || !series || series.length < MIN_BARS) return null;
   const L = BAND_LABELS[raw.band];
   const base = role === "support" ? L.sS : L.sP;
   const srcBase = role === "support" ? "结构支撑" : "结构压力";
+  const current = series[series.length - 1]?.close ?? 0;
   if (r.price != null) {
     // 破位（连续实体击穿，或支撑遇箱体破位）→ 不隐藏，淡化 + 「破」标注
     const broken = r.broken || (role === "support" && raw.breakDown);
     // 错误侧守卫：现价已越过画线（收于支撑线下方 / 压力线上方）→ 即使未达「连续2根击穿簇中枢」
     // 判破基准（画线基准=实体边缘 ≠ 判破基准=簇中枢，存在价格长期驻留画线错误侧的窗口），
     // 也按破位降级标注，杜绝「有效支撑悬在头顶 / 有效压力坠在脚下」的视觉误导。
-    const current = series[series.length - 1]?.close ?? 0;
     const wrongSide = current > 0 && (role === "support" ? current < r.price : current > r.price);
     if (broken || wrongSide) return { price: r.price, tag: base.tag, sub: "已破位", label: base.name, src: `${srcBase}·已破位（原价位 ${r.price.toFixed(3)}）`, degraded: true };
     return { price: r.price, tag: base.tag, sub: "", label: base.name, src: `${srcBase}·波段${role === "support" ? "低点" : "高点"}簇 No.1`, degraded: false };
   }
-  // 簇缺失 → 最近摆动点；再无 → 窗口极值（前复权负价守卫：仅取正价）
+  // 簇缺失 → 最近摆动点；若最近摆动点已在现价错误侧（突破/破位行情）改用窗口极值
+  // （极值窗口含当前 K，必在正确侧）；再无正价极值则不画。
   const pts = role === "support" ? raw.lows : raw.highs;
   let price: number | null = pts.length ? pts[pts.length - 1].value : null;
+  if (price != null && current > 0 && (role === "support" ? price > current : price < current)) price = null;
   if (price == null) {
     const sl = (guard.bandWin > 0 ? series.slice(-guard.bandWin) : series)
       .map((d: any) => (role === "support" ? d.low : d.high))
@@ -493,65 +486,119 @@ function ensureStructLine(
     if (!sl.length) return null;
     price = role === "support" ? Math.min(...sl) : Math.max(...sl);
   }
-  return { price, tag: base.tag, sub: "", label: base.name, src: `${srcBase}·参考位（簇缺失兜底）`, degraded: true };
+  return { price, tag: base.tag, sub: "参考位", label: base.name, src: `${srcBase}·参考位（簇缺失兜底）`, degraded: true };
+}
+
+// 交易参考线状态：ok=合格可执行参考；broken=破位/现价错误侧（淡化+已破位）；
+// weak=簇存在但触碰/打分证据不足（淡化+弱参考）；ref=无簇兜底最近短线摆动点/窗口极值（淡化+参考位）。
+export type TradeLineStatus = "ok" | "broken" | "weak" | "ref";
+export interface TradeLineState {
+  price: number;
+  status: TradeLineStatus;
+  tag: string;
+  sub: string;
+  label: string;
+  src: string;
+  sc: ClusterScore | null;
+}
+// 交易参考线「必须画出」：合格簇 → 正常动作提示；破位/错误侧 → 淡化「已破位」；
+// 证据不足（低分/少触碰）→ 淡化「弱参考」；无簇 → 最近短线摆动点 → 短线窗口极值，淡化「参考位」。
+// 与结构线同一兜底哲学：任何情况下日 K 都给得出 S/B 两条参考，但不可执行的降级线绝不动作话术误导。
+function ensureTradeLine(
+  series: any[], raw: RawLevels, role: "support" | "pressure", guard: PeriodGuard
+): TradeLineState | null {
+  if (guard.disableTrade || !series || series.length < MIN_BARS) return null;
+  const r = role === "support" ? raw.tradeSupportS : raw.tradePressureB;
+  const cur = series[series.length - 1]?.close ?? 0;
+  const L = BAND_LABELS[raw.band];
+  const base = role === "support" ? L.tS : L.tP;
+  const srcBase = role === "support" ? "交易参考支撑" : "交易参考压力";
+  const sideText = role === "support" ? "低点" : "高点";
+  if (r.price != null) {
+    // 错误侧守卫：现价已越过 S（在其下方）/B（在其上方）→ 按破位降级
+    const wrongSide = cur > 0 && (role === "support" ? r.price > cur : r.price < cur);
+    const broken = r.broken || (role === "support" && raw.breakDown) || wrongSide;
+    const weak = !broken && (r.sc == null || r.sc.baseScore < MIN_TOTAL_SCORE || r.sc.touches < MIN_TOUCH_COUNT);
+    const status: TradeLineStatus = broken ? "broken" : weak ? "weak" : "ok";
+    const sub = status === "ok" ? base.sub : status === "broken" ? "已破位" : "弱参考";
+    const src = status === "ok"
+      ? `${srcBase}·短线${sideText}簇 No.1`
+      : status === "broken"
+        ? `${srcBase}·已破位（原价位 ${r.price.toFixed(3)}）`
+        : `${srcBase}·弱参考位（触碰/反转证据不足）`;
+    return { price: r.price, status, tag: base.tag, sub, label: base.name, src, sc: r.sc };
+  }
+  // 簇缺失 → 最近短线摆动点；若其已在现价错误侧（突破/破位行情）改用短线窗口极值
+  // （窗口含当前 K，必在正确侧）；再无正价极值则不画。
+  const pts = role === "support" ? raw.tradeLows : raw.tradeHighs;
+  let price: number | null = pts.length ? pts[pts.length - 1].value : null;
+  if (price != null && cur > 0 && (role === "support" ? price > cur : price < cur)) price = null;
+  if (price == null) {
+    const sl = (guard.tradeWin > 0 ? series.slice(-guard.tradeWin) : series)
+      .map((d: any) => (role === "support" ? d.low : d.high))
+      .filter((v: number) => v > 0);
+    if (!sl.length) return null;
+    price = role === "support" ? Math.min(...sl) : Math.max(...sl);
+  }
+  return { price, status: "ref", tag: base.tag, sub: "参考位", label: base.name, src: `${srcBase}·参考位（簇缺失兜底）`, sc: null };
+}
+
+// 跨角色同价位去重：支撑与压力价位差 ≤TOL_PCT 时（实测如纺织服饰支@13665.82/压@13666.33），
+// 保留现价「正确侧」那根（现价在其上方→支撑；在其下方→压力），另一根必然是破位降级线，丢弃以免重叠误导。
+function pruneCrossRole<T extends { price?: number }>(
+  sup: T | null, pres: T | null, cur: number
+): [T | null, T | null] {
+  if (sup && pres && typeof sup.price === "number" && typeof pres.price === "number" &&
+    Math.abs(sup.price - pres.price) / Math.max(sup.price, pres.price) <= TOL_PCT) {
+    return sup.price <= cur ? [sup, null] : [null, pres];
+  }
+  return [sup, pres];
 }
 
 /**
  * 图表智能标注映射。
- * @param dedupe 同方向价位去重：交易 S/B 与结构支撑/压力价差 ≤TOL_PCT 时隐藏交易线只留结构线。
- *   仅当「结构线 + 交易线开关都开启」时传入 true；只开其中一种线时传 false——此时两线本就
- *   不会同时显示，去重反而会误伤（结构线关时交易线被隐藏的结构价位"误伤"隐藏）。
+ * 结构线与交易参考线「各自必出」：即使价位重合（≤TOL_PCT）也不互相隐藏，
+ * 重合时由 StockChart 绘制层把交易标签并入结构线标签栈（同一条线显示支+S 两枚角色标签），
+ * 既保证四类线种永远可见，又不画重叠虚线。跨角色（支≈压）仍只保留现价正确侧那根。
  */
-export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard, dedupe = true): AutoLevel[] {
+export function computeAutoLevelsFromSeries(series: any[], guard: PeriodGuard): AutoLevel[] {
   const raw = buildRawLevels(series, guard);
   const cur = series[series.length - 1]?.close ?? 0;
-  const L = BAND_LABELS[raw.band];
-  const out: AutoLevel[] = [];
 
-  // 结构支撑/压力「必须画出」：破位（连续实体击穿/箱体破位）不再隐藏，淡化+「破」标注；
-  // 簇缺失（摆动点不足/分散）退化为最近摆动点或窗口极值，仅淡化展示（不渲染「参考位」小字标签）。杜绝"时有时无"。
-  // 报告侧 computePriceLevels 对此类价位以 isBroken 判失效（含同一错误侧守卫），两端口径一致。
+  // 结构支撑/压力「必须画出」：破位（连续实体击穿/箱体破位/现价错误侧）淡化+「已破位」标注；
+  // 簇缺失（摆动点不足/分散）退化为最近摆动点或窗口极值，仅淡化展示。杜绝"时有时无"。
+  let sSup: AutoLevel | null = null, sPres: AutoLevel | null = null;
   const sup = ensureStructLine(series, raw, "support", guard);
   if (sup) {
-    out.push({ kind: "support", role: "structSupport", price: sup.price, color: sup.degraded ? fadeColor(SUPPORT_COLOR, 0.5) : SUPPORT_COLOR, bg: SUPPORT_COLOR, size: 1, dashed: true, tag: sup.tag, sub: sup.sub, label: sup.label, src: sup.src });
+    sSup = { kind: "support", role: "structSupport", price: sup.price, color: sup.degraded ? fadeColor(SUPPORT_COLOR, 0.5) : SUPPORT_COLOR, bg: SUPPORT_COLOR, size: 1, dashed: true, tag: sup.tag, sub: sup.sub, label: sup.label, src: sup.src };
   }
   const pres = ensureStructLine(series, raw, "pressure", guard);
   if (pres) {
-    out.push({ kind: "pressure", role: "structPressure", price: pres.price, color: pres.degraded ? fadeColor(PRESSURE_COLOR, 0.5) : PRESSURE_COLOR, bg: PRESSURE_COLOR, size: 1, dashed: true, tag: pres.tag, sub: pres.sub, label: pres.label, src: pres.src });
+    sPres = { kind: "pressure", role: "structPressure", price: pres.price, color: pres.degraded ? fadeColor(PRESSURE_COLOR, 0.5) : PRESSURE_COLOR, bg: PRESSURE_COLOR, size: 1, dashed: true, tag: pres.tag, sub: pres.sub, label: pres.label, src: pres.src };
   }
-  const structSupPrice = sup?.price ?? null;
-  const structPresPrice = pres?.price ?? null;
+  // 跨角色同价位（支≈压）只保留现价正确侧那根
+  [sSup, sPres] = pruneCrossRole(sSup, sPres, cur);
 
-  // 交易参考支撑（红细虚线，挂载 S 标签；与结构线同价则去重，避免密集平行线）
-  // 硬性准入统一由 buildRawLevels 的 invalid 判定（单脉冲过滤 + baseScore≥门槛 + 未破位）
-  // 错误侧守卫：现价已收于 S 中枢上方不足「连续2根」时仍会短暂驻留错误侧 → 降级「破」而非显示有效低吸参考
-  if (!raw.tradeSupportS.invalid && raw.tradeSupportS.price != null) {
-    const price = raw.tradeSupportS.price;
-    const overlap = dedupe && structSupPrice != null && Math.abs(price - structSupPrice) / structSupPrice <= TOL_PCT;
-    const wrongSide = cur > 0 && price > cur;
-    if (!overlap)
-      out.push({
-        kind: "support", role: "tradeSupport", price,
-        color: wrongSide ? fadeColor(TRADE_SUPPORT_COLOR, 0.5) : TRADE_SUPPORT_COLOR, bg: TRADE_SUPPORT_COLOR,
-        size: 1, dashed: true,
-        tag: L.tS.tag, sub: wrongSide ? "已破位" : L.tS.sub,
-        label: L.tS.name, src: wrongSide ? `交易参考支撑·已破位（原价位 ${price.toFixed(3)}）` : "交易参考支撑·短线低点簇 No.1",
-      });
-  }
-  // 交易参考压力（绿细虚线，挂载 B 标签；硬性准入同上，统一由 invalid 判定；错误侧守卫同上）
-  if (!raw.tradePressureB.invalid && raw.tradePressureB.price != null) {
-    const price = raw.tradePressureB.price;
-    const overlap = dedupe && structPresPrice != null && Math.abs(price - structPresPrice) / structPresPrice <= TOL_PCT;
-    const wrongSide = cur > 0 && price < cur;
-    if (!overlap)
-      out.push({
-        kind: "pressure", role: "tradePressure", price,
-        color: wrongSide ? fadeColor(TRADE_PRESSURE_COLOR, 0.5) : TRADE_PRESSURE_COLOR, bg: TRADE_PRESSURE_COLOR,
-        size: 1, dashed: true,
-        tag: L.tP.tag, sub: wrongSide ? "已破位" : L.tP.sub,
-        label: L.tP.name, src: wrongSide ? `交易参考压力·已破位（原价位 ${price.toFixed(3)}）` : "交易参考压力·短线高点簇 No.1",
-      });
-  }
+  // 交易参考 S/B「必须画出」：ok=正常动作色 + 动作提示；broken/weak/ref 一律淡化展示中性话术，
+  // 绝不以可执行的「低吸/减仓」话术呈现弱位。与结构线同价时两根线都保留（绘制层合并为标签栈）。
+  const mkTrade = (st: TradeLineState | null, role: "tradeSupport" | "tradePressure", baseColor: string): AutoLevel | null => {
+    if (!st) return null;
+    return {
+      kind: role === "tradeSupport" ? "support" : "pressure", role, price: st.price,
+      color: st.status === "ok" ? baseColor : fadeColor(baseColor, 0.5), bg: baseColor,
+      size: 1, dashed: true, tag: st.tag, sub: st.sub, label: st.label, src: st.src,
+    };
+  };
+  let tS = mkTrade(ensureTradeLine(series, raw, "support", guard), "tradeSupport", TRADE_SUPPORT_COLOR);
+  let tP = mkTrade(ensureTradeLine(series, raw, "pressure", guard), "tradePressure", TRADE_PRESSURE_COLOR);
+  // 跨角色同价位（S≈B）只保留现价正确侧那根
+  [tS, tP] = pruneCrossRole(tS, tP, cur);
+
+  const out: AutoLevel[] = [];
+  if (sSup) out.push(sSup);
+  if (sPres) out.push(sPres);
+  if (tS) out.push(tS);
+  if (tP) out.push(tP);
 
   // 趋势线：仅主升 uptrend 连 3 个抬升摆动低点；主跌连 3 个降低摆动高点；
   // pullback(走弱回调)/bounce/box 禁止绘制上升趋势线（防假多头视觉误导，对齐风控硬规则）
@@ -582,7 +629,7 @@ interface PriceLevelItem {
   totalScore: number;     // 综合总分（量价·筹码·趋势加权后，0-100 量级）
   touchCount: number;     // 触碰次数
   isBroken: boolean;      // 失效：连续2根实体击穿 / 箱体破位 / 现价已收于画线错误侧
-  status: "ok" | "broken" | "ref"; // 与图表状态一一对应：ok=正常 / broken=已破位 / ref=簇缺失兜底
+  status: "ok" | "broken" | "weak" | "ref"; // 与图表一一对应：ok=正常 / broken=已破位 / weak=证据不足弱参考 / ref=簇缺失兜底
   level: "强" | "中" | "弱"; // 强弱评级
   volDesc: string;        // 量能描述：放量确认/缩量触碰
   labelTag: string;       // 对应图表标签：支/压/S/B
@@ -604,16 +651,16 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
   const inBox = !!raw.boxBottom;
   const cur = series[series.length - 1]?.close ?? 0;
   const mk = (
-    role: "structSupport" | "structPressure" | "tradeSupportS" | "tradePressureB",
+    role: "structSupport" | "structPressure",
     rl: RawLevel,
     tag: string, name: string, sub: string
   ): PriceLevelItem | null => {
-    // 注意：不在此处按 rl.invalid 拦截——破位结构线图表仍降级展示（已破位），报告需同价同状态；
-    // 交易线的 invalid 拦截由调用方完成（图表对失效交易线同样不绘制）。
+    // 结构线专用：破位（含错误侧）也照常产出 broken 项，报告与图表降级展示同价同状态；
+    // 交易线不走本函数（由 tradeMk + ensureTradeLine 产出 ok/broken/weak/ref 四态）。
     if (rl.price == null || !rl.sc) return null;
     const boxBoost = inBox ? 4 : 0; // 箱体区间内统一 +4 分
     const finalScore = rl.sc.score + boxBoost;
-    const isSupportRole = role === "structSupport" || role === "tradeSupportS";
+    const isSupportRole = role === "structSupport";
     const isBroken = rl.broken || (isSupportRole && raw.breakDown)
       // 错误侧守卫（与图表 ensureStructLine 同口径）：现价收于画线错误侧即视为失效，
       // 避免报告把「现价上方的支撑 / 现价下方的压力」标成有效价位。
@@ -657,14 +704,44 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
       volDesc: "", labelTag: tag, desc: "参考位（簇缺失兜底）",
     };
   };
-  const sS = structMk("structSupport", raw.structSupport, L.sS.tag, L.sS.name);
-  const sP = structMk("structPressure", raw.structPressure, L.sP.tag, L.sP.name);
-  let tS = raw.tradeSupportS.invalid ? null : mk("tradeSupportS", raw.tradeSupportS, L.tS.tag, L.tS.name, L.tS.sub);
-  let tP = raw.tradePressureB.invalid ? null : mk("tradePressureB", raw.tradePressureB, L.tP.tag, L.tP.name, L.tP.sub);
-  // 同向去重与图表 computeAutoLevelsFromSeries 完全同口径（图表默认结构线+交易线同开 → dedupe=true）：
-  // 交易 S/B 与结构支撑/压力价差 ≤TOL_PCT 时隐藏交易线只留结构线，保证报告行与图表画线一一对应。
-  if (tS && sS && Math.abs(tS.price - sS.price) / sS.price <= TOL_PCT) tS = null;
-  if (tP && sP && Math.abs(tP.price - sP.price) / sP.price <= TOL_PCT) tP = null;
+  let sS = structMk("structSupport", raw.structSupport, L.sS.tag, L.sS.name);
+  let sP = structMk("structPressure", raw.structPressure, L.sP.tag, L.sP.name);
+  // 跨角色同价位与图表同口径：支≈压时只保留现价正确侧那根
+  [sS, sP] = pruneCrossRole(sS, sP, cur);
+  // 交易参考线与图表 100% 同源同状态（ensureTradeLine：ok/broken/weak/ref 四级必出线），
+  // 弱参考/兜底位不进任何买卖信号判定（analyzer 侧仅认 status==="ok"），只作价位展示。
+  const tradeMk = (
+    role: "tradeSupportS" | "tradePressureB",
+    st: TradeLineState | null
+  ): PriceLevelItem | null => {
+    if (!st) return null;
+    const tag = role === "tradeSupportS" ? L.tS.tag : L.tP.tag;
+    if (st.status === "ref" || !st.sc) {
+      return {
+        price: st.price, totalScore: 0, touchCount: 0, isBroken: false,
+        status: "ref", level: "弱", volDesc: "", labelTag: tag, desc: "参考位（簇缺失兜底）",
+      };
+    }
+    const finalScore = st.sc.score + (inBox ? 4 : 0);
+    const level: "强" | "中" | "弱" =
+      st.status === "ok" ? (finalScore >= 60 ? "强" : finalScore >= 40 ? "中" : "弱") : "弱";
+    const volDesc = (st.sc.volBoost ?? 0) > 0
+      ? "放量确认（量能配合，可靠性高）"
+      : "缩量/无量触碰（可靠性一般）";
+    const desc = st.status === "ok"
+      ? (role === "tradeSupportS" ? L.tS.sub : L.tP.sub)
+      : st.status === "broken" ? "已破位" : "弱参考（触碰/反转证据不足）";
+    return {
+      price: st.price, totalScore: Math.round(finalScore), touchCount: st.sc.touches,
+      isBroken: st.status === "broken", status: st.status, level, volDesc,
+      labelTag: tag, desc,
+    };
+  };
+  let tS = tradeMk("tradeSupportS", ensureTradeLine(series, raw, "support", guard));
+  let tP = tradeMk("tradePressureB", ensureTradeLine(series, raw, "pressure", guard));
+  // 结构/交易同价位不再隐藏交易线：图表侧同价时合并为一根线 + 双角色标签栈；
+  // 报告侧两个价位条目并存（pickMainLevels/信号判定只取 status==="ok"）。跨角色同价位仍只留正确侧。
+  [tS, tP] = pruneCrossRole(tS, tP, cur);
   return {
     band: raw.band,
     breakDown: raw.breakDown,

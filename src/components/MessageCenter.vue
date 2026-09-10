@@ -77,6 +77,9 @@
               v-for="n in filteredNotifs"
               :key="n.id"
               class="mc-notif"
+              role="button"
+              :aria-label="n.kind === 'like' ? '查看被赞的帖子' : '查看评论所在帖子'"
+              @click="openNotif(n)"
             >
               <UserAvatar :url="n.actorAvatarUrl" :seed="n.actorName" :size="72" :frame="vipGatedFrame(n.actorFrame, n.actorVip)" />
               <view class="mc-notif-mid">
@@ -147,7 +150,7 @@ import EmojiPanel from "./EmojiPanel.vue";
 import UserAvatar from "./UserAvatar.vue";
 import PeekSheet from "./PeekSheet.vue";
 import { formatRelative, type Conversation, type NotificationItem } from "@/api/community";
-import { useMessageCenter, useDmTarget } from "@/store/community";
+import { useMessageCenter, useDmTarget, usePostTarget } from "@/store/community";
 import { userState } from "@/store/user";
 import { vipGatedFrame } from "@/utils/avatarFrame";
 
@@ -175,6 +178,8 @@ const {
 } = useMessageCenter();
 // 私信深链：公开资料页「发私信」写入目标，消息中心挂载时按对方 id 直接打开会话
 const { consumeDmTarget } = useDmTarget();
+// 点赞 / 评论通知点击 → 帖子深链：父级 CommunityView 监听并定位到具体帖子（评论类展开评论区）
+const { setPostTarget } = usePostTarget();
 
 const sheet = ref<any>(null);
 
@@ -239,6 +244,21 @@ async function onDeleteConv(c: Conversation) {
 }
 function onDeleteNotif(n: NotificationItem) {
   dismissNotification(n.id);
+}
+
+/**
+ * 点击点赞 / 评论通知：写入帖子深链目标后收起消息卡片，由 CommunityView 负责
+ * 定位到具体帖子；评论类通知（expandComments）自动展开评论区并高亮对应楼层。
+ * 必须先写目标再收起：CommunityView 始终挂载（本组件由其持有），watch 立即生效。
+ */
+function openNotif(n: NotificationItem) {
+  if (!n.postId) return;
+  setPostTarget({
+    postId: n.postId,
+    expandComments: n.kind === "comment",
+    commentId: n.commentId || null,
+  });
+  animateClose();
 }
 
 // 挂载即展开（铃铛已控制 v-if 按需挂载），并拉取数据（每次打开都是全新挂载）
@@ -315,7 +335,8 @@ watch(
   padding: 0 26rpx;
 }
 .mc-peek-t {
-  font-size: var(--font-md);
+  /* 与全部底部折叠卡（今日最热 / 股市行情 / 分享观点）统一字号 */
+  font-size: var(--font-sm);
   color: var(--text);
 }
 .mc-peek-badge {

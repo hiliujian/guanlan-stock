@@ -235,7 +235,7 @@ const adxColor = (adx: number, pdi: number, mdi: number) => (adx < 20 ? INK : pd
 const bollPctBText = (v: number) => (v > 1 ? "触上轨·超买" : v < 0 ? "触下轨·超卖" : v > 0.8 ? "偏上轨" : v < 0.2 ? "偏下轨" : "中轨附近");
 const bollPctBColor = (v: number) => (v > 1 ? UP : v < 0 ? DOWN : INK);
 const mddColor = (m: number) => (m > 0.35 ? DOWN : m > 0.2 ? WARN : INK);
-const obvColor = (t: string) => (t.indexOf("配合") >= 0 ? UP : DOWN);
+const obvColor = (t: string) => (t.indexOf("上行") >= 0 ? UP : DOWN);
 const biasText = (b6: number, b12: number, b24: number) =>
   b24 > 20 ? `BIAS24 ${b24.toFixed(2)}% · 中期超买` :
   b24 < -20 ? `BIAS24 ${b24.toFixed(2)}% · 中期超卖` :
@@ -264,25 +264,39 @@ const alignColor = (s: number) => (s > 0 ? UP : s < 0 ? DOWN : GRAY); // 已修�
 const sectorAlignColor = (s: number) => (s > 0 ? UP : s < 0 ? DOWN : GRAY); // 同上
 const positionColor = (pct: number, advice: string) =>
   advice === "暂无数据" ? GRAY : pct >= 55 ? UP : pct <= 30 ? DOWN : GRAY;
-// 分析结论复刻（与 ReportView.vue 修复后逐字一致）
+// 分析结论复刻（与 ReportView.vue 空仓视角逐字一致；持仓视角仅措辞不同，结构同构）
 function buildConclusion(r: any): string {
   const parts: string[] = [];
-  parts.push(`${r.trendText}（${r.strength}），处于「${r.stageText}」阶段，${r.riskLevel}风险。`);
-  if (r.reduce) parts.push("信号偏空，建议逢高减仓、严控仓位。");
-  else if (r.add) parts.push("趋势与资金配合良好，可于回调分批加仓。");
-  else if (r.build) parts.push("处于相对低位且风险可控，可于支撑附近分批建仓。");
-  else if (r.watch) parts.push("可纳入自选关注，等待更优介入时点。");
-  else parts.push("多空信号交织，建议观望，等方向明朗。");
-  parts.push(`支撑 ${r.support.toFixed(2)}、压力 ${r.resistance.toFixed(2)}：有效跌破支撑应止损离场，放量突破压力可顺势跟进。`);
+  parts.push(`${r.trendText}（${r.strength}），${r.stageText}，${r.riskLevel}风险，技术面 ${r.score} 分，走势「${r.sigType}」。`);
+  const advice: Record<string, string> = {
+    reduce: "建议回避，暂不介入。",
+    add: "可在回调时分批买入。",
+    build: "可在买入区间内分批建仓。",
+    watch: "加入关注，等待回调低吸。",
+    wait: "观望为主，等待方向明朗。",
+  };
+  parts.push(advice[r.decision] ?? advice.wait);
+  // 仅既成事实（已破位/已突破）才在结论点价位，常规价位不复读
+  if (r.breakdown) parts.push(`支撑 ${r.support.toFixed(3)} 已有效跌破，建议回避。`);
+  else if (r.breakout) parts.push(`压力 ${r.resistance.toFixed(3)} 已有效突破，回踩不破可顺势跟进。`);
+  // 防误判提示：与 ReportView 同优先级（资金背离 > 顶背离 > 超买 > 超卖 > 大盘逆风）
+  const lvl = r.signal.level;
   const env = r.marketEnv;
-  if (env && env.indexTrend !== "暂无数据") {
-    const mktAdverse = (env.alignScore || 0) < 0;
-    const sectorAdverse = (env.sectorAlignScore || 0) < 0;
-    const defensive = (env.positionPct || 0) <= 30;
-    if (mktAdverse || sectorAdverse || defensive) {
-      const what = mktAdverse ? "大盘逆风" : sectorAdverse ? "行业逆风" : "市场环境偏弱";
-      parts.push(`${what}，${env.positionAdvice}。`);
-    }
+  const envOk = env && env.indexTrend !== "暂无数据";
+  const mktAdverse = envOk && (env.alignScore || 0) < 0;
+  const sectorAdverse = envOk && (env.sectorAlignScore || 0) < 0;
+  const defensive = envOk && (env.positionPct || 0) <= 30;
+  if (lvl !== "sell" && r.f5.has && r.f5.sum <= -0.5) {
+    parts.push(`但近5日主力净流出 ${Math.abs(r.f5.sum).toFixed(2)} 亿，宜轻仓谨慎。`);
+  } else if (r.divergence === "top") {
+    parts.push("量价顶背离，追高需防冲高回落。");
+  } else if (r.rsiValid && (r.rNow > 78 || r.bias24 > 20)) {
+    parts.push("短线超买，追高需防回撤。");
+  } else if (lvl === "buy" && r.rsiValid && (r.rNow < 22 || r.bias24 < -20)) {
+    parts.push("短线超卖，反弹需放量确认。");
+  } else if (mktAdverse || sectorAdverse || defensive) {
+    const what = mktAdverse ? "大盘逆风" : sectorAdverse ? "行业逆风" : "市场环境偏弱";
+    parts.push(`${what}，${env.positionAdvice}。`);
   }
   parts.push("以上为技术面参考，非投资建议。");
   return parts.join("");
@@ -442,7 +456,7 @@ async function auditStock(secid: string, name: string, idxKl: any[]) {
   for (let i = 1; i < len; i++) obv[i] = close[i] > close[i - 1] ? obv[i - 1] + vol[i] : close[i] < close[i - 1] ? obv[i - 1] - vol[i] : obv[i - 1];
   const obvMa = ma(obv, 20);
   const myObvUp = obv[len - 1] > (obvMa[len - 1] || obv[len - 1]);
-  const myObvTrend = myObvUp ? "量能配合(OBV上行)" : "量能走弱(OBV下行)";
+  const myObvTrend = myObvUp ? "量能活跃(OBV上行)" : "量能走弱(OBV下行)";
   check("OBV 趋势/配色语义", a.obvTrend === myObvTrend && obvColor(a.obvTrend) === (myObvUp ? UP : DOWN), a.obvTrend);
 
   // 13) 筹码
@@ -548,16 +562,31 @@ async function auditStock(secid: string, name: string, idxKl: any[]) {
 
   // 17) 分析结论
   const mine = buildConclusion(a);
-  check("结论含趋势/阶段/风险定位", mine.indexOf(a.trendText) >= 0 && mine.indexOf("「" + a.stageText + "」") >= 0 && mine.indexOf(a.riskLevel + "风险") >= 0);
-  check("结论含支撑/压力与止损/突破提示", mine.indexOf(a.support.toFixed(2)) >= 0 && mine.indexOf(a.resistance.toFixed(2)) >= 0
-    && mine.indexOf("止损") >= 0 && mine.indexOf("突破") >= 0);
-  check("结论操作建议与信号优先级一致（减>加>建>关注>观望）",
-    (a.reduce ? mine.indexOf("逢高减仓") >= 0 : true) && (!a.reduce && a.add ? mine.indexOf("分批加仓") >= 0 : true)
-    && (!a.reduce && !a.add && a.build ? mine.indexOf("分批建仓") >= 0 : true)
-    && (!a.reduce && !a.add && !a.build && a.watch ? mine.indexOf("纳入自选") >= 0 : true)
-    && (!a.reduce && !a.add && !a.build && !a.watch ? mine.indexOf("观望") >= 0 : true));
+  check("结论含趋势/阶段/风险/评分/走势定位",
+    mine.indexOf(a.trendText) >= 0 && mine.indexOf(a.stageText) >= 0
+    && mine.indexOf(a.riskLevel + "风险") >= 0
+    && mine.indexOf("技术面 " + a.score + " 分") >= 0
+    && mine.indexOf("「" + a.sigType + "」") >= 0);
+  // 价位提示仅在既成事实（已破位/已突破）时出现，常规行情不复读价位面板
+  check("结论价位提示与破位/突破状态一致",
+    a.breakdown ? mine.indexOf(a.support.toFixed(3)) >= 0 && mine.indexOf("跌破") >= 0
+    : a.breakout ? mine.indexOf(a.resistance.toFixed(3)) >= 0 && mine.indexOf("突破") >= 0
+    : mine.indexOf("止损") < 0 && mine.indexOf("跌破") < 0 && mine.indexOf("突破") < 0);
+  check("结论操作建议与决策单源一致",
+    a.decision === "reduce" ? mine.indexOf("回避，暂不介入") >= 0
+    : a.decision === "add" ? mine.indexOf("分批买入") >= 0
+    : a.decision === "build" ? mine.indexOf("分批建仓") >= 0
+    : a.decision === "watch" ? mine.indexOf("等待回调低吸") >= 0
+    : mine.indexOf("观望为主") >= 0);
   const envSentence = (env.alignScore || 0) < 0 || (env.sectorAlignScore || 0) < 0 || (env.positionPct || 0) <= 30;
-  check("结论环境提示句与数据一致", envSentence ? mine.indexOf(env.positionAdvice) >= 0 : mine.indexOf("大盘逆风") < 0 && mine.indexOf("行业逆风") < 0 && mine.indexOf("市场环境偏弱") < 0);
+  // 环境句可能被更高优先级防误判提示（资金背离/顶背离/超买超卖）取代，与结论合成的优先级一致
+  const envPreempted = (a.signal.level !== "sell" && a.f5.has && a.f5.sum <= -0.5)
+    || a.divergence === "top"
+    || (a.rsiValid && (a.rNow > 78 || a.bias24 > 20))
+    || (a.signal.level === "buy" && a.rsiValid && (a.rNow < 22 || a.bias24 < -20));
+  check("结论环境提示句与数据一致",
+    envSentence && !envPreempted ? mine.indexOf(env.positionAdvice) >= 0
+    : mine.indexOf("大盘逆风") < 0 && mine.indexOf("行业逆风") < 0 && mine.indexOf("市场环境偏弱") < 0);
   check("结论含免责声明", mine.indexOf("非投资建议") >= 0);
   if (a.risks.length) check("风险提示均非空", a.risks.every((r: string) => r.trim().length > 0));
 

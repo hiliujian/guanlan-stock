@@ -507,16 +507,24 @@ function pickMainLevels(
   price: number,
   recent: Kline[]
 ): { support: number; resistance: number } {
-  const supportCands = [priceLevels.structSupport, priceLevels.tradeSupportS]
-    .filter((x): x is NonNullable<typeof x> => !!x && !x.isBroken)
+  // 结构线：未破位即可候选（ref 兜底位 totalScore=0，排序自然靠后）；
+  // 交易参考线：仅 status==="ok"（合格簇）可进主支撑/压力挑选，弱参考/破位/簇缺失兜底不得驱动信号。
+  const supportCands = [
+    priceLevels.structSupport && !priceLevels.structSupport.isBroken ? priceLevels.structSupport : null,
+    priceLevels.tradeSupportS?.status === "ok" ? priceLevels.tradeSupportS : null,
+  ]
+    .filter((x): x is NonNullable<typeof x> => !!x)
     .filter((x) => x.price < price);
   const support = supportCands.length
     ? supportCands.slice().sort((a, b) => b.totalScore - a.totalScore || b.price - a.price)[0].price
     : priceLevels.boxBottom != null && priceLevels.boxBottom < price
       ? priceLevels.boxBottom
       : Math.min(...recent.map((k) => k.low));
-  const resistCands = [priceLevels.structPressure, priceLevels.tradePressureB]
-    .filter((x): x is NonNullable<typeof x> => !!x && !x.isBroken)
+  const resistCands = [
+    priceLevels.structPressure && !priceLevels.structPressure.isBroken ? priceLevels.structPressure : null,
+    priceLevels.tradePressureB?.status === "ok" ? priceLevels.tradePressureB : null,
+  ]
+    .filter((x): x is NonNullable<typeof x> => !!x)
     .filter((x) => x.price > price);
   const resistance = resistCands.length
     ? resistCands.slice().sort((a, b) => b.totalScore - a.totalScore || a.price - b.price)[0].price
@@ -590,7 +598,9 @@ type SellKind = "overbought" | "nearWeak" | "pump";
 function techSellKind(c: SignalCascadeCtx): SellKind | null {
   if (c.breakout || c.breakdown) return null;
   if (c.trend === "down" && c.rNow < 35) return null;
-  const flowOut = c.f10.has && c.f10.sum < 0;
+  // 「资金流出」设 0.5 亿门槛：与评分档（净流出超 0.5 亿才记「主力净流出」）同口径，
+  // -0.03 亿这类日常噪声不得写成「资金净流出」，也不得单独参与卖点触发
+  const flowOut = c.f10.has && c.f10.sum <= -0.5;
   const bullTrend = c.trend === "up" || c.trend === "shake_up";
   // 真实走弱（硬证据）：放量滞涨/放量收阴、冲高上影、3 根内新鲜死叉
   const hardStall =
@@ -623,7 +633,7 @@ function stabilizeEvidence(c: SignalCascadeCtx): string[] {
   if (c.rNow < 30) e.push("RSI超卖");
   if (!c.belowMa5 && c.redToday) e.push("重回MA5上方");
   if (c.lowerShadow) e.push("下影线承接");
-  if (c.f5.has && c.f5.sum > 0) e.push("主力资金净流入");
+  if (c.f5.has && c.f5.sum > 0.5) e.push("主力资金净流入");
   return e;
 }
 
@@ -655,7 +665,7 @@ function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
     if (c.macdFresh === "dead" || c.macdCross === "dead") ev.push("MACD死叉");
     if (c.upperShadow) ev.push("冲高上影");
     if (c.volRatio > 1.2 && !c.redToday) ev.push("放量收阴");
-    if (c.belowMa5 && c.f10.has && c.f10.sum < 0) ev.push("跌破MA5且资金净流出");
+    if (c.belowMa5 && c.f10.has && c.f10.sum <= -0.5) ev.push("跌破MA5且资金净流出");
     return {
       level: "sell",
       label: "卖点",
@@ -671,7 +681,7 @@ function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
       if (c.macdFresh === "dead" || c.macdCross === "dead") ev.push("MACD死叉");
       if (c.upperShadow) ev.push("冲高上影");
       if (c.volRatio > 1.2 && !c.redToday) ev.push("放量收阴");
-      if (c.f10.has && c.f10.sum < 0) ev.push("资金净流出");
+      if (c.f10.has && c.f10.sum <= -0.5) ev.push("资金净流出");
       return {
         level: "sell",
         label: "卖点",
@@ -737,6 +747,12 @@ function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
   // 压力位出现走弱形态时，即便同时临近支撑也不给买点（近压/近撑在窄箱体内可能同时成立）
   const resBlocked =
     c.nearRes && (c.upperShadow || c.macdFresh === "dead" || (c.volRatio > 1.2 && !c.redToday));
+  // 紧贴压力（<1.5%）且主力近 5 日未明显净流入时，回踩/追势买点一律让位：
+  // 到压力位就涨不动又无资金推动，在此挂买单盈亏比差（历史回放 long 桶胜率显著偏低）；
+  // 真正放量突破由最前置的 breakout 分支接管，不会漏掉第一时间上车点。
+  const ceilingBlock =
+    c.nearRes && (c.resistance - c.price) / c.price < 0.015 && !(c.f5.has && c.f5.sum > 0.5);
+  const buyBlockedByCeiling = resBlocked || ceilingBlock;
   // 主力近 10 日大幅净流出（>5 亿）时不追多（与超卖反弹 blocked 同阈值，避免逆势接飞刀）
   const heavyOut = c.f10.has && c.f10.sum < -5;
   // 5) 上升/偏强趋势回踩 —— 短波主买点（乘势而上）
@@ -752,7 +768,7 @@ function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
     !heavyOut &&
     c.rNow < 72 &&
     c.price >= c.ma20 * 0.97 &&
-    !resBlocked &&
+    !buyBlockedByCeiling &&
     (maPullback || ev.length > 0)
   ) {
     const where = c.nearSup && !maPullback ? `支撑 ${c.support.toFixed(3)}` : "MA5/MA10 均线";
@@ -765,7 +781,7 @@ function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
     };
   }
   // 6) 新鲜金叉 + 站上 MA20：追势买点（3 根内金叉，不等待深度回调）
-  if (c.macdFresh === "gold" && c.price > c.ma20 && c.rNow < 75 && c.trend !== "down" && !resBlocked && !heavyOut) {
+  if (c.macdFresh === "gold" && c.price > c.ma20 && c.rNow < 75 && c.trend !== "down" && !buyBlockedByCeiling && !heavyOut) {
     return {
       level: "buy",
       label: "买点",
@@ -775,7 +791,7 @@ function decideSignal(c: SignalCascadeCtx): AnalysisResult["signal"] {
     };
   }
   // 7) 震荡市临近支撑企稳（须有真实企稳证据，主力大幅流出时不给）
-  if (c.nearSup && ev.length > 0 && c.rNow < 60 && c.trend !== "down" && !resBlocked && !heavyOut) {
+  if (c.nearSup && ev.length > 0 && c.rNow < 60 && c.trend !== "down" && !buyBlockedByCeiling && !heavyOut) {
     return {
       level: "buy",
       label: "买点",
@@ -922,12 +938,22 @@ function applyIntradayOverride(
 // 与实时报告缺这些数据时的行为完全一致。
 // 评估窗口 20 个交易日（约 1 个月，主流量化工具对短线 swing 信号的常用前瞻周期）；
 // 回放范围近 250 个交易日（约一年）；样本不足（日线缺失）返回 null，UI 不展示。
+//
+// 分档统计（本次审计修正）：只统计**可执行交易类信号**，且多空分桶——
+//   · long 桶 = 买点（开/加仓，收益扣双边摩擦）+ 持有（继续持有，不产生新交易、不扣摩擦）
+//   · sell 桶 = 卖点（减/清仓，规避收益 -fwd 扣卖出侧摩擦）
+//   · 关注/观望（watch/wait）不产生持仓动作，旧口径把它们按「方向猜对」计入胜率、
+//     收益却记 0 摊进均值，震荡市会同时给出「胜率 65% · 平均收益 -0.8%」的自相矛盾数字，
+//     且对交易者无操作意义，故整体剔除。
+export interface SignalClassStat {
+  count: number; // 该档信号样本数
+  winRate: number; // 0~1：long=扣成本后20日上涨占比；sell=扣成本后20日规避下跌占比
+  avgRet: number; // 平均20日前瞻收益（小数，0.042=+4.2%，已按档位口径扣交易成本）
+}
 export interface SignalWinRateResult {
   horizon: number; // 前瞻评估窗口（交易日）
-  days: number; // 实际回放的交易日数
-  count: number; // 回放产生的信号总数
-  winRate: number; // 0~1：方向正确占比（全部信号合并统计，不分档）
-  avgRet: number; // 平均前瞻收益（小数，如 0.042 = +4.2%）
+  long: SignalClassStat; // 做多类（买点 + 持有）
+  sell: SignalClassStat; // 减仓类（卖点）
 }
 function replaySignalStats(daily: Kline[] | undefined, code: string | undefined): SignalWinRateResult | null {
   const H = 20; // 前瞻评估窗口：20 根日 K（收盘→收盘），与均线 MA20 同一计数口径（交易日，非自然日）
@@ -935,19 +961,18 @@ function replaySignalStats(daily: Kline[] | undefined, code: string | undefined)
   const WARMUP = 80; // 单日指标预热下限（MA60/RSI/DMI/pivot）
   const PREFIX_CAP = 260; // 单日回看最多取多少根（控耗；覆盖 MA60/pivot/RSI 窗口）
   // 单次往返摩擦成本（贴近实盘）：佣金 万2.5×2 + 印花税 0.05%（卖出）+ 滑点 0.1%×2 ≈ 0.3%。
-  // 交易类信号（买点/持有/卖点）的方向收益须先扣摩擦再判胜负，避免把「毛利为正但净利为负」的信号算作胜。
+  // 买点（开/加仓，双边费用）与卖点（卖出侧费用+滑点≈0.3%）扣减；持有无新交易不扣。
   const FRICTION = 0.003;
-  // 观望（不交易）的「踏空」门槛：20 日内上涨不足 3% 视为躺对——不交易天然不亏钱，
-  // 唯一的错误是错过像样的行情；3% ≈ 主板一个涨停的一半，超过它才算踏空。
-  const WAIT_MISS = 0.03;
+  // 历史回放无主力资金流数据：按「当日无数据」降级，与实时报告缺资金流时行为一致
+  const noFlow: FlowSummary = { sum: 0, has: false };
   if (!daily || daily.length < WARMUP + H + 5) return null;
   const n = daily.length;
   const from = Math.max(WARMUP, n - WINDOW);
-  let days = 0;
-  let count = 0;
-  let win = 0;
-  let retSum = 0;
-  const noFlow: FlowSummary = { sum: 0, has: false }; // 历史日资金流不可得=无数据（与实时缺数据同语义）
+  // long 桶（买点/持有）、sell 桶（卖点）各自独立累计
+  const acc = {
+    long: { count: 0, win: 0, retSum: 0 },
+    sell: { count: 0, win: 0, retSum: 0 },
+  };
   for (let i = from; i < n - H; i++) {
     const prefix = daily.slice(Math.max(0, i - PREFIX_CAP + 1), i + 1);
     const plen = prefix.length;
@@ -1006,11 +1031,11 @@ function replaySignalStats(daily: Kline[] | undefined, code: string | undefined)
     const shape = candleShape(prefix[plen - 1], atrArr[plen - 1] ?? 0);
     const supportFromPivot = !!(
       (priceLevels.structSupport && !priceLevels.structSupport.isBroken && priceLevels.structSupport.price < price) ||
-      (priceLevels.tradeSupportS && !priceLevels.tradeSupportS.isBroken && priceLevels.tradeSupportS.price < price)
+      (priceLevels.tradeSupportS?.status === "ok" && priceLevels.tradeSupportS.price < price)
     );
     const resistanceFromPivot = !!(
       (priceLevels.structPressure && !priceLevels.structPressure.isBroken && priceLevels.structPressure.price > price) ||
-      (priceLevels.tradePressureB && !priceLevels.tradePressureB.isBroken && priceLevels.tradePressureB.price > price)
+      (priceLevels.tradePressureB?.status === "ok" && priceLevels.tradePressureB.price > price)
     );
     const breakdown = supportFromPivot && price < support * 0.985 && volRatio > 0.9;
     // 短波量化：突破确认放宽——刚站上压力(0.5%)且量能温和放大即算，追求第一时间上车；
@@ -1044,30 +1069,34 @@ function replaySignalStats(daily: Kline[] | undefined, code: string | undefined)
     if ((signal.level === "buy" || signal.level === "hold") && oneWordUp) continue;
     if (signal.level === "sell" && oneWordDown) continue;
     // 胜负与执行收益（贴近实盘）：
-    //   · 买点/持有（做多）：方向收益 fwd 扣双边摩擦后 > 0 为胜
-    //   · 卖点（清仓规避）：规避的下跌 -fwd 扣摩擦后 > 0 为胜
-    //   · 关注（偏多判断、未实际介入）：方向判断 fwd > 0 为胜，执行收益记 0
-    //   · 观望（躺平不交易）：不交易天然不亏钱，20 日内未踏空（fwd < 3%）即正确，执行收益记 0
+    //   · 买点（开/加仓）：方向收益 fwd 扣双边摩擦后 > 0 为胜
+    //   · 持有（继续持有，无新交易）：不扣摩擦，fwd > 0 为胜
+    //   · 卖点（减/清仓）：规避的下跌 -fwd 扣卖出侧摩擦后 > 0 为胜
+    //   · 关注/观望：不产生持仓动作，不纳入统计（见函数头注释）
+    let bucket: { count: number; win: number; retSum: number } | null = null;
     let payoff = 0;
-    let isWin = false;
-    if (signal.level === "buy" || signal.level === "hold") {
+    if (signal.level === "buy") {
+      bucket = acc.long;
       payoff = fwd - FRICTION;
-      isWin = payoff > 0;
+    } else if (signal.level === "hold") {
+      bucket = acc.long;
+      payoff = fwd;
     } else if (signal.level === "sell") {
+      bucket = acc.sell;
       payoff = -fwd - FRICTION;
-      isWin = payoff > 0;
-    } else if (signal.level === "watch") {
-      isWin = fwd > 0;
     } else {
-      isWin = fwd < WAIT_MISS;
+      continue; // watch / wait 不交易，剔除
     }
-    count++;
-    retSum += payoff;
-    if (isWin) win++;
-    days++;
+    bucket.count++;
+    bucket.retSum += payoff;
+    if (payoff > 0) bucket.win++;
   }
-  if (!count) return null;
-  return { horizon: H, days, count, winRate: win / count, avgRet: retSum / count };
+  if (acc.long.count === 0 && acc.sell.count === 0) return null;
+  const statOf = (b: { count: number; win: number; retSum: number }): SignalClassStat =>
+    b.count === 0
+      ? { count: 0, winRate: 0, avgRet: 0 }
+      : { count: b.count, winRate: b.win / b.count, avgRet: b.retSum / b.count };
+  return { horizon: H, long: statOf(acc.long), sell: statOf(acc.sell) };
 }
 
 // 大盘 · 市场环境上下文：由调用方（行情页 / 报告页）获取相关指数日 K 后传入，
@@ -1360,7 +1389,7 @@ export function analyze(
     macdFresh === "dead" ||
     shape.upperShadow ||
     (volRatio > 1.2 && !shape.redToday) ||
-    (bullTrend && price < ma5Now && f10.sum < 0);
+    (bullTrend && price < ma5Now && f10.sum <= -0.5);
   const lowStabilize =
     f5.sum > 0 || shape.lowerShadow || shape.redToday;
   if (nearTop && topStall && !accelerating) {
@@ -1542,11 +1571,11 @@ export function analyze(
   //   · 跌破要求 VMA5/VMA20 > 0.9（至少接近均量，排除无量假跌破）
   const supportFromPivot = !!(
     (priceLevels.structSupport && !priceLevels.structSupport.isBroken && priceLevels.structSupport.price < price) ||
-    (priceLevels.tradeSupportS && !priceLevels.tradeSupportS.isBroken && priceLevels.tradeSupportS.price < price)
+    (priceLevels.tradeSupportS?.status === "ok" && priceLevels.tradeSupportS.price < price)
   );
   const resistanceFromPivot = !!(
     (priceLevels.structPressure && !priceLevels.structPressure.isBroken && priceLevels.structPressure.price > price) ||
-    (priceLevels.tradePressureB && !priceLevels.tradePressureB.isBroken && priceLevels.tradePressureB.price > price)
+    (priceLevels.tradePressureB?.status === "ok" && priceLevels.tradePressureB.price > price)
   );
   const breakdown = supportFromPivot && price < support * 0.985 && volRatio > 0.9;
   // 与回放路径同口径（防漂移）：突破确认放宽至 0.5% + 温和放量，短波第一时间上车

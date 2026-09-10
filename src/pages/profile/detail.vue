@@ -195,8 +195,8 @@
 
     <!-- 持仓详情弹窗：中部持仓标识点击展开（复用全局 modal-mask/modal-card 窗体），
          透出该股持仓明细（收益率/盈亏/股数/成本）+ 该股近期操作动态（复用 holdEvents 时间线） -->
-    <view v-if="holdDetail" class="modal-mask" @click.self="closeHoldDetail">
-      <view class="modal-card">
+    <view v-if="holdDetail" class="modal-mask" @click="closeHoldDetail">
+      <view class="modal-card" @click.stop>
         <view class="modal-head">
           <text class="modal-title">{{ holdDetail.name || holdDetail.code }} 持仓详情</text>
           <view class="modal-close" role="button" aria-label="关闭" @click="closeHoldDetail">
@@ -1075,7 +1075,8 @@ function goUserPosts() {
 .dp-post-sum {
   flex: 1;
   min-width: 0;
-  font-size: var(--font-md);
+  /* 与持仓操作动态行的股票名（.dp-ev-name = --font-sm）统一字号 */
+  font-size: var(--font-sm);
   color: var(--text);
 }
 /* 持仓操作事件行（建仓/加仓/减仓/清仓）：操作标签着色 + 股票名 + 股数，整行可点跳行情 */

@@ -295,6 +295,9 @@ create table public.community_posts (
   -- 扩展预留
   status     text not null default 'published'
              check (status in ('published','draft','hidden','deleted')),  -- 内容状态机：软删用 deleted，可审计/恢复
+  -- 可见范围：public=公开（所有人）/ followers=仅粉丝（follows 中存在 follower→作者）/ private=仅自己
+  visibility text not null default 'public'
+             check (visibility in ('public','followers','private')),
   images     text[] not null default '{}',               -- 帖子配图 URL 数组（未来配图）
   tags       text[] not null default '{}',               -- 话题标签（#大盘），便于 @> 包含查询 + GIN 索引
   meta       jsonb not null default '{}'::jsonb,         -- 兜底扩展位：任何未来结构化字段先放这里，避免频繁 ALTER
@@ -372,15 +375,53 @@ create trigger trg_sync_likes
 --   · 帖子形状 / 作者长度 / 内容长度 均有 CHECK 兜底               ║
 --   · 删除策略见【阶段二】升级块；接入 Auth 后务必替换本段          ║
 -- ╚══════════════════════════════════════════════════════════════╝
+-- 关注关系表（与 follows.sql 增量迁移同构；此处先确保存在，使下方可见性策略可引用。
+-- follows.sql 随后幂等执行：create if not exists 为 no-op，其计数函数照常生效）
+create table if not exists public.follows (
+  follower_id  uuid not null references auth.users (id) on delete cascade,
+  following_id uuid not null references auth.users (id) on delete cascade,
+  created_at   timestamptz not null default now(),
+  primary key (follower_id, following_id)
+);
+create index if not exists idx_follows_follower on public.follows (follower_id);
+create index if not exists idx_follows_following on public.follows (following_id);
+-- RLS 与 follows.sql 同构（公开可读；仅本人作为 follower 写 / 删）。重复执行幂等。
+alter table public.follows enable row level security;
+drop policy if exists "follows_select" on public.follows;
+create policy "follows_select" on public.follows for select using (true);
+drop policy if exists "follows_insert" on public.follows;
+create policy "follows_insert" on public.follows
+  for insert with check (auth.uid() = follower_id);
+drop policy if exists "follows_delete" on public.follows;
+create policy "follows_delete" on public.follows
+  for delete using (auth.uid() = follower_id);
+
 alter table public.community_posts   enable row level security;
 alter table public.community_replies enable row level security;
 alter table public.community_likes   enable row level security;
 
--- 读：所有人可见（含匿名）
+-- 读：公开帖所有人可见（含匿名）；「仅粉丝」帖需存在 当前用户→作者 的关注关系；「仅自己」帖仅作者。
+-- 子查询引用 follows（公开可读 RLS）；帖子可见性是回复 / 点赞可见性的前置裁决（见下方策略）。
 drop policy if exists "community_posts_select" on public.community_posts;
-create policy "community_posts_select" on public.community_posts for select using (true);
+create policy "community_posts_select" on public.community_posts
+  for select using (
+    visibility = 'public'
+    or user_id = auth.uid()
+    or (
+      visibility = 'followers'
+      and exists (
+        select 1 from public.follows f
+        where f.follower_id = auth.uid() and f.following_id = community_posts.user_id
+      )
+    )
+  );
+-- 回复可见性随帖：子查询对 community_posts 的读取同样经过其 select RLS，
+-- 无权可见的帖下回复一并对调用者隐藏（SECURITY DEFINER 函数内以属主身份执行，不受影响）。
 drop policy if exists "community_replies_select" on public.community_replies;
-create policy "community_replies_select" on public.community_replies for select using (true);
+create policy "community_replies_select" on public.community_replies
+  for select using (
+    exists (select 1 from public.community_posts p where p.id = community_replies.post_id)
+  );
 drop policy if exists "community_likes_select" on public.community_likes;
 create policy "community_likes_select" on public.community_likes for select using (true);
 
@@ -388,10 +429,17 @@ create policy "community_likes_select" on public.community_likes for select usin
 drop policy if exists "community_posts_insert" on public.community_posts;
 create policy "community_posts_insert" on public.community_posts
   for insert with check (likes = 0);   -- 禁止伪造点赞数
+-- 仅能对「自己可见」的帖回复 / 点赞：防猜 uuid 对仅自己 / 仅粉丝帖越权互动
 drop policy if exists "community_replies_insert" on public.community_replies;
-create policy "community_replies_insert" on public.community_replies for insert with check (true);
+create policy "community_replies_insert" on public.community_replies
+  for insert with check (
+    exists (select 1 from public.community_posts p where p.id = community_replies.post_id)
+  );
 drop policy if exists "community_likes_insert" on public.community_likes;
-create policy "community_likes_insert" on public.community_likes for insert with check (true);
+create policy "community_likes_insert" on public.community_likes
+  for insert with check (
+    exists (select 1 from public.community_posts p where p.id = community_likes.post_id)
+  );
 drop policy if exists "community_likes_delete" on public.community_likes;
 create policy "community_likes_delete" on public.community_likes for delete using (true);
 
@@ -418,6 +466,22 @@ declare
   v_user uuid := coalesce(auth.uid(), '00000000-0000-0000-0000-000000000000'::uuid);
   v_liked boolean;
 begin
+  -- SECURITY DEFINER 绕过 RLS，需自行裁决帖子可见性：仅作者本人 / 公开帖 / 关注了作者的粉丝可互动，
+  -- 防止凭帖子 uuid 对「仅自己 / 仅粉丝」帖越权点赞。
+  if not exists (
+    select 1 from public.community_posts p
+    where p.id = p_post_id
+      and (
+        p.user_id = auth.uid()
+        or p.visibility = 'public'
+        or (
+          p.visibility = 'followers'
+          and exists (select 1 from public.follows f where f.follower_id = auth.uid() and f.following_id = p.user_id)
+        )
+      )
+  ) then
+    raise exception '帖子不存在或无权操作' using errcode = 'check_violation';
+  end if;
   delete from public.community_likes where post_id = p_post_id and user_id = v_user;
   if not found then
     insert into public.community_likes (post_id, user_id) values (p_post_id, v_user);
@@ -604,7 +668,7 @@ create or replace function public.get_my_notifications()
 returns table (
   id uuid, kind text, actor_id uuid, actor_name text, actor_avatar text, actor_frame text,
   actor_vip boolean, actor_vip_expires_at timestamptz,
-  post_id uuid, post_snippet text, comment_content text, created_at timestamptz
+  post_id uuid, post_snippet text, comment_content text, comment_id uuid, created_at timestamptz
 )
 language sql security definer set search_path = public as $$
   with likes as (
@@ -616,7 +680,7 @@ language sql security definer set search_path = public as $$
     where p.user_id = auth.uid() and l.user_id is distinct from auth.uid()
   ),
   comments as (
-    select r.post_id, r.user_id as actor_id, r.content, r.created_at
+    select r.post_id, r.user_id as actor_id, r.content, r.id as comment_id, r.created_at
     from public.community_replies r
     join public.community_posts p on p.id = r.post_id
     where p.user_id = auth.uid() and r.user_id is distinct from auth.uid()
@@ -625,13 +689,13 @@ language sql security definer set search_path = public as $$
   like_rows as (
     select md5('like-' || l.post_id || '-' || l.actor_id)::uuid as id,
            'like'::text as kind, l.actor_id, l.post_id,
-           null::text as comment_content, l.created_at
+           null::text as comment_content, null::uuid as comment_id, l.created_at
     from likes l
   ),
   comment_rows as (
     select md5('comment-' || c.post_id || '-' || c.actor_id || '-' || c.created_at)::uuid as id,
            'comment'::text as kind, c.actor_id, c.post_id,
-           c.content as comment_content, c.created_at
+           c.content as comment_content, c.comment_id, c.created_at
     from comments c
   ),
   merged as ( select * from like_rows union all select * from comment_rows )
@@ -643,7 +707,7 @@ language sql security definer set search_path = public as $$
          pr.vip_expires_at as actor_vip_expires_at,
          m.post_id,
          coalesce(p2.content, '分享了持仓卡片') as post_snippet,
-         m.comment_content, m.created_at
+         m.comment_content, m.comment_id, m.created_at
   from merged m
   join public.community_posts p2 on p2.id = m.post_id
   left join public.profiles pr on pr.id = m.actor_id
@@ -658,15 +722,18 @@ $$;
 -- ║ 匹配：content 正文、topic->name / ->code、card->stock / ->code ║
 -- ║ 返回与 feed 同构行（含嵌套 replies JSON），前端复用同一映射。   ║
 -- ╚══════════════════════════════════════════════════════════════╝
+-- RETURNS TABLE 增列属返回类型变更（42P13），必须先 drop 再建（全新库 drop 为 no-op）。
+drop function if exists public.search_posts(text);
 create or replace function public.search_posts(p_query text)
 returns table (
   id uuid, type text, author text, user_id uuid, topic jsonb,
   content text, card jsonb, images text[], likes integer, created_at timestamptz,
-  replies json
+  visibility text, replies json
 )
 language sql security definer set search_path = public as $$
   select
     p.id, p.type, p.author, p.user_id, p.topic, p.content, p.card, p.images, p.likes, p.created_at,
+    p.visibility,
     coalesce(
       (
         select json_agg(
@@ -685,6 +752,15 @@ language sql security definer set search_path = public as $$
     or p.topic->>'code' ilike '%' || p_query || '%'
     or p.card->>'stock' ilike '%' || p_query || '%'
     or p.card->>'code' ilike '%' || p_query || '%'
+  )
+  -- SECURITY DEFINER 绕过 RLS：函数内自行裁决可见性（与 community_posts_select 策略同口径）
+  and (
+    p.user_id = auth.uid()
+    or p.visibility = 'public'
+    or (
+      p.visibility = 'followers'
+      and exists (select 1 from public.follows f where f.follower_id = auth.uid() and f.following_id = p.user_id)
+    )
   )
   order by p.created_at desc
   limit 50;
@@ -748,15 +824,19 @@ drop policy if exists "community_posts_delete" on public.community_posts;
 create policy "community_posts_delete" on public.community_posts
   for delete to authenticated using (auth.uid() = user_id);
 
--- 回复：登录用户才能回复（作者为本人昵称）
+-- 回复：登录用户才能回复（作者为本人昵称）；且只能回复自己可见的帖（随帖可见性裁决）
 drop policy if exists "community_replies_insert" on public.community_replies;
 create policy "community_replies_insert" on public.community_replies
-  for insert to authenticated with check (true);
+  for insert to authenticated with check (
+    exists (select 1 from public.community_posts p where p.id = community_replies.post_id)
+  );
 
--- 点赞：登录用户才能点赞（直接表操作层面收紧；实际走 rpc 已安全）
+-- 点赞：登录用户才能点赞（直接表操作层面收紧；实际走 rpc 已安全）；同样限自己可见的帖
 drop policy if exists "community_likes_insert" on public.community_likes;
 create policy "community_likes_insert" on public.community_likes
-  for insert to authenticated with check (true);
+  for insert to authenticated with check (
+    exists (select 1 from public.community_posts p where p.id = community_likes.post_id)
+  );
 drop policy if exists "community_likes_delete" on public.community_likes;
 create policy "community_likes_delete" on public.community_likes
   for delete to authenticated using (true);
@@ -771,6 +851,13 @@ create policy "community_likes_delete" on public.community_likes
 alter table public.profiles add column if not exists exp integer not null default 0;
 alter table public.profiles add column if not exists vip boolean not null default false;
 alter table public.profiles add column if not exists vip_expires_at timestamptz;
+
+-- 帖子可见范围（公开 / 仅粉丝 / 仅自己）：旧库非破坏性补列，存量帖默认 public。
+-- 配套 post_visibility.sql 增量迁移（替换 RLS 策略 / search_posts / toggle_post_like）。
+alter table public.community_posts add column if not exists visibility text not null default 'public';
+alter table public.community_posts drop constraint if exists community_posts_visibility_check;
+alter table public.community_posts add constraint community_posts_visibility_check
+  check (visibility in ('public','followers','private'));
 
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║ 100. 经验值 / 等级发放（修复「经验值恒为 0」）                  ║

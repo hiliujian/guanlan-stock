@@ -9,6 +9,7 @@ import {
   type CommunityPost,
   type PostCard,
   type Topic,
+  type PostVisibility,
   type NotificationItem,
   type Conversation,
   type DmMessage,
@@ -85,6 +86,7 @@ export function useCommunity() {
     card?: PostCard;
     topic?: Topic;
     images?: string[];
+    visibility?: PostVisibility;
   }): Promise<CommunityPost | null> {
     const hasContent = !!(payload.content && payload.content.trim());
     const hasImages = !!(payload.images && payload.images.length);
@@ -94,6 +96,7 @@ export function useCommunity() {
       card: payload.card,
       topic: payload.topic,
       images: payload.images,
+      visibility: payload.visibility,
     });
     posts.value = [p, ...posts.value];
     return p;
@@ -236,6 +239,34 @@ export function useCommunityUserTarget() {
     return v;
   }
   return { userTarget, setUserTarget, consumeUserTarget };
+}
+
+// =====================================================================
+// 帖子深链目标（模块级单例，跨组件信号）
+// 消息中心「点赞 / 评论」通知点击 → setPostTarget（帖子 id + 是否展开评论 + 可选楼层 id）
+// → CommunityView 激活时 consumePostTarget() 读取：回到主信息流（退出用户模式 / 搜索态）、
+// 缓存缺帖时按 id 补拉、滚动定位到该帖，评论类通知顺带展开评论区并高亮对应楼层。读后清空。
+// =====================================================================
+export interface CommunityPostTarget {
+  postId: string;
+  /** true = 展开该帖评论区（评论通知）；false = 仅定位帖子（点赞通知） */
+  expandComments: boolean;
+  /** 评论楼层 id（新版通知 RPC 返回时用于定位高亮；旧版 / 点赞通知为 null） */
+  commentId?: string | null;
+}
+
+const postTarget = ref<CommunityPostTarget | null>(null);
+export function usePostTarget() {
+  function setPostTarget(t: CommunityPostTarget) {
+    postTarget.value = t;
+  }
+  /** 读取并消费帖子深链目标（读后清空），无目标返回 null。 */
+  function consumePostTarget(): CommunityPostTarget | null {
+    const v = postTarget.value;
+    postTarget.value = null;
+    return v;
+  }
+  return { postTarget, setPostTarget, consumePostTarget };
 }
 
 // =====================================================================

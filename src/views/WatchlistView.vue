@@ -2242,18 +2242,20 @@ function removeLp() {
   flex-direction: column;
 }
 /* 排序/列设置控制按钮浮层：脱离 scroll-x 滚动容器，固定在名称列固定表头左上角，
-   杜绝横滑 scroll-view 吞掉点击（openCols 与 openGroups 同机制，后者在 scroll-view 外即可正常弹出） */
+   杜绝横滑 scroll-view 吞掉点击（openCols 与 openGroups 同机制，后者在 scroll-view 外即可正常弹出）。
+   宽度 / 内边距必须与名称列（.c-name / .th.c-name = 160rpx、padding-left 18rpx）严格一致，
+   否则浮层实底会把表头下边框多遮出一截，视觉上「表头第一列比数据行第一列宽」。
+   浮层自身不再铺底色：表头 .th.c-name 自带不透明 bg-2 背景承接横滑内容，底色统一由它绘制。 */
 .wl-cols-overlay {
   position: absolute;
   top: 0;
   left: 0;
   z-index: 30;
-  width: 200rpx;
+  width: 160rpx;
   height: 72rpx;
   display: flex;
   align-items: center;
-  padding: 0 16rpx 0 18rpx;
-  background: var(--bg-2);
+  padding: 0 10rpx 0 18rpx;
   pointer-events: none;
 }
 .wl-cols-overlay .th-ic {
@@ -2308,7 +2310,8 @@ function removeLp() {
   align-items: center;
   justify-content: flex-end;
   height: 72rpx;
-  padding: 0 16rpx;
+  /* 与数据行 .td 的左右内边距一致（0 18rpx），保证每列表头文字右缘与数值右缘严格对齐 */
+  padding: 0 18rpx;
   /* 表头统一规范（与热榜榜单表头 .rk-thead .rh 共用同一套 token）：
      font-md(28rpx) / 400 / --text-2 —— 字号比正文大一号、颜色用次级文本(淡一点)，全站表格表头保持一致 */
   font-size: var(--font-md);
@@ -2329,7 +2332,8 @@ function removeLp() {
   left: 0;
   z-index: 6;
   background: var(--bg-2);
-  padding: 0 16rpx 0 18rpx;
+  /* 与数据行 .c-name 同内边距（右 10rpx 为名称列收紧值），保证固定列左右边界完全重合 */
+  padding: 0 10rpx 0 18rpx;
 }
 /* 表头标签：不参与排序，无点击选中态（label 仅只读文本） */
 .th-label {

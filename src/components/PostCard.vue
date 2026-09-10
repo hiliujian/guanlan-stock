@@ -1,5 +1,5 @@
 <template>
-  <view :class="['post', 'glass', 'anim-fade-up', preview ? 'as-preview' : '', replyEmojiOpen ? 'emoji-open' : '']" @click="onRootClick">
+  <view :id="`cm-post-${post.id}`" :class="['post', 'glass', 'anim-fade-up', preview ? 'as-preview' : '', replyEmojiOpen ? 'emoji-open' : '']" @click="onRootClick">
     <!-- 头部：头像 + 昵称 + 时间 + 话题 + 删除 -->
     <view class="p-head">
       <view
@@ -26,7 +26,18 @@
             <OutlineIcon type="crown" :size="24" color="var(--vip-gold)" />
           </view>
         </view>
-        <text class="p-time">{{ timeText }}</text>
+        <view class="p-timerow">
+          <text class="p-time">{{ timeText }}</text>
+          <!-- 可见范围角标：非公开帖对「能看到它的人」明示权限（预览态同样展示，所见即所得） -->
+          <view v-if="post.visibility === 'followers'" class="p-vis">
+            <OutlineIcon type="people" :size="20" color="var(--text-3)" />
+            <text class="p-vis-t">仅粉丝可见</text>
+          </view>
+          <view v-else-if="post.visibility === 'private'" class="p-vis">
+            <OutlineIcon type="locked" :size="20" color="var(--text-3)" />
+            <text class="p-vis-t">仅自己可见</text>
+          </view>
+        </view>
       </view>
       <view v-if="post.topic" class="p-topic" :style="topicStyle">#{{ post.topic.name }}</view>
       <!-- 关注 / 取消关注：非本人帖子展示；点击切换并即时反映状态（plus→关注 / check→已关注）；
@@ -108,7 +119,7 @@
 
     <!-- 回复区（预览态隐藏） -->
     <view v-if="!preview && showReply" class="p-replies">
-      <view v-for="d in displayReplies" :key="d.id" class="p-reply" @click.stop="onCommentClick(d)">
+      <view v-for="d in displayReplies" :key="d.id" :id="`cm-reply-${d.id}`" class="p-reply" :class="{ 'reply-hl': highlightReplyId === d.id }" @click.stop="onCommentClick(d)">
         <text :class="['pr-name', { 'vip-name': d.authorVip }]" hover-class="pr-name-hover" @click.stop="onNameClick(d)">{{ d.author }}</text>
         <template v-if="d.target">
           <text class="pr-reply-word">回复</text>
@@ -168,7 +179,10 @@ import { useReplyExpansion } from "@/store/replyExpansion";
 import { userState } from "@/store/user";
 import { fmtNum as fmt } from "@/utils/format";
 
-const props = defineProps<{ post: CommunityPost; mine: boolean; preview?: boolean }>();
+const props = withDefaults(
+  defineProps<{ post: CommunityPost; mine: boolean; preview?: boolean; highlightReplyId?: string | null }>(),
+  { preview: false, highlightReplyId: null }
+);
 const emit = defineEmits<{
   (e: "like", id: string): void;
   (e: "reply", id: string, content: string, replyTo?: { name: string; userId?: string | null }): void;
@@ -531,6 +545,24 @@ function previewImage(current: string) {
   font-size: var(--font-xs);
   color: var(--text-2);
 }
+/* 时间行：时间 + 可见范围角标 */
+.p-timerow {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 2rpx;
+}
+/* 可见范围角标：弱化中性色，不与昵称 / 话题抢视觉 */
+.p-vis {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rpx;
+}
+.p-vis-t {
+  font-size: var(--font-xs);
+  color: var(--text-3);
+  line-height: 1.2;
+}
 .p-del {
   flex: none;
   padding: 6rpx;
@@ -722,6 +754,15 @@ function previewImage(current: string) {
   font-size: var(--font-sm);
   line-height: 1.5;
   padding: 6rpx 0;
+}
+/* 评论通知深链定位：目标楼层两轮主色呼吸高亮（圆角内嵌，不引发布局位移），2.4s 后随 class 移除而消失 */
+.p-reply.reply-hl {
+  animation: reply-hl-flash 1.1s ease-in-out 2;
+  border-radius: 12rpx;
+}
+@keyframes reply-hl-flash {
+  0%, 100% { background: transparent; }
+  50% { background: rgba(7, 193, 96, 0.16); }
 }
 .pr-name {
   color: var(--primary);

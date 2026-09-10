@@ -67,8 +67,8 @@
       </template>
     </view>
 
-    <!-- 可滚动内容区 -->
-    <scroll-view class="cm-scroll" scroll-y :scroll-top="scrollTop" @scroll="onScroll" @scrolltolower="onScrollToLower">
+    <!-- 可滚动内容区。scroll-into-view：消息通知点击深链到具体帖子时按元素 id 平滑滚动定位 -->
+    <scroll-view class="cm-scroll" scroll-y :scroll-top="scrollTop" :scroll-into-view="scrollIntoId" scroll-with-animation @scroll="onScroll" @scrolltolower="onScrollToLower">
 
     <!-- 搜索态：模糊匹配到多个用户名时，在结果顶部展示所有匹配的用户名片（抖音风用户卡片），
          带入场/退场过渡；并入帖子结果一起展示 -->
@@ -79,12 +79,13 @@
     <!-- 加载态 -->
     <view v-if="feedLoading && !displayPosts.length" class="cm-loading"><view class="cl-spin" /></view>
 
-    <!-- 信息流 -->
+    <!-- 信息流。highlightReplyId：评论通知深链时高亮对应楼层（短暂闪烁后自动取消） -->
     <PostCard
       v-for="p in displayPosts"
       :key="p.id"
       :post="p"
       :mine="isMine(p)"
+      :highlight-reply-id="focusCommentId"
       @like="like"
       @reply="reply"
       @remove="askRemove"
@@ -173,7 +174,7 @@ import UserAvatar from "./UserAvatar.vue";
 import PeekSheet from "./PeekSheet.vue";
 import MessageCenter from "./MessageCenter.vue";
 import FollowListView from "./FollowListView.vue";
-import { useCommunity, useMessageCenter, useCommunityPreset, useDmTarget, useCommunityUserTarget, type CommunityFilterKey, type CommunityUserTarget } from "@/store/community";
+import { useCommunity, useMessageCenter, useCommunityPreset, useDmTarget, useCommunityUserTarget, usePostTarget, type CommunityFilterKey, type CommunityUserTarget, type CommunityPostTarget } from "@/store/community";
 import { onlineCount, presenceReady } from "@/store/presence";
 import { usePageGuard } from "@/store/guard";
 import { useFollow, useFollowPanel } from "@/store/follow";
@@ -183,12 +184,12 @@ import { userState } from "@/store/user";
 import { vipActive } from "@/store/level";
 import { avatarSeed } from "@/utils/avatar";
 import { vipGatedFrame } from "@/utils/avatarFrame";
-import { communityRepo, type CommunityPost, type PostCard as PostCardData, type Topic } from "@/api/community";
+import { communityRepo, type CommunityPost, type PostCard as PostCardData, type Topic, type PostVisibility } from "@/api/community";
 import { searchUsersByUsername, type UsernameLookup } from "@/api/user";
 
 const { posts, loading, searchResults, load, loadMore, feedDone, publish, like, reply, remove, search } = useCommunity();
 // 评论区互斥展开：提供 closeReply 用于切换筛选 / 重新激活时收起已展开的评论框
-const { closeReply } = useReplyExpansion();
+const { closeReply, openReply } = useReplyExpansion();
 
 // 消息中心：未读总数角标（私信 + 活动通知）+ 进入消息中心加载会话
 const { unreadTotal, loadConversations, loadNotifications } = useMessageCenter();
@@ -342,6 +343,9 @@ watch(filterOpen, (open) => {
   }
 });
 onUnmounted(removeFilterOutside);
+onUnmounted(() => {
+  if (focusClearTimer) clearTimeout(focusClearTimer);
+});
 // 跨 tab 筛选预设（ProfileView 入口设置，onActivated 消费）
 const { consumePreset } = useCommunityPreset();
 // 私信深链（公开资料页「发私信」设置，onActivated 消费 → 打开消息中心）
@@ -443,6 +447,68 @@ watch(
   () => userTarget.value,
   (v) => {
     if (v) enterUserMode(consumeUserTarget()!);
+  }
+);
+
+// ---------------- 消息通知 → 帖子深链（点赞 / 评论点击跳转） ----------------
+// 点赞通知：定位到具体帖子；评论通知：定位帖子 + 展开评论区 + 高亮对应楼层。
+const { postTarget, consumePostTarget } = usePostTarget();
+// scroll-view 的 scroll-into-view 目标元素 id（帖子根 / 评论楼层），变化时平滑滚动定位
+const scrollIntoId = ref("");
+// 当前需高亮的评论楼层 id（传给 PostCard，短暂闪烁后清空，评论区保持展开）
+const focusCommentId = ref<string | null>(null);
+let focusClearTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function focusPost(t: CommunityPostTarget) {
+  // 统一回到主信息流「最新动态」：退出某用户模式 / 搜索态 / 筛选，保证目标帖在当前列表中
+  filterOpen.value = false;
+  clearSearch();
+  viewingUser.value = null;
+  userPosts.value = [];
+  userPostsCursor.value = null;
+  userPostsDone.value = false;
+  filterKey.value = "latest";
+  focusCommentId.value = null;
+  if (focusClearTimer) {
+    clearTimeout(focusClearTimer);
+    focusClearTimer = null;
+  }
+  // 通知里的帖子可能较旧、不在 feed 首页：先确保信息流已加载，未命中再按 id 精确补拉一条
+  if (!posts.value.length) await load();
+  let hit = posts.value.find((p) => p.id === t.postId);
+  if (!hit) {
+    const one = await communityRepo.getById(t.postId);
+    if (!one) {
+      uni.showToast({ title: "帖子不存在或已删除", icon: "none" });
+      return;
+    }
+    posts.value = [one, ...posts.value.filter((p) => p.id !== one.id)];
+    hit = one;
+  }
+  // 评论通知：展开评论区并登记高亮楼层（楼层渲染出来后直接滚动到楼层，比滚到帖顶更精准）
+  if (t.expandComments) {
+    openReply(t.postId);
+    if (t.commentId && hit.replies.some((r) => r.id === t.commentId)) {
+      focusCommentId.value = t.commentId;
+      focusClearTimer = setTimeout(() => {
+        focusCommentId.value = null;
+        focusClearTimer = null;
+      }, 2600);
+    }
+  }
+  await nextTick();
+  // scroll-into-view 同值不重复触发：先清空再下一帧赋目标 id
+  scrollIntoId.value = "";
+  await nextTick();
+  scrollIntoId.value =
+    focusCommentId.value ? `cm-reply-${t.commentId}` : `cm-post-${t.postId}`;
+}
+
+// 同组件挂载期点击通知（最常见路径）：目标写入即响应
+watch(
+  () => postTarget.value,
+  (v) => {
+    if (v) focusPost(consumePostTarget()!);
   }
 );
 
@@ -557,7 +623,7 @@ function clearSearch() {
 
 // ---------------- 发布 ----------------
 // 统一发布入口：正文 + 附加卡片 + 配图 + 关联标的 任意组合，由 store.publish 内部写入 Supabase。
-async function onPublish(payload: { content?: string; card?: PostCardData; topic?: Topic; images?: string[] }) {
+async function onPublish(payload: { content?: string; card?: PostCardData; topic?: Topic; images?: string[]; visibility?: PostVisibility }) {
   try {
     await publish(payload);
     postSheet.value?.collapse();
@@ -591,6 +657,9 @@ onActivated(() => {
   // 消费「某用户帖子」深链：公开资料页「查看更多 TA 的动态」→ 进入该用户帖子模式
   const ut = consumeUserTarget();
   if (ut) enterUserMode(ut);
+  // 消费「消息通知 → 帖子」深链：点赞定位帖子 / 评论定位并展开评论区
+  const pt = consumePostTarget();
+  if (pt) focusPost(pt);
   if (!posts.value.length) load();
   // 刷新未读角标（私信 + 活动通知，已登录才拉）
   if (userState.loggedIn) {

@@ -174,6 +174,31 @@
           </view>
         </view>
       </view>
+      <!-- 可见范围选择：公开 / 仅粉丝 / 仅自己（与字数、发布同处底栏；附件菜单 / 持仓录入态随字数一并收拢让位） -->
+      <view class="cp-vis-wrap" @click.stop>
+        <view class="cp-vis" hover-class="cp-vis-hover" role="button" aria-label="设置可见范围" @click="toggleVis">
+          <OutlineIcon :type="visMeta.icon" :size="26" color="var(--text-2)" />
+          <text class="cp-vis-t">{{ visMeta.label }}</text>
+          <OutlineIcon type="pulldown" :size="20" color="var(--text-3)" />
+        </view>
+        <view v-if="visOpen" class="cp-vis-menu">
+          <view
+            v-for="opt in VIS_OPTIONS"
+            :key="opt.value"
+            class="cp-vis-opt"
+            hover-class="cp-vis-opt-hover"
+            role="button"
+            @click="setVis(opt.value)"
+          >
+            <OutlineIcon :type="opt.icon" :size="30" :color="visibility === opt.value ? 'var(--primary)' : 'var(--text-2)'" />
+            <view class="cp-vis-opt-text">
+              <text class="cp-vis-opt-t">{{ opt.label }}</text>
+              <text class="cp-vis-opt-d">{{ opt.desc }}</text>
+            </view>
+            <OutlineIcon v-if="visibility === opt.value" type="check" :size="26" color="var(--primary)" />
+          </view>
+        </view>
+      </view>
       <text class="cp-count">{{ charCount }}/500</text>
       <view :class="['cp-send', canSend && !sending ? '' : 'disabled']" @click="send">
         <OutlineIcon type="send" :size="ICON_SIZE_FILLED" :color="canSend && !sending ? '#fff' : 'rgba(255,255,255,0.6)'" />
@@ -199,7 +224,7 @@ import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from
 import OutlineIcon from "./OutlineIcon.vue";
 import EmojiPanel from "./EmojiPanel.vue";
 import PostCardView from "./PostCard.vue";
-import { packCard, type CommunityPost, type HoldingCard, type PostCard } from "@/api/community";
+import { packCard, type CommunityPost, type HoldingCard, type PostCard, type PostVisibility } from "@/api/community";
 import { listMyHoldings, saveHolding, dropHolding, type SavedHolding } from "@/api/holdings";
 import { localSuggest, searchStocks, fetchSnapshot, LOCAL_STOCKS, type SearchHit } from "@/api/quote";
 import { marketCharFor, resolveSecid } from "@/utils/period";
@@ -219,8 +244,26 @@ const ICON_SIZE = 36;
 const ICON_SIZE_FILLED = 32;
 
 const emit = defineEmits<{
-  (e: "publish", payload: { content?: string; card?: PostCard; images?: string[] }): void;
+  (e: "publish", payload: { content?: string; card?: PostCard; images?: string[]; visibility: PostVisibility }): void;
 }>();
+
+// 可见范围（后端 community_posts.visibility：public/followers/private，RLS + definer 函数同口径裁决）
+const VIS_OPTIONS: { value: PostVisibility; label: string; desc: string; icon: string }[] = [
+  { value: "public", label: "公开", desc: "所有人可见", icon: "globe" },
+  { value: "followers", label: "仅粉丝", desc: "仅关注你的粉丝可见", icon: "people" },
+  { value: "private", label: "仅自己", desc: "仅自己可见", icon: "locked" },
+];
+const visibility = ref<PostVisibility>("public");
+const visOpen = ref(false);
+const visMeta = computed(() => VIS_OPTIONS.find((o) => o.value === visibility.value) || VIS_OPTIONS[0]);
+function toggleVis() {
+  visOpen.value = !visOpen.value;
+  if (visOpen.value) addOutside(); // 复用附件菜单的外部点击收拢监听
+}
+function setVis(v: PostVisibility) {
+  visibility.value = v;
+  visOpen.value = false;
+}
 
 // 正文（单一纯文本框，不再有 Tab 切换）
 const text = ref("");
@@ -624,8 +667,10 @@ function addOutside() {
   if (outsideHandler || typeof document === "undefined") return;
   outsideHandler = (e: Event) => {
     const t = e.target as HTMLElement | null;
-    if (!t || (t.closest && t.closest(".cp-morph"))) return;
-    closeMenu();
+    if (!t || !t.closest) return;
+    // 附件菜单 / 权限菜单共用同一监听：各自判断落点，互不强绑
+    if (!t.closest(".cp-morph")) closeMenu();
+    if (!t.closest(".cp-vis-wrap")) visOpen.value = false;
   };
   document.addEventListener("pointerdown", outsideHandler, true);
 }
@@ -840,6 +885,7 @@ const previewPost = computed<CommunityPost>(() => ({
   authorFrame: userState.profile?.avatar_frame || "",
   authorUsername: userState.profile?.username || "",
   authorVip: vipActive(userState.profile?.vip, userState.profile?.vip_expires_at),
+  visibility: visibility.value,
   createdAt: Date.now(),
   content: text.value.trim() || undefined,
   card: packedCard.value,
@@ -872,6 +918,7 @@ async function send() {
       content: text.value.trim() || undefined,
       card: packedCard.value,
       images: uploaded.length ? uploaded : undefined,
+      visibility: visibility.value,
     });
     // 复位（含表情面板：发布完成回到干净输入态）
     text.value = "";
@@ -880,6 +927,9 @@ async function send() {
     holdPrices.value = {};
     editKind.value = null;
     emojiOpen.value = false;
+    // 可见范围复位为默认公开（草稿随之清除），避免上一条仅自己帖影响下一条
+    visibility.value = "public";
+    visOpen.value = false;
     resetHolding();
     stockHits.value = [];
     activeQuery.value = null;
@@ -909,6 +959,7 @@ function draftKey(): string {
 interface ComposerDraft {
   text: string;
   holdings: HoldingCard[];
+  visibility: PostVisibility;
 }
 let draftTimer: any = null;
 function clearDraft() {
@@ -927,7 +978,7 @@ function saveDraft() {
       return;
     }
     try {
-      const d: ComposerDraft = { text: text.value, holdings: holdings.value };
+      const d: ComposerDraft = { text: text.value, holdings: holdings.value, visibility: visibility.value };
       uni.setStorageSync(draftKey(), JSON.stringify(d));
     } catch {
       /* 草稿写入失败不干扰正常发帖 */
@@ -951,11 +1002,13 @@ onMounted(() => {
   if (!d) return;
   text.value = d.text || "";
   holdings.value = d.holdings || [];
+  // 旧草稿无 visibility 字段时兜底公开
+  if (d.visibility === "followers" || d.visibility === "private") visibility.value = d.visibility;
   if (holdings.value.length) startHoldPoll(); // 恢复持仓后拉现价刷新收益率
   uni.showToast({ title: "已恢复上次草稿", icon: "none" });
 });
-// 正文 / 持仓变化即落盘（deep 监听持仓 splice 等就地修改）
-watch([text, holdings], saveDraft, { deep: true });
+// 正文 / 持仓 / 可见范围变化即落盘（deep 监听持仓 splice 等就地修改）
+watch([text, holdings, visibility], saveDraft, { deep: true });
 
 </script>
 
@@ -1315,12 +1368,14 @@ watch([text, holdings], saveDraft, { deep: true });
   justify-content: space-between;
   margin-top: 16rpx;
 }
-/* 展开时字数/发布让位：宽度+透明度同步过渡（与形变同曲线同时长），避免被容器挤压产生跳变 */
+/* 展开时字数/发布/可见范围让位：宽度+透明度同步过渡（与形变同曲线同时长），避免被容器挤压产生跳变 */
 .cp-foot.open .cp-count,
 .cp-foot.open .cp-send,
-/* 持仓录入态同展开态：字数 / 发布一并收拢让位，仅显示录入面板 */
+.cp-foot.open .cp-vis-wrap,
+/* 持仓录入态同展开态：字数 / 发布 / 可见范围一并收拢让位，仅显示录入面板 */
 .cp-foot.holding .cp-count,
-.cp-foot.holding .cp-send {
+.cp-foot.holding .cp-send,
+.cp-foot.holding .cp-vis-wrap {
   max-width: 0;
   min-width: 0;
   padding: 0;
@@ -1470,6 +1525,83 @@ watch([text, holdings], saveDraft, { deep: true });
   font-size: var(--font-md);
   color: var(--text-2);
   transition: max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease;
+}
+
+/* 可见范围选择：底栏紧凑胶囊 + 向上弹出的三选菜单（向上避免被底部发布区裁切） */
+.cp-vis-wrap {
+  position: relative;
+  flex: none;
+  /* 与字数 / 发布同款让位过渡（展开附件或持仓录入时收拢） */
+  transition: max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease;
+}
+.cp-vis {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  height: 52rpx;
+  padding: 0 14rpx;
+  border-radius: 999rpx;
+  background: var(--bg-2);
+  box-shadow: inset 0 0 0 1rpx var(--border);
+}
+.cp-vis-hover {
+  background: var(--primary-soft);
+}
+.cp-vis-t {
+  font-size: var(--font-xs);
+  color: var(--text-2);
+  line-height: 1;
+}
+.cp-vis-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10rpx);
+  width: 320rpx;
+  padding: 8rpx;
+  background: var(--bg-2);
+  border: 1rpx solid var(--border);
+  border-radius: 16rpx;
+  box-shadow: var(--shadow-pop);
+  z-index: 30;
+  transform-origin: bottom left;
+  animation: cp-vis-in var(--dur-fast, 0.18s) var(--ease-out, ease-out);
+}
+@keyframes cp-vis-in {
+  from {
+    opacity: 0;
+    transform: translateY(8rpx) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.cp-vis-opt {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 12rpx 14rpx;
+  border-radius: 12rpx;
+}
+.cp-vis-opt-hover {
+  background: var(--primary-soft);
+}
+.cp-vis-opt-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2rpx;
+}
+.cp-vis-opt-t {
+  font-size: var(--font-sm);
+  color: var(--text);
+  line-height: 1.3;
+}
+.cp-vis-opt-d {
+  font-size: var(--font-xs);
+  color: var(--text-3);
+  line-height: 1.3;
 }
 .cp-send {
   display: inline-flex;

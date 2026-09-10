@@ -1,15 +1,26 @@
 <template>
   <view class="report">
-    <!-- 历史胜率提示（独立于信号卡之外，不隶属任何单一信号档）：与信号卡同一引擎在近 250 个交易日逐日回放；
-         无背景，Tip 图标 + 文案左对齐 · 分隔；标签无色，仅数字按涨红/跌绿着色：
-         胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿；右端持仓图标弹出设置持仓（已持仓=主色，未持仓=灰） -->
-    <view v-if="sigRatePct" class="sig-confidence">
+    <!-- 历史胜率提示（与信号卡同一引擎在近 250 个交易日逐日回放；可交易信号多空分桶）：
+         long 桶=买点+持有、sell 桶=卖点，关注/观望不交易不统计；样本 <3 的桶不展示。
+         Tip 图标 + 文案左对齐 · 分隔；标签无色，仅数字按涨红/跌绿着色：
+         胜率 ≥50% 红 / <50% 绿，收益/规避 + 红 / − 绿；右端持仓图标弹出设置持仓（已持仓=主色，未持仓=灰） -->
+    <view v-if="wrLong || wrSell" class="sig-confidence">
       <OutlineIcon type="tip" :size="26" color="var(--warn)" />
-      <text class="sc-label">20 个交易日胜率</text>
-      <text :class="['sc-num', sigRateCls]">{{ sigRatePct }}%</text>
-      <text class="sc-dot">·</text>
-      <text class="sc-label">平均收益</text>
-      <text :class="['sc-num', sigRetCls]">{{ sigRetText }}</text>
+      <template v-if="wrLong">
+        <text class="sc-label">买点信号·20日胜率</text>
+        <text :class="['sc-num', wrLong.winRate >= 0.5 ? 'rate-up' : 'rate-down']">{{ pctText(wrLong.winRate) }}</text>
+        <text class="sc-dot">·</text>
+        <text class="sc-label">平均收益</text>
+        <text :class="['sc-num', wrLong.avgRet >= 0 ? 'ret-up' : 'ret-down']">{{ signedPct(wrLong.avgRet) }}</text>
+      </template>
+      <template v-if="wrLong && wrSell"><text class="sc-dot">·</text></template>
+      <template v-if="wrSell">
+        <text class="sc-label">卖点信号·20日胜率</text>
+        <text :class="['sc-num', wrSell.winRate >= 0.5 ? 'rate-up' : 'rate-down']">{{ pctText(wrSell.winRate) }}</text>
+        <text class="sc-dot">·</text>
+        <text class="sc-label">平均规避</text>
+        <text :class="['sc-num', wrSell.avgRet >= 0 ? 'ret-up' : 'ret-down']">{{ signedPct(wrSell.avgRet) }}</text>
+      </template>
       <view class="sc-pos" @click="openPosForm" role="button" aria-label="设置持仓">
         <OutlineIcon type="portfolio" :size="28" :color="holding ? 'var(--primary)' : 'var(--text-2)'" />
       </view>
@@ -715,32 +726,25 @@ const rangePosColor = computed(() =>
   a.value.rangePos > 80 ? "var(--down)" : a.value.rangePos < 20 ? "var(--up)" : "var(--r-ink)"
 );
 
-// ---------------- 历史胜率提示（与信号卡同一引擎的回放统计；全部信号合并、不分档） ----------------
+// ---------------- 历史胜率提示（与信号卡同一引擎的回放统计；可交易信号多空分桶） ----------------
 // 「20 个交易日」与均线 MA20 同一计数口径：都是 20 根日 K（非自然日）。
-// 标签恒为中性色，仅数字按涨红/跌绿着色：胜率 ≥50% 红（偏多）/ <50% 绿（偏弱）。
-const sigRatePct = computed(() => {
+// long 桶 = 买点 + 持有（做多方向），sell 桶 = 卖点（规避下跌方向）；关注/观望不交易不统计。
+// 样本 <3 次的桶不展示：小样本胜率噪声极大，展示反而误导。
+// 标签恒为中性色，仅数字按涨红/跌绿着色：胜率 ≥50% 红 / <50% 绿，收益/规避 + 红 / − 绿。
+const wrLong = computed(() => {
   const wr = a.value.signalWinRate;
-  // 样本 <3 次不展示：小样本胜率噪声极大，展示反而误导
-  if (!wr || wr.count < 3) return "";
-  return (wr.winRate * 100).toFixed(0);
+  return wr && wr.long.count >= 3 ? wr.long : null;
 });
-const sigRateCls = computed(() => {
+const wrSell = computed(() => {
   const wr = a.value.signalWinRate;
-  if (!wr || wr.count < 3) return "";
-  return wr.winRate >= 0.5 ? "rate-up" : "rate-down";
+  return wr && wr.sell.count >= 3 ? wr.sell : null;
 });
-// 平均收益数字按符号着色：+ 红 / − 绿（A 股涨跌约定，与个股涨跌色一致）
-const sigRetText = computed(() => {
-  const wr = a.value.signalWinRate;
-  if (!wr || wr.count < 3) return "";
-  const ret = Math.abs(wr.avgRet * 100).toFixed(2) + "%";
-  return (wr.avgRet >= 0 ? "+" : "-") + ret;
-});
-const sigRetCls = computed(() => {
-  const wr = a.value.signalWinRate;
-  if (!wr || wr.count < 3) return "";
-  return wr.avgRet >= 0 ? "ret-up" : "ret-down";
-});
+function pctText(v: number) {
+  return (v * 100).toFixed(0) + "%";
+}
+function signedPct(v: number) {
+  return (v >= 0 ? "+" : "-") + Math.abs(v * 100).toFixed(2) + "%";
+}
 
 // ---------------- 设置持仓弹窗（共享组件 PositionForm，见 components/PositionForm.vue） ----------------
 // 保存到 costBasis（按股持久化）：成本驱动报告页持仓状态双视角建议。

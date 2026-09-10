@@ -86,6 +86,9 @@ export interface Reply {
   replyTo?: ReplyTarget | null;
 }
 
+/** 帖子可见范围：public=公开 / followers=仅粉丝 / private=仅自己（后端 RLS + definer 函数同口径裁决） */
+export type PostVisibility = "public" | "followers" | "private";
+
 export interface CommunityPost {
   id: string;
   type: "text" | "card";
@@ -96,6 +99,7 @@ export interface CommunityPost {
   authorUsername?: string; // 作者用户名（冗余快照）：头像种子兜底用（主种子为昵称 author，保证与资料页统一采用昵称首字）
   authorVip?: boolean; // 作者是否为有效 VIP（黑金昵称 + 会员金框展示；profiles 联表实时判定）
   topic?: Topic; // 关联标的（个股 / 板块），用于分类
+  visibility: PostVisibility; // 可见范围（公开 / 仅粉丝 / 仅自己）
   createdAt: number;
   content?: string;
   card?: PostCard;
@@ -118,6 +122,7 @@ export interface NotificationItem {
   postId: string; // 关联的我的帖子
   postSnippet: string; // 帖子摘要（文字内容 / 卡片一句话）
   commentContent?: string; // 仅 comment 类型有值
+  commentId?: string; // 仅 comment 类型有值：被评论楼层 id（点击通知定位高亮用；旧版 RPC 不返回时为 undefined）
   createdAt: number;
 }
 
@@ -158,6 +163,7 @@ export const communityRepo = {
     card?: PostCard;
     topic?: Topic;
     images?: string[];
+    visibility?: PostVisibility;
   }): Promise<CommunityPost> {
     return createRemote(input);
   },
@@ -221,6 +227,11 @@ export const communityRepo = {
     return lookupUserIdByNameRemote(name);
   },
 
+  // ---------------- 单帖精确拉取（消息通知点击跳转：帖子不在当前 feed 缓存时补拉） ----------------
+  async getById(id: string): Promise<CommunityPost | null> {
+    return getByIdRemote(id);
+  },
+
   // ---------------- 某用户发布的动态总数（用户名片「动态数」展示用） ----------------
   // 走 Supabase head + count 精确计数，不拉取行数据，无需新增 RPC，亦无需重新部署后端。
   async countPosts(userId: string): Promise<number> {
@@ -264,7 +275,7 @@ async function listRemote(opts?: { limit?: number; cursor?: number }): Promise<C
   let q = sb
     .from("community_posts")
     .select(
-      "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, user_id, content, created_at, meta)"
+      "id, type, author, user_id, topic, content, card, images, likes, created_at, visibility, replies:community_replies(id, author, user_id, content, created_at, meta)"
     )
     .order("created_at", { ascending: false })
     .limit(fetchLimit);
@@ -311,6 +322,8 @@ function mapRowToPost(
     authorUsername: r.author_username || "",
     authorVip: vipActive(ai.vip, ai.vip_expires_at),
     topic: r.topic || undefined,
+    // 旧行 / 极端情况缺列兜底为公开
+    visibility: (r.visibility as PostVisibility) || "public",
     createdAt: new Date(r.created_at).getTime(),
     content: r.content ?? undefined,
     card: r.card || undefined,
@@ -372,7 +385,7 @@ async function listByUserRemote(
   let q = sb
     .from("community_posts")
     .select(
-      "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, user_id, content, created_at, meta)"
+      "id, type, author, user_id, topic, content, card, images, likes, created_at, visibility, replies:community_replies(id, author, user_id, content, created_at, meta)"
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
@@ -392,6 +405,32 @@ async function listByUserRemote(
     const ai = authorInfoOf(r.user_id);
     return mapRowToPost(r, ai, liked);
   });
+}
+
+/**
+ * 按帖子 id 精确拉取单帖（含全部已发布评论）：消息通知点击跳转时，目标帖不在当前 feed /
+ * 搜索结果 / 用户列表缓存中则补拉这一条。select / 映射与 listRemote 完全同款。
+ * 可见性由 community_posts 的 RLS 策略兜底（仅自己/仅粉丝的帖子不会越权返回）；
+ * 查不到（不存在 / 无权可见）返回 null，由调用方提示。
+ */
+async function getByIdRemote(id: string): Promise<CommunityPost | null> {
+  const sb = getSupabase();
+  if (!sb || !id) return null;
+  const { data, error } = await withTimeout(
+    sb
+      .from("community_posts")
+      .select(
+        "id, type, author, user_id, topic, content, card, images, likes, created_at, visibility, replies:community_replies(id, author, user_id, content, created_at, meta)"
+      )
+      .eq("id", id)
+      .limit(1) as unknown as Promise<{ data: any; error: any }>,
+    10000
+  );
+  if (error || !data || !(data as any[]).length) return null;
+  const row = (data as any[])[0];
+  const liked = await loadLikedFromServer(sb);
+  await loadProfilesForPosts(sb, [row]);
+  return mapRowToPost(row, authorInfoOf(row.user_id), liked);
 }
 
 // 当前用户点赞集合的内存缓存：listRemote 每次加载都会用到，避免「每次列表刷新都多发一次
@@ -486,6 +525,7 @@ async function createRemote(input: {
   card?: PostCard;
   topic?: Topic;
   images?: string[];
+  visibility?: PostVisibility;
 }): Promise<CommunityPost> {
   const sb = getSupabase();
   if (!sb) throw new Error("发布失败，请稍后再试");
@@ -497,6 +537,8 @@ async function createRemote(input: {
     author_frame: userState.profile?.avatar_frame || "",
     author_username: userState.profile?.username || "",
     topic: input.topic ?? null,
+    // 可见范围：默认公开；非法值由后端 CHECK 拒绝
+    visibility: input.visibility === "followers" || input.visibility === "private" ? input.visibility : "public",
     // 允许一条帖同时携带正文 + 附加卡片：有 card 记为 "card" 类型，否则按纯文本 "text"。
     // PostCard 组件按 content / card 是否存在独立渲染，故两种组合都能正确展示。
     type: input.card ? "card" : "text",
@@ -519,6 +561,7 @@ async function createRemote(input: {
     authorUsername: d.author_username || userState.profile?.username || "",
     authorVip: vipActive(userState.profile?.vip, userState.profile?.vip_expires_at),
     topic: d.topic || undefined,
+    visibility: (d.visibility as PostVisibility) || row.visibility,
     createdAt: new Date(d.created_at).getTime(),
     content: d.content ?? undefined,
     card: d.card || undefined,
@@ -548,7 +591,7 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
   const { data: fresh, error: ferr } = await sb
     .from("community_posts")
     .select(
-      "id, type, author, user_id, topic, content, card, images, likes, created_at, replies:community_replies(id, author, user_id, content, created_at, meta)"
+      "id, type, author, user_id, topic, content, card, images, likes, created_at, visibility, replies:community_replies(id, author, user_id, content, created_at, meta)"
     )
     .eq("id", id)
     .single();
@@ -567,6 +610,7 @@ async function toggleLikeRemote(id: string): Promise<CommunityPost | null> {
     authorUsername: f.author_username || "",
     authorVip: vipActive(ai.vip, ai.vip_expires_at),
     topic: f.topic || undefined,
+    visibility: (f.visibility as PostVisibility) || "public",
     createdAt: new Date(f.created_at).getTime(),
     content: f.content ?? undefined,
     card: f.card || undefined,
@@ -615,7 +659,7 @@ async function addReplyRemote(
   const { data, error } = await sb
     .from("community_posts")
     .select(
-      "id, type, author, user_id, author_avatar_url, author_frame, author_username, topic, content, card, images, likes, created_at, replies:community_replies(id, author, user_id, content, created_at, meta)"
+      "id, type, author, user_id, author_avatar_url, author_frame, author_username, topic, content, card, images, likes, created_at, visibility, replies:community_replies(id, author, user_id, content, created_at, meta)"
     )
     .eq("id", id)
     .single();
@@ -635,6 +679,7 @@ async function addReplyRemote(
     authorUsername: d.author_username || "",
     authorVip: vipActive(ai.vip, ai.vip_expires_at),
     topic: d.topic || undefined,
+    visibility: (d.visibility as PostVisibility) || "public",
     createdAt: new Date(d.created_at).getTime(),
     content: d.content ?? undefined,
     card: d.card || undefined,
@@ -721,6 +766,8 @@ async function notificationsRemote(): Promise<NotificationItem[]> {
     postId: r.post_id,
     postSnippet: r.post_snippet || "",
     commentContent: r.comment_content || undefined,
+    // 新版 get_my_notifications 返回 comment_id（楼层 id），旧版 RPC 不返回 → undefined（仅展开评论区，不做楼层定位）
+    commentId: r.comment_id || undefined,
     createdAt: new Date(r.created_at).getTime(),
   }));
 }
