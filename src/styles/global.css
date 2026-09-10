@@ -1249,18 +1249,17 @@ html.ps-lock body {
 .grp-item.active .grp-label {
   color: var(--primary);
 }
-/* 价格预警 / 设置持仓：实时价参考条（统一字号层级，price/sub 同用 font-md，label 作说明用 font-sm） */
+/* 价格预警 / 设置持仓：实时价参考条（整行字号统一 font-md，与卡片内选项/字段标签同级；
+   无底色卡片，与下方列表左缘 26rpx 对齐，仅保留行间距） */
 .alert-rt {
   display: flex;
   align-items: baseline;
   gap: 12rpx;
   padding: 14rpx 26rpx;
-  margin: 4rpx 20rpx 10rpx;
-  background: var(--card-2);
-  border-radius: 14rpx;
+  margin: 4rpx 0 10rpx;
 }
 .alert-rt-label {
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   color: var(--text-2);
 }
 .alert-rt-price {
@@ -1278,11 +1277,10 @@ html.ps-lock body {
 .alert-rt-sub.up { color: var(--up); }
 .alert-rt-sub.down { color: var(--down); }
 .alert-rt-sub.flat { color: var(--text-3); }
-/* 无行情数据时的占位提示（实时价获取中… / 仅供参考）：字号与「当前实时价」标题(label)
-   保持一致（font-sm），不与有数据时 font-md 的涨跌额/涨跌幅抢层级 */
+/* 无行情数据时的占位提示（实时价获取中… / 仅供参考）：字号与同行其余文字一致（font-md） */
 .alert-rt-hint {
   margin-left: auto;
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   color: var(--text-3);
 }
 .alert-cur {

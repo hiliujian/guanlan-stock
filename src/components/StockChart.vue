@@ -1265,6 +1265,9 @@ function scheduleAutoVerify() {
 // 按目标 y 排序 → 自上而下推挤紧贴并排 → 底部溢出则自下而上收拢钳回 → 再自上而下钳顶。
 // 纯函数：同帧各 createYAxisFigures 回调对相同输入产出相同结果，无帧间时序依赖；
 // 价位在可视区外的线不参与（原行为其标签本就被裁剪不可见）。
+// 垂直锚点：每项的 y 是「对应线条像素 y」，也是该线主标签盒的垂直中心；
+// a = 栈顶到主标签中心的距离（并入角色标签 onTop 时主标签下移）。无碰撞时主标签精确居中于线，
+// 碰撞推挤后整栈位移避让。布局返回的是「栈顶部 top」。
 // 标签盒几何常量：klinecharts text 盒高 = paddingTop + size + paddingBottom（getTextRect 源码），
 // 与垂直居中补偿（vPadFix 改纵向分配、总高不变）解耦，布局栈按盒高紧贴排布
 const TAG_H = 18;           // 单行标签盒高（size 10 + 上下 padding 4）
@@ -1283,7 +1286,9 @@ function toPaneY(value: unknown): number | null {
 }
 
 function buildYAxisLabelLayout(boundH: number): Map<string, number> {
-  const items: { key: string; y: number; h: number }[] = [];
+  // y=主标签应对齐的线像素 y（即主标签盒中心目标）；h=标签栈总高；
+  // anchor=栈顶→主标签中心距离（并入角色标签 onTop 时主标签下移）；top=最终栈顶（布局输出）
+  const items: { key: string; y: number; h: number; anchor: number; top: number }[] = [];
   // 自动支撑/压力线（autoLevelLine）：主标签（含 sub）整体参与
   for (const id of autoIds) {
     const o: any = chart?.getOverlayById(id);
@@ -1295,8 +1300,18 @@ function buildYAxisLabelLayout(boundH: number): Map<string, number> {
     const ed = o.extendData;
     const isStruct = ed?.role === "structSupport" || ed?.role === "structPressure";
     let h = (!isStruct && ed?.sub) ? TAG_SUB_H : TAG_H;
-    if (ed?.extra) h += ed.extra.sub ? TAG_SUB_H : TAG_H;
-    items.push({ key: id, y, h });
+    let anchor = TAG_H / 2; // 主标签恒在栈首，中心距栈顶半盒
+    if (ed?.extra) {
+      const eH = ed.extra.sub ? TAG_SUB_H : TAG_H;
+      if (ed.extra.onTop) {
+        // 并入标签在主标签之上：栈总高增加，主标签中心随之下移
+        h += eH;
+        anchor = eH + TAG_H / 2;
+      } else {
+        h += ed.extra.sub ? TAG_SUB_H : TAG_H;
+      }
+    }
+    items.push({ key: id, y, h, anchor, top: y - anchor });
   }
   // 手绘横线（kcHLine）与趋势线端点（kcTrend，每端点一枚标签）
   for (const id of overlayIds) {
@@ -1305,13 +1320,13 @@ function buildYAxisLabelLayout(boundH: number): Map<string, number> {
     if (o.name === "kcHLine") {
       const y = toPaneY(o.points?.[0]?.value);
       if (y == null || y < 0 || y >= boundH) continue;
-      items.push({ key: id, y, h: TAG_H });
+      items.push({ key: id, y, h: TAG_H, anchor: TAG_H / 2, top: y - TAG_H / 2 });
     } else if (o.name === "kcTrend") {
       const pts = o.points || [];
       for (let i = 0; i < pts.length; i++) {
         const y = toPaneY(pts[i]?.value);
         if (y == null || y < 0 || y >= boundH) continue;
-        items.push({ key: `${id}:${i}`, y, h: TAG_H });
+        items.push({ key: `${id}:${i}`, y, h: TAG_H, anchor: TAG_H / 2, top: y - TAG_H / 2 });
       }
     }
   }
@@ -1321,30 +1336,32 @@ function buildYAxisLabelLayout(boundH: number): Map<string, number> {
   const lastClose = Number((dataList[dataList.length - 1] as any)?.close);
   if (isFinite(lastClose)) {
     const y = toPaneY(lastClose);
-    if (y != null && y >= 0 && y < boundH) items.push({ key: "__lastPrice", y, h: TAG_H });
+    if (y != null && y >= 0 && y < boundH) items.push({ key: "__lastPrice", y, h: TAG_H, anchor: TAG_H / 2, top: y - TAG_H / 2 });
   }
   const map = new Map<string, number>();
   if (!items.length) return map;
   items.sort((a, b) => a.y - b.y);
+  // 自然栈顶 = 线 y - 主标签中心偏移；碰撞时整栈下移紧贴前一栈底部
   let prevBottom = -Infinity;
   for (const it of items) {
-    it.y = Math.max(it.y, prevBottom);
-    prevBottom = it.y + it.h;
+    it.top = Math.max(it.y - it.anchor, prevBottom);
+    prevBottom = it.top + it.h;
   }
+  // 底部溢出：自下而上收拢钳回可视区，再自上而下消除收拢产生的重叠
   if (prevBottom > boundH) {
     let nextTop = boundH;
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i];
-      it.y = Math.min(it.y + it.h, nextTop) - it.h;
-      nextTop = it.y;
+      it.top = Math.min(it.top + it.h, nextTop) - it.h;
+      nextTop = it.top;
     }
     let prevB = -Infinity;
     for (const it of items) {
-      it.y = Math.max(it.y, prevB);
-      prevB = it.y + it.h;
+      it.top = Math.max(it.top, prevB);
+      prevB = it.top + it.h;
     }
   }
-  for (const it of items) map.set(it.key, it.y);
+  for (const it of items) map.set(it.key, it.top);
   return map;
 }
 
@@ -1412,7 +1429,8 @@ function ensureTrendOverlay() {
         // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角；标签恒贴左(x:0, align:left)不位移，
         // 仅当盒宽会越过右边界时限宽（clampBoxW），文字自动缩放居中于盒内，永不溢出被裁剪。
         // 标签（含价格）统一 size 10；下方 sub 提示统一 size 8（仅交易参考线渲染 sub）。
-        // 结构线（structSupport/structPressure）标签下方不带子标签——破位等状态由淡化线色表达。
+        // 结构线（structSupport/structPressure）标签下方不带子标签——破位等状态只体现在悬浮提示。
+        // 垂直锚定：布局保证主标签盒中心正对线条 y（含 onTop 并入栈时已计入 anchor 偏移）。
         const role = overlay?.extendData?.role;
         const isStruct = role === "structSupport" || role === "structPressure";
         const bg = overlay?.extendData?.bg || overlay?.styles?.line?.color || "#888";

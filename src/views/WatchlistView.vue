@@ -1342,6 +1342,7 @@ function openPosStock(p: PosRow) {
 function onPosPressStart(p: PosRow, e: any) {
   const it = list.value.find((it) => resolveSecid(it.code, it.market as any) === p.secid) ?? null;
   if (!it) return;
+  if (lpCompatBlocked(e)) return; // 触摸手势的延迟兼容鼠标事件，不另起计时器
   lpFired = false;
   const pt = pressPt(e);
   lpStartX = pt.x;
@@ -1831,6 +1832,24 @@ let lpStartY = 0;
 let lpFired = false;
 const LP_MS = 500;
 const LP_MOVE = 10;
+// 最近一次触摸手势时间戳（touchstart/touchend/touchcancel 时刷新）。
+// 移动端部分内核（VIA/X5、部分 iOS WKWebView）对长按手势补发的兼容 mousedown/
+// mouseup/mouseleave/mousemove 时序不固定，可能延迟到「下一次长按」已起手后才到达：
+// 那条迟到的兼容 mousedown 会清掉第二次长按刚启动的计时器，表现为第一次长按别的股票
+// 不切换、必须再按一次。触摸后 900ms 内收到的鼠标事件一律按兼容事件忽略
+// （PC 纯鼠标路径不产生触摸事件，不受影响）。
+const LP_COMPAT_MS = 900;
+let lpLastTouchAt = 0;
+function isTouchLike(e: any): boolean {
+  return !!e && typeof e.type === "string" && e.type.indexOf("touch") === 0;
+}
+function lpCompatBlocked(e: any): boolean {
+  if (isTouchLike(e)) {
+    lpLastTouchAt = Date.now();
+    return false;
+  }
+  return lpLastTouchAt !== 0 && Date.now() - lpLastTouchAt < LP_COMPAT_MS;
+}
 function pressPt(e: any): { x: number; y: number } {
   const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
   if (t) return { x: t.clientX, y: t.clientY };
@@ -1838,26 +1857,29 @@ function pressPt(e: any): { x: number; y: number } {
 }
 function onRowPressStart(it: WatchItem, e: any) {
   if (reorderMode.value) return; // 整理模式下禁用长按菜单（拖拽手柄另行处理）
+  if (lpCompatBlocked(e)) return; // 触摸手势的延迟兼容鼠标事件，不另起计时器
   lpFired = false;
   const p = pressPt(e);
   lpStartX = p.x;
   lpStartY = p.y;
   if (lpTimer != null) clearTimeout(lpTimer);
-  const target = it;
   lpTimer = setTimeout(() => {
     lpFired = true;
-    onRowLongPress(target);
+    onRowLongPress(it);
   }, LP_MS);
 }
 function onRowPressMove(e: any) {
   if (lpTimer == null) return;
+  if (lpCompatBlocked(e)) return; // 兼容 mousemove 不得取消正在进行的触摸长按
   const p = pressPt(e);
   if (Math.abs(p.x - lpStartX) > LP_MOVE || Math.abs(p.y - lpStartY) > LP_MOVE) {
     clearTimeout(lpTimer);
     lpTimer = null;
   }
 }
-function onRowPressEnd() {
+function onRowPressEnd(e?: any) {
+  // 触摸结束刷新窗口（兼容鼠标事件恰在结束后补发）；窗口内的兼容 mouseup/mouseleave 直接忽略
+  if (e && lpCompatBlocked(e)) return;
   if (lpTimer != null) {
     clearTimeout(lpTimer);
     lpTimer = null;

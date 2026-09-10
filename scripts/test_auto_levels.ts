@@ -72,7 +72,7 @@ function checkLevels(levels: AutoLevel[], cur: number, tag: string, series: any[
       bad(`${tag} 价格非法`, `price=${l.price}`);
   }
   // 降级识别：轴标签恒为 压/支/S/B，破位/弱参考/兜底由小字 sub（已破位/弱参考）或 src（含「兜底」）承载，
-  // 均为淡化参考线，不做有效线方位检查。
+  // 均为降级参考线（线色不淡化，仅文案/悬浮提示标注），不做有效线方位检查。
   const degraded = (l: AutoLevel) => l.sub === "已破位" || l.sub === "弱参考" || (l.src ?? "").includes("兜底") || l.tag?.includes("破");
   // 方位合理性：非降级支撑不得悬在现价上方 / 压力不得坠在现价下方
   // （与算法同口径：cur<=0 的深度前复权历史截面属数据级负价，方位判定无意义，跳过）
@@ -326,7 +326,7 @@ console.log("\n📈 场景4b：下跌结构上破前高 → 反转 uptrend");
 }
 
 // 场景5：支撑被连续多根实体击穿 → 图表仍画线但降级「破」
-console.log("\n💥 场景5：支撑破位 → 淡化+破标注（不隐藏）");
+console.log("\n💥 场景5：支撑破位 → 线色不变 + 破标注（不隐藏）");
 {
   const series = [...zigzag(8, 10), ...dn(6, 10, -3.5, 0.5)];
   const levels = computeAutoLevelsFromSeries(series, resolvePeriodGuard("d"));
@@ -337,7 +337,7 @@ console.log("\n💥 场景5：支撑破位 → 淡化+破标注（不隐藏）")
   else caution("合成·破位 支撑未标破", `tag=${sup.tag} line=${sup.price?.toFixed(2)} 现价=${cur.toFixed(2)}`);
 }
 
-// 场景6：单根深针脉冲（仅 1 个摆动低点）→ S 不隐藏，降级为兜底淡化线
+// 场景6：单根深针脉冲（仅 1 个摆动低点）→ S 不隐藏，降级为兜底线（文案标注）
 console.log("\n📌 场景6：单脉冲插针 → S 降级兜底（必须渲染，不隐藏）");
 {
   const base = up(15, 10, 0.8, 0.3);

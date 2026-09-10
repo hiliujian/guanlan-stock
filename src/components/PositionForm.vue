@@ -14,7 +14,7 @@
     <view class="pf-fields">
       <view class="pf-field">
         <text class="pf-k">持仓成本（元/股）</text>
-        <input class="alert-input" type="digit" :value="pfCost" placeholder="必填，如 12.50" @input="onPfCost" />
+        <input class="alert-input" type="digit" :value="pfCost" :placeholder="costPlaceholder" @input="onPfCost" />
       </view>
       <view class="pf-field">
         <text class="pf-k">持仓数量（股）</text>
@@ -63,6 +63,11 @@ const refPrice = computed<number | null>(() => {
 });
 const refChg = computed<number | null>(() => (live.value ? live.value.chg ?? null : null));
 const refPct = computed<number | null>(() => (live.value ? live.value.pct ?? null : null));
+
+// 成本录入占位符：取到实时价时直接给「如 ¥当前价」作锚点，否则回退通用示例
+const costPlaceholder = computed(() =>
+  refPrice.value != null ? `必填，如 ¥${fmtPrice(refPrice.value)}` : "必填，如 12.50"
+);
 
 async function loadRef() {
   live.value = null;
