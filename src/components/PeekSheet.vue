@@ -1,5 +1,4 @@
 <template>
-  <teleport to="body">
   <view class="peek">
     <view
       class="peek-card"
@@ -33,7 +32,6 @@
       </view>
     </view>
   </view>
-  </teleport>
 </template>
 
 <script setup lang="ts">
@@ -239,11 +237,6 @@ defineExpose({ expand, collapse });
 /* 统一底部窗体：固定底部、玻璃质感、浅阴影、仅顶部圆角，与主题一致 */
 .peek-card {
   position: fixed;
-  /* 显式层级（需求②统一弹层/浮层层级）：teleport 到 body 后，不再依赖 DOM 顺序"侥幸"置顶。
-     取值 40 = 高于页面常驻头部(30)与自选页信号浮层(35)，低于底部弹层 BottomSheet(950)、
-     确认弹层(1000)与居中模态(9999)；几何上位于 TabBar(900) 之上（bottom 预留 110rpx），
-     二者不重叠，故无需与 TabBar 争层级。 */
-  z-index: 40;
   left: 50%;
   transform: translateX(-50%);
   bottom: calc(env(safe-area-inset-bottom) + 110rpx);

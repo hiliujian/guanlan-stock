@@ -54,6 +54,19 @@
   --shadow-up: var(--shadow-primary-2);
   --suggest-shadow: var(--shadow-3);
   --shell-shadow: var(--shadow-ambient);
+  /* ===== 公共浮层层级（z-index 唯一来源）=====
+     所有弹窗 / 底部面板 / 表情面板 / 浮层统一引用下列档位，禁止再散写魔法数字；
+     新增浮层请归入对应档位。注意：仅调高单个元素数值无法解决 overflow 裁剪与父级
+     stacking context 遮挡——被裁剪/遮挡时应让浮层 teleport 到 body 并引用 --z-popover。 */
+  --z-peek: 40; /* 底部常驻卡片（PeekSheet 折叠 / 展开态） */
+  --z-sticky: 61; /* 常驻吸顶 / 筛选栏（展开下拉时临时升档） */
+  --z-tabbar: 900; /* 底部导航栏 */
+  --z-panel: 940; /* 侧滑面板（消息中心 / 关注列表） */
+  --z-sheet: 950; /* 底部弹层（BottomSheet：设置持仓 / 编辑预警 / 帖子操作菜单） */
+  --z-popover: 970; /* 公共浮层：需脱离父卡片的浮层（表情面板 / 可见范围菜单 / 联想浮层） */
+  --z-dialog: 1000; /* 确认类弹层（ConfirmDialog / 删除确认 / 头像裁剪） */
+  --z-auth: 1200; /* 登录回调遮罩 */
+  --z-modal: 9999; /* 居中模态（人机验证等） */
   --gap: 16rpx;
   --glass-blur: 18rpx;
   /* 跨主题专用表面（深浅色各自一套，避免硬编码导致切主题不彻底） */
@@ -1103,7 +1116,7 @@ html.ps-lock body {
 .modal-mask {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;

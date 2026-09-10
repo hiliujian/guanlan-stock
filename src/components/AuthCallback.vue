@@ -71,7 +71,7 @@ function goRegister() {
 .ac-empty {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: var(--z-auth);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -117,7 +117,7 @@ function goRegister() {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
-  z-index: 1200;
+  z-index: var(--z-auth);
   display: flex;
   align-items: center;
   justify-content: center;

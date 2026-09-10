@@ -63,7 +63,7 @@ function onConfirm() {
 .cd-mask {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-dialog);
   background: rgba(0, 0, 0, 0.5);
   /* 轻模糊由全局 .mask-blur 提供 */
   display: flex;

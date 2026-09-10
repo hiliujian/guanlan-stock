@@ -14,20 +14,30 @@
     </view>
 
     <!-- 表情面板（类微信）：点选即插入光标处；
-         mousedown.prevent 防止点面板夺走输入框焦点导致光标丢失 -->
-    <view v-if="emojiOpen" :class="['emoji-panel', direction]" @mousedown.prevent>
-      <scroll-view scroll-y class="emoji-scroll">
-        <view class="emoji-grid">
-          <text v-for="em in EMOJIS" :key="em" class="emoji-item" @click="insertAndClose(em)">{{ em }}</text>
-        </view>
-      </scroll-view>
-      <view class="emoji-bar">
-        <text class="emoji-tip">点击插入到光标处</text>
-        <view class="emoji-del" @click="backspaceEmoji" role="button" aria-label="删除一个字符">
-          <OutlineIcon type="backspace" :size="34" color="var(--text)" />
+         mousedown.prevent 防止点面板夺走输入框焦点导致光标丢失。
+         统一 teleport 到 body：面板不再受宿主卡片的 overflow 裁剪与 stacking context 限制，
+         始终浮动在页面内容、帖子预览与其他卡片之上（层级引用公共 --z-popover）。 -->
+    <teleport to="body">
+      <view
+        v-if="emojiOpen"
+        ref="panelRef"
+        :class="['emoji-panel', 'escaped', direction]"
+        :style="panelStyle"
+        @mousedown.prevent
+      >
+        <scroll-view scroll-y class="emoji-scroll">
+          <view class="emoji-grid">
+            <text v-for="em in EMOJIS" :key="em" class="emoji-item" @click="insertAndClose(em)">{{ em }}</text>
+          </view>
+        </scroll-view>
+        <view class="emoji-bar">
+          <text class="emoji-tip">点击插入到光标处</text>
+          <view class="emoji-del" @click="backspaceEmoji" role="button" aria-label="删除一个字符">
+            <OutlineIcon type="backspace" :size="34" color="var(--text)" />
+          </view>
         </view>
       </view>
-    </view>
+    </teleport>
   </view>
 </template>
 
@@ -97,19 +107,45 @@ watch(
 
 // 点击面板外任意位置自动收起：document 捕获阶段监听，目标不在本组件根内即关闭
 const wrapRef = ref<any>(null);
+/** 入口 / 面板原生元素（uni 组件需取 $el） */
+function elOf(r: any): HTMLElement | null {
+  return r instanceof HTMLElement ? r : (r?.$el instanceof HTMLElement ? r.$el : null);
+}
+// ---- 脱离宿主的浮层定位：teleport 到 body 后，按入口按钮视口坐标换算 fixed 位置 ----
+const panelRef = ref<any>(null);
+const panelStyle = ref<Record<string, string>>({});
+function measure() {
+  const el = elOf(wrapRef.value);
+  if (!el || typeof window === "undefined") return;
+  const rect = el.getBoundingClientRect();
+  const rpx = window.innerWidth / 750; // uni rpx → px
+  const gap = 8 * rpx;
+  const w = Math.min(420 * rpx, window.innerWidth * 0.86);
+  // 右对齐入口并夹在视口内（左右各留 8rpx 安全边距），避免溢出屏幕
+  const left = Math.max(8 * rpx, Math.min(rect.right - w, window.innerWidth - w - 8 * rpx));
+  panelStyle.value =
+    props.direction === "up"
+      ? { left: `${left}px`, bottom: `${window.innerHeight - rect.top + gap}px`, width: `${w}px` }
+      : { left: `${left}px`, top: `${rect.bottom + gap}px`, width: `${w}px` };
+}
+
 function onDocPointerDown(e: Event) {
   if (!emojiOpen.value) return;
-  const r = wrapRef.value as any;
-  const root: HTMLElement | null =
-    r instanceof HTMLElement ? r : (r?.$el instanceof HTMLElement ? r.$el : null);
-  if (root && !root.contains(e.target as Node)) {
+  const root = elOf(wrapRef.value);
+  const panel = elOf(panelRef.value);
+  // 面板已 teleport 到 body，不再被入口容器包含，需单独判定，否则点面板即误判为"点外部"而关闭
+  const inside =
+    (root ? root.contains(e.target as Node) : false) || (panel ? panel.contains(e.target as Node) : false);
+  if (!inside) {
     emojiOpen.value = false;
     emit("update:open", false);
   }
 }
 watch(emojiOpen, (v) => {
-  if (v) document.addEventListener("pointerdown", onDocPointerDown, true);
-  else document.removeEventListener("pointerdown", onDocPointerDown, true);
+  if (v) {
+    measure();
+    document.addEventListener("pointerdown", onDocPointerDown, true);
+  } else document.removeEventListener("pointerdown", onDocPointerDown, true);
 });
 onUnmounted(() => document.removeEventListener("pointerdown", onDocPointerDown, true));
 
@@ -164,6 +200,17 @@ function toggle() {
 .emoji-panel.up {
   top: auto;
   bottom: calc(100% + 8rpx);
+}
+/* 脱离宿主（teleport 到 body）：改为视口固定定位，坐标由 JS 按入口位置换算成 px。
+   层级引用公共 --z-popover，保证始终高于页面内容 / 帖子预览 / 其他卡片，
+   不再依赖宿主卡片的层叠上下文（也无需再给宿主卡临时抬 z-index）。 */
+.emoji-panel.escaped {
+  position: fixed;
+  right: auto;
+  z-index: var(--z-popover);
+}
+.emoji-panel.escaped.up {
+  top: auto;
 }
 @keyframes emojiIn {
   from {

@@ -110,8 +110,8 @@ function onUp() {
   left: 50%;
   transform: translateX(-50%);
   bottom: 0;
-  /* 950：高于底部导航栏(900)，确保底部弹层不被 tabbar 遮挡；低于 confirm(1000)/modal(9999) */
-  z-index: 950;
+  /* 公共层级 --z-sheet(950)：高于底部导航栏(--z-tabbar 900)，低于确认弹层(--z-dialog)/居中模态(--z-modal) */
+  z-index: var(--z-sheet);
   width: 100%;
   max-width: 480px;
   display: flex;

@@ -200,7 +200,7 @@ onMounted(async () => {
   background: rgba(0, 0, 0, 0.78);
   color: #fff;
   font-size: var(--font-sm);
-  z-index: 9999;
+  z-index: var(--z-modal);
   pointer-events: auto;
   cursor: pointer;
 }
@@ -214,7 +214,7 @@ onMounted(async () => {
 .ann-mask {
   position: fixed;
   inset: 0;
-  z-index: 10000;
+  z-index: calc(var(--z-modal) + 1);
   display: flex;
   align-items: center;
   justify-content: center;

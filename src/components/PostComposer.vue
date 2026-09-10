@@ -175,13 +175,16 @@
         </view>
       </view>
       <!-- 可见范围选择：公开 / 仅粉丝 / 仅自己（与字数、发布同处底栏；附件菜单 / 持仓录入态随字数一并收拢让位） -->
-      <view class="cp-vis-wrap" @click.stop>
+      <view ref="visWrapRef" class="cp-vis-wrap" @click.stop>
         <view class="cp-vis" hover-class="cp-vis-hover" role="button" aria-label="设置可见范围" @click="toggleVis">
           <OutlineIcon :type="visMeta.icon" :size="26" color="var(--text-2)" />
           <text class="cp-vis-t">{{ visMeta.label }}</text>
           <OutlineIcon type="pulldown" :size="20" color="var(--text-3)" />
         </view>
-        <view v-if="visOpen" class="cp-vis-menu">
+        <!-- 可见范围菜单：teleport 到 body，脱离发帖卡片（PeekSheet）的 overflow 与
+             stacking context，向上展开时不再被父卡片裁剪；层级走公共 --z-popover -->
+        <teleport to="body">
+          <view v-if="visOpen" class="cp-vis-menu escaped" :style="visMenuStyle">
           <view
             v-for="opt in VIS_OPTIONS"
             :key="opt.value"
@@ -197,7 +200,8 @@
             </view>
             <OutlineIcon v-if="visibility === opt.value" type="check" :size="26" color="var(--primary)" />
           </view>
-        </view>
+          </view>
+        </teleport>
       </view>
       <text class="cp-count">{{ charCount }}/500</text>
       <view :class="['cp-send', canSend && !sending ? '' : 'disabled']" @click="send">
@@ -275,9 +279,32 @@ const VIS_OPTIONS = POST_VISIBILITY_OPTIONS;
 const visibility = ref<PostVisibility>("public");
 const visOpen = ref(false);
 const visMeta = computed(() => VIS_OPTIONS.find((o) => o.value === visibility.value) || VIS_OPTIONS[0]);
+// 可见范围菜单：teleport 到 body 后，按入口视口坐标换算 fixed 位置（向上展开、左对齐入口）
+const visWrapRef = ref<any>(null);
+const visMenuStyle = ref<Record<string, string>>({});
+function measureVis() {
+  const r = visWrapRef.value as any;
+  const el: HTMLElement | null =
+    r instanceof HTMLElement ? r : (r?.$el instanceof HTMLElement ? r.$el : null);
+  if (!el || typeof window === "undefined") return;
+  const rect = el.getBoundingClientRect();
+  const rpx = window.innerWidth / 750; // uni rpx → px
+  const w = 320 * rpx;
+  const gap = 10 * rpx;
+  // 左对齐入口并夹在视口内（左右各留 8rpx 安全边距）
+  const left = Math.max(8 * rpx, Math.min(rect.left, window.innerWidth - w - 8 * rpx));
+  visMenuStyle.value = {
+    left: `${left}px`,
+    bottom: `${window.innerHeight - rect.top + gap}px`,
+    width: `${w}px`,
+  };
+}
 function toggleVis() {
   visOpen.value = !visOpen.value;
-  if (visOpen.value) addOutside(); // 复用附件菜单的外部点击收拢监听
+  if (visOpen.value) {
+    measureVis();
+    addOutside(); // 复用附件菜单的外部点击收拢监听
+  }
 }
 function setVis(v: PostVisibility) {
   visibility.value = v;
@@ -689,7 +716,9 @@ function addOutside() {
     if (!t || !t.closest) return;
     // 附件菜单 / 权限菜单共用同一监听：各自判断落点，互不强绑
     if (!t.closest(".cp-morph")) closeMenu();
-    if (!t.closest(".cp-vis-wrap")) visOpen.value = false;
+    // 菜单已 teleport 到 body，不再被 .cp-vis-wrap 包含，需单独判定，
+    // 否则点击菜单项会被判为"点外部"而在 click 前收起，导致选不中
+    if (!t.closest(".cp-vis-wrap") && !t.closest(".cp-vis-menu")) visOpen.value = false;
   };
   document.addEventListener("pointerdown", outsideHandler, true);
 }
@@ -1593,6 +1622,12 @@ watch([text, holdings, visibility], saveDraft, { deep: true });
   z-index: 30;
   transform-origin: bottom left;
   animation: cp-vis-in var(--dur-fast, 0.18s) var(--ease-out, ease-out);
+}
+/* 脱离宿主（teleport 到 body）：视口固定定位，坐标由 JS 按入口位置换算；
+   层级引用公共 --z-popover，保证菜单完整显示、不被发帖卡片裁剪 */
+.cp-vis-menu.escaped {
+  position: fixed;
+  z-index: var(--z-popover);
 }
 @keyframes cp-vis-in {
   from {
