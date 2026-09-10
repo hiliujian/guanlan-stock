@@ -28,8 +28,10 @@
           @after-insert="updateHash"
         />
 
-        <!-- # 股票联想浮层（下拉）：锚定到 # 输入位置正下方悬浮显示 -->
-        <view v-if="showSuggest" class="cp-suggest" :style="suggestStyle">
+        <!-- # 股票联想浮层（下拉）：锚定到 # 输入位置正下方悬浮显示。
+             teleport 到 body：脱离发帖卡片（PeekSheet）的 overflow 裁剪，层级走公共 --z-popover -->
+        <teleport to="body">
+          <view v-if="showSuggest" class="cp-suggest escaped" :style="suggestEscapedStyle">
           <view v-if="!suggestions.length" class="cp-suggest-empty">无匹配股票</view>
           <view
             v-for="(s, i) in suggestions"
@@ -44,7 +46,8 @@
               <text class="cp-suggest-code">{{ s.code }}</text>
             </view>
           </view>
-        </view>
+          </view>
+        </teleport>
       </view>
 
       <!-- 已选图片预览：贴在输入框内（文本框下方），点击放大、可单删 -->
@@ -430,11 +433,15 @@ const wrapRef = ref<any>(null);
 // 浮层锚定坐标（px，相对 wrapper）；null 时回退到 CSS 的 top:100%（文本框底部）。
 // left/right 由 .cp-suggest 的 CSS 提供（0 撑满），内联只补 top。
 const suggestPos = ref<{ top: number; left: number } | null>(null);
-const suggestStyle = computed(() => {
-  if (suggestPos.value) {
-    return { top: suggestPos.value.top + "px" };
-  }
-  return {};
+// 浮层已 teleport 到 body：把「相对 wrapper 的 px 坐标」换算成视口坐标（fixed）。
+// 宽度沿用 wrapper 宽度（原有 CSS left:0/right:0 撑满同宽）；无锚点时回退到文本框底部。
+const suggestEscapedStyle = computed(() => {
+  if (typeof window === "undefined") return {};
+  const r = (wrapRef.value as any)?.$el ?? wrapRef.value;
+  if (!(r instanceof HTMLElement)) return {};
+  const rect = r.getBoundingClientRect();
+  const top = suggestPos.value ? rect.top + suggestPos.value.top : rect.bottom;
+  return { left: `${rect.left}px`, top: `${top}px`, width: `${rect.width}px` };
 });
 
 /**
@@ -1120,6 +1127,13 @@ watch([text, holdings, visibility], saveDraft, { deep: true });
 .cp-stock-suggest {
   z-index: 25;
   max-height: 320rpx;
+}
+/* 脱离宿主（teleport 到 body）：视口固定定位，坐标由 JS 按入口换算；
+   层级引用公共 --z-popover，保证浮层完整显示、不被发帖卡片（PeekSheet）裁剪 */
+.cp-suggest.escaped {
+  position: fixed;
+  right: auto;
+  z-index: var(--z-popover);
 }
 .cp-suggest-empty {
   padding: 18rpx;
