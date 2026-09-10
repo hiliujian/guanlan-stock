@@ -45,6 +45,7 @@
 import { ref, watch, onUnmounted } from "vue";
 import { EMOJIS, useEmoji } from "@/composables/useEmoji";
 import OutlineIcon from "./OutlineIcon.vue";
+import { rpx, shellBounds, clampToShell } from "@/utils/rpx";
 
 const props = withDefaults(
   defineProps<{
@@ -118,11 +119,12 @@ function measure() {
   const el = elOf(wrapRef.value);
   if (!el || typeof window === "undefined") return;
   const rect = el.getBoundingClientRect();
-  const rpx = window.innerWidth / 750; // uni rpx → px
-  const gap = 8 * rpx;
-  const w = Math.min(420 * rpx, window.innerWidth * 0.86);
-  // 右对齐入口并夹在视口内（左右各留 8rpx 安全边距），避免溢出屏幕
-  const left = Math.max(8 * rpx, Math.min(rect.right - w, window.innerWidth - w - 8 * rpx));
+  const u = rpx(); // uni rpx → px（PC 端基准自动收敛，勿用 innerWidth/750）
+  const gap = 8 * u;
+  // 宽度同时受外壳约束：PC 端 .app-shell 仅 480px，按视口 86% 算会撑出页面边界
+  const w = Math.min(420 * u, shellBounds().width - 16 * u);
+  // 右对齐入口，并夹进外壳内（左右各留 8rpx 安全边距）
+  const left = clampToShell(rect.right - w, w);
   panelStyle.value =
     props.direction === "up"
       ? { left: `${left}px`, bottom: `${window.innerHeight - rect.top + gap}px`, width: `${w}px` }

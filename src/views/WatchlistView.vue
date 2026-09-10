@@ -693,6 +693,7 @@ import { analyze } from "@/utils/analyzer";
 import { toActionChip } from "@/utils/actionSignal";
 import { getKline, getFlow } from "@/api/sources";
 import { getPosition, setPosition, clearPosition, listPositions, positionsVersion, type Position } from "@/utils/costBasis";
+import { rpx } from "@/utils/rpx";
 import { hydrateCloudPositions } from "@/store/holdingsMirror";
 import { saveHolding, dropHolding } from "@/api/holdings";
 
@@ -1600,9 +1601,8 @@ function beginDrag(e: any, scope: "watch" | "pos", key: string) {
   dragDy.value = 0;
   dragMoved = false;
   try {
-    const info: any = (uni as any).getWindowInfo ? (uni as any).getWindowInfo() : uni.getSystemInfoSync();
-    const w = info.windowWidth || 375;
-    rowHpx = (w / 750) * 96; // .td 行高 96rpx → px（与热榜 .rk-row min-height:96rpx 对齐）
+    // 统一走 rpx()：PC 端 uni 会把 rpx 基准收敛到 375，windowWidth/750 会放大数倍
+    rowHpx = rpx() * 96; // .td 行高 96rpx → px（与热榜 .rk-row min-height:96rpx 对齐）
   } catch (_) {
     rowHpx = 50;
   }

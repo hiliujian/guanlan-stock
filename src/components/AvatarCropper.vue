@@ -83,6 +83,7 @@
  */
 import { computed, nextTick, ref, watch } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
+import { rpx } from "@/utils/rpx";
 
 const props = withDefaults(
   defineProps<{
@@ -312,10 +313,9 @@ watch(
   (v) => {
     if (v) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const info: any = (uni as any).getSystemInfoSync ? (uni as any).getSystemInfoSync() : {};
-        const sw = info.screenWidth || info.windowWidth || 375;
-        stageSize.value = Math.min(560, (560 * sw) / 750);
+        // 统一走 rpx()：PC 端 uni 把 rpx 基准收敛到 375，原 (560*screenWidth/750)
+        // 在桌面端会算成 560px，超出 480px 外壳；rpx()*560 在手机端取值完全一致
+        stageSize.value = Math.min(560, rpx() * 560);
       } catch (_) {
         stageSize.value = 320;
       }

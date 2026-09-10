@@ -242,6 +242,7 @@ import { openAuth } from "@/store/nav";
 import { uploadPostImage } from "@/api/auth";
 import { listPositions } from "@/utils/costBasis";
 import { fmtNum as fmt } from "@/utils/format";
+import { rpx, clampToShell } from "@/utils/rpx";
 
 // 工具栏图标尺寸：线型图标视觉占比约 70%，统一放大到能与 --font-md(28rpx) 文字视觉匹配，避免看着偏小。
 // 线宽不在此覆写：全项目 143 处图标统一走 OutlineIcon 默认的 stroke-width(2)，保持一致。
@@ -291,11 +292,11 @@ function measureVis() {
     r instanceof HTMLElement ? r : (r?.$el instanceof HTMLElement ? r.$el : null);
   if (!el || typeof window === "undefined") return;
   const rect = el.getBoundingClientRect();
-  const rpx = window.innerWidth / 750; // uni rpx → px
-  const w = 320 * rpx;
-  const gap = 10 * rpx;
-  // 左对齐入口并夹在视口内（左右各留 8rpx 安全边距）
-  const left = Math.max(8 * rpx, Math.min(rect.left, window.innerWidth - w - 8 * rpx));
+  const u = rpx(); // uni rpx → px（PC 端基准自动收敛，勿用 innerWidth/750）
+  const w = 320 * u;
+  const gap = 10 * u;
+  // 左对齐入口，并夹进外壳内（PC 端外壳仅 480px，避免越出页面边界）
+  const left = clampToShell(rect.left, w);
   visMenuStyle.value = {
     left: `${left}px`,
     bottom: `${window.innerHeight - rect.top + gap}px`,

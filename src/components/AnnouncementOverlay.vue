@@ -194,7 +194,8 @@ onMounted(async () => {
   bottom: 140rpx;
   left: 50%;
   transform: translateX(-50%);
-  max-width: 86%;
+  /* 夹在应用外壳内：PC 端 86vw 可达 1600px+，会越过 480px 外壳边界；手机端 86% < 440px 取值不变 */
+  max-width: min(86%, 440px);
   padding: 18rpx 32rpx;
   border-radius: 999rpx;
   background: rgba(0, 0, 0, 0.78);

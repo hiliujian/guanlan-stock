@@ -37,6 +37,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, onDeactivated } from "vue";
 import { usePreventPageScroll } from "@/composables/usePreventPageScroll";
+import { rpx } from "@/utils/rpx";
 
 // 纯持久窗体：始终渲染，折叠露出卡片(peek)；父组件通过 expand/collapse 控制展开/收起，
 // 下拉收起 / 点击手柄收起时 emit('collapse') 供父组件复位面板状态（如 activePanel）。
@@ -61,10 +62,10 @@ function measure() {
     const info: any = (uni as any).getWindowInfo
       ? (uni as any).getWindowInfo()
       : uni.getSystemInfoSync();
-    const w = info.windowWidth || info.screenWidth || 375;
     winH.value = info.windowHeight || 0;
     const safe = (info.safeAreaInsets && info.safeAreaInsets.bottom) || 0;
-    tabPx.value = safe + (w / 750) * 110; // 110rpx 底部偏移 + 安全区
+    // 统一走 rpx()：PC 端 uni 把 rpx 基准收敛到 375，windowWidth/750 会放大数倍
+    tabPx.value = safe + rpx() * 110; // 110rpx 底部偏移 + 安全区
   } catch (_) {}
 }
 onMounted(() => {
