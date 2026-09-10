@@ -96,11 +96,14 @@ function detectBandType(highs: SwingPt[], lows: SwingPt[], series: any[], curren
   const netUp = current > firstClose * 1.03;  // 近端涨幅 >3% 视为偏多
   const netDn = current < firstClose * 0.97;  // 近端跌幅 >3% 视为偏空
 
-  // ===== 下跌结构：先看是否其实是「反弹 bounce」 =====
+  // ===== 下跌结构：先看是否其实是「反弹 bounce」或已反转 =====
   if (lh && ll) {
     const rebounded = !!lastL && current > lastL.value;   // 从近端低位反弹
     const prevHigh = prevH ? prevH.value : (lastH ? lastH.value : Infinity);
     if (rebounded && current <= prevHigh) return { band: "bounce", breakDown: false }; // 未突破近端前高
+    // 上破近端前高：下跌结构已反转，归类 uptrend——否则 S 线仍挂「轻仓反弹」、B 线挂「逢高离场」，
+    // 与报告 breakout「放量突破，顺势跟进」直接矛盾（同股不同模块互相打架）
+    if (current > prevHigh) return { band: "uptrend", breakDown: false };
     return { band: "downtrend", breakDown: false };
   }
   if (lh && netDn && !hh) return { band: "downtrend", breakDown: false };
@@ -290,6 +293,16 @@ const BAND_LABELS: Record<BandType, {
     tP: { tag: "B", sub: "区间高抛", name: "交易参考压力 B" },
   },
 };
+
+// 交易线波段文案选取（图表 ensureTradeLine 与报告 computePriceLevels 共用，保证两侧子文案同源）：
+// 上涨结构已破位（band=box+breakDown）时，上方 B 线不宜再提示箱体「区间高抛」——
+// 结构破坏后低吸高抛预期不再成立，统一改用下跌语境「逢高离场」；
+// 支撑侧破位话术由 ensureTradeLine 的 status=broken「已破位」覆盖，无需在此处理。
+function tradeBandLabels(raw: { band: BandType; breakDown: boolean }, role: "support" | "pressure") {
+  const L = BAND_LABELS[raw.band];
+  if (role === "pressure" && raw.band === "box" && raw.breakDown) return BAND_LABELS.downtrend.tP;
+  return role === "support" ? L.tS : L.tP;
+}
 
 // 多周期前置隔离守卫：不同 K 线周期的窗口参数与可绘制线种完全不同，防止周/月 K 出现 S/B 买卖标签误导。
 // PeriodKey 为 "m"|"d"|"w"|"M"（无年 K）。
@@ -510,8 +523,7 @@ function ensureTradeLine(
   if (guard.disableTrade || !series || series.length < MIN_BARS) return null;
   const r = role === "support" ? raw.tradeSupportS : raw.tradePressureB;
   const cur = series[series.length - 1]?.close ?? 0;
-  const L = BAND_LABELS[raw.band];
-  const base = role === "support" ? L.tS : L.tP;
+  const base = tradeBandLabels(raw, role);
   const srcBase = role === "support" ? "交易参考支撑" : "交易参考压力";
   const sideText = role === "support" ? "低点" : "高点";
   if (r.price != null) {
@@ -715,7 +727,8 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
     st: TradeLineState | null
   ): PriceLevelItem | null => {
     if (!st) return null;
-    const tag = role === "tradeSupportS" ? L.tS.tag : L.tP.tag;
+    const base = tradeBandLabels(raw, role === "tradeSupportS" ? "support" : "pressure");
+    const tag = base.tag;
     if (st.status === "ref" || !st.sc) {
       return {
         price: st.price, totalScore: 0, touchCount: 0, isBroken: false,
@@ -729,7 +742,7 @@ export function computePriceLevels(series: any[], guard: PeriodGuard, ctxIn?: Le
       ? "放量确认（量能配合，可靠性高）"
       : "缩量/无量触碰（可靠性一般）";
     const desc = st.status === "ok"
-      ? (role === "tradeSupportS" ? L.tS.sub : L.tP.sub)
+      ? base.sub
       : st.status === "broken" ? "已破位" : "弱参考（触碰/反转证据不足）";
     return {
       price: st.price, totalScore: Math.round(finalScore), touchCount: st.sc.touches,

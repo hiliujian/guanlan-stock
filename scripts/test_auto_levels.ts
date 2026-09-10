@@ -303,6 +303,28 @@ console.log("\n📉 场景4：阶梯回落 → 下降趋势线");
   else bad("合成·回落 趋势线方向错误", r.trend[0].dir);
 }
 
+// 场景4b：下跌结构上破近端前高 → band 反转为 uptrend（S/B 文案同步换多头语境，杜绝与报告 breakout 矛盾）
+console.log("\n📈 场景4b：下跌结构上破前高 → 反转 uptrend");
+{
+  let p = 20; const series: any[] = [];
+  for (let k = 0; k < 3; k++) { const a = dn(7, p, -1.4); series.push(...a); p = up(2, a[6].close, 1.6)[1].close; }
+  series.push(...up(6, p, 2.5)); // 强力上破近端摆动前高
+  const levels = computeAutoLevelsFromSeries(series, resolvePeriodGuard("d"));
+  const pl = computePriceLevels(series, resolvePeriodGuard("d"));
+  if (pl.band !== "uptrend") bad("合成·反转 band 未归 uptrend", `实际=${pl.band}`);
+  else {
+    ok("合成·反转 band 归 uptrend");
+    const s = levels.find((l) => l.role === "tradeSupport");
+    const b = levels.find((l) => l.role === "tradePressure");
+    if (s && s.sub === "回调低吸") ok("合成·反转 S 子文案切多头语境", `sub=${s.sub}`);
+    else caution("合成·反转 S 子文案非「回调低吸」", `sub=${s?.sub ?? "—"}（status 非 ok 时属正确降级）`);
+    if (b && b.sub === "止盈减仓") ok("合成·反转 B 子文案切多头语境", `sub=${b.sub}`);
+    else caution("合成·反转 B 子文案非「止盈减仓」", `sub=${b?.sub ?? "—"}（status 非 ok 时属正确降级）`);
+    if (pl.tradeSupportS && pl.tradeSupportS.status === "ok" && pl.tradeSupportS.desc !== "回调低吸")
+      bad("合成·反转 报告 S desc 与图表不同源", pl.tradeSupportS.desc);
+  }
+}
+
 // 场景5：支撑被连续多根实体击穿 → 图表仍画线但降级「破」
 console.log("\n💥 场景5：支撑破位 → 淡化+破标注（不隐藏）");
 {

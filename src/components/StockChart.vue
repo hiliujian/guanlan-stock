@@ -67,8 +67,60 @@ const DOWN = cssColor("--down", DOWN_FALLBACK);
 // 图内文字标签统一的方形实底内边距（彩色实底白字标签），多处复用避免重复字面量
 const TEXT_PAD = { paddingLeft: 4, paddingRight: 4, paddingTop: 4, paddingBottom: 4 };
 
-// 离屏 canvas 测量文字宽度（用于标签溢出钳制；H5 浏览器环境 document 可用）
+// 离屏 canvas 测量上下文（文字宽度测量 / 字体 metrics 测量共用；H5 浏览器环境 document 可用）
 let _mtxCtx: CanvasRenderingContext2D | null = null;
+
+// ---- 标签文字垂直居中补偿 ----
+// klinecharts 的 drawText 恒以 ctx.textBaseline='top' 把文字画在「盒顶 + paddingTop」处（源码硬编码），
+// 而背景盒按 (paddingTop + size + paddingBottom) 对称生成。当字体 fontBoundingBox 高于 em size 时
+// （Windows 微软雅黑 ascent≈1.06em/descent≈0.26em，苹方同向），字形整体坠向盒底，实测下偏 ≈0.2×size——
+// 即价格标签/结构线标签/交易参考线标签文字「垂直不居中」的根因。
+// 用离屏 canvas 实测「数字 / 中文」两类文本 metrics，把下偏量分摊进不对称 paddingTop/paddingBottom
+// （盒总高不变，标签栈布局不受影响）；非浏览器环境或引擎不支持 metrics 时回退雅黑系经验值。
+let _vFix: { lat: number; cjk: number } | null = null;
+function verticalFix(): { lat: number; cjk: number } {
+  if (_vFix) return _vFix;
+  let lat = 0.2;
+  let cjk = 0.2; // 经验值：下偏 ≈0.2×size（雅黑/苹方系）
+  try {
+    if (typeof document !== "undefined") {
+      if (!_mtxCtx) {
+        _mtxCtx = document.createElement("canvas").getContext("2d");
+      }
+      if (_mtxCtx) {
+        _mtxCtx.font = `${10}px -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif`;
+        // pad0 对称盒内：文字视觉中心相对盒中心下偏 f = fontAscent - size/2 - (actAsc-actDesc)/2，
+        // 随 size 线性缩放，此处按 size=10 归一化为系数
+        const k = (sample: string): number | null => {
+          const m = _mtxCtx!.measureText(sample);
+          const fA = (m as any).fontBoundingBoxAscent as number | undefined;
+          if (typeof fA !== "number" || !(fA > 0)) return null;
+          const aA = m.actualBoundingBoxAscent;
+          const aD = m.actualBoundingBoxDescent;
+          return (fA - 5 - (aA - aD) / 2) / 10;
+        };
+        lat = k("0123456789.-") ?? lat;   // 价格/日期等纯数字文本
+        cjk = k("支压回调低吸") ?? lat;    // 含中文的标签（支/压/SB 子文案）
+      }
+    }
+  } catch {
+    /* noop */
+  }
+  _vFix = { lat, cjk };
+  return _vFix;
+}
+// 按文本构成返回补偿后的纵向 padding（总高不变）：文字视觉中心回到盒中心
+function vPadFix(text: string, size: number, pad0 = 4): { paddingTop: number; paddingBottom: number } {
+  const f = (/[\u4e00-\u9fff]/.test(text) ? verticalFix().cjk : verticalFix().lat) * size;
+  return { paddingTop: pad0 - f, paddingBottom: pad0 + f };
+}
+// 价格轴刻度（tickText）基准纵向 padding 为 0，补偿不可取负，全部分摊至下方：
+// 盒高增大但刻度间距充裕，效果同样是文字相对刻度线垂直居中
+function vPadFixTick(size: number): { paddingTop: number; paddingBottom: number } {
+  return { paddingTop: 0, paddingBottom: Math.ceil(verticalFix().lat * size * 2) };
+}
+
+// 离屏 canvas 测量文字宽度（用于标签溢出钳制；H5 浏览器环境 document 可用）
 function measureTextWidth(text: string, size: number): number {
   if (typeof document === "undefined") return text.length * size * 0.62; // 非浏览器兜底估算
   if (!_mtxCtx) {
@@ -97,7 +149,9 @@ function axisTagFig(text: string, y: number, bg: string, availW: number, opts?: 
     attrs: { x: 0, y, text, align: "left", baseline: "middle", width: clampBoxW(text, size, availW) },
     styles: {
       color: "#ffffff", backgroundColor: bg, borderColor: "transparent", borderSize: 0,
-      ...TEXT_PAD, size,
+      // 纵向 padding 按文本 metrics 做垂直居中补偿（盒总高不变），横向保持 TEXT_PAD
+      paddingLeft: TEXT_PAD.paddingLeft, paddingRight: TEXT_PAD.paddingRight, ...vPadFix(text, size),
+      size,
     },
     ignoreEvent: true,
   };
@@ -522,7 +576,8 @@ function buildStyles(): Record<string, unknown> {
           downColor: DOWN,
           noChangeColor: NO_CHANGE,
           line: { show: false, style: "dashed", size: 1, dashedValue: [4, 3] },
-          text: { show: true, color: "#ffffff", backgroundColor: UP, ...TEXT_PAD, size: 10 },
+          // 最后价标签：纵向 padding 按数字 metrics 补偿（盒总高不变），文字在彩底内垂直居中
+          text: { show: true, color: "#ffffff", backgroundColor: UP, ...TEXT_PAD, ...vPadFix("0", 10), size: 10 },
         },
       },
       // 关闭内置 tooltip/图例（指标名+数值默认常显并覆盖在图内，改为图表上方自定义图例）
@@ -561,21 +616,22 @@ function buildStyles(): Record<string, unknown> {
     xAxis: {
       axisLine: { color: axisLine },
       tickLine: { color: axisLine, length: 3 },
-      tickText: { color: axisText, size: 10 },
+      // 刻度文字相对刻度线垂直居中（klinecharts 以 top 基线绘制，数字文本默认下偏，补偿见 vPadFixTick）
+      tickText: { color: axisText, size: 10, ...vPadFixTick(10) },
     },
     yAxis: {
       axisLine: { color: axisLine },
       tickLine: { color: axisLine, length: 3 },
-      tickText: { color: axisText, size: 10 },
+      tickText: { color: axisText, size: 10, ...vPadFixTick(10) },
     },
     crosshair: {
       horizontal: {
         line: { style: "dashed", size: 1 },
-        text: { size: 10 },
+        text: { size: 10, ...vPadFix("0", 10) },
       },
       vertical: {
         line: { style: "dashed", size: 1 },
-        text: { size: 10 },
+        text: { size: 10, ...vPadFix("0", 10) },
       },
     },
     // 分隔线尺寸置 0：不渲染可见分隔线、且不占高度（klinecharts 的 SeparatorWidget 始终渲染且其
@@ -1207,8 +1263,11 @@ function scheduleAutoVerify() {
 // 按目标 y 排序 → 自上而下推挤紧贴并排 → 底部溢出则自下而上收拢钳回 → 再自上而下钳顶。
 // 纯函数：同帧各 createYAxisFigures 回调对相同输入产出相同结果，无帧间时序依赖；
 // 价位在可视区外的线不参与（原行为其标签本就被裁剪不可见）。
-const TAG_H = 20;      // 单行标签高度（size 10 + 上下 padding 4）
-const TAG_SUB_H = 33;  // 自动支压线主标签 + sub 两行总高（20 + 13）
+// 标签盒几何常量：klinecharts text 盒高 = paddingTop + size + paddingBottom（getTextRect 源码），
+// 与垂直居中补偿（vPadFix 改纵向分配、总高不变）解耦，布局栈按盒高紧贴排布
+const TAG_H = 18;           // 单行标签盒高（size 10 + 上下 padding 4）
+const TAG_SUB_BOX_H = 16;   // sub 子标签盒高（size 8 + 上下 padding 4）
+const TAG_SUB_H = TAG_H + TAG_SUB_BOX_H; // 主标签 + sub 两行总高（34）
 
 function toPaneY(value: unknown): number | null {
   if (!chart || typeof value !== "number" || !isFinite(value)) return null;
@@ -1336,8 +1395,10 @@ function ensureTrendOverlay() {
         const overlay = params.overlay as any;
         const bounding = params.bounding as { width: number; height: number };
         if (!coordinates || coordinates.length < 1) return [];
-        // 统一错位布局：同帧所有右侧标签上下接着排，价位接近时不再互相重叠
-        const top = buildYAxisLabelLayout(bounding.height).get(String(overlay?.id)) ?? coordinates[0].y;
+        // 统一错位布局：布局返回「栈顶部」，text figure 以盒中心定位（baseline middle），
+        // 首个盒中心 = 顶部 + 半盒高；无布局时以线 y 为盒中心（top = y - 半盒高）
+        const top = buildYAxisLabelLayout(bounding.height).get(String(overlay?.id))
+          ?? (coordinates[0].y - TAG_H / 2);
         // 复刻原生最后价标签：彩色实底 + 白字 + 方形无圆角；标签恒贴左(x:0, align:left)不位移，
         // 仅当盒宽会越过右边界时限宽（clampBoxW），文字自动缩放居中于盒内，永不溢出被裁剪。
         // 标签（含价格）统一 size 10；下方 sub 提示统一 size 8（仅交易参考线渲染 sub）。
@@ -1347,14 +1408,14 @@ function ensureTrendOverlay() {
         const bg = overlay?.extendData?.bg || overlay?.styles?.line?.color || "#888";
         const main = overlay?.extendData?.text || "";
         const sub = isStruct ? "" : (overlay?.extendData?.sub || "");
-        const figs: any[] = [axisTagFig(main, top, bg, bounding.width)];
-        if (sub) figs.push(axisTagFig(sub, top + 13, bg, bounding.width, { size: 8 }));
-        // 同价位并入的交易角色标签（支+S 双角色标签栈）：用交易色底，紧接主标签之下
+        const figs: any[] = [axisTagFig(main, top + TAG_H / 2, bg, bounding.width)];
+        if (sub) figs.push(axisTagFig(sub, top + TAG_H + TAG_SUB_BOX_H / 2, bg, bounding.width, { size: 8 }));
+        // 同价位并入的交易角色标签（支+S 双角色标签栈）：用交易色底，紧接主标签栈之下
         const extra = overlay?.extendData?.extra as { text: string; sub: string; bg: string } | undefined;
         if (extra) {
           const eTop = top + (sub ? TAG_SUB_H : TAG_H);
-          figs.push(axisTagFig(extra.text, eTop, extra.bg, bounding.width));
-          if (extra.sub) figs.push(axisTagFig(extra.sub, eTop + 13, extra.bg, bounding.width, { size: 8 }));
+          figs.push(axisTagFig(extra.text, eTop + TAG_H / 2, extra.bg, bounding.width));
+          if (extra.sub) figs.push(axisTagFig(extra.sub, eTop + TAG_H + TAG_SUB_BOX_H / 2, extra.bg, bounding.width, { size: 8 }));
         }
         return figs;
       },
@@ -1443,8 +1504,9 @@ function ensureDrawOverlays() {
         const tag = overlay?.extendData?.tag || "";
         const price = overlay?.points?.[0]?.value;
         const text = (tag ? tag + " " : "") + (price != null ? Number(price).toFixed(3) : "");
-        const top = buildYAxisLabelLayout(bounding.height).get(String(overlay?.id)) ?? coordinates[0].y;
-        return [axisTagFig(text, top, col, bounding.width)];
+        const top = buildYAxisLabelLayout(bounding.height).get(String(overlay?.id))
+          ?? (coordinates[0].y - TAG_H / 2);
+        return [axisTagFig(text, top + TAG_H / 2, col, bounding.width)];
       },
       performEventPressedMove: (params: any) => {
         const points = params.points as any[];
@@ -1487,8 +1549,8 @@ function ensureDrawOverlays() {
         coordinates.forEach((c: any, i: number) => {
           const price = overlay?.points?.[i]?.value;
           if (price == null) return;
-          const top = layout.get(`${overlay?.id}:${i}`) ?? c.y;
-          figs.push(axisTagFig(Number(price).toFixed(3), top, col, bounding.width));
+          const top = layout.get(`${overlay?.id}:${i}`) ?? (c.y - TAG_H / 2);
+          figs.push(axisTagFig(Number(price).toFixed(3), top + TAG_H / 2, col, bounding.width));
         });
         return figs;
       },
@@ -1530,7 +1592,8 @@ function ensureDrawOverlays() {
               x: 0, y, text: fibText, baseline: "bottom", align: "left", width: clampBoxW(fibText, 10, bounding.width),
               // 分割线标签也跟随线色生成彩色实底白字，避免与横线一样出现「都绿」
               color: "#ffffff", backgroundColor: col, borderColor: "transparent", borderSize: 0,
-              ...TEXT_PAD, size: 10,
+              paddingLeft: TEXT_PAD.paddingLeft, paddingRight: TEXT_PAD.paddingRight, ...vPadFix(fibText, 10),
+              size: 10,
             });
           });
         }
