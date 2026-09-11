@@ -140,7 +140,7 @@
 
       <!-- 底部指数卡片：复用自选页同款 PeekSheet 统一底部窗体（固定常驻于菜单栏上方），
            折叠露出「当前匹配指数」预览（按当前股票匹配对应指数），展开为全球重要市场指数面板 -->
-      <PeekSheet @expand="onSheetExpand" @collapse="onSheetCollapse">
+      <PeekSheet ref="sheet" @expand="onSheetExpand" @collapse="onSheetCollapse">
         <template #peek>
           <view class="peek-row" role="button" aria-label="展开指数面板">
             <text class="peek-label">股市行情</text>
@@ -161,9 +161,10 @@
           </view>
         </template>
         <template #default>
-          <!-- 展开态：全球重要市场指数实时面板（按地区/品种分组，scroll-view 内独立滚动） -->
+          <!-- 展开态：全球重要市场指数实时面板（按地区/品种分组，scroll-view 内独立滚动）；
+               点击标题栏即收起（与自选页操作卡/价格预警/设置持仓等所有底部卡片统一） -->
           <view class="idx-panel">
-            <view class="idx-panel-head panel-head">
+            <view class="idx-panel-head panel-head" role="button" aria-label="收起" @click="sheet?.collapse()">
               <text class="idx-panel-title">全球市场指数</text>
               <text class="idx-panel-sub">实时行情 · 红涨绿跌</text>
             </view>
@@ -403,6 +404,8 @@ let lastGlobalFetchAt = 0; // 预加载节流：keep-alive 每次切回都进 on
 // 面板展开态跟踪：keep-alive 切走时 stopTimers 会同步停掉指数面板刷新，
 // 切回（onActivated → syncTimers）按此恢复展开态的轮询；浏览器后台门控（syncTimers）同用
 const sheetExpanded = ref(false);
+// PeekSheet 外壳引用：供展开态标题栏点击调用 collapse()（与自选页各面板标题栏收起统一）
+const sheet = ref<any>(null);
 async function refreshGlobal() {
   lastGlobalFetchAt = Date.now();
   try {

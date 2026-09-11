@@ -368,9 +368,10 @@
               </scroll-view>
             </template>
 
-            <!-- 今日异动列表：与榜单/分组同窗体（同一 PeekSheet），展开即半屏，上拉铺满、下拉收回，交互完全一致 -->
+            <!-- 今日异动列表：与榜单/分组同窗体（同一 PeekSheet），展开即半屏，上拉铺满、下拉收回，交互完全一致；
+                 点击标题栏与下拉/点手柄同义，直接收起（所有面板统一） -->
             <template v-else-if="activePanel === 'anomaly'">
-              <view class="panel-head grp-head">
+              <view class="panel-head grp-head" role="button" aria-label="收起" @click="sheet?.collapse()">
                 <text class="sheet-title">今日异动列表</text>
               </view>
               <scroll-view class="anom-body" scroll-y>
@@ -398,7 +399,7 @@
 
             <!-- 我的分组：主视图 / 新建 / 移入 / 管理 共用同一内容容器，按 groupView 切换 -->
             <template v-else-if="activePanel === 'group'">
-              <view class="grp-head panel-head">
+              <view class="grp-head panel-head" role="button" aria-label="收起" @click="sheet?.collapse()">
                 <text class="sheet-title">{{ groupTitle }}</text>
               </view>
               <scroll-view class="grp-body" scroll-y>
@@ -546,7 +547,7 @@
 
             <!-- 显示列：标题栏与「我的分组」共用 .grp-head/.sheet-title，复用全局 .panel-head 一套样式 -->
             <template v-else-if="activePanel === 'cols'">
-              <view class="grp-head panel-head">
+              <view class="grp-head panel-head" role="button" aria-label="收起" @click="sheet?.collapse()">
                 <text class="sheet-title">显示列</text>
               </view>
               <view class="col-list">
@@ -565,34 +566,39 @@
               <text class="col-tip">设置仅保存在本机，不影响其他设备</text>
             </template>
 
-            <!-- 长按操作菜单：与「我的分组」「显示列」共用同一 PeekSheet 窗体（替代原独立 ActionSheet） -->
+            <!-- 长按操作菜单：与「我的分组」「显示列」共用同一 PeekSheet 窗体（替代原独立 ActionSheet）；
+                 标题栏点击即收起（与设置持仓/价格预警等所有底部卡片统一）；
+                 列表纳入 scroll-view：矮机型上菜单项超高时内部滚动，不再被卡片 overflow 裁切 -->
             <template v-else-if="activePanel === 'actions'">
-              <view class="grp-head panel-head">
+              <view class="grp-head panel-head" role="button" aria-label="收起" @click="sheet?.collapse()">
                 <text class="sheet-title">{{ lpItem ? (lpItem.name || lpItem.code) : '' }}</text>
               </view>
-              <view class="grp-list">
-                <view class="grp-item" role="button" @click="openPosForm">
-                  <OutlineIcon type="portfolio" :size="28" color="var(--text-2)" />
-                  <text class="grp-label">设置持仓</text>
+              <scroll-view class="grp-body" scroll-y>
+                <view class="grp-list">
+                  <view class="grp-item" role="button" @click="openPosForm">
+                    <OutlineIcon type="portfolio" :size="28" color="var(--text-2)" />
+                    <text class="grp-label">设置持仓</text>
+                  </view>
+                  <view class="grp-item" role="button" @click="openAlertPanel">
+                    <OutlineIcon type="bell" :size="28" color="var(--text-2)" />
+                    <text class="grp-label">编辑价格预警</text>
+                  </view>
+                  <view class="grp-item" role="button" @click="openMoveFromSheet">
+                    <OutlineIcon type="layers" :size="28" color="var(--text-2)" />
+                    <text class="grp-label">移入分组</text>
+                  </view>
+                  <view class="grp-item" role="button" @click="removeLp">
+                    <OutlineIcon type="trash" :size="28" color="#ff3b30" />
+                    <text class="grp-label danger">删除自选</text>
+                  </view>
                 </view>
-                <view class="grp-item" role="button" @click="openAlertPanel">
-                  <OutlineIcon type="bell" :size="28" color="var(--text-2)" />
-                  <text class="grp-label">编辑价格预警</text>
-                </view>
-                <view class="grp-item" role="button" @click="openMoveFromSheet">
-                  <OutlineIcon type="layers" :size="28" color="var(--text-2)" />
-                  <text class="grp-label">移入分组</text>
-                </view>
-                <view class="grp-item" role="button" @click="removeLp">
-                  <OutlineIcon type="trash" :size="28" color="#ff3b30" />
-                  <text class="grp-label danger">删除自选</text>
-                </view>
-              </view>
+              </scroll-view>
             </template>
 
-            <!-- 编辑价格预警子面板：展示实时价供参考；高于/低于改为选项下方内联输入（替代原 uni-modal 弹窗） -->
+            <!-- 编辑价格预警子面板：展示实时价供参考；高于/低于改为选项下方内联输入（替代原 uni-modal 弹窗）。
+                 标题栏点击即收起；选项列表纳入 scroll-view，内联编辑器展开超高时内部滚动不裁切 -->
             <template v-else-if="activePanel === 'alert'">
-              <view class="grp-head panel-head">
+              <view class="grp-head panel-head" role="button" aria-label="收起" @click="sheet?.collapse()">
                 <text class="sheet-title">价格预警</text>
               </view>
               <!-- 实时价参考：进入面板即拉取最新成交价，供用户设定阈值时对照 -->
@@ -602,34 +608,36 @@
                 <text class="alert-rt-sub" :class="trendCls(alertRT?.chg)" v-if="alertRT">{{ fmtSigned(alertRT.chg) }} · {{ fmtPct(alertRT.pct) }}</text>
                 <text class="alert-rt-hint" v-else>实时价获取中…</text>
               </view>
-              <view class="grp-list">
-                <view class="grp-item" :class="{ active: alertEdit === 'above' }" role="button" @click="startEdit('above')">
-                  <OutlineIcon type="arrow-up" :size="28" color="var(--text-2)" />
-                  <text class="grp-label">设置高于预警<text v-if="aboveVal != null" class="alert-cur"> · ¥{{ fmtPrice(aboveVal) }}</text></text>
-                </view>
-                <view v-if="alertEdit === 'above'" class="alert-edit">
-                  <input class="alert-input" type="digit" v-model="alertInput" :placeholder="alertRT ? ('高于此价提醒（参考 ¥' + fmtPrice(alertRT.price) + '）') : '高于此价提醒，如 12.5'" />
-                  <view class="alert-edit-btns">
-                    <view class="grp-btn" role="button" @click="alertEdit = null">取消</view>
-                    <view class="grp-btn primary" role="button" @click="saveAlert('above')">保存</view>
+              <scroll-view class="grp-body" scroll-y>
+                <view class="grp-list">
+                  <view class="grp-item" :class="{ active: alertEdit === 'above' }" role="button" @click="startEdit('above')">
+                    <OutlineIcon type="arrow-up" :size="28" color="var(--text-2)" />
+                    <text class="grp-label">设置高于预警<text v-if="aboveVal != null" class="alert-cur"> · ¥{{ fmtPrice(aboveVal) }}</text></text>
+                  </view>
+                  <view v-if="alertEdit === 'above'" class="alert-edit">
+                    <input class="alert-input" type="digit" v-model="alertInput" :placeholder="alertRT ? ('高于此价提醒（参考 ¥' + fmtPrice(alertRT.price) + '）') : '高于此价提醒，如 12.5'" />
+                    <view class="alert-edit-btns">
+                      <view class="grp-btn" role="button" @click="alertEdit = null">取消</view>
+                      <view class="grp-btn primary" role="button" @click="saveAlert('above')">保存</view>
+                    </view>
+                  </view>
+                  <view class="grp-item" :class="{ active: alertEdit === 'below' }" role="button" @click="startEdit('below')">
+                    <OutlineIcon type="arrow-down" :size="28" color="var(--text-2)" />
+                    <text class="grp-label">设置低于预警<text v-if="belowVal != null" class="alert-cur"> · ¥{{ fmtPrice(belowVal) }}</text></text>
+                  </view>
+                  <view v-if="alertEdit === 'below'" class="alert-edit">
+                    <input class="alert-input" type="digit" v-model="alertInput" :placeholder="alertRT ? ('低于此价提醒（参考 ¥' + fmtPrice(alertRT.price) + '）') : '低于此价提醒，如 12.5'" />
+                    <view class="alert-edit-btns">
+                      <view class="grp-btn" role="button" @click="alertEdit = null">取消</view>
+                      <view class="grp-btn primary" role="button" @click="saveAlert('below')">保存</view>
+                    </view>
+                  </view>
+                  <view class="grp-item" role="button" @click="clearAlert">
+                    <OutlineIcon type="trash" :size="28" color="#ff3b30" />
+                    <text class="grp-label danger">清除预警</text>
                   </view>
                 </view>
-                <view class="grp-item" :class="{ active: alertEdit === 'below' }" role="button" @click="startEdit('below')">
-                  <OutlineIcon type="arrow-down" :size="28" color="var(--text-2)" />
-                  <text class="grp-label">设置低于预警<text v-if="belowVal != null" class="alert-cur"> · ¥{{ fmtPrice(belowVal) }}</text></text>
-                </view>
-                <view v-if="alertEdit === 'below'" class="alert-edit">
-                  <input class="alert-input" type="digit" v-model="alertInput" :placeholder="alertRT ? ('低于此价提醒（参考 ¥' + fmtPrice(alertRT.price) + '）') : '低于此价提醒，如 12.5'" />
-                  <view class="alert-edit-btns">
-                    <view class="grp-btn" role="button" @click="alertEdit = null">取消</view>
-                    <view class="grp-btn primary" role="button" @click="saveAlert('below')">保存</view>
-                  </view>
-                </view>
-                <view class="grp-item" role="button" @click="clearAlert">
-                  <OutlineIcon type="trash" :size="28" color="#ff3b30" />
-                  <text class="grp-label danger">清除预警</text>
-                </view>
-              </view>
+              </scroll-view>
             </template>
           </template>
         </PeekSheet>

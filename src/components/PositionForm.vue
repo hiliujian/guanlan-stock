@@ -1,8 +1,9 @@
 <template>
-  <!-- 设置持仓：与「编辑价格预警」一致的底部弹层卡片样式（复用 BottomSheet 外壳 + 全局 grp/alert 样式），
-       teleport 到 body，确保层级高于底部导航栏；保留当前实时价作录入成本参考。
-       行情页报告卡与自选页长按菜单共用此组件，所有入口统一这一套底部弹层。 -->
-  <BottomSheet v-model="visible" title="设置持仓">
+  <!-- 设置持仓：sheet 形态（BottomSheet variant="sheet"）——与价格预警 / 全球市场指数等
+       PeekSheet 展开卡完全同构：固定半屏高、底边停在菜单栏上方、从菜单栏顶部生长/收起、
+       点击顶部手柄/标题栏收起。teleport 到 body 保证层级；保留当前实时价作录入成本参考。
+       行情页报告卡与自选页长按菜单共用此组件，所有入口统一这一套底部卡片。 -->
+  <BottomSheet v-model="visible" title="设置持仓" variant="sheet">
     <!-- 实时价参考：进入即拉取最新成交价（按 secid），行情页无 secid 时回退到传入的参考价 -->
     <view class="alert-rt" v-if="refPrice != null">
       <text class="alert-rt-label">当前实时价</text>
@@ -133,5 +134,9 @@ defineExpose({ open });
   font-size: var(--font-md);
   color: var(--text);
   margin-bottom: 10rpx;
+}
+/* 按钮行沉到半屏卡底部（与分组面板 grp-foot 底置一致），正文短也不悬空 */
+.grp-foot {
+  margin-top: auto;
 }
 </style>

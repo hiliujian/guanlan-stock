@@ -1,12 +1,16 @@
 <template>
   <teleport to="body">
-    <!-- 面板：自屏幕下沿滑入展开 / 向下滑出收起（与全球市场指数等 PeekSheet 卡片的展开收起同一套
-         时长与缓动，纯位移不做淡入淡出）；无遮罩层、无 × 图标，
-         结构/背景与自选页「今日最热」卡片一致；整体可下拉收起（拖拽下移预览，松手超过阈值即收起） -->
+    <!-- 两种形态共用同一外壳：
+         menu（默认，帖子操作 / 头像设置等短菜单）：自屏幕下沿滑入、高度随内容；
+         sheet（设置持仓等）：与 PeekSheet 展开态完全同构——固定半屏高、底边停在菜单栏上方、
+         以高度生长/收起（从菜单栏顶部长出，而非从屏幕最底部滑入），内容区超高时内部滚动。
+         两种形态均无遮罩层、无 × 图标，结构/背景与自选页「今日最热」卡片一致；
+         整体可下拉收起（拖拽下移预览，松手超过阈值即收起） -->
     <Transition name="bs-slide">
       <view
         v-if="modelValue"
         class="bs-panel"
+        :class="{ sheet: variant === 'sheet' }"
         :style="panelStyle"
         @touchstart.stop="onDown"
         @touchmove.stop="onMove"
@@ -40,8 +44,15 @@ const props = withDefaults(
     modelValue: boolean;
     /** 标题，空则不渲染标题栏 */
     title?: string;
+    /**
+     * 形态：
+     * - menu（默认）：高度随内容，自屏幕下沿滑入（短菜单：帖子操作 / 头像设置等）
+     * - sheet：固定半屏高（与 PeekSheet 展开态等高），从菜单栏顶部高度生长/收起，
+     *   正文超高时内部滚动（设置持仓等需要与价格预警/全球指数卡完全一致的场景）
+     */
+    variant?: "menu" | "sheet";
   }>(),
-  { title: "" }
+  { title: "", variant: "menu" }
 );
 
 const emit = defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
@@ -110,6 +121,15 @@ function onMove(e: any) {
     dragY.value = 0;
     return;
   }
+  // sheet 形态正文可内部滚动：内容已向下滚动（scrollTop>0）时把下拉手势交给原生滚动，
+  // 仅在滚动到顶后才接管为卡片下拉收起（与 PeekSheet 内部 scroll-view 的接管规则一致）
+  if (props.variant === "sheet") {
+    const sc = scrollBodyFromTarget(e);
+    if (sc && sc.scrollTop > 0) {
+      dragY.value = 0;
+      return;
+    }
+  }
   dragY.value = dy;
   dragMoved = true;
   // 拖拽期间阻止页面级下拉刷新 / 滚动误触发
@@ -118,6 +138,16 @@ function onMove(e: any) {
       e.preventDefault();
     } catch (_) {}
   }
+}
+
+// 从手势目标向上找正文滚动容器（.bs-body）；menu 形态无内部滚动，恒返回 null
+function scrollBodyFromTarget(e: any): HTMLElement | null {
+  let t: HTMLElement | null = e.target as HTMLElement;
+  while (t && !t.classList?.contains("bs-panel")) {
+    if (t.classList?.contains("bs-body")) return t;
+    t = t.parentElement;
+  }
+  return null;
 }
 function onUp() {
   if (!dragging.value) return;
@@ -144,7 +174,7 @@ function onTopClick() {
 
 <style scoped>
 /* 面板：固定底部、玻璃质感（与自选页「今日最热」卡片一致的半透明背景 + 毛玻璃）、
-   仅顶部圆角、浅阴影；无遮罩层，弹出/收起仅靠面板上滑 / 下拉动画。 */
+   仅顶部圆角、浅阴影；无遮罩层，弹出/收起仅靠面板动画。 */
 .bs-panel {
   position: fixed;
   left: 50%;
@@ -158,29 +188,44 @@ function onTopClick() {
   max-width: 480px;
   display: flex;
   flex-direction: column;
+  /* 高度生长动效期间裁掉超出的正文（与 .peek-card 一致 overflow:hidden） */
+  overflow: hidden;
   background: var(--tabbar-bg);
   backdrop-filter: blur(20rpx) saturate(150%);
   -webkit-backdrop-filter: blur(20rpx) saturate(150%);
   border-top: 1rpx solid var(--border);
   border-radius: 22rpx 22rpx 0 0;
   box-shadow: var(--shadow-sheet);
-  /* touch-action:none：整张面板都是拖拽区（无纵向滚动内容），阻止浏览器把下拉当成页面滚动/橡皮筋，
-     与 PeekSheet .peek-grip 同款处理；子级横向 scroll-view 自带 touch-action 仍可调起横向滚动 */
+  /* menu 形态：整张面板都是拖拽区（无纵向滚动内容），touch-action:none 阻止浏览器把下拉当成
+     页面滚动/橡皮筋；sheet 形态在下方覆盖为 pan-y，仅手柄/标题栏保留整卡下拉 */
   touch-action: none;
-  /* 拖拽松手回弹 / 入场动画复用同一缓动 */
-  transition: transform var(--dur) var(--ease-out);
+  /* 拖拽松手回弹 / 入场动画复用同一缓动；height 供 sheet 形态生长/收起 */
+  transition:
+    transform var(--dur) var(--ease-out),
+    height var(--dur) var(--ease-out);
 }
-/* 顶部拖拽手柄（视觉装饰，与 PeekSheet 风格统一） */
+/* sheet 形态：高度与 PeekSheet .expanded 完全一致（半屏，底边同样停在菜单栏上方），
+   展开=从菜单栏顶部向上生长、收起=向下缩回菜单栏顶部，与价格预警/全球指数等卡片同构 */
+.bs-panel.sheet {
+  height: calc(50vh - 110rpx - env(safe-area-inset-bottom));
+  touch-action: pan-y;
+}
+.bs-panel.sheet .bs-grip,
+.bs-panel.sheet .bs-head {
+  touch-action: none;
+}
+/* 顶部拖拽手柄（视觉装饰，与 PeekSheet 手柄位置统一：距顶约 10rpx） */
 .bs-grip {
   flex: none;
   width: 56rpx;
   height: 6rpx;
   border-radius: 999rpx;
   background: var(--card-2);
-  margin: 14rpx auto 4rpx;
+  margin: 10rpx auto 4rpx;
 }
 /* 复用全局 .panel-head 的 padding 与下框线；仅保留底部弹窗特有的居中标题与更高头部高度 */
 .bs-head {
+  flex: none;
   justify-content: center;
   height: 72rpx;
 }
@@ -191,18 +236,33 @@ function onTopClick() {
   padding: 8rpx 24rpx calc(36rpx + env(safe-area-inset-bottom));
   -webkit-overflow-scrolling: touch;
 }
+/* sheet 形态：正文纵向撑满剩余高度并内部滚动（超高内容不再把卡片顶出屏幕）；
+   底部安全区间距交给内容自身的 .grp-foot（已含 safe padding），避免双层安全区空白 */
+.bs-panel.sheet .bs-body {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding-bottom: 0;
+}
 
-/* 展开/收起动效：与 PeekSheet（全球市场指数 / 今日最热等底部卡片）完全同一套节奏——
-   纯位移滑入滑出，复用同一时长 --dur(0.32s) 与缓动 --ease-out，不带任何淡入淡出。
+/* menu 形态动效：纯位移滑入滑出，复用同一时长 --dur(0.32s) 与缓动 --ease-out，不带淡入淡出。
    面板 bottom 停在 tabbar 上方（110rpx + 安全区），故收起位需下移「自身高度 + 底部间距」
-   才能完全没入屏幕下沿，展开则自该位置滑回。所有 BottomSheet（帖子操作 / 设置持仓 /
-   头像设置等）观感与 PeekSheet 一致。保留居中 translateX(-50%)。 */
+   才能完全没入屏幕下沿，展开则自该位置滑回。保留居中 translateX(-50%)。 */
 .bs-slide-enter-active,
 .bs-slide-leave-active {
-  transition: transform var(--dur) var(--ease-out);
+  transition:
+    transform var(--dur) var(--ease-out),
+    height var(--dur) var(--ease-out);
 }
 .bs-slide-enter-from,
 .bs-slide-leave-to {
   transform: translateX(-50%) translateY(calc(100% + 110rpx + env(safe-area-inset-bottom)));
+}
+/* sheet 形态动效：与 PeekSheet 展开/收起同款高度过渡——底边锚在菜单栏顶部不动，
+   高度在 0 ↔ 半屏之间生长/收缩；不做纵向位移（视觉即从菜单栏顶部长出/缩回） */
+.bs-slide-enter-from.sheet,
+.bs-slide-leave-to.sheet {
+  height: 0;
+  transform: translateX(-50%);
 }
 </style>
