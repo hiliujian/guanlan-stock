@@ -300,7 +300,7 @@
         <!-- 统一底部卡片（常驻停靠卡）：固定常驻于菜单栏上方(始终可见)，折叠露出「今日最热」卡片；
              展开后按 activePanel 切换 榜单 / 异动 / 我的分组 / 显示列 / 操作 / 预警 等内容；
              全部内容共用同一卡片、同一套折叠/半屏/铺满手势与动效，避免重复样式与代码 -->
-        <BottomCard persistent ref="sheet" @expand="onSheetExpand" @collapse="onSheetCollapse">
+        <UniversalCard persistent ref="sheet" @expand="onSheetExpand" @collapse="onSheetCollapse">
           <template #peek>
             <!-- 持仓视图：底部折叠卡展示「持仓概览」（总市值 / 总盈亏 / 收益率），不复用自选的今日最热 -->
             <view v-if="mainView === 'pos'" class="peek-row" role="button" aria-label="展开持仓概览" @click="openPosSheet">
@@ -323,7 +323,7 @@
               <!-- 今日最热 ↔ 今日异动 提醒切换复用 <RollSwap>（与行情页大盘指数切换动画完全一致）；
                    异动仅在「产生时刻起的展示窗口内」切换显示，错过窗口不再出现 -->
               <RollSwap class="peek-roll" :roll-key="anomKey">
-                <!-- 今日最热 slide：点击展开榜单面板（BottomCard 原生折叠→半屏→铺满→下拉收回） -->
+                <!-- 今日最热 slide：点击展开榜单面板（UniversalCard 原生折叠→半屏→铺满→下拉收回） -->
                 <template v-if="curSlide && curSlide.kind === 'today'">
                   <view v-if="peek" class="peek-info">
                     <view class="peek-main">
@@ -337,7 +337,7 @@
                   </view>
                   <text v-else class="peek-empty truncate">今日暂无人气新增</text>
                 </template>
-                <!-- 异动 slide：点击折叠卡即展开 BottomCard 至半屏（与今日最热卡一致），异动列表在展开体内展示 -->
+                <!-- 异动 slide：点击折叠卡即展开 UniversalCard 至半屏（与今日最热卡一致），异动列表在展开体内展示 -->
                 <template v-else-if="curSlide && curSlide.kind === 'anom'">
                   <view class="peek-info">
                     <view class="peek-main">
@@ -368,7 +368,7 @@
               </scroll-view>
             </template>
 
-            <!-- 今日异动列表：与榜单/分组同窗体（同一 BottomCard），展开即半屏，上拉铺满、下拉收回，交互完全一致；
+            <!-- 今日异动列表：与榜单/分组同窗体（同一 UniversalCard），展开即半屏，上拉铺满、下拉收回，交互完全一致；
                  点击标题栏与下拉/点手柄同义，直接收起（所有面板统一） -->
             <template v-else-if="activePanel === 'anomaly'">
               <view class="panel-head grp-head" role="button" aria-label="收起" @click="sheet?.collapse()">
@@ -566,7 +566,7 @@
               <text class="col-tip">设置仅保存在本机，不影响其他设备</text>
             </template>
 
-            <!-- 长按操作菜单：与「我的分组」「显示列」共用同一 BottomCard 窗体（替代原独立 ActionSheet）；
+            <!-- 长按操作菜单：与「我的分组」「显示列」共用同一 UniversalCard 窗体（替代原独立 ActionSheet）；
                  标题栏点击即收起（与设置持仓/价格预警等所有底部卡片统一）；
                  列表纳入 scroll-view：矮机型上菜单项超高时内部滚动，不再被卡片 overflow 裁切 -->
             <template v-else-if="activePanel === 'actions'">
@@ -640,7 +640,7 @@
               </scroll-view>
             </template>
           </template>
-        </BottomCard>
+        </UniversalCard>
 
         <!-- 设置持仓弹窗（共享组件 PositionForm）：长按菜单打开，按 lpItem 现读/写入 costBasis -->
         <PositionForm ref="posFormRef" :secid="lpSecid" @save="saveLpPosition" @clear="clearLpPosition" />
@@ -682,7 +682,7 @@
 import { computed, reactive, ref, watch, onMounted, onActivated, onDeactivated, onUnmounted } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import PageHeader from "@/components/PageHeader.vue";
-import BottomCard from "@/components/BottomCard.vue";
+import UniversalCard from "@/components/UniversalCard.vue";
 import PositionForm from "@/components/PositionForm.vue";
 import RollSwap from "@/components/RollSwap.vue";
 import RankView, { preloadRank } from "@/views/RankView.vue";
@@ -705,7 +705,7 @@ import { rpx } from "@/utils/rpx";
 import { hydrateCloudPositions } from "@/store/holdingsMirror";
 import { saveHolding, dropHolding } from "@/api/holdings";
 
-// 长按操作菜单目标股（统一并入 BottomCard 面板，替代原先独立的 ActionSheet 弹层）
+// 长按操作菜单目标股（统一并入 UniversalCard 面板，替代原先独立的 ActionSheet 弹层）
 const sheetExpanded = ref(false);
 const lpItem = ref<WatchItem | null>(null);
 function onSheetCollapse() {
@@ -725,7 +725,7 @@ const emit = defineEmits<{ (e: "open-market", payload: { code: string; market: s
 const wl = useWatchlist();
 const list = computed(() => wl.items as WatchItem[]);
 
-// 统一底部窗体 BottomCard（持久常驻）：折叠露出「今日最热」卡片，展开后按 activePanel
+// 统一底部窗体 UniversalCard（持久常驻）：折叠露出「今日最热」卡片，展开后按 activePanel
 // 切换 榜单 / 我的分组 / 显示列 三种内容；下拉收起时父组件通过 @collapse 复位到 rank。
 const sheet = ref<any>(null);
 const activePanel = ref<"rank" | "group" | "cols" | "actions" | "alert" | "anomaly">("rank");
@@ -758,9 +758,9 @@ async function loadPeek() {
 }
 
 // ===== 今日异动：提醒（按产生时刻的时间窗触发）+ 列表（同窗体面板） =====
-// 复用 BottomCard + .peek-row 同一套底部卡片（与行情页指数卡、自选页热榜卡同源），
+// 复用 UniversalCard + .peek-row 同一套底部卡片（与行情页指数卡、自选页热榜卡同源），
 // 切换/轮播动画复用 <RollSwap>（与行情页大盘指数切换完全一致：垂直滚动 360ms cubic-bezier(0.22,0.61,0.36,1)）；
-// 异动列表作为 BottomCard 内的独立面板（activePanel='anomaly'），展开即半屏，上拉铺满、下拉收回，交互与其他卡片完全一致。
+// 异动列表作为 UniversalCard 内的独立面板（activePanel='anomaly'），展开即半屏，上拉铺满、下拉收回，交互与其他卡片完全一致。
 // 数据严格限定为当前登录账号自选股范围内的异动（剔除已移出自选列表的股票残留记录）。
 type AnomSlide =
   | { kind: "today" }
@@ -818,7 +818,7 @@ watch(anomalyList, (list) => (list.length > 0 ? startAnomSync() : stopAnomSync()
   immediate: true,
 });
 function onSheetExpand() {
-  // 展开即半屏（BottomCard 原生行为）
+  // 展开即半屏（UniversalCard 原生行为）
   sheetExpanded.value = true;
   // 仅当用户从折叠态手势展开（activePanel 仍为闲置的 rank）时，才按当前显示的 slide 套用默认面板：
   // 卡片显示今日最热 → 热榜面板；显示异动提醒 → 异动列表面板。
@@ -864,7 +864,7 @@ const filteredList = computed(() => {
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 });
 
-// 分组切换面板：统一窗体 BottomCard 的 group 内容区（与热榜/显示列同窗体）
+// 分组切换面板：统一窗体 UniversalCard 的 group 内容区（与热榜/显示列同窗体）
 const groupRows = computed(() => {
   const rows: { label: string; key: string; active: boolean }[] = [
     { label: "全部", key: "__all__", active: selectedGroup.value === "__all__" },
@@ -1227,7 +1227,7 @@ const mainView = ref<MainView>(uni.getStorageSync(POS_VIEW_KEY) === "pos" ? "pos
 navTab.watchView = mainView.value;
 function toggleView() {
   mainView.value = mainView.value === "pos" ? "watch" : "pos";
-  // 切换视图即收起底部展开窗体：BottomCard 常驻挂载（不随视图卸载），展开态（榜单/分组/列设置/
+  // 切换视图即收起底部展开窗体：UniversalCard 常驻挂载（不随视图卸载），展开态（榜单/分组/列设置/
   // 持仓汇总等）会残留到另一视图，且 peek 折叠卡内容已换，收起并复位面板状态才与视图一致
   if (sheetExpanded.value) sheet.value?.collapse();
   try {
@@ -1348,8 +1348,11 @@ function openPosStock(p: PosRow) {
 }
 // 持仓行长按：按 secid 回找自选集 WatchItem，复用同一套动作面板（设置持仓/清除持仓/预警等）
 function onPosPressStart(p: PosRow, e: any) {
-  const it = list.value.find((it) => resolveSecid(it.code, it.market as any) === p.secid) ?? null;
-  if (!it) return;
+  // 持仓行可能不在自选列表中（仅在行情页设置了持仓但未加自选），
+  // 此时按 PosRow 构造临时 WatchItem，使长按操作面板仍可正常弹出（与自选行完全一致）
+  const it =
+    list.value.find((it) => resolveSecid(it.code, it.market as any) === p.secid)
+    ?? ({ code: p.code, market: marketFromSecid(p.secid), name: p.name, note: "" } as WatchItem);
   if (lpCompatBlocked(e)) return; // 触摸手势的延迟兼容鼠标事件，不另起计时器
   lpFired = false;
   const pt = pressPt(e);
@@ -1899,7 +1902,7 @@ function doRemove(it: WatchItem) {
   uni.showToast({ title: "已移除", icon: "none" });
 }
 
-// 长按行：统一进入 BottomCard 的 actions 面板（与「我的分组」「显示列」同窗体），不再使用独立 ActionSheet
+// 长按行：统一进入 UniversalCard 的 actions 面板（与「我的分组」「显示列」同窗体），不再使用独立 ActionSheet
 function onRowLongPress(it: WatchItem) {
   lpItem.value = it;
   activePanel.value = "actions";
@@ -1916,7 +1919,7 @@ const lpSecid = computed(() => {
 });
 function openPosForm() {
   if (!lpSecid.value) return;
-  // 无需手动收起操作菜单：BottomCard 打开时全局卡片栈自动互斥收起 BottomCard（onSheetCollapse 复位面板）
+  // 无需手动收起操作菜单：UniversalCard 打开时全局卡片栈自动互斥收起 UniversalCard（onSheetCollapse 复位面板）
   posFormRef.value?.open();
 }
 async function saveLpPosition(p: Position) {
@@ -2464,7 +2467,7 @@ function removeLp() {
   max-width: 80rpx;
   /* 截断属性已提升至全局 .truncate */
 }
-/* 分组 / 操作菜单 / 预警等 BottomCard 面板的 grp-head / grp-list / grp-item / alert-* /
+/* 分组 / 操作菜单 / 预警等 UniversalCard 面板的 grp-head / grp-list / grp-item / alert-* /
    grp-foot / grp-btn 等样式全部复用 global.css 的底部弹层通用规则，此处仅保留本页专用项。 */
 /* scroll-view 真实内容容器：H5 下为 .uni-scroll-view-content，组件默认 height:100%。
    改用 height:auto：内容不足一屏时（如仅一个「分组名」输入框）容器按内容高度撑开，
@@ -2474,7 +2477,7 @@ function removeLp() {
   height: auto;
 }
 
-/* ===== 展开态：榜单面板（外壳与拖拽手柄由 BottomCard 统一提供） ===== */
+/* ===== 展开态：榜单面板（外壳与拖拽手柄由 UniversalCard 统一提供） ===== */
 .rs-tabs {
   position: relative;
   flex: none;
@@ -2600,7 +2603,7 @@ function removeLp() {
   background: var(--primary-soft);
 }
 
-/* ===== 列设置面板（与热榜/分组同款统一窗体 BottomCard，无遮罩；标题栏复用 .grp-head/.sheet-title） ===== */
+/* ===== 列设置面板（与热榜/分组同款统一窗体 UniversalCard，无遮罩；标题栏复用 .grp-head/.sheet-title） ===== */
 .col-list {
   margin-top: 12rpx;
   display: flex;

@@ -132,7 +132,7 @@
 
     <!-- 底部发帖卡片：统一底部卡片（常驻停靠卡，与自选卡片一致），折叠态为输入框卡片，展开进入完整发帖界面。
          折叠态一并将「在线人数」并入此卡片（复用 Realtime Presence 实时统计），不再单独建卡片。 -->
-    <BottomCard persistent ref="postSheet">
+    <UniversalCard persistent ref="postSheet">
       <template #peek>
         <view class="pe-peek">
           <!-- 头像融入输入行：与行情/自选折叠行同语言 —— 扁平一行不加嵌套底色框，
@@ -152,7 +152,7 @@
           <PostComposer :edit-post="editingPost" @publish="onPublish" @edit="onEditPost" />
         </scroll-view>
       </template>
-    </BottomCard>
+    </UniversalCard>
 
     <!-- 消息中心（通知铃铛触发）：常驻挂载、v-model 开关的 sheet 浮层，关闭只收起不卸载。
          多卡互斥 / 置顶由全局底部卡片栈统一处理（useSheetStack）。 -->
@@ -180,7 +180,7 @@ import PostComposer from "./PostComposer.vue";
 import PostCard from "./PostCard.vue";
 import UserCard from "./UserCard.vue";
 import UserAvatar from "./UserAvatar.vue";
-import BottomCard from "./BottomCard.vue";
+import UniversalCard from "./UniversalCard.vue";
 import SheetMenu from "./SheetMenu.vue";
 import MessageCenter from "./MessageCenter.vue";
 import FollowListView from "./FollowListView.vue";
@@ -853,7 +853,7 @@ defineExpose({ refresh });
   text-align: center;
 }
 
-/* 底部发帖卡片折叠态：.bc-peek 为 flex 容器，这里 flex:1 铺满整行（与 .peek-row 同款长度）。
+/* 底部发帖卡片折叠态：.uc-peek 为 flex 容器，这里 flex:1 铺满整行（与 .peek-row 同款长度）。
    与行情/自选折叠行同语言：扁平一行，不加嵌套底色框 —— 玻璃卡本身就是容器，
    头像居左、占位文案同行、右侧展开箭头（chevron-up 同款），三张底部卡片视觉统一 */
 .pe-peek {

@@ -65,7 +65,7 @@
 
 - **业务与 UI 分离**：`src/utils/` 全部纯函数（分析引擎、周期解析、形态识别），零平台依赖，跨端复用。
 - **设计系统 token 化**：颜色（涨跌 / 警示 / 淡黑规范）、字号梯度、阴影 / 圆角 / 动效全部 CSS 变量收敛，`npm run lint:font` 守护字号纪律。
-- **组件化底部卡片**：`BottomCard` 统一常驻停靠卡（折叠 / 半屏 / 铺满三态手势）与浮层卡（menu 滑入 / sheet 生长）的框体、层级与动效，切页自动收起；消息中心 / 发帖 / 关注列表 / 指数面板 / 热榜 / 操作菜单同一套交互。
+- **组件化底部卡片**：`UniversalCard` 统一常驻停靠卡（折叠 / 半屏 / 铺满三态手势）与浮层卡（menu 滑入 / sheet 生长）的框体、层级与动效，切页自动收起；消息中心 / 发帖 / 关注列表 / 指数面板 / 热榜 / 操作菜单同一套交互。
 - **路由与权限守卫**：`useAuthGuard` + `usePageGuard` 双保险，游客可达页白名单化管理。
 - **浅 / 深主题**：跟随系统切换，K 线等 canvas 场景统一解析真实色值兜底。
 - **上线即体检**：`vue-tsc` strict 全量类型检查；无 console 调试残留、无未使用导出 / 组件 / 死样式（发布前扫描清零）。
@@ -84,7 +84,7 @@ src/
 │  ├─ StockChart.vue        #   K 线引擎（klinecharts 定制：智能标注 / 手绘 / 磁吸 / 标签布局）
 │  ├─ ReportView.vue        #   智能分析报告
 │  ├─ MarketView / WatchlistView / CommunityView / ProfileView / RankView → src/views/
-│  ├─ BottomCard / SheetMenu / MessageCenter / PostComposer / UserAvatar / LevelTag ...
+│  ├─ UniversalCard / SheetMenu / MessageCenter / PostComposer / UserAvatar / LevelTag ...
 ├─ store/                   # 轻量响应式状态（user / watchlist / level / community / anomaly ...）
 ├─ composables/             # useAuthGuard / usePreventPageScroll
 ├─ utils/                   # 纯业务逻辑：analyzer / autoLevels / period / marketStatus ...

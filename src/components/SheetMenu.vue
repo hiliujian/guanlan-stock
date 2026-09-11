@@ -1,7 +1,7 @@
 <template>
   <!-- 通用底部弹层菜单（复用统一底部卡片 menu 形态 + 全局 grp 列表样式）：
        帖子「长按操作」「举报原因」「设置访问权限」等多处复用，避免每处重写一套列表。 -->
-  <BottomCard v-model="open" :title="title">
+  <UniversalCard v-model="open" :title="title">
     <view class="grp-list">
       <view
         v-for="it in items"
@@ -19,12 +19,12 @@
         <OutlineIcon v-if="it.checked" type="check" :size="26" color="var(--primary)" />
       </view>
     </view>
-  </BottomCard>
+  </UniversalCard>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
-import BottomCard from "./BottomCard.vue";
+import UniversalCard from "./UniversalCard.vue";
 import OutlineIcon from "./OutlineIcon.vue";
 
 export interface SheetMenuItem {

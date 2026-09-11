@@ -1,7 +1,7 @@
 <template>
   <!-- 统一底部卡片 sheet 浮层（无遮罩、玻璃质感、仅顶部圆角、底边停菜单栏上方）：
-       v-model 控制开关，高度从菜单栏顶部生长/收起，拖拽手柄 / 下拉关闭由 BottomCard 统一提供。 -->
-  <BottomCard v-model="open" variant="sheet">
+       v-model 控制开关，高度从菜单栏顶部生长/收起，拖拽手柄 / 下拉关闭由 UniversalCard 统一提供。 -->
+  <UniversalCard v-model="open" variant="sheet">
       <view class="fl-wrap">
         <!-- 头部：复用全局 grp-head + panel-head + sheet-title -->
         <view class="grp-head panel-head fl-bar">
@@ -37,14 +37,14 @@
           </view>
         </scroll-view>
       </view>
-  </BottomCard>
+  </UniversalCard>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import UserAvatar from "./UserAvatar.vue";
-import BottomCard from "./BottomCard.vue";
+import UniversalCard from "./UniversalCard.vue";
 import { useFollow } from "@/store/follow";
 import { userState } from "@/store/user";
 import { vipActive } from "@/store/level";

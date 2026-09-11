@@ -1,7 +1,7 @@
 import { watch, onUnmounted, toValue, type MaybeRefOrGetter } from "vue";
 
 /**
- * 底部卡片（BottomCard）展开时锁定背景页面滚动，关闭时自动恢复。
+ * 底部卡片（UniversalCard）展开时锁定背景页面滚动，关闭时自动恢复。
  *
  * 背景：底部卡片多为 position:fixed 且「不是」页面主滚动容器的
  * 后代（MarketView / WatchlistView 中常驻停靠卡与 .mk-scroll / .wl-grid 平级）。
@@ -13,7 +13,7 @@ import { watch, onUnmounted, toValue, type MaybeRefOrGetter } from "vue";
  *  - 引用计数：多个卡片同时出现也不会提前解锁；最后一个关闭才真正移除锁类。
  *  - 组件卸载自动释放，避免泄漏。
  *  - 不触碰 touch-action，以免误伤卡片内部 scroll-view 的纵向滚动；卡片自身的拖拽手势
- *    由 BottomCard 统一处理（滚动到顶/底才接管，menu 形态整卡 touch-action:none）。
+ *    由 UniversalCard 统一处理（滚动到顶/底才接管，menu 形态整卡 touch-action:none）。
  *
  * 用法（在组件的 <script setup> 中）：
  *   // 浮层卡：随 v-model 开关

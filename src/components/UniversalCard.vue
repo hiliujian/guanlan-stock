@@ -14,7 +14,7 @@
     <Transition :name="transitionName">
       <view
         v-if="persistent || modelValue"
-        class="bc-card"
+        class="uc-card"
         :class="cardClass"
         :style="cardStyle"
         @touchstart.stop="onDown"
@@ -28,23 +28,23 @@
       >
         <!-- 顶部拖拽手柄：常驻卡非折叠态 / 浮层打开态显示。
              点击=回退一档（铺满→半屏→收起），与下拉手势同语义；热区按卡片类型给尺寸 -->
-        <view v-if="gripVisible" class="bc-grip" @click.stop="onGripClick">
-          <view class="bc-handle" />
+        <view v-if="gripVisible" class="uc-grip" @click.stop="onGripClick">
+          <view class="uc-handle" />
         </view>
 
         <!-- 常驻卡折叠态：停靠预览行（整行点击展开） -->
-        <view v-if="persistent && stage === 'peek'" class="bc-peek" @click="expand">
+        <view v-if="persistent && stage === 'peek'" class="uc-peek" @click="expand">
           <slot name="peek" />
         </view>
 
         <!-- 浮层卡标题栏（可选）：居中标题，点击收起；常驻卡各业务面板自带标题栏 -->
-        <view v-if="!persistent && title" class="bc-head panel-head" @click="onTopClick">
+        <view v-if="!persistent && title" class="uc-head panel-head" @click="onTopClick">
           <text class="sheet-title">{{ title }}</text>
         </view>
 
         <!-- 内容区：flex 撑满剩余高度。常驻卡内部滚动由业务 scroll-view 承担；
              浮层 sheet 由外壳统一给正文内部滚动，浮层 menu 高度随内容 -->
-        <view v-if="!(persistent && stage === 'peek')" class="bc-body">
+        <view v-if="!(persistent && stage === 'peek')" class="uc-body">
           <slot />
         </view>
       </view>
@@ -225,17 +225,17 @@ const cardStyle = computed(() => {
 });
 
 const cardClass = computed(() => {
-  const cls = [props.persistent ? "bc-dock" : `bc-overlay bc-${props.variant}`];
-  if (stage.value === "peek") cls.push("bc-card--peek");
-  else if (stage.value === "half") cls.push("bc-card--half");
-  else if (stage.value === "max") cls.push("bc-card--max");
+  const cls = [props.persistent ? "uc-dock" : `uc-overlay uc-${props.variant}`];
+  if (stage.value === "peek") cls.push("uc-card--peek");
+  else if (stage.value === "half") cls.push("uc-card--half");
+  else if (stage.value === "max") cls.push("uc-card--max");
   return cls;
 });
 const gripVisible = computed(() => !(props.persistent && stage.value === "peek"));
 // 常驻卡无 enter/leave（档位切换走高度 class 过渡）；浮层按形态选滑动 / 生长过渡
 const transitionName = computed(() => {
   if (props.persistent) return "";
-  return props.variant === "sheet" ? "bc-grow" : "bc-slide";
+  return props.variant === "sheet" ? "uc-grow" : "uc-slide";
 });
 
 function ptY(e: any): number {
@@ -254,7 +254,7 @@ function findScrollEl(target: any): HTMLElement | null {
   while (node && node !== document.documentElement && node !== document.body) {
     if (
       node.classList &&
-      (node.classList.contains("uni-scroll-view") || node.classList.contains("bc-body")) &&
+      (node.classList.contains("uni-scroll-view") || node.classList.contains("uc-body")) &&
       node.scrollHeight > node.clientHeight + 1
     ) {
       return node;
@@ -370,7 +370,7 @@ function onTopClick() {
 
 <style scoped>
 /* ============ 统一底部卡片：框体（定位 / 尺寸 / 圆角 / 背景 / 阴影 全卡片唯一来源） ============ */
-.bc-card {
+.uc-card {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
@@ -395,10 +395,10 @@ function onTopClick() {
 /* 常驻卡首次挂载的入场：轻微抬升 + 淡入（浮层卡的进出由 Transition 接管）。
    fill 用 backwards 而非 both：both 会把 to 帧 transform 永久钉在最高优先级，
    拖拽时内联 translateY 永不生效；backwards 结束后 transform 归还基础规则。 */
-.bc-dock {
-  animation: bc-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+.uc-dock {
+  animation: uc-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
-@keyframes bc-in {
+@keyframes uc-in {
   from {
     transform: translateX(-50%) translateY(24rpx);
     opacity: 0;
@@ -410,49 +410,49 @@ function onTopClick() {
 }
 
 /* ============ 高度档位（常驻卡 3 档；sheet 浮层用 half/max；menu 浮层高度随内容） ============ */
-.bc-card--peek {
+.uc-card--peek {
   height: 76rpx;
 }
-.bc-card--half {
+.uc-card--half {
   /* 卡片高度 + 底部菜单偏移 = 恰好半屏 */
   height: calc(50vh - 110rpx - env(safe-area-inset-bottom));
 }
-.bc-card--max {
+.uc-card--max {
   height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
 }
 
 /* 浮层手势策略：短菜单整卡可下拉（无内部纵向滚动）；sheet 正文 pan-y 原生滚动，
    仅手柄 / 标题栏保留卡片手势；常驻卡手柄单独 touch-action:none，其余交给滚动接管判断 */
-.bc-overlay.bc-menu {
+.uc-overlay.uc-menu {
   touch-action: none;
 }
-.bc-overlay.bc-sheet {
+.uc-overlay.uc-sheet {
   touch-action: pan-y;
 }
-.bc-sheet .bc-grip,
-.bc-sheet .bc-head {
+.uc-sheet .uc-grip,
+.uc-sheet .uc-head {
   touch-action: none;
 }
 
 /* 折叠预览行容器：固定 76rpx 高的横向 flex（业务行样式见全局 .peek-row 等） */
-.bc-peek {
+.uc-peek {
   flex: none;
   height: 76rpx;
   display: flex;
   align-items: center;
 }
 /* 内容区：flex 撑满；常驻卡无内边距（各业务面板自控），浮层两种形态分别给边距/滚动 */
-.bc-body {
+.uc-body {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
-.bc-menu .bc-body {
+.uc-menu .uc-body {
   padding: 8rpx 24rpx calc(36rpx + env(safe-area-inset-bottom));
   -webkit-overflow-scrolling: touch;
 }
-.bc-sheet .bc-body {
+.uc-sheet .uc-body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   /* 底部安全区由内容内的按钮行（.grp-foot 自带 safe padding）收尾，避免双层安全区空白 */
@@ -460,35 +460,35 @@ function onTopClick() {
 }
 
 /* 顶部手柄：常驻卡为整行宽热区（26rpx 高）；浮层卡为 56rpx 居中视觉条 */
-.bc-grip {
+.uc-grip {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.bc-dock .bc-grip {
+.uc-dock .uc-grip {
   width: 100%;
   height: 26rpx;
   margin-bottom: 4rpx;
   cursor: grab;
   touch-action: none;
 }
-.bc-dock .bc-grip:active {
+.uc-dock .uc-grip:active {
   cursor: grabbing;
 }
-.bc-overlay .bc-grip {
+.uc-overlay .uc-grip {
   width: 56rpx;
   height: 6rpx;
   margin: 10rpx auto 4rpx;
 }
-.bc-handle {
+.uc-handle {
   width: 56rpx;
   height: 6rpx;
   border-radius: 999rpx;
   background: var(--card-2);
 }
 /* 浮层标题栏：复用全局 .panel-head 的 padding/下框线，居中标题 */
-.bc-head {
+.uc-head {
   flex: none;
   justify-content: center;
   height: 72rpx;
@@ -496,24 +496,24 @@ function onTopClick() {
 
 /* ============ 浮层进出场过渡（常驻卡档位切换不走 Transition） ============ */
 /* menu：纯位移自屏幕下沿滑入/滑出（底边在菜单栏上方，离场需多移 110rpx+安全区才没入下沿） */
-.bc-slide-enter-active,
-.bc-slide-leave-active {
+.uc-slide-enter-active,
+.uc-slide-leave-active {
   transition: transform var(--dur) var(--ease-out);
 }
-.bc-slide-enter-from,
-.bc-slide-leave-to {
+.uc-slide-enter-from,
+.uc-slide-leave-to {
   transform: translateX(-50%) translateY(calc(100% + 110rpx + env(safe-area-inset-bottom)));
 }
 /* sheet：底边锚定菜单栏顶部，高度在 0 ↔ 档位高度间生长/收缩，不做纵向位移。
    规则置于档位高度类之后，保证 0 高度在进出场首帧生效（同级选择器后者胜） */
-.bc-grow-enter-active,
-.bc-grow-leave-active {
+.uc-grow-enter-active,
+.uc-grow-leave-active {
   transition:
     height var(--dur) var(--ease-out),
     transform var(--dur) var(--ease-out);
 }
-.bc-grow-enter-from,
-.bc-grow-leave-to {
+.uc-grow-enter-from,
+.uc-grow-leave-to {
   height: 0;
   transform: translateX(-50%);
 }

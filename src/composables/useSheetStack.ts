@@ -1,7 +1,7 @@
 import { ref } from "vue";
 
 /**
- * 全局底部卡片栈：统一管理 BottomCard（常驻停靠卡 / menu·sheet 浮层卡）。
+ * 全局底部卡片栈：统一管理 UniversalCard（常驻停靠卡 / menu·sheet 浮层卡）。
  *
  * 两条规则：
  * 1. 互斥：新卡片打开（pushSheet）时自动收起栈内其它卡片，杜绝多卡同屏；

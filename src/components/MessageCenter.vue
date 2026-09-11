@@ -1,7 +1,7 @@
 <template>
   <!-- 统一底部卡片 sheet 浮层：铃铛触发 v-model 开关，高度从菜单栏顶部生长/收起，
-       拖拽手柄 / 下拉手势关闭（由 BottomCard 统一提供）；无遮罩层、玻璃质感、仅顶部圆角。 -->
-  <BottomCard v-model="open" variant="sheet">
+       拖拽手柄 / 下拉手势关闭（由 UniversalCard 统一提供）；无遮罩层、玻璃质感、仅顶部圆角。 -->
+  <UniversalCard v-model="open" variant="sheet">
       <view class="mc-wrap">
         <!-- 头部：复用全局 grp  head + panel-head + sheet-title，左侧留返回（会话详情） -->
         <view class="grp-head panel-head mc-bar">
@@ -127,7 +127,7 @@
           </view>
           </template>
       </view>
-  </BottomCard>
+  </UniversalCard>
 </template>
 
 <script setup lang="ts">
@@ -135,7 +135,7 @@ import { ref, computed, watch, nextTick } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import EmojiPanel from "./EmojiPanel.vue";
 import UserAvatar from "./UserAvatar.vue";
-import BottomCard from "./BottomCard.vue";
+import UniversalCard from "./UniversalCard.vue";
 import { formatRelative, type Conversation, type NotificationItem } from "@/api/community";
 import { useMessageCenter, useDmTarget, usePostTarget } from "@/store/community";
 import { userState } from "@/store/user";
