@@ -28,7 +28,7 @@ const rootStyle = computed(() => ({ "--roll-dur": `${props.duration}ms` }));
 </script>
 
 <style scoped>
-/* 默认撑满外层容器高度；仅在 PeekSheet 折叠卡预览行中使用，外层均已限定高度 */
+/* 默认撑满外层容器高度；仅在 BottomCard 常驻停靠卡折叠预览行中使用，外层均已限定高度 */
 .roll-swap {
   position: relative;
   overflow: hidden;

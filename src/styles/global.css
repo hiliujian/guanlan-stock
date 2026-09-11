@@ -58,11 +58,10 @@
      所有弹窗 / 底部面板 / 表情面板 / 浮层统一引用下列档位，禁止再散写魔法数字；
      新增浮层请归入对应档位。注意：仅调高单个元素数值无法解决 overflow 裁剪与父级
      stacking context 遮挡——被裁剪/遮挡时应让浮层 teleport 到 body 并引用 --z-popover。 */
-  --z-peek: 40; /* 底部常驻卡片（PeekSheet 折叠 / 展开态） */
+  --z-card: 40; /* 底部常驻停靠卡片（BottomCard persistent：自选面板 / 指数卡 / 发帖卡） */
   --z-sticky: 61; /* 常驻吸顶 / 筛选栏（展开下拉时临时升档） */
   --z-tabbar: 900; /* 底部导航栏 */
-  --z-panel: 940; /* 侧滑面板（消息中心 / 关注列表） */
-  --z-sheet: 950; /* 底部弹层（BottomSheet：设置持仓 / 编辑预警 / 帖子操作菜单） */
+  --z-card-overlay: 950; /* 底部浮层卡片（BottomCard 浮层：设置持仓 / 消息中心 / 关注粉丝 / 操作菜单） */
   --z-popover: 970; /* 公共浮层：需脱离父卡片的浮层（表情面板 / 可见范围菜单 / 联想浮层） */
   --z-dialog: 1000; /* 确认类弹层（ConfirmDialog / 删除确认 / 头像裁剪） */
   --z-auth: 1200; /* 登录回调遮罩 */
@@ -867,7 +866,7 @@ textarea {
   border: 1rpx solid var(--border);
 }
 
-/* 底部面板（分组面板 / 通用底部弹窗）标题排版：.sheet-title 统一提供，分组面板与 BottomSheet 标题共用，杜绝重复硬编码。
+/* 底部面板（分组面板 / 底部卡片）标题排版：.sheet-title 统一提供，分组面板与 BottomCard 标题共用，杜绝重复硬编码。
    注意：与 ReportView 内 scoped 的 .panel-title（报告小节标题，语义不同）命名区分，避免同名冲突 */
 .sheet-title {
   font-size: var(--font-md);
@@ -875,10 +874,10 @@ textarea {
   color: var(--text-2);
 }
 
-/* 通用头部栏：分组面板(.grp-head) / 指数面板(.idx-panel-head) / 底部弹窗(.bs-head) 共用一套
+/* 通用头部栏：分组面板(.grp-head) / 指数面板(.idx-panel-head) / 底部卡片(.bc-head) 共用一套
    padding 与下框线，消除三处重复硬编码。文本排版由 .sheet-title 统一提供。
    各组件仅在 scoped 中保留自身特有项（如 grp-head 的 position/height、idx 的 baseline 对齐、
-   bs 的居中 justify-center），其余一律复用本类，避免重复多写一套样式 */
+   bc 的居中 justify-center），其余一律复用本类，避免重复多写一套样式 */
 .panel-head {
   flex: none;
   display: flex;
@@ -887,7 +886,7 @@ textarea {
   border-bottom: 1rpx solid var(--border);
 }
 
-/* ============ 底部卡片 / BottomSheet / Drawer 展开时锁定背景滚动 ============ */
+/* ============ 底部卡片（BottomCard）展开时锁定背景滚动 ============ */
 /* 由 usePreventPageScroll 控制：卡片展开时在 <html> 加 .ps-lock，禁用 window 级滚动与
    overscroll 链式传递（iOS 橡皮筋 / 整页被拉动），关闭时移除。
    注意：仅锁 window 级滚动，不触碰 touch-action，以免误伤卡片内部 scroll-view 的纵向滚动。 */
@@ -898,7 +897,7 @@ html.ps-lock body {
   overscroll-behavior: none !important;
 }
 
-/* ============ PeekSheet 折叠卡预览行（市场页 / 自选页共用，统一一套） ============ */
+/* ============ BottomCard 常驻停靠卡折叠预览行（市场页 / 自选页 / 社区页共用，统一一套） ============ */
 /* 折叠态一行：左侧固定标签 + 中部滚动切换容器 + 右侧展开箭头，整体不换行、溢出裁切、垂直居中。
    行内所有文案统一 --font-sm（根字号兜底，任何漏网的 text 也不会大一号）。 */
 .peek-row {
@@ -1101,8 +1100,8 @@ html.ps-lock body {
 }
 
 /* ===== 居中模态弹窗（modal）：「人机验证」等卡片式弹窗共用 =====
-   「设置持仓」已统一改造为底部弹层（BottomSheet，见 components/PositionForm.vue），
-   不再使用本 modal 家族；此处仅保留 CaptchaDialog 等仍在用的通用居中壳。
+   「设置持仓」使用底部卡片浮层（BottomCard variant=sheet，见 components/PositionForm.vue），
+   不属于本 modal 家族；此处仅保留 CaptchaDialog 等仍在用的通用居中壳。
    结构约定：
      <view class="modal-mask" @click.self="close">
        <view class="modal-card">
@@ -1111,8 +1110,7 @@ html.ps-lock body {
          <view class="modal-actions"><view class="modal-btn ghost">…</view><view class="modal-btn ok">…</view></view>
        </view>
      </view>
-   （原 PositionForm scoped 的 pos-mask/pos-form/pf-* 一份、CaptchaDialog 自写一份，已合并上移；
-     PositionForm 改 BottomSheet 后，pos-mask/pos-form 随旧居中弹窗一并移除，此处不再有持仓专用规则） */
+   （原 PositionForm scoped 的 pos-mask/pos-form/pf-* 样式已随旧居中弹窗移除，此处不再有持仓专用规则） */
 .modal-mask {
   position: fixed;
   inset: 0;

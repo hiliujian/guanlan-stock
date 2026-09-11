@@ -1,18 +1,7 @@
 <template>
-  <!-- 复用消息中心同款 PeekSheet 卡片框架（无遮罩、玻璃质感、仅顶部圆角、底部固定）。
-       挂载即展开，关闭即卸载，避免与底部发帖卡片争抢同一固定位。 -->
-  <PeekSheet ref="sheet" :z-index="zIndex" @collapse="onCollapse">
-    <!-- 折叠态预览行（极少出现，因挂载即展开）：与消息中心一致的触发外观 -->
-    <template #peek>
-      <view class="fl-peek">
-        <OutlineIcon type="user" :size="30" color="var(--text-2)" />
-        <text class="fl-peek-t">{{ isFans ? "我的粉丝" : "我的关注" }}</text>
-        <text v-if="listUsers.length" class="fl-peek-badge">{{ listUsers.length }}</text>
-      </view>
-    </template>
-
-    <!-- 展开 / 铺满：关注 / 粉丝列表（姓名 + 操作按钮） -->
-    <template #default>
+  <!-- 统一底部卡片 sheet 浮层（无遮罩、玻璃质感、仅顶部圆角、底边停菜单栏上方）：
+       v-model 控制开关，高度从菜单栏顶部生长/收起，拖拽手柄 / 下拉关闭由 BottomCard 统一提供。 -->
+  <BottomCard v-model="open" variant="sheet">
       <view class="fl-wrap">
         <!-- 头部：复用全局 grp-head + panel-head + sheet-title -->
         <view class="grp-head panel-head fl-bar">
@@ -48,15 +37,14 @@
           </view>
         </scroll-view>
       </view>
-    </template>
-  </PeekSheet>
+  </BottomCard>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import UserAvatar from "./UserAvatar.vue";
-import PeekSheet from "./PeekSheet.vue";
+import BottomCard from "./BottomCard.vue";
 import { useFollow } from "@/store/follow";
 import { userState } from "@/store/user";
 import { vipActive } from "@/store/level";
@@ -64,12 +52,12 @@ import { getSupabase } from "@/api/supabase";
 import { vipGatedFrame } from "@/utils/avatarFrame";
 
 // 弹层方向：following=我关注的用户；fans=关注我的粉丝（复用同一列表框架，仅数据源与操作不同）
-const props = withDefaults(defineProps<{ modelValue: boolean; zIndex?: number; mode?: "following" | "fans" }>(), {
-  modelValue: false,
-  zIndex: 40,
-  mode: "following",
-});
+const props = defineProps<{ modelValue: boolean; mode?: "following" | "fans" }>();
 const emit = defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
+const open = computed({
+  get: () => props.modelValue,
+  set: (v) => emit("update:modelValue", v),
+});
 const isFans = computed(() => props.mode === "fans");
 
 const { follows, toggleFollow, isFollowing } = useFollow();
@@ -123,8 +111,18 @@ async function loadListUsers() {
     listUsers.value = (data || []) as FollowedUser[];
   }
 }
-// 关注模式随 follows 集合变化（取消关注即时收缩）；粉丝模式仅挂载时加载一次
-watch(follows, () => { if (!isFans.value) loadListUsers(); }, { immediate: true });
+// 关注模式下列表随 follows 集合变化即时刷新（取消关注即时收缩）；开关时统一重新拉取
+watch(follows, () => {
+  if (open.value && !isFans.value) loadListUsers();
+});
+// 打开即拉取最新列表（旧实现 v-if 按需挂载，每次挂载都重新加载）
+watch(
+  () => props.modelValue,
+  (v) => {
+    if (v) loadListUsers();
+  },
+  { immediate: true }
+);
 
 /** 取消关注：toggleFollow 在已关注状态下会自动取消。 */
 function unfollow(uid: string) {
@@ -135,61 +133,10 @@ function openProfile(uid: string) {
   if (uid === userState.userId) uni.navigateTo({ url: "/pages/profile/edit" });
   else uni.navigateTo({ url: `/pages/profile/detail?uid=${encodeURIComponent(uid)}` });
 }
-
-const sheet = ref<any>(null);
-// 挂载即展开（ProfileView 已控制跳转社区并置 followPanelOpen，本组件按需挂载）
-onMounted(() => {
-  loadListUsers();
-  sheet.value?.expand();
-});
-
-// 拖拽收起到底 / 关闭按钮 → 播放收起过渡后再卸载（本组件 v-if 按需挂载，立即 emit 会让卡片瞬间消失、
-// 没有任何动效；先 collapse() 让 PeekSheet 的 height 过渡播完，再通知父组件卸载）。
-// 与消息中心 MessageCenter 完全一致的收起动画逻辑，保证同类卡片动效统一。
-const CLOSE_ANIM_MS = 340; // 略大于 PeekSheet --dur(0.32s)
-let closeTimer: any = null;
-function animateClose() {
-  sheet.value?.collapse();
-  if (closeTimer) clearTimeout(closeTimer);
-  closeTimer = setTimeout(() => emit("update:modelValue", false), CLOSE_ANIM_MS);
-}
-function onCollapse() {
-  animateClose();
-}
-onUnmounted(() => {
-  if (closeTimer) clearTimeout(closeTimer);
-});
-// 暴露给父组件（与消息中心保持一致），便于复用同一套带过渡的收起动画
-defineExpose({ animateClose });
 </script>
 
 <style scoped>
-/* 折叠态预览行（与消息中心一致的外观） */
-.fl-peek {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  height: 100%;
-  padding: 0 26rpx;
-}
-.fl-peek-t {
-  /* 与全部底部折叠卡（今日最热 / 股市行情 / 分享观点）统一字号 */
-  font-size: var(--font-sm);
-  color: var(--text);
-}
-.fl-peek-badge {
-  min-width: 28rpx;
-  height: 28rpx;
-  padding: 0 6rpx;
-  border-radius: 999rpx;
-  background: var(--primary-soft);
-  color: var(--primary);
-  font-size: var(--font-xs);
-  line-height: 28rpx;
-  text-align: center;
-}
-
-/* 展开内容容器：填满 peek-body，纵向两段（头部 / 滚动列表） */
+/* 内容容器：填满卡片正文区，纵向两段（头部 / 滚动列表） */
 .fl-wrap {
   flex: 1;
   min-height: 0;

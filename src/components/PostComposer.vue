@@ -29,7 +29,7 @@
         />
 
         <!-- # 股票联想浮层（下拉）：锚定到 # 输入位置正下方悬浮显示。
-             teleport 到 body：脱离发帖卡片（PeekSheet）的 overflow 裁剪，层级走公共 --z-popover -->
+             teleport 到 body：脱离发帖卡片（BottomCard）的 overflow 裁剪，层级走公共 --z-popover -->
         <teleport to="body">
           <view v-if="showSuggest" class="cp-suggest escaped" :style="suggestEscapedStyle">
           <view v-if="!suggestions.length" class="cp-suggest-empty">无匹配股票</view>
@@ -87,7 +87,7 @@
 
     <!-- 底部工具栏：+ 形变菜单 / 字数计数 / 发布。
          「+」按钮本体通过 width/height/border-radius 过渡平滑展开为附件列表容器（morph，
-         非独立弹窗）：文档流内撑高 composer 卡片，不受 PeekSheet transform/overflow 裁剪；
+         非独立弹窗）：文档流内撑高 composer 卡片，不受 BottomCard transform/overflow 裁剪；
          图标固定原位旋转为 ×，列表项阶梯 delay 依次渐显；再点 × / 空白处 / 外部收拢还原。
          持仓录入态（forming）：同一 morph 容器状态切换为持仓录入 UI（同玻璃底/圆角/阴影/
          动画曲线），附件菜单隐藏、字数 / 发布照旧收拢让位；「返回」恢复附件菜单，
@@ -184,7 +184,7 @@
           <text class="cp-vis-t">{{ visMeta.label }}</text>
           <OutlineIcon type="pulldown" :size="20" color="var(--text-3)" />
         </view>
-        <!-- 可见范围菜单：teleport 到 body，脱离发帖卡片（PeekSheet）的 overflow 与
+        <!-- 可见范围菜单：teleport 到 body，脱离发帖卡片（BottomCard）的 overflow 与
              stacking context，向上展开时不再被父卡片裁剪；层级走公共 --z-popover -->
         <teleport to="body">
           <view v-if="visOpen" class="cp-vis-menu escaped" :style="visMenuStyle">
@@ -757,7 +757,7 @@ let suppressUntil = 0;
 // 形变容器元素引用（展开后用于滚入可视区）
 const morphRef = ref<any>(null);
 
-/** 展开后把面板滚入可视区：卡片在 PeekSheet 滚动区内，避免展开部分落在可视区外看着像「没反应」 */
+/** 展开后把面板滚入可视区：卡片在 BottomCard 滚动区内，避免展开部分落在可视区外看着像「没反应」 */
 function scrollMorphIntoView() {
   try {
     const el = (morphRef.value as any)?.$el as HTMLElement | undefined;
@@ -1136,7 +1136,7 @@ watch([text, holdings, visibility], saveDraft, { deep: true });
   max-height: 320rpx;
 }
 /* 脱离宿主（teleport 到 body）：视口固定定位，坐标由 JS 按入口换算；
-   层级引用公共 --z-popover，保证浮层完整显示、不被发帖卡片（PeekSheet）裁剪 */
+   层级引用公共 --z-popover，保证浮层完整显示、不被发帖卡片（BottomCard）裁剪 */
 .cp-suggest.escaped {
   position: fixed;
   right: auto;

@@ -1,9 +1,8 @@
 <template>
-  <!-- 设置持仓：sheet 形态（BottomSheet variant="sheet"）——与价格预警 / 全球市场指数等
-       PeekSheet 展开卡完全同构：固定半屏高、底边停在菜单栏上方、从菜单栏顶部生长/收起、
-       点击顶部手柄/标题栏收起。teleport 到 body 保证层级；保留当前实时价作录入成本参考。
-       行情页报告卡与自选页长按菜单共用此组件，所有入口统一这一套底部卡片。 -->
-  <BottomSheet v-model="visible" title="设置持仓" variant="sheet">
+  <!-- 设置持仓：统一底部卡片 sheet 形态——固定半屏高、底边停在菜单栏上方、
+       从菜单栏顶部生长/收起、点击顶部手柄/标题栏收起。teleport 到 body 保证层级；
+       保留当前实时价作录入成本参考。行情页报告卡与自选页长按菜单共用此组件。 -->
+  <BottomCard v-model="visible" title="设置持仓" variant="sheet">
     <!-- 实时价参考：进入即拉取最新成交价（按 secid），行情页无 secid 时回退到传入的参考价 -->
     <view class="alert-rt" v-if="refPrice != null">
       <text class="alert-rt-label">当前实时价</text>
@@ -27,12 +26,12 @@
       <view class="grp-btn danger" role="button" aria-label="清除持仓" @click="clear">清除持仓</view>
       <view class="grp-btn primary" role="button" aria-label="保存持仓" @click="save">保存</view>
     </view>
-  </BottomSheet>
+  </BottomCard>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import BottomSheet from "./BottomSheet.vue";
+import BottomCard from "./BottomCard.vue";
 import { fetchSnapshot, type SnapResult } from "@/api/quote";
 import { fmtPrice, fmtSigned, fmtPct, trendCls } from "@/utils/format";
 import type { Position } from "@/utils/costBasis";

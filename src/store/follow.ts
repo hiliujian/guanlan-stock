@@ -13,7 +13,7 @@ import { getSupabase, isSupabaseConfigured } from "@/api/supabase";
 // 我关注的用户 uid 集合（响应式，组件间共享同一实例）
 const follows = ref<Set<string>>(new Set());
 
-// 跨组件打开「关注 / 粉丝」弹层的共享信号（ProfileView 置 open+mode，CommunityView 监听并挂载 FollowListView）
+// 跨组件打开「关注 / 粉丝」浮层的共享信号（ProfileView 置 open+mode，CommunityView 监听并打开 FollowListView）
 const followPanelOpen = ref(false);
 // 弹层内容方向：following=我关注的用户列表；fans=关注我的粉丝列表
 export type FollowPanelMode = "following" | "fans";

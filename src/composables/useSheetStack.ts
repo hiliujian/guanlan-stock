@@ -1,19 +1,19 @@
 import { ref } from "vue";
 
 /**
- * 全局底部卡片栈：统一管理 PeekSheet（半屏窗体）与 BottomSheet（底部弹层）。
+ * 全局底部卡片栈：统一管理 BottomCard（常驻停靠卡 / menu·sheet 浮层卡）。
  *
  * 两条规则：
  * 1. 互斥：新卡片打开（pushSheet）时自动收起栈内其它卡片，杜绝多卡同屏；
  * 2. 置顶：层级增量（sheetLift）按栈内次序递增，即使旧卡片离场动画尚未播完，
  *    最新打开的卡片也一定压在旧卡片之上。
  *
- * 各卡片在自身基础 z-index（PeekSheet 40 / 消息类 940 / BottomSheet 950）上叠加增量，
+ * 各卡片在自身基础 z-index（--z-card=40 常驻 / --z-card-overlay=950 浮层）上叠加增量，
  * 互斥下栈深通常为 1（增量 1），旧卡离场后深度回落到 1，增量永不累积、层级区间永不串档。
  */
 interface SheetEntry {
   id: number;
-  /** 互斥收起回调：由卡片提供（PeekSheet → collapse，BottomSheet → emit update:false） */
+  /** 互斥收起回调：由卡片提供（常驻卡 → collapse，浮层卡 → emit update:false） */
   close: () => void;
 }
 

@@ -1,19 +1,7 @@
 <template>
-  <!-- 统一使用 PeekSheet 卡片框架（与自选「今日最热」/「显示列」同源）：
-       无遮罩层、玻璃质感、仅顶部圆角，底部固定卡片。铃铛触发展开，关闭即卸载，
-       避免与底部发帖卡片争抢同一固定位。 -->
-  <PeekSheet ref="sheet" :z-index="zIndex" @collapse="onCollapse">
-    <!-- 折叠态预览行（极少出现，因挂载即展开）：与发帖卡片一致的触发外观 -->
-    <template #peek>
-      <view class="mc-peek">
-        <OutlineIcon type="bell" :size="30" color="var(--text-2)" />
-        <text class="mc-peek-t">消息中心</text>
-        <view v-if="unreadTotal > 0" class="mc-peek-badge">{{ unreadTotal > 99 ? '99+' : unreadTotal }}</view>
-      </view>
-    </template>
-
-    <!-- 展开 / 铺满：消息中心内容（私信 / 点赞 / 评论） -->
-    <template #default>
+  <!-- 统一底部卡片 sheet 浮层：铃铛触发 v-model 开关，高度从菜单栏顶部生长/收起，
+       拖拽手柄 / 下拉手势关闭（由 BottomCard 统一提供）；无遮罩层、玻璃质感、仅顶部圆角。 -->
+  <BottomCard v-model="open" variant="sheet">
       <view class="mc-wrap">
         <!-- 头部：复用全局 grp  head + panel-head + sheet-title，左侧留返回（会话详情） -->
         <view class="grp-head panel-head mc-bar">
@@ -139,23 +127,26 @@
           </view>
           </template>
       </view>
-    </template>
-  </PeekSheet>
+  </BottomCard>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, nextTick } from "vue";
 import OutlineIcon from "./OutlineIcon.vue";
 import EmojiPanel from "./EmojiPanel.vue";
 import UserAvatar from "./UserAvatar.vue";
-import PeekSheet from "./PeekSheet.vue";
+import BottomCard from "./BottomCard.vue";
 import { formatRelative, type Conversation, type NotificationItem } from "@/api/community";
 import { useMessageCenter, useDmTarget, usePostTarget } from "@/store/community";
 import { userState } from "@/store/user";
 import { vipGatedFrame } from "@/utils/avatarFrame";
 
-withDefaults(defineProps<{ modelValue: boolean; zIndex?: number }>(), { modelValue: false, zIndex: 40 });
+const props = defineProps<{ modelValue: boolean }>();
 const emit = defineEmits<{ (e: "update:modelValue", v: boolean): void }>();
+const open = computed({
+  get: () => props.modelValue,
+  set: (v) => emit("update:modelValue", v),
+});
 
 const {
   notifications,
@@ -165,7 +156,6 @@ const {
   unreadDm,
   unreadLike,
   unreadComment,
-  unreadTotal,
   activeThread,
   loadNotifications,
   loadConversations,
@@ -180,8 +170,6 @@ const {
 const { consumeDmTarget } = useDmTarget();
 // 点赞 / 评论通知点击 → 帖子深链：父级 CommunityView 监听并定位到具体帖子（评论类展开评论区）
 const { setPostTarget } = usePostTarget();
-
-const sheet = ref<any>(null);
 
 type TabKey = "dm" | "like" | "comment";
 const tabs: { key: TabKey; label: string; icon: string }[] = [
@@ -247,9 +235,9 @@ function onDeleteNotif(n: NotificationItem) {
 }
 
 /**
- * 点击点赞 / 评论通知：写入帖子深链目标后收起消息卡片，由 CommunityView 负责
+ * 点击点赞 / 评论通知：写入帖子深链目标后关闭消息卡片，由 CommunityView 负责
  * 定位到具体帖子；评论类通知（expandComments）自动展开评论区并高亮对应楼层。
- * 必须先写目标再收起：CommunityView 始终挂载（本组件由其持有），watch 立即生效。
+ * 必须先写目标再关闭：CommunityView 始终挂载（本组件由其持有），watch 立即生效。
  */
 function openNotif(n: NotificationItem) {
   if (!n.postId) return;
@@ -258,51 +246,39 @@ function openNotif(n: NotificationItem) {
     expandComments: n.kind === "comment",
     commentId: n.commentId || null,
   });
-  animateClose();
+  open.value = false;
 }
 
-// 挂载即展开（铃铛已控制 v-if 按需挂载），并拉取数据（每次打开都是全新挂载）
-onMounted(async () => {
-  sheet.value?.expand();
-  loadConversations();
-  loadNotifications();
-  // 私信深链：来自公开资料页「发私信」——直接打开与该用户的会话
-  // （已有会话则载入历史，否则空会话待发，发送后由 loadConversations 聚合）
-  const t = consumeDmTarget();
-  if (t) {
-    const conv: Conversation = {
-      otherId: t.otherId,
-      otherName: t.otherName,
-      otherAvatarUrl: t.otherAvatarUrl,
-      otherFrame: t.otherFrame,
-      otherVip: t.otherVip,
-      lastContent: "",
-      lastAt: 0,
-      unreadCount: 0,
-      lastSenderMe: false,
-    };
-    selectedOther.value = conv;
-    await openThread(t.otherId);
-  }
-});
-
-// 拖拽收起到底 → 播放收起过渡后再卸载（本组件 v-if 按需挂载，立即 emit 会让卡片瞬间消失、
-// 没有任何动效；先 collapse() 让 PeekSheet 的 height 过渡播完，再通知父组件卸载）
-const CLOSE_ANIM_MS = 340; // 略大于 PeekSheet --dur(0.32s)
-let closeTimer: any = null;
-function animateClose() {
-  sheet.value?.collapse();
-  if (closeTimer) clearTimeout(closeTimer);
-  closeTimer = setTimeout(() => emit("update:modelValue", false), CLOSE_ANIM_MS);
-}
-function onCollapse() {
-  animateClose();
-}
-onUnmounted(() => {
-  if (closeTimer) clearTimeout(closeTimer);
-});
-// 暴露给父组件（CommunityView 消息入口），以便复用同一套带过渡的收起动画
-defineExpose({ animateClose });
+// 每次打开都按「全新进入」处理（旧实现 v-if 按需挂载，每次挂载都重新拉取）：
+// 复位标签与会话态、拉取最新会话/通知，并消费私信深链（公开资料页「发私信」直达会话）
+watch(
+  () => props.modelValue,
+  async (v) => {
+    if (!v) return;
+    tab.value = "dm";
+    selectedOther.value = null;
+    dmText.value = "";
+    loadConversations();
+    loadNotifications();
+    const t = consumeDmTarget();
+    if (t) {
+      const conv: Conversation = {
+        otherId: t.otherId,
+        otherName: t.otherName,
+        otherAvatarUrl: t.otherAvatarUrl,
+        otherFrame: t.otherFrame,
+        otherVip: t.otherVip,
+        lastContent: "",
+        lastAt: 0,
+        unreadCount: 0,
+        lastSenderMe: false,
+      };
+      selectedOther.value = conv;
+      await openThread(t.otherId);
+    }
+  },
+  { immediate: true }
+);
 
 async function openConv(c: Conversation) {
   selectedOther.value = c;
@@ -326,32 +302,7 @@ watch(
 </script>
 
 <style scoped>
-/* 折叠态预览行（与发帖卡片一致的外观） */
-.mc-peek {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  height: 100%;
-  padding: 0 26rpx;
-}
-.mc-peek-t {
-  /* 与全部底部折叠卡（今日最热 / 股市行情 / 分享观点）统一字号 */
-  font-size: var(--font-sm);
-  color: var(--text);
-}
-.mc-peek-badge {
-  min-width: 28rpx;
-  height: 28rpx;
-  padding: 0 6rpx;
-  border-radius: 999rpx;
-  background: var(--danger);
-  color: #fff;
-  font-size: var(--font-xs);
-  line-height: 28rpx;
-  text-align: center;
-}
-
-/* 展开内容容器：填满 peek-body，纵向三段（头部 / 标签 / 滚动列表） */
+/* 内容容器：填满卡片正文区，纵向三段（头部 / 标签 / 滚动列表） */
 .mc-wrap {
   flex: 1;
   min-height: 0;

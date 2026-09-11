@@ -92,7 +92,7 @@
       <!-- 头像框选择弹窗：从「头像设置」菜单点「设置头像框」进入，横向展示全部可选框
            （头像预览 + 名称；会员金框仅 VIP 可选，非会员自动隐藏），选中即写入并自动关闭；
            选中态用主色高亮 + 对勾标记。 -->
-      <BottomSheet v-model="frameSheetVisible" title="选择头像框">
+      <BottomCard v-model="frameSheetVisible" title="选择头像框">
         <scroll-view class="af-scroll" scroll-x :show-scrollbar="false">
           <view class="af-row">
             <view
@@ -112,10 +112,10 @@
             </view>
           </view>
         </scroll-view>
-      </BottomSheet>
+      </BottomCard>
 
       <!-- 头像设置菜单：点击头像弹出，含「上传头像」「设置头像框」两项操作 -->
-      <BottomSheet v-model="avatarMenuVisible" title="头像设置">
+      <BottomCard v-model="avatarMenuVisible" title="头像设置">
         <view class="am-list">
           <view class="am-item" role="button" hover-class="am-item-hover" @click="onPickPhoto">
             <view class="am-ico">
@@ -133,7 +133,7 @@
             <text class="am-label">设置头像框</text>
           </view>
         </view>
-      </BottomSheet>
+      </BottomCard>
     </scroll-view>
   </view>
 </template>
@@ -143,7 +143,7 @@ import { ref, computed, watch } from "vue";
 import OutlineIcon from "@/components/OutlineIcon.vue";
 import AvatarCropper from "@/components/AvatarCropper.vue";
 import UserAvatar from "@/components/UserAvatar.vue";
-import BottomSheet from "@/components/BottomSheet.vue";
+import BottomCard from "@/components/BottomCard.vue";
 import { useUser, refreshProfile } from "@/store/user";
 import { useCommunity } from "@/store/community";
 import { BIO_MAX, BIO_PLACEHOLDER } from "@/store/bio";

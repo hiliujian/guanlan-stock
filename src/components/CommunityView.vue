@@ -3,7 +3,7 @@
     <!-- 顶部：品牌 + 消息入口（邮件图标 + 文字 + 未读角标），与自选共用 PageHeader -->
     <PageHeader brand-text="社区" brand-icon="chatbubble">
       <template #right>
-        <view class="cm-msg" :class="{ 'is-open': msgArrowOpen }" @click="toggleMsg">
+        <view class="cm-msg" :class="{ 'is-open': msgOpen }" @click="msgOpen = !msgOpen">
           <!-- 图标容器与自选「分组切换」(cm-me) 内的 .cm-avatar 完全一致：48rpx 主色渐变圆 + 白色居中图标 -->
           <view class="cm-msg-ic">
             <view class="cm-msg-circle flex-center" style="background: linear-gradient(135deg, var(--primary), var(--primary-dark, #06a050));">
@@ -130,9 +130,9 @@
       </view>
     </view>
 
-    <!-- 底部发帖卡片：复用自选同款 PeekSheet（与自选卡片一致），折叠态为输入框卡片，展开进入完整发帖界面。
+    <!-- 底部发帖卡片：统一底部卡片（常驻停靠卡，与自选卡片一致），折叠态为输入框卡片，展开进入完整发帖界面。
          折叠态一并将「在线人数」并入此卡片（复用 Realtime Presence 实时统计），不再单独建卡片。 -->
-    <PeekSheet ref="postSheet">
+    <BottomCard persistent ref="postSheet">
       <template #peek>
         <view class="pe-peek">
           <!-- 头像融入输入行：与行情/自选折叠行同语言 —— 扁平一行不加嵌套底色框，
@@ -152,13 +152,13 @@
           <PostComposer :edit-post="editingPost" @publish="onPublish" @edit="onEditPost" />
         </scroll-view>
       </template>
-    </PeekSheet>
+    </BottomCard>
 
-    <!-- 消息中心（通知铃铛触发）：按需挂载为 PeekSheet 卡片，关闭即卸载。
-         多卡互斥 / 置顶由全局底部卡片栈统一处理（useSheetStack），此处固定基础层级即可。 -->
-    <MessageCenter ref="msgRef" v-if="msgOpen" v-model="msgOpen" :z-index="940" />
-    <!-- 关注 / 粉丝列表（ProfileView 跳转社区后弹出，复用 PeekSheet 卡片，关闭即卸载；mode 区分关注/粉丝） -->
-    <FollowListView v-if="followPanelOpen" v-model="followPanelOpen" :mode="followPanelMode" :z-index="940" />
+    <!-- 消息中心（通知铃铛触发）：常驻挂载、v-model 开关的 sheet 浮层，关闭只收起不卸载。
+         多卡互斥 / 置顶由全局底部卡片栈统一处理（useSheetStack）。 -->
+    <MessageCenter v-model="msgOpen" />
+    <!-- 关注 / 粉丝列表（ProfileView 跳转社区后弹出，sheet 浮层；mode 区分关注/粉丝） -->
+    <FollowListView v-model="followPanelOpen" :mode="followPanelMode" />
 
     <!-- 帖子长按操作菜单（底部弹层）：本人 / 他人分支不同（需求⑦⑧⑩） -->
     <SheetMenu v-model="postMenuOpen" title="操作" :items="postMenuItems" @select="onPostMenuSelect" />
@@ -180,7 +180,7 @@ import PostComposer from "./PostComposer.vue";
 import PostCard from "./PostCard.vue";
 import UserCard from "./UserCard.vue";
 import UserAvatar from "./UserAvatar.vue";
-import PeekSheet from "./PeekSheet.vue";
+import BottomCard from "./BottomCard.vue";
 import SheetMenu from "./SheetMenu.vue";
 import MessageCenter from "./MessageCenter.vue";
 import FollowListView from "./FollowListView.vue";
@@ -205,28 +205,9 @@ const { closeReply, openReply } = useReplyExpansion();
 // 消息中心：未读总数角标（私信 + 活动通知）+ 进入消息中心加载会话
 const { unreadTotal, loadConversations, loadNotifications } = useMessageCenter();
 const msgOpen = ref(false);
-const msgArrowOpen = ref(false);
-const msgRef = ref<any>(null);
 const postSheet = ref<any>(null);
-// 跨组件打开「关注 / 粉丝」弹层的共享信号（ProfileView 置 open+mode，CommunityView 监听并挂载 FollowListView）
+// 跨组件打开「关注 / 粉丝」浮层的共享信号（ProfileView 置 open+mode，CommunityView 监听并打开 FollowListView）
 const { followPanelOpen, followPanelMode } = useFollowPanel();
-
-// 消息入口：点击切换展开/收起。展开时再点 → 触发卡片带过渡的收起（与其他底部卡片一致）；
-// 收起后再点 → 重新挂载并展开。箭头「是否展开」用独立状态 msgArrowOpen，点击瞬间即翻转
-// （不等待卡片收起动画），避免视觉延迟、不跟手。
-// 多卡互斥（消息中心 / 我的关注 / 发帖卡片 / 各类操作菜单）由全局底部卡片栈自动处理，
-// 新卡片打开即收起其它卡片，无需本页再逐个调用 close。
-function toggleMsg() {
-  if (msgOpen.value) {
-    msgArrowOpen.value = false;
-    msgRef.value?.animateClose();
-  } else {
-    msgOpen.value = true;
-    msgArrowOpen.value = true;
-  }
-}
-// 卡片自身关闭（关闭按钮 / 拖拽收起 / 被其它卡片互斥收起）走 emit 改 msgOpen → 同步箭头态
-watch(msgOpen, (v) => { msgArrowOpen.value = v; });
 
 // 全局页面守卫：本页未对游客开放 + 未登录 → 跳转登录页（统一由 src/store/guard.ts 处理）
 usePageGuard("community");
@@ -872,7 +853,7 @@ defineExpose({ refresh });
   text-align: center;
 }
 
-/* 底部发帖卡片折叠态：.peek-peek 为 flex 容器，这里 flex:1 铺满整行（与 .peek-row 同款长度）。
+/* 底部发帖卡片折叠态：.bc-peek 为 flex 容器，这里 flex:1 铺满整行（与 .peek-row 同款长度）。
    与行情/自选折叠行同语言：扁平一行，不加嵌套底色框 —— 玻璃卡本身就是容器，
    头像居左、占位文案同行、右侧展开箭头（chevron-up 同款），三张底部卡片视觉统一 */
 .pe-peek {
@@ -909,7 +890,7 @@ defineExpose({ refresh });
   position: relative;
   /* 原为 scroll-view 内 sticky 吸顶；uni-app H5 中 scroll-view 内的 sticky 会在向下滚动时
      被错误隐藏、向上滚动才恢复。改为 scroll-view 外的常驻 flex 头部，始终可见。
-     常驻头部 z-index 仅 30，低于底部 PeekSheet 卡片(40)，避免展开底部卡片时筛选栏浮于其上；
+     常驻头部 z-index 仅 30，低于底部常驻停靠卡片(40)，避免展开底部卡片时筛选栏浮于其上；
      筛选下拉打开时(.filter-open)才升到 61，保证下拉菜单可点击。 */
   z-index: 30;
   padding: 6rpx 26rpx 10rpx;
@@ -1079,7 +1060,7 @@ defineExpose({ refresh });
 
 /* 删除确认弹层：与公告弹窗（AnnouncementOverlay）同一套设计语言——
    透明遮罩不压暗背景 + 不透明实心卡片（浅 #fff / 深 #11161f）+ 药丸按钮；
-   z-index 1000：作为确认类弹层高于 BottomSheet(950)/底部卡片(40)/筛选栏(61)，低于 modal(9999)。 */
+   z-index 1000：作为确认类弹层高于底部浮层卡片(950)/常驻卡片(40)/筛选栏(61)，低于 modal(9999)。 */
 .cm-mask {
   position: fixed;
   inset: 0;

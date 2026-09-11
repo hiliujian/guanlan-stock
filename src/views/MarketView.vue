@@ -138,9 +138,9 @@
       </view><!-- /mk-body -->
       </scroll-view>
 
-      <!-- 底部指数卡片：复用自选页同款 PeekSheet 统一底部窗体（固定常驻于菜单栏上方），
+      <!-- 底部指数卡片：统一底部卡片（常驻停靠卡，固定常驻于菜单栏上方），
            折叠露出「当前匹配指数」预览（按当前股票匹配对应指数），展开为全球重要市场指数面板 -->
-      <PeekSheet ref="sheet" @expand="onSheetExpand" @collapse="onSheetCollapse">
+      <BottomCard persistent ref="sheet" @expand="onSheetExpand" @collapse="onSheetCollapse">
         <template #peek>
           <view class="peek-row" role="button" aria-label="展开指数面板">
             <text class="peek-label">股市行情</text>
@@ -228,7 +228,7 @@
             </scroll-view>
           </view>
         </template>
-      </PeekSheet>
+      </BottomCard>
     </view>
 </template>
 
@@ -249,7 +249,7 @@ const COMMODITY_ICON: Record<string, string> = {
 };
 import PriceText from "@/components/PriceText.vue";
 import AnalysisCard from "@/components/AnalysisCard.vue";
-import PeekSheet from "@/components/PeekSheet.vue";
+import BottomCard from "@/components/BottomCard.vue";
 import RollSwap from "@/components/RollSwap.vue";
 import ReportView from "@/components/ReportView.vue";
 import KlineCard from "@/components/KlineCard.vue";
@@ -343,7 +343,7 @@ function setRealtime(snap: { price: number; preClose: number; open?: number; hig
   }
 }
 
-// 底部指数卡片（复用自选页同款 PeekSheet 统一底部窗体）：收起态展示「当前匹配指数」——
+// 底部指数卡片（复用自选页同款 BottomCard 统一底部窗体）：收起态展示「当前匹配指数」——
 // 按当前查看的股票所属板块自动匹配对应指数（创业板/科创板→创业板指、沪A→上证指数、
 // 深A→深证成指、北A→北证50），无股票时默认上证指数；展开态为全球重要市场指数实时面板。
 const DEFAULT_INDEX = { secid: "1.000001", name: "上证指数" };
@@ -404,7 +404,7 @@ let lastGlobalFetchAt = 0; // 预加载节流：keep-alive 每次切回都进 on
 // 面板展开态跟踪：keep-alive 切走时 stopTimers 会同步停掉指数面板刷新，
 // 切回（onActivated → syncTimers）按此恢复展开态的轮询；浏览器后台门控（syncTimers）同用
 const sheetExpanded = ref(false);
-// PeekSheet 外壳引用：供展开态标题栏点击调用 collapse()（与自选页各面板标题栏收起统一）
+// BottomCard 外壳引用：供展开态标题栏点击调用 collapse()（与自选页各面板标题栏收起统一）
 const sheet = ref<any>(null);
 async function refreshGlobal() {
   lastGlobalFetchAt = Date.now();
@@ -1571,7 +1571,7 @@ defineExpose({ refresh: () => refreshFull() });
   font-size: var(--font-xs);
   color: var(--text-3);
 }
-/* 面板内独立滚动容器（承接 PeekSheet peek-body 的 flex:1 高度） */
+/* 面板内独立滚动容器（承接 BottomCard .bc-body 的 flex:1 高度） */
 .idx-scroll {
   flex: 1;
   min-height: 0;
