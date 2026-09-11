@@ -872,7 +872,7 @@ defineExpose({ refresh });
   flex: 1;
   min-width: 0;
   line-height: 44rpx;
-  font-size: var(--font-md);
+  font-size: var(--font-sm);
   color: var(--text-3);
   /* 固定单行：文字过长省略号收尾，不换行（折叠行只有一行高度） */
   white-space: nowrap;
@@ -1019,8 +1019,8 @@ defineExpose({ refresh });
   100% { box-shadow: 0 0 0 0 rgba(7, 193, 96, 0); }
 }
 .pe-online-t {
-  /* 与折叠行内其他文案统一字号（占位文案为 --font-md），保证同行字号一致 */
-  font-size: var(--font-md);
+  /* 与折叠行内其他文案统一字号（占位文案为 --font-sm），保证同行字号一致 */
+  font-size: var(--font-sm);
   color: var(--text-2);
 }
 
