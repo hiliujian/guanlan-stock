@@ -7,6 +7,9 @@ import { reactive, readonly } from "vue";
 import { getSupabase } from "@/api/supabase";
 import { translateSupabaseError } from "@/api/auth";
 import { userState } from "./user";
+import { clearPosition } from "@/utils/costBasis";
+import { dropHolding } from "@/api/holdings";
+import { resolveSecid } from "@/utils/period";
 
 /** 价格预警配置：高于 / 低于某价触发（任一为 null 表示该方向不监控） */
 export interface PriceAlert {
@@ -367,6 +370,8 @@ export async function deleteGroup(name: string): Promise<void> {
   }
 }
 
+/** 移除自选并同步清除该股持仓（本地 cost:<secid> + 云端 user_holdings），
+ *  避免「自选已删除但持仓仍保留」的数据不一致。所有删除入口统一收口于此。 */
 export async function removeWatch(code: string, market: string): Promise<void> {
   if (state.mode === "cloud" && userState.userId) {
     const sb = getSupabase()!;
@@ -378,6 +383,15 @@ export async function removeWatch(code: string, market: string): Promise<void> {
     state.items = next;
     saveLocal(next);
   }
+  // 同步清除持仓：本地缓存按 secid 删除（positionsVersion 自增驱动视图刷新）；
+  // 云端持仓簿按纯数字 code 删行（未登录/未配置时 dropHolding 内部自守卫跳过）。
+  try {
+    const secid = resolveSecid(code, market as any);
+    clearPosition(secid);
+  } catch {
+    /* 非法代码跳过本地清理 */
+  }
+  await dropHolding(code.split(".")[1] || code);
 }
 
 export function isWatched(code: string, market: string): boolean {

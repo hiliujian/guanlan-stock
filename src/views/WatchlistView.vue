@@ -302,19 +302,41 @@
              全部内容共用同一卡片、同一套折叠/半屏/铺满手势与动效，避免重复样式与代码 -->
         <UniversalCard persistent ref="sheet" @expand="onSheetExpand" @collapse="onSheetCollapse">
           <template #peek>
-            <!-- 持仓视图：底部折叠卡展示「持仓概览」（总市值 / 总盈亏 / 收益率），不复用自选的今日最热 -->
-            <view v-if="mainView === 'pos'" class="peek-row" role="button" aria-label="展开持仓概览" @click="openPosSheet">
-              <text class="peek-label">持仓概览</text>
-              <view class="peek-info">
-                <view class="peek-main">
-                  <text class="peek-name">持仓 {{ posSummary.count }}</text>
-                  <text class="peek-code">市值 ¥{{ fmtMV(sumValue) }}</text>
-                </view>
-                <view class="peek-right">
-                  <text class="peek-price" :class="trendCls(posSummary.pnl)">{{ posSummary.count ? fmtSigned(posSummary.pnl) : '--' }}</text>
-                  <text class="peek-pct" :class="trendCls(posSummary.pnl)">{{ posSummary.count ? fmtPct(posSummary.pnlPct) : '--' }}</text>
-                </view>
-              </view>
+            <!-- 持仓视图：折叠卡默认展示「持仓概览」（总市值 / 总盈亏 / 收益率）；
+                 今日异动提醒在展示窗口内时滚动切换为异动卡（复用自选视图同一套
+                 curSlide/anomKey/RollSwap 状态与组件，无第二套实现），点击展开异动列表 -->
+            <view v-if="mainView === 'pos'" class="peek-row" role="button" :aria-label="curSlide.kind === 'anom' ? '展开异动列表' : '展开持仓概览'" @click="onPosPeekClick">
+              <text class="peek-label">{{ curSlide.kind === 'anom' ? peekLabel : '持仓概览' }}</text>
+              <!-- 持仓概览 ↔ 今日异动 提醒切换复用 <RollSwap>（与自选页完全一致） -->
+              <RollSwap class="peek-roll" :roll-key="posPeekKey">
+                <!-- 持仓概览 slide -->
+                <template v-if="curSlide.kind !== 'anom'">
+                  <view class="peek-info">
+                    <view class="peek-main">
+                      <text class="peek-name">持仓 {{ posSummary.count }}</text>
+                      <text class="peek-code">市值 ¥{{ fmtMV(sumValue) }}</text>
+                    </view>
+                    <view class="peek-right">
+                      <text class="peek-price" :class="trendCls(posSummary.pnl)">{{ posSummary.count ? fmtSigned(posSummary.pnl) : '--' }}</text>
+                      <text class="peek-pct" :class="trendCls(posSummary.pnl)">{{ posSummary.count ? fmtPct(posSummary.pnlPct) : '--' }}</text>
+                    </view>
+                  </view>
+                </template>
+                <!-- 异动 slide：与自选视图同一 curSlide 数据源，点击展开异动列表面板 -->
+                <template v-else>
+                  <view class="peek-info">
+                    <view class="peek-main">
+                      <text class="peek-name">{{ curSlide.rec.name }}</text>
+                      <text class="peek-code">{{ curSlide.rec.code }}</text>
+                    </view>
+                    <view class="peek-right">
+                      <text class="anom-tag" :class="ANOMALY_META[curSlide.rec.type].cls">{{ ANOMALY_META[curSlide.rec.type].label }}</text>
+                      <text class="peek-price" :class="trendCls(curSlide.rec.chg)">{{ fmtPrice(curSlide.rec.price) }}</text>
+                      <text class="peek-pct" :class="trendCls(curSlide.rec.chg)">{{ fmtPct(curSlide.rec.pct) }}</text>
+                    </view>
+                  </view>
+                </template>
+              </RollSwap>
               <OutlineIcon class="peek-caret" type="chevron-up" :size="20" color="var(--text-2)" />
             </view>
             <!-- 自选视图：今日最热 / 今日异动 折叠卡 -->
@@ -602,12 +624,7 @@
                 <text class="sheet-title">价格预警</text>
               </view>
               <!-- 实时价参考：进入面板即拉取最新成交价，供用户设定阈值时对照 -->
-              <view class="alert-rt">
-                <text class="alert-rt-label">当前实时价</text>
-                <text class="alert-rt-price" :class="trendCls(alertRT?.chg)">{{ alertRT ? fmtPrice(alertRT.price) : '—' }}</text>
-                <text class="alert-rt-sub" :class="trendCls(alertRT?.chg)" v-if="alertRT">{{ fmtSigned(alertRT.chg) }} · {{ fmtPct(alertRT.pct) }}</text>
-                <text class="alert-rt-hint" v-else>实时价获取中…</text>
-              </view>
+              <LivePriceBar :price="alertRT?.price ?? null" :chg="alertRT?.chg ?? null" :pct="alertRT?.pct ?? null" />
               <scroll-view class="grp-body" scroll-y>
                 <view class="grp-list">
                   <view class="grp-item" :class="{ active: alertEdit === 'above' }" role="button" @click="startEdit('above')">
@@ -684,6 +701,7 @@ import OutlineIcon from "@/components/OutlineIcon.vue";
 import PageHeader from "@/components/PageHeader.vue";
 import UniversalCard from "@/components/UniversalCard.vue";
 import PositionForm from "@/components/PositionForm.vue";
+import LivePriceBar from "@/components/LivePriceBar.vue";
 import RollSwap from "@/components/RollSwap.vue";
 import RankView, { preloadRank } from "@/views/RankView.vue";
 import { useWatchlist, removeWatch, setItemGroup, setAlerts, renameGroup, deleteGroup, applyGroupOrder, type WatchItem, type PriceAlert } from "@/store/watchlist";
@@ -776,6 +794,21 @@ const peekLabel = computed(() => (curSlide.value.kind === "anom" ? ANOM_LABEL : 
 const anomKey = computed(() =>
   curSlide.value.kind === "anom" ? "anom:" + curSlide.value.rec.id : "today"
 );
+// 持仓视图折叠卡 RollSwap 的 key：与自选页同源（同一 curSlide），仅默认 slide 由「持仓概览」承担
+const posPeekKey = computed(() =>
+  curSlide.value.kind === "anom" ? "anom:" + curSlide.value.rec.id : "possum"
+);
+// 持仓视图折叠卡点击：异动提醒展示中 → 异动列表面板；否则持仓汇总面板（原 openPosSheet 行为）
+function onPosPeekClick() {
+  if (curSlide.value.kind === "anom") {
+    if (lpItem.value) lpItem.value = null;
+    sheetExpanded.value = true;
+    activePanel.value = "anomaly";
+    sheet.value?.expand();
+  } else {
+    openPosSheet();
+  }
+}
 // ===== 提醒时效模型：纯时间驱动，无已读状态 =====
 // 异动在 rec.time 产生 → 提醒必须在该时间点触发，持续展示 ANOM_SHOW_MS 后消失：
 // - 窗口内（rec.time ≤ 现在 < rec.time + ANOM_SHOW_MS）恒展示该提醒：无论异动产生多久、

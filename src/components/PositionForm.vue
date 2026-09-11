@@ -3,13 +3,9 @@
        从菜单栏顶部生长/收起、点击顶部手柄/标题栏收起。teleport 到 body 保证层级；
        保留当前实时价作录入成本参考。行情页报告卡与自选页长按菜单共用此组件。 -->
   <UniversalCard v-model="visible" title="设置持仓" variant="sheet">
-    <!-- 实时价参考：进入即拉取最新成交价（按 secid），行情页无 secid 时回退到传入的参考价 -->
-    <view class="alert-rt" v-if="refPrice != null">
-      <text class="alert-rt-label">当前实时价</text>
-      <text class="alert-rt-price" :class="trendCls(refChg)">{{ fmtPrice(refPrice) }}</text>
-      <text class="alert-rt-sub" :class="trendCls(refChg)" v-if="refChg != null && refPct != null">{{ fmtSigned(refChg) }} · {{ fmtPct(refPct) }}</text>
-      <text class="alert-rt-hint" v-else>仅供参考</text>
-    </view>
+    <!-- 实时价参考：进入即拉取最新成交价（按 secid），行情页无 secid 时回退到传入的参考价；
+         与价格预警面板共用 LivePriceBar 同一元素（同代码/同逻辑/同样式） -->
+    <LivePriceBar :price="refPrice" :chg="refChg" :pct="refPct" hint="仅供参考" />
 
     <view class="pf-fields">
       <view class="pf-field">
@@ -32,8 +28,9 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import UniversalCard from "./UniversalCard.vue";
+import LivePriceBar from "./LivePriceBar.vue";
 import { fetchSnapshot, type SnapResult } from "@/api/quote";
-import { fmtPrice, fmtSigned, fmtPct, trendCls } from "@/utils/format";
+import { fmtPrice } from "@/utils/format";
 import type { Position } from "@/utils/costBasis";
 import { getPosition } from "@/utils/costBasis";
 
