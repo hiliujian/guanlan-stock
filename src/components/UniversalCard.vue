@@ -13,7 +13,7 @@
        两种浮层进出 / 拖拽收起统一走 height 生长收缩，起点和动效完全一致。 -->
   <teleport to="body" :disabled="persistent">
     <Transition :name="transitionName">
-      <view v-if="persistent || modelValue" class="uc-card" :class="cardClass" :style="cardStyle">
+      <view v-if="persistent || modelValue" ref="cardRef" class="uc-card" :class="cardClass" :style="cardStyle">
         <!-- 顶部拖拽手柄：常驻卡非折叠态 / 浮层打开态显示。
              点击=回退一档（铺满→半屏→收起），与下拉手势同语义；热区按卡片类型给尺寸。
              ⚠️ 拖拽手势只绑在手柄上（不绑整卡）：卡片其余区域点击/滚动不受影响，
@@ -232,17 +232,27 @@ function isFormField(el: any): boolean {
   const t = (el && el.tagName) || "";
   return t === "INPUT" || t === "TEXTAREA" || (el && el.isContentEditable);
 }
+// 卡片根节点引用：事件对象取不到 DOM 时的兜底测高来源（见 findCardEl）
+const cardRef = ref<any>(null);
+// 从事件目标逐级向上找所属卡片 .uc-card。
+// 不依赖 e.currentTarget.closest —— uni-app H5 的事件对象不一定保留原生 DOM 方法/节点，
+// 用 e.target + parentElement + classList 最稳；仍取不到时回退到组件自身的 cardRef。
+function findCardEl(e: any): any {
+  let el: any = e.target || e.currentTarget;
+  while (el && el !== document.body) {
+    if (el.classList && el.classList.contains("uc-card")) return el;
+    el = el.parentElement;
+  }
+  const r: any = cardRef.value;
+  return (r && (r.$el || r)) || null;
+}
 
 function onDown(e: any) {
   if (isFormField(e.target)) return;
-  // 双手柄卡片：currentTarget 是手柄，需取卡片实际高度作为伸缩基准（sheet=半屏 / menu=内容高 / 常驻卡=档位高）。
-  // 稳健取法：优先 closest('.uc-card')，兜底 parentElement；高度用 getBoundingClientRect（过渡中也能拿到真实视觉高）
-  // 兜底 offsetHeight；若仍取到 0（极端异常），退化到「铺满高度」，避免被拖拽下限 MIN_DRAG_H 钳成一小条（误塌缩）。
-  const cardEl =
-    (e.currentTarget && e.currentTarget.closest && e.currentTarget.closest(".uc-card")) ||
-    (e.currentTarget && e.currentTarget.parentElement) ||
-    e.currentTarget;
-  const cardH = cardEl && (cardEl.getBoundingClientRect().height || cardEl.offsetHeight);
+  // 取卡片真实视觉高作为伸缩基准（sheet=半屏 / menu=内容高 / 常驻卡=档位高）。
+  // 取不到时退化到「铺满高度」，避免被拖拽下限 MIN_DRAG_H 钳成一小条（误塌缩）。
+  const cardEl = findCardEl(e);
+  const cardH = cardEl ? cardEl.getBoundingClientRect().height : 0;
   naturalHeight = cardH || winH.value - tabPx.value;
   pressing.value = true;
   dragging.value = false;
@@ -251,38 +261,39 @@ function onDown(e: any) {
   moved = false;
   startY = ptY(e);
   startX = ptX(e);
-  // 触摸 + 鼠标：把 move/up 挂到 window。
+  // 触摸 + 鼠标：move/up 一律挂到 window（不区分事件类型——uni-app H5 的事件对象不一定保留原生 type，
+  // 且注册未触发的类型无副作用，onUp 统一移除）。
   // · 鼠标：按下后指针迅速移出 6rpx 小手柄，绑在手柄上浏览器即停止派发 mousemove → PC 拖不动。
-  // · 触摸：touch 事件虽全程派发到 touchstart 目标，但手指移出手柄、或浏览器把纵向拖拽判定为
-  //   页面/正文滚动时会派发 touchcancel 提前结束 → 移动端「按住小横条拖拽无反应」。
-  // 挂 window + passive:false 可 preventDefault 阻止浏览器抢手势，全程稳定接收；松手在 onUp 统一移除。
-  if (typeof window !== "undefined" && (e.type === "touchstart" || e.type === "mousedown")) {
-    const mv = e.type === "touchstart" ? "touchmove" : "mousemove";
-    const up = e.type === "touchstart" ? "touchend" : "mouseup";
-    window.addEventListener(mv, onMove, { passive: false });
-    window.addEventListener(up, onUp);
-    if (e.type === "touchstart") window.addEventListener("touchcancel", onUp);
+  // · 触摸：手指移出手柄、或浏览器把纵向拖拽判成页面/正文滚动时会派发 touchcancel 提前结束 → 无反应。
+  // 挂 window + passive:false，配合 onMove 的 preventDefault 阻止浏览器抢手势，全程稳定接收。
+  if (typeof window !== "undefined") {
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onUp);
+    window.addEventListener("touchcancel", onUp);
+    window.addEventListener("mousemove", onMove, { passive: false });
+    window.addEventListener("mouseup", onUp);
   }
 }
 function onMove(e: any) {
   if (!pressing.value) return;
+  // 按下期间一律先阻止默认：否则浏览器会把最初的微小位移判成页面/正文滚动并派发 touchcancel 抢走手势，
+  // 表现为「按住手柄滑动没反应」。放在死区判断之前，第一帧就拦住。
+  if (e.cancelable) {
+    try {
+      e.preventDefault();
+    } catch (_) {}
+  }
   const dy = ptY(e) - startY;
   const dx = ptX(e) - startX;
   // 记录是否发生过明显位移（>6px）：松手时据此吞掉合成 click，避免「轻移即收起/塌缩」
   if (Math.abs(dy) > 6 || Math.abs(dx) > 6) moved = true;
-  // 仅「触摸」阶段：位移仍在死区内、或主要为横向（视为滚动/滑动意图）→ 完全不进入跟手，
-  // 不应用任何实时高度，卡片状态纹丝不动，杜绝误触塌缩
+  // 位移仍在死区内、或主要为横向（视为滚动/滑动意图）→ 不进入跟手，不应用实时高度，卡片纹丝不动
   if (!dragging.value) {
     if (Math.abs(dy) <= DEAD_ZONE) return;
     if (Math.abs(dy) < Math.abs(dx) * 1.5) return; // 纵向位移须明显大于横向，才认定为纵向拖拽
     dragging.value = true;
   }
   dragY.value = dy;
-  if (e.cancelable) {
-    try {
-      e.preventDefault();
-    } catch (_) {}
-  }
 }
 function onUp() {
   if (!pressing.value) return;
@@ -352,10 +363,12 @@ const cardStyle = computed(() => {
   // 滑动跟手：高度实时随手指（下滑变矮、上滑变高），过铺满高度后加阻尼；不走过渡
   // 仅在 dragging（超死区）时生效，纯点击不进入此分支，故无回弹误触
   if (dragging.value) {
-    const maxH = winH.value - tabPx.value;
     let h = naturalHeight - dragY.value; // dragY 下拉为正 → h 减小
     if (h < MIN_DRAG_H) h = MIN_DRAG_H; // 触底保底，避免高度为负
-    if (h > maxH) h = maxH + (h - maxH) * 0.2; // 超过铺满后阻尼
+    const maxH = winH.value - tabPx.value;
+    // 仅在测得的铺满高度有效时才施加阻尼：winH 未就绪（=0）时 maxH 为负，
+    // 照常阻尼会把 h 压到两成 → 卡片「瞬间塌成一小条」，故加 maxH>0 守卫。
+    if (maxH > 0 && h > maxH) h = maxH + (h - maxH) * 0.2;
     return { ...style, height: `${h}px`, maxHeight: `${h}px`, transition: "none" };
   }
   return style;
@@ -493,7 +506,7 @@ function onTopClick() {
   padding: 8rpx 24rpx 0;
 }
 
-/* 顶部手柄：常驻卡为整行宽热区（26rpx 高）；浮层卡为 56rpx 居中视觉条 */
+/* 顶部手柄：常驻卡 / 浮层卡均为整行宽热区（视觉条 .uc-handle 居中，仅浮层 56rpx 宽） */
 .uc-grip {
   flex: none;
   display: flex;
@@ -510,10 +523,12 @@ function onTopClick() {
 .uc-dock .uc-grip:active {
   cursor: grabbing;
 }
+/* 浮层手柄：视觉条仍是 56rpx×6rpx（.uc-handle），但热区放大到整行宽 × 40rpx。
+   原来热区只有 6rpx（≈3px），手机上几乎按不中 → 表现为「按住卡片顶部上下滑动没反应」。*/
 .uc-overlay .uc-grip {
-  width: 56rpx;
-  height: 6rpx;
-  margin: 10rpx auto 4rpx;
+  width: 100%;
+  height: 40rpx;
+  margin: 0;
 }
 .uc-handle {
   width: 56rpx;
@@ -536,23 +551,28 @@ function onTopClick() {
 .uc-grow-enter-active,
 .uc-grow-leave-active {
   transition: max-height var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
-  max-height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
 }
-/* menu 卡：以内容高度为过渡目标，让 0→内容高 与 sheet 的 0→半屏 同节奏
-   （用 CSS 变量承载，避免内联 max-height 覆盖下面的 0 起始帧） */
+/* menu 卡：生长终态 = 内容高（--uc-menu-h，px；未传则回退铺满高） */
 .uc-grow-enter-active.uc-menu,
 .uc-grow-leave-active.uc-menu {
   max-height: var(--uc-menu-h, calc(100vh - 110rpx - env(safe-area-inset-bottom)));
 }
-/* sheet 卡：真实高度是半屏（50vh - 110rpx - 安全区），必须把生长过渡目标也钉在半屏，
-   否则沿用基础规则的 100vh 会在 max-height 过半（=半屏实际高）时就长满，等于用一半时长长完 → 看起来比 menu 卡快一倍。
-   钉到半屏后，0→半屏 与 menu 的 0→内容高 同节奏（都是 --dur 走完），生长速度对齐。 */
+/* sheet 卡：生长终态 = 半屏真实高（与 .uc-card--half 一致）。
+   若沿用 100vh，会在 max-height 过半（=半屏实际高）时就长满，等于用一半时长长完 → 比 menu 卡快一倍。 */
 .uc-grow-enter-active.uc-sheet,
 .uc-grow-leave-active.uc-sheet {
   max-height: calc(50vh - 110rpx - env(safe-area-inset-bottom));
 }
+/* 起始帧：max-height 必须归 0，否则浮层直接以终高出现、没有生长。
+   ⚠️ 必须带上 .uc-menu / .uc-sheet 变体：上面的终态规则是「双类选择器」(权重 0,2,0)，
+   高于单类的本规则 (0,1,0)；不补变体会被终态规则覆盖 → 起始帧不是 0 → 生长动画整体失效（瞬间弹出）。
+   补成同等权重 (0,2,0) 且本规则在源码中更靠后 → 起始帧稳稳为 0，过渡帧再落到终态，生长动画成立。 */
 .uc-grow-enter-from,
-.uc-grow-leave-to {
+.uc-grow-leave-to,
+.uc-grow-enter-from.uc-menu,
+.uc-grow-leave-to.uc-menu,
+.uc-grow-enter-from.uc-sheet,
+.uc-grow-leave-to.uc-sheet {
   max-height: 0;
   transform: translateX(-50%);
 }
