@@ -5,7 +5,9 @@
   <UniversalCard v-model="visible" title="设置持仓" variant="sheet">
     <!-- 实时价参考：进入即拉取最新成交价（按 secid），行情页无 secid 时回退到传入的参考价；
          与价格预警面板共用 LivePriceBar 同一元素（同代码/同逻辑/同样式） -->
-    <LivePriceBar :price="refPrice" :chg="refChg" :pct="refPct" hint="仅供参考" />
+    <!-- 实时价参考：与价格预警面板共用 LivePriceBar 同一元素 + 同一默认无数据态（实时价获取中…），
+         满足「设置持仓 / 价格预警 实时行情区 无数据态完全一致」要求；不覆盖 hint 以对齐预警面板 -->
+    <LivePriceBar :price="refPrice" :chg="refChg" :pct="refPct" />
 
     <view class="pf-fields">
       <view class="pf-field">
