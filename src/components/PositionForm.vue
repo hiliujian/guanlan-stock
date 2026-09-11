@@ -1,24 +1,35 @@
 <template>
-  <!-- 设置持仓：统一底部卡片 sheet 形态——固定半屏高、底边停在菜单栏上方、
-       从菜单栏顶部生长/收起、点击顶部手柄/标题栏收起。teleport 到 body 保证层级；
-       保留当前实时价作录入成本参考。行情页报告卡与自选页长按菜单共用此组件。 -->
-  <UniversalCard v-model="visible" title="设置持仓" variant="sheet">
-    <!-- 实时价参考：进入即拉取最新成交价（按 secid），行情页无 secid 时回退到传入的参考价；
-         与价格预警面板共用 LivePriceBar 同一元素（同代码/同逻辑/同样式） -->
-    <!-- 实时价参考：与价格预警面板共用 LivePriceBar 同一元素 + 同一默认无数据态（实时价获取中…），
-         满足「设置持仓 / 价格预警 实时行情区 无数据态完全一致」要求；不覆盖 hint 以对齐预警面板 -->
+  <!-- 设置持仓：统一底部卡片 sheet 形态。
+       内部字段行 / 输入框 / 按钮全部复用 global.css 的底部弹层通用家族
+       （.grp-list / .grp-item / .grp-label / .alert-edit / .alert-input / .grp-foot / .grp-btn），
+       与「价格预警」面板逐项同源——同样的 88rpx 行高、26rpx 左右内边距、同尺寸输入框。
+       body-flush：去掉 sheet 正文容器（.uc-body）的横向内边距，避免与内容自身 26rpx 叠加成 50rpx
+       （价格预警在常驻卡里正文无内边距，故必须让浮层也同样贴齐，左缘才对得上）。
+       保留当前实时价作录入成本参考；行情页报告卡与自选页长按菜单共用此组件。 -->
+  <UniversalCard v-model="visible" title="设置持仓" variant="sheet" body-flush>
+    <!-- 实时价参考：与价格预警面板共用 LivePriceBar 同一元素（同代码/同逻辑/同样式，
+         同样不覆盖 hint 以对齐预警面板的默认无数据态「实时价获取中…」） -->
     <LivePriceBar :price="refPrice" :chg="refChg" :pct="refPct" />
 
-    <view class="pf-fields">
-      <view class="pf-field">
-        <text class="pf-k">持仓成本（元/股）</text>
-        <input class="alert-input" type="digit" :value="pfCost" :placeholder="costPlaceholder" @input="onPfCost" />
+    <scroll-view class="grp-body" scroll-y>
+      <view class="grp-list">
+        <view class="grp-item pos-row">
+          <OutlineIcon type="portfolio" :size="28" color="var(--text-2)" />
+          <text class="grp-label">持仓成本（元/股）</text>
+        </view>
+        <view class="alert-edit">
+          <input class="alert-input" type="digit" :value="pfCost" :placeholder="costPlaceholder" @input="onPfCost" />
+        </view>
+
+        <view class="grp-item pos-row">
+          <OutlineIcon type="layers" :size="28" color="var(--text-2)" />
+          <text class="grp-label">持仓数量（股）</text>
+        </view>
+        <view class="alert-edit">
+          <input class="alert-input" type="number" :value="pfQty" placeholder="必填，如 1000" @input="onPfQty" />
+        </view>
       </view>
-      <view class="pf-field">
-        <text class="pf-k">持仓数量（股）</text>
-        <input class="alert-input" type="number" :value="pfQty" placeholder="必填，如 1000" @input="onPfQty" />
-      </view>
-    </view>
+    </scroll-view>
 
     <view class="grp-foot">
       <view class="grp-btn danger" role="button" aria-label="清除持仓" @click="clear">清除持仓</view>
@@ -31,6 +42,7 @@
 import { ref, computed } from "vue";
 import UniversalCard from "./UniversalCard.vue";
 import LivePriceBar from "./LivePriceBar.vue";
+import OutlineIcon from "./OutlineIcon.vue";
 import { fetchSnapshot, type SnapResult } from "@/api/quote";
 import { fmtPrice } from "@/utils/format";
 import type { Position } from "@/utils/costBasis";
@@ -119,22 +131,12 @@ defineExpose({ open });
 </script>
 
 <style scoped>
-/* 两个录入字段：输入框直接复用全局 .alert-input（与「编辑价格预警」内联输入框同尺寸/同字号）；
-   字段标签与预警卡选项标题同为 font-md，保证两张卡片字号层级一致。 */
-.pf-fields {
-  padding: 6rpx 0 4rpx;
+/* 字段标签行沿用 .grp-item 的行高（88rpx）与内边距（0 26rpx），与价格预警卡的选项行完全一致；
+   这两行是静态字段名而非可点选项，故去掉手型与按下高亮，避免误以为可点 */
+.grp-item.pos-row {
+  cursor: default;
 }
-.pf-field {
-  padding: 10rpx 26rpx 14rpx;
-}
-.pf-k {
-  display: block;
-  font-size: var(--font-md);
-  color: var(--text);
-  margin-bottom: 10rpx;
-}
-/* 按钮行沉到半屏卡底部（与分组面板 grp-foot 底置一致），正文短也不悬空 */
-.grp-foot {
-  margin-top: auto;
+.grp-item.pos-row:active {
+  background: transparent;
 }
 </style>

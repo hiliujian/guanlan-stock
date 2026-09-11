@@ -67,6 +67,9 @@ const props = withDefaults(
     /** 菜单形态的内容高度提示（rpx）：用作 max-height 过渡目标，使短菜单的生长/收缩节奏与半屏 sheet 一致
      *  （若不传，回退到 100vh，短菜单会瞬间长好，与 sheet 明显不一致） */
     maxHeightHint?: number;
+    /** 内容自带横向内边距（如 .grp-* / .alert-* 的 26rpx）时置 true：去掉浮层正文容器（.uc-body）的横向内边距。
+     *  否则 24rpx(容器) + 26rpx(内容) 叠加成 50rpx，与常驻面板（正文无内边距 → 26rpx）左缘对不齐。 */
+    bodyFlush?: boolean;
     /** 基础层级；默认 常驻卡 40 / 浮层卡 950，同层多卡由全局卡片栈给置顶增量 */
     zIndex?: number;
   }>(),
@@ -376,6 +379,7 @@ const cardStyle = computed(() => {
 
 const cardClass = computed(() => {
   const cls = [props.persistent ? "uc-dock" : `uc-overlay uc-${props.variant}`];
+  if (props.bodyFlush) cls.push("uc-body-flush");
   if (stage.value === "peek") cls.push("uc-card--peek");
   else if (stage.value === "half") cls.push("uc-card--half");
   else if (stage.value === "max") cls.push("uc-card--max");
@@ -504,6 +508,14 @@ function onTopClick() {
   -webkit-overflow-scrolling: touch;
   /* 底部安全区由内容内的按钮行（.grp-foot 自带 safe padding）收尾，避免双层安全区空白 */
   padding: 8rpx 24rpx 0;
+}
+/* 内容自带横向内边距（.grp-* / .alert-* 均为 26rpx）时去掉正文容器的横向内边距：
+   否则 24rpx(容器) + 26rpx(内容) 叠加成 50rpx，与常驻面板（正文无内边距 → 26rpx）左缘对不齐 */
+.uc-menu.uc-body-flush .uc-body {
+  padding: 8rpx 0 calc(36rpx + env(safe-area-inset-bottom));
+}
+.uc-sheet.uc-body-flush .uc-body {
+  padding: 8rpx 0 0;
 }
 
 /* 顶部手柄：常驻卡 / 浮层卡均为整行宽热区（视觉条 .uc-handle 居中，仅浮层 56rpx 宽） */
