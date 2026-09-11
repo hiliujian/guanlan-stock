@@ -204,15 +204,17 @@ onUnmounted(() => {
 //  - 滑动（位移超 DEAD_ZONE）：高度实时跟手；上滑继续展开、下滑执行收起；松手过阈值才切档，
 //    否则回弹归位。滑动结束后吞掉紧随的合成 click，避免误触收起。
 const pressing = ref(false); // 指针已落在手柄上（按下未抬起）
-const dragging = ref(false); // 已进入滑动跟手（位移超死区），应用实时高度
+const dragging = ref(false); // 已进入滑动跟手（位移超死区且为明显纵向拖拽），应用实时高度
 const dragY = ref(0);
 let startY = 0;
+let startX = 0;
 // 手势开始时卡片的自然高度（上拉/下拉以此为基准伸缩，与进出场生长动画一致）
 let naturalHeight = 0;
 // 真实滑动发生后，吞掉松手紧随的合成 click，区分「滑动」与「点击」
 let justDragged = false;
-// 死区：按压后位移小于此值视为点击，不进入滑动跟手（避免轻微抖动就触发跟手/回弹/吞点击）
-const DEAD_ZONE = 6;
+// 死区：按压后位移小于此值视为「仅触摸」，绝不进入滑动跟手（触屏静止按下的自然抖动通常 6~15px，
+//  故取到 10 以上才能稳稳区分「触摸」与「拖拽」，避免手指一搭上小横条卡片就跟着缩/塌）
+const DEAD_ZONE = 12;
 // 拖拽高度下限（peek 预览行高度），避免下拉时高度压成负值
 const MIN_DRAG_H = rpx() * 76;
 // 切档阈值：下拉收起 / 上拉进入下一档（px），未达阈值回弹归位
@@ -222,6 +224,11 @@ function ptY(e: any): number {
   if (e.touches && e.touches[0]) return e.touches[0].clientY;
   if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
   return e.clientY || 0;
+}
+function ptX(e: any): number {
+  if (e.touches && e.touches[0]) return e.touches[0].clientX;
+  if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientX;
+  return e.clientX || 0;
 }
 // 表单输入元素内手势不接管，避免影响文本选择 / 编辑
 function isFormField(el: any): boolean {
@@ -240,19 +247,24 @@ function onDown(e: any) {
   dragY.value = 0;
   justDragged = false;
   startY = ptY(e);
+  startX = ptX(e);
 }
 function onMove(e: any) {
   if (!pressing.value) return;
   const dy = ptY(e) - startY;
-  // 超过死区才进入滑动跟手（此前视为点击，不应用任何实时高度，避免抖动误触）
-  if (!dragging.value && Math.abs(dy) > DEAD_ZONE) dragging.value = true;
-  if (dragging.value) {
-    dragY.value = dy;
-    if (e.cancelable) {
-      try {
-        e.preventDefault();
-      } catch (_) {}
-    }
+  // 仅「触摸」阶段：位移仍在死区内、或主要为横向（视为滚动/滑动意图）→ 完全不进入跟手，
+  // 不应用任何实时高度，卡片状态纹丝不动，杜绝误触塌缩
+  if (!dragging.value) {
+    if (Math.abs(dy) <= DEAD_ZONE) return;
+    const dx = ptX(e) - startX;
+    if (Math.abs(dy) < Math.abs(dx) * 1.5) return; // 纵向位移须明显大于横向，才认定为纵向拖拽
+    dragging.value = true;
+  }
+  dragY.value = dy;
+  if (e.cancelable) {
+    try {
+      e.preventDefault();
+    } catch (_) {}
   }
 }
 function onUp() {

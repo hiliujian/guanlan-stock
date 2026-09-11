@@ -160,8 +160,9 @@
     <!-- 关注 / 粉丝列表（ProfileView 跳转社区后弹出，sheet 浮层；mode 区分关注/粉丝） -->
     <FollowListView v-model="followPanelOpen" :mode="followPanelMode" />
 
-    <!-- 帖子长按操作菜单（底部弹层）：本人 / 他人分支不同（需求⑦⑧⑩） -->
-    <SheetMenu v-model="postMenuOpen" title="操作" :items="postMenuItems" @select="onPostMenuSelect" />
+    <!-- 帖子长按操作菜单（底部弹层）：复用统一底部卡片 sheet 形态（与发帖器 / 设置持仓同款组件），
+         生长收缩走半屏过渡、不掉帧；本人 / 他人分支不同（需求⑦⑧⑩） -->
+    <PostActionSheet v-model="postMenuOpen" :items="postMenuItems" @select="onPostMenuSelect" />
     <!-- 设置访问权限（本人帖）：公开 / 仅粉丝 / 仅自己 -->
     <SheetMenu v-model="visMenuOpen" title="设置访问权限" :items="visMenuItems" @select="onVisSelect" />
     <!-- 举报内容原因选择（复用 store.reportPost） -->
@@ -182,6 +183,7 @@ import UserCard from "./UserCard.vue";
 import UserAvatar from "./UserAvatar.vue";
 import UniversalCard from "./UniversalCard.vue";
 import SheetMenu from "./SheetMenu.vue";
+import PostActionSheet from "./PostActionSheet.vue";
 import MessageCenter from "./MessageCenter.vue";
 import FollowListView from "./FollowListView.vue";
 import { useCommunity, useMessageCenter, useCommunityPreset, useDmTarget, useCommunityUserTarget, usePostTarget, type CommunityFilterKey, type CommunityUserTarget, type CommunityPostTarget } from "@/store/community";
@@ -269,7 +271,8 @@ function isMine(p: CommunityPost): boolean {
 }
 
 // ---------------- 帖子长按操作（底部弹层菜单，需求⑦⑧⑨⑩） ----------------
-// 复用通用 SheetMenu（与「设置持仓」「编辑价格预警」同款底部弹层卡片样式）。
+// 复用统一底部卡片 sheet 形态组件 PostActionSheet（与发帖器 / 设置持仓同款 UniversalCard，
+// 生长收缩走半屏过渡、流畅不掉帧）。
 // 本人帖：编辑帖子 / 设置访问权限；他人帖：不感兴趣 / 屏蔽用户 / 举报内容。
 const postMenuOpen = ref(false);
 const postMenuItems = ref<SheetMenuItem[]>([]);
