@@ -1,7 +1,7 @@
 <template>
   <!-- 通用底部弹层菜单（复用统一底部卡片 menu 形态 + 全局 grp 列表样式）：
        帖子「长按操作」「举报原因」「设置访问权限」等多处复用，避免每处重写一套列表。 -->
-  <UniversalCard v-model="open" :title="title">
+  <UniversalCard v-model="open" :title="title" :max-height-hint="hintRpx">
     <view class="grp-list">
       <view
         v-for="it in items"
@@ -52,6 +52,15 @@ const emit = defineEmits<{
 const open = computed({
   get: () => props.modelValue,
   set: (v) => emit("update:modelValue", v),
+});
+
+// 菜单高度提示（rpx）：让 UniversalCard 以「内容高度」为 max-height 过渡目标，
+// 使短菜单的生长/收缩节奏与半屏 sheet 卡片一致（否则 0→100vh 会让短菜单瞬间长好）
+const hintRpx = computed(() => {
+  const grip = 36; // 顶部拖拽热区
+  const head = props.title ? 72 : 0; // 标题栏
+  const pad = 44; // 正文上下内边距
+  return grip + head + pad + props.items.length * 68; // 每项约 68rpx
 });
 
 function pick(it: SheetMenuItem) {

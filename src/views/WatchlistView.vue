@@ -1985,30 +1985,40 @@ async function clearLpPosition() {
   scanPositionSignals();
   uni.showToast({ title: "已清除持仓", icon: "none" });
 }
-// 价格预警：实时价参考（进入面板即拉取最新成交价）+ 选项下方内联输入（替代原 uni-modal 弹窗）
-const alertRT = ref<SnapResult | null>(null);
+// 价格预警：实时价参考（与自选表格共用同一份响应式行情，进入面板即对齐、并随行情轮询实时刷新，
+// 不再是「进面板拉一次」的冻结快照——满足「价格预警实时价与设置持仓一致、非固定」要求）
+type RtPrice = { price: number; chg: number | null; pct: number | null };
+const alertRTFallback = ref<SnapResult | null>(null);
+const alertRT = computed<RtPrice | null>(() => {
+  const it = lpItem.value;
+  if (!it) return null;
+  const q = quotes[`${it.code}|${it.market}`];
+  if (q && q.price) return { price: q.price, chg: q.chg ?? null, pct: q.pct ?? null };
+  return alertRTFallback.value;
+});
 const alertEdit = ref<"above" | "below" | null>(null);
 const alertInput = ref<string>("");
 // 当前已设阈值（响应式读取长按目标股，保存后随 lpItem 同步刷新）
 const aboveVal = computed(() => lpItem.value?.alerts?.above ?? null);
 const belowVal = computed(() => lpItem.value?.alerts?.below ?? null);
 
-// 长按菜单「编辑价格预警」：进入 alert 子面板并实时拉取当前价
+// 长按菜单「编辑价格预警」：进入 alert 子面板；优先读响应式行情，长按时股不在自选集则兜底单拉一次
 async function loadAlertRT() {
   const it = lpItem.value;
   if (!it) return;
+  if (quotes[`${it.code}|${it.market}`]?.price) return;
   try {
     const secid = resolveSecid(it.code, it.market as any);
-    alertRT.value = await fetchSnapshot(secid); // 实时成交价，缓存 20s，确保为最新
+    alertRTFallback.value = await fetchSnapshot(secid); // 实时成交价，缓存 20s，确保为最新
   } catch {
-    alertRT.value = null;
+    alertRTFallback.value = null;
   }
 }
 function openAlertPanel() {
   if (!lpItem.value) return;
   activePanel.value = "alert";
   alertEdit.value = null;
-  alertRT.value = null;
+  alertRTFallback.value = null;
   loadAlertRT();
 }
 // 点击「设置高于/低于预警」：在选项下方动态展开内联输入框（再次点击收起）

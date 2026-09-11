@@ -69,6 +69,9 @@ const props = withDefaults(
     title?: string;
     /** 浮层形态：menu=随内容高度从菜单栏顶部生长；sheet=半屏固定高、从菜单栏顶部生长、正文可滚 */
     variant?: "menu" | "sheet";
+    /** 菜单形态的内容高度提示（rpx）：用作 max-height 过渡目标，使短菜单的生长/收缩节奏与半屏 sheet 一致
+     *  （若不传，回退到 100vh，短菜单会瞬间长好，与 sheet 明显不一致） */
+    maxHeightHint?: number;
     /** 基础层级；默认 常驻卡 40 / 浮层卡 950，同层多卡由全局卡片栈给置顶增量 */
     zIndex?: number;
   }>(),
@@ -207,19 +210,29 @@ let dragMoved = false;
 let scrollAtTop = true;
 let scrollAtBottom = true;
 
-// 内联样式：基础层级 + 卡片栈置顶增量；拖拽中实时预览高度伸缩（上拉增高 / 下拉收缩，不走位移）
+// 内联样式：基础层级 + 卡片栈置顶增量。
+// 仅「上拉展开」实时跟随手指（手感好）；「下拉收起」不实时跟随——松手过阈值才走与点击/手柄
+// 完全一致的 collapse 动画（时长/缓动/终点一致）；否则下拉时卡片会被 transition:none 实时拽缩，
+// 与点击的平滑收起观感完全不同。
 const cardStyle = computed(() => {
   const base = props.zIndex ?? baseZ.value;
   const zIndex = base + (sheetId ? sheetLift(sheetId) : 0);
-  if (!dragging.value || Math.abs(dragY.value) < 4) return { zIndex };
-  // 统一高度伸缩：上拉增高（阻尼超铺满）、下拉收缩，与进出场生长动画同一起点
-  const h = naturalHeight - dragY.value; // dragY 上拉为负→h 增大，下拉为正→h 减小
+  const style: Record<string, any> = { zIndex };
+  // 菜单形态：用「内容高度」作 max-height 过渡目标，使 0→内容高 与 sheet 的 0→半屏 同节奏
+  // （否则 0→100vh 会让短菜单在约 1/4 时长内「瞬间长好」，与 sheet 生长速度明显不一致）
+  if (!props.persistent && props.variant === "menu" && props.maxHeightHint) {
+    style.maxHeight = `${props.maxHeightHint}rpx`;
+  }
+  if (!dragging.value || Math.abs(dragY.value) < 4) return style;
+  // 仅上拉（展开）实时跟随手指：拖拽中高度随手指伸缩、不走过渡
   if (dragUp.value) {
+    const h = naturalHeight - dragY.value; // dragY 上拉为负→h 增大
     const maxH = winH.value - tabPx.value;
     const finalH = h > maxH ? maxH + (h - maxH) * 0.2 : h;
-    return { zIndex, height: `${finalH}px`, maxHeight: `${finalH}px`, transition: "none" };
+    return { ...style, height: `${finalH}px`, maxHeight: `${finalH}px`, transition: "none" };
   }
-  return { zIndex, height: `${Math.max(0, h)}px`, maxHeight: `${Math.max(0, h)}px`, transition: "none" };
+  // 下拉（收起）方向：保持当前高度不变，待松手过阈值后由 collapse()/closeOverlay() 统一动画
+  return style;
 });
 
 const cardClass = computed(() => {
@@ -312,12 +325,12 @@ function onUp() {
   dragging.value = false;
   const dy = dragY.value;
   dragY.value = 0;
-  // 位移 <10px 的纯点击不切档（避免空白误触），点击收起由手柄/标题栏的 click 负责
+  // 位移 <10px 视为纯点击（不切档），点击收起由手柄/标题栏的 click 负责
   if (Math.abs(dy) < 10) return;
 
   if (props.persistent) {
-    // 常驻卡：上拉 折叠→半屏→铺满；下拉 铺满→半屏→折叠
     if (dy < 0) {
+      // 上拉展开（保留实时跟随手感，松手即切档）
       if (stage.value === "peek") {
         stackJoin();
         stage.value = "half";
@@ -325,15 +338,16 @@ function onUp() {
       } else if (stage.value === "half") {
         stage.value = "max";
       }
-    } else if (stage.value === "max") {
-      stage.value = "half";
-    } else {
-      collapse();
+    } else if (Math.abs(dy) >= 60) {
+      // 下拉收起：过阈值才触发，且与点击手柄走同一 collapse()，动画时长/缓动/终点完全一致
+      // （阈值 60px 避免「轻拉即收」的过度敏感；原 10px 一拽就缩）
+      if (stage.value === "max") stage.value = "half";
+      else if (stage.value !== "peek") collapse();
     }
     return;
   }
-  // 浮层卡：位移超过 70px 才切档，否则回弹归位（菜单 / sheet 同一阈值）
-  const THRESHOLD = 70;
+  // 浮层卡：下拉收起 / 上拉铺满 统一 60px 阈值；收起与点击标题栏走同一 closeOverlay()
+  const THRESHOLD = 60;
   if (dy <= -THRESHOLD && props.variant === "sheet" && stage.value === "half") {
     stage.value = "max";
   } else if (dy >= THRESHOLD) {
