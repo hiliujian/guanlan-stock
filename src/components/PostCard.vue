@@ -1,5 +1,17 @@
 <template>
-  <view :id="`cm-post-${post.id}`" :class="['post', 'glass', 'anim-fade-up', preview ? 'as-preview' : '']" @click="onRootClick" @longpress="onLongPress" @mousedown="onLpDown">
+  <view
+    :id="`cm-post-${post.id}`"
+    :class="['post', 'glass', 'anim-fade-up', preview ? 'as-preview' : '']"
+    @click="onRootClick"
+    @touchstart="lp.onStart(undefined, $event)"
+    @touchmove="lp.onMove"
+    @touchend="lp.onEnd"
+    @touchcancel="lp.onEnd"
+    @mousedown="lp.onStart(undefined, $event)"
+    @mousemove="lp.onMove"
+    @mouseup="lp.onEnd"
+    @mouseleave="lp.onEnd"
+  >
     <!-- 头部：头像 + 昵称 + 时间 + 话题 + 删除 -->
     <view class="p-head">
       <view
@@ -175,6 +187,7 @@ import { vipGatedFrame } from "@/utils/avatarFrame";
 import { marketCharFor, resolveSecid } from "@/utils/period";
 import { openInMarket, goTab } from "@/store/nav";
 import { useFollow } from "@/store/follow";
+import { useLongPress } from "@/composables/useLongPress";
 import { useReplyExpansion } from "@/store/replyExpansion";
 import { userState } from "@/store/user";
 import { fmtNum as fmt } from "@/utils/format";
@@ -298,81 +311,25 @@ const displayReplies = computed(() => {
 /** 卡片根容器点击：仅当点击落在回复区（回复行 / 输入框 / 发送）之外时，复位回复目标，
  *  使占位文案恢复「回复 TA…」。回复区内部各交互元素均已 stop，输入框容器也 stop，不会误触发此处。 */
 function onRootClick(e: any) {
+  // 长按触发的松手 click 已在 document 捕获阶段被 useLongPress 吞掉；此处兜底，
+  // 防止极个别未命中捕获的 click 仍触发（如长按后焦点落点在卡内可点元素）
+  if (lp.consumeLongPress()) {
+    e?.stopPropagation?.();
+    e?.preventDefault?.();
+    return;
+  }
   const t = e?.target as HTMLElement | null;
   if (t && typeof (t as any).closest === "function" && (t as any).closest(".p-replies")) return;
   clearReplyTo();
 }
 
 /** 卡片长按：唤起底部操作菜单（本人 / 他人分支由父级 CommunityView 区分）。
- *  预览态不触发，避免干扰发帖预览编辑。 */
-function onLongPress() {
-  if (props.preview) return;
-  emit("longpress", props.post);
-}
-
-// ---------------- 桌面鼠标长按（H5 PC 端） ----------------
-// uni 的 @longpress 仅由触摸事件合成，PC 鼠标按住无反应；此处补鼠标长按：
-// 左键按下起计时 500ms，位移超阈值（拖拽 / 选择文本）或松手即取消；
-// 触发后走同一个 onLongPress —— 与移动端触摸长按共用同一套帖子操作菜单，不做两套实现。
-const LP_MS = 500;
-const LP_MOVE_PX = 10;
-let lpTimer: ReturnType<typeof setTimeout> | null = null;
-let lpFired = false;
-let lpX = 0;
-let lpY = 0;
-
-function onLpDown(e: MouseEvent) {
-  if (props.preview || e.button !== 0) return;
-  // 表单元素内不接管：输入框 / 文本域中按住是光标与选择操作，不应唤起帖子菜单
-  const t = e.target as HTMLElement | null;
-  if (t?.closest?.("input, textarea, [contenteditable]")) return;
-  lpClearTimer();
-  lpX = e.clientX;
-  lpY = e.clientY;
-  lpTimer = setTimeout(() => {
-    lpTimer = null;
-    lpFired = true;
-    onLongPress();
-  }, LP_MS);
-  window.addEventListener("mousemove", onLpMove);
-  window.addEventListener("mouseup", onLpUp);
-  document.addEventListener("click", onLpClickGuard, true);
-}
-function onLpMove(e: MouseEvent) {
-  if (Math.abs(e.clientX - lpX) > LP_MOVE_PX || Math.abs(e.clientY - lpY) > LP_MOVE_PX) {
-    lpClearTimer();
-  }
-}
-function onLpUp() {
-  lpClearTimer();
-  // click 在 mouseup 后同步派发：延迟清理让 click 守卫先消费本次点击，
-  // 避免长按后松手落点在头像等可点元素上造成误触跳转；
-  // 若松手在窗口外未产生 click，这里兜底移除守卫，不吞后续正常点击。
-  setTimeout(() => {
-    lpFired = false;
-    document.removeEventListener("click", onLpClickGuard, true);
-  }, 0);
-}
-function onLpClickGuard(e: MouseEvent) {
-  document.removeEventListener("click", onLpClickGuard, true);
-  if (lpFired) {
-    lpFired = false;
-    e.stopPropagation();
-    e.preventDefault();
-  }
-}
-function lpClearTimer() {
-  if (lpTimer) {
-    clearTimeout(lpTimer);
-    lpTimer = null;
-  }
-}
-onUnmounted(() => {
-  lpClearTimer();
-  window.removeEventListener("mousemove", onLpMove);
-  window.removeEventListener("mouseup", onLpUp);
-  document.removeEventListener("click", onLpClickGuard, true);
+ *  统一走 useLongPress（触摸 + 鼠标通用），预览态禁用，避免干扰发帖预览编辑。 */
+const lp = useLongPress<void>({
+  disabled: () => props.preview,
+  onLongPress: () => emit("longpress", props.post),
 });
+
 
 /** 点击评论中的昵称 → 跳转该用户资料页（与帖子头像同一范式：本人→编辑页，他人→公开资料）。 */
 function onNameClick(r: Reply) {

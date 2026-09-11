@@ -13,23 +13,24 @@
        两种浮层进出 / 拖拽收起统一走 height 生长收缩，起点和动效完全一致。 -->
   <teleport to="body" :disabled="persistent">
     <Transition :name="transitionName">
-      <view
-        v-if="persistent || modelValue"
-        class="uc-card"
-        :class="cardClass"
-        :style="cardStyle"
-        @touchstart.stop="onDown"
-        @touchmove.stop="onMove"
-        @touchend.stop="onUp"
-        @touchcancel.stop="onUp"
-        @mousedown.stop="onDown"
-        @mousemove.stop="onMove"
-        @mouseup.stop="onUp"
-        @mouseleave.stop="onUp"
-      >
+      <view v-if="persistent || modelValue" class="uc-card" :class="cardClass" :style="cardStyle">
         <!-- 顶部拖拽手柄：常驻卡非折叠态 / 浮层打开态显示。
-             点击=回退一档（铺满→半屏→收起），与下拉手势同语义；热区按卡片类型给尺寸 -->
-        <view v-if="gripVisible" class="uc-grip" @click.stop="onGripClick">
+             点击=回退一档（铺满→半屏→收起），与下拉手势同语义；热区按卡片类型给尺寸。
+             ⚠️ 拖拽手势只绑在手柄上（不绑整卡）：卡片其余区域点击/滚动不受影响，
+             避免整卡拖拽导致的操作混乱与 UI 抖动 -->
+        <view
+          v-if="gripVisible"
+          class="uc-grip"
+          @click.stop="onGripClick"
+          @touchstart.stop="onDown"
+          @touchmove.stop="onMove"
+          @touchend.stop="onUp"
+          @touchcancel.stop="onUp"
+          @mousedown.stop="onDown"
+          @mousemove.stop="onMove"
+          @mouseup.stop="onUp"
+          @mouseleave.stop="onUp"
+        >
           <view class="uc-handle" />
         </view>
 
@@ -197,41 +198,109 @@ onUnmounted(() => {
   }
 });
 
-// ─────────────────────── 拖拽手势：下拉收起 / 上拉铺满 ───────────────────────
+// ─────────────────────── 拖拽手势：仅顶部手柄触发，下拉收起 / 上拉铺满 ───────────────────────
 const dragging = ref(false);
-const dragUp = ref(false);
 const dragY = ref(0);
 let startY = 0;
 // 手势开始时卡片的自然高度（上拉/下拉以此为基准伸缩，与进出场生长动画一致）
 let naturalHeight = 0;
-// 浮层卡区分「真点击」与「拖了一下松手回弹」（点击标题栏/手柄才收起）
+// 浮层卡区分「真点击」与「拖过一下松手」（点击手柄才收起）
 let dragMoved = false;
-// 手势起点的内部滚动状态（锁定本次手势，避免中途抖动）
-let scrollAtTop = true;
-let scrollAtBottom = true;
+// 拖拽高度下限（peek 预览行高度），避免下拉时高度压成负值
+const MIN_DRAG_H = rpx() * 76;
+// 切档阈值：下拉收起 / 上拉进入下一档（px），未达阈值回弹归位
+const DRAG_THRESHOLD = 60;
 
-// 内联样式：基础层级 + 卡片栈置顶增量。
-// 仅「上拉展开」实时跟随手指（手感好）；「下拉收起」不实时跟随——松手过阈值才走与点击/手柄
-// 完全一致的 collapse 动画（时长/缓动/终点一致）；否则下拉时卡片会被 transition:none 实时拽缩，
-// 与点击的平滑收起观感完全不同。
+function ptY(e: any): number {
+  if (e.touches && e.touches[0]) return e.touches[0].clientY;
+  if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
+  return e.clientY || 0;
+}
+// 表单输入元素内手势不接管，避免影响文本选择 / 编辑
+function isFormField(el: any): boolean {
+  const t = (el && el.tagName) || "";
+  return t === "INPUT" || t === "TEXTAREA" || (el && el.isContentEditable);
+}
+
+function onDown(e: any) {
+  if (isFormField(e.target)) return;
+  // 拖拽事件绑在手柄上：currentTarget 是手柄，需取父级卡片的实际高度作为伸缩基准
+  // （sheet=半屏 / menu=内容高 / 常驻卡=档位高）
+  const cardEl = (e.currentTarget && e.currentTarget.parentElement) || e.currentTarget;
+  naturalHeight = (cardEl && cardEl.offsetHeight) || 0;
+  dragging.value = true;
+  dragY.value = 0;
+  dragMoved = false;
+  startY = ptY(e);
+}
+function onMove(e: any) {
+  if (!dragging.value) return;
+  const dy = ptY(e) - startY;
+  dragY.value = dy;
+  if (Math.abs(dy) >= 4) dragMoved = true;
+  if (e.cancelable) {
+    try {
+      e.preventDefault();
+    } catch (_) {}
+  }
+}
+function onUp() {
+  if (!dragging.value) return;
+  dragging.value = false;
+  const dy = dragY.value;
+  dragY.value = 0;
+  // 位移 <10px 视为纯点击（不切档），点击收起由手柄 click 负责
+  if (Math.abs(dy) < 10) return;
+
+  if (props.persistent) {
+    if (dy < 0) {
+      // 上拉：过阈值进入下一档，未达阈值回弹归位
+      if (Math.abs(dy) < DRAG_THRESHOLD) return;
+      if (stage.value === "peek") {
+        stackJoin();
+        stage.value = "half";
+        emit("expand");
+      } else if (stage.value === "half") {
+        stage.value = "max";
+      }
+    } else if (Math.abs(dy) >= DRAG_THRESHOLD) {
+      // 下拉收起：过阈值才触发，且与点击手柄走同一 collapse()，动画时长/缓动/终点完全一致
+      // （阈值 60px 避免「轻拉即收」的过度敏感；原 10px 一拽就缩）
+      if (stage.value === "max") stage.value = "half";
+      else if (stage.value !== "peek") collapse();
+    }
+    return;
+  }
+  // 浮层卡：下拉收起 / 上拉铺满 统一阈值；收起与点击手柄走同一 closeOverlay()
+  if (dy <= -DRAG_THRESHOLD && props.variant === "sheet" && stage.value === "half") {
+    stage.value = "max";
+  } else if (dy >= DRAG_THRESHOLD) {
+    if (stage.value === "max") stage.value = "half";
+    else closeOverlay();
+  }
+}
+
+// 手势只由顶部手柄触发，拖拽中高度「无极跟手」——上下都随手指连续伸缩，不走过渡；
+// 松手按阈值决定切档（收起 / 展开）或回弹归位（回到 naturalHeight，由基础 transition 平滑归位）。
 const cardStyle = computed(() => {
   const base = props.zIndex ?? baseZ.value;
   const zIndex = base + (sheetId ? sheetLift(sheetId) : 0);
   const style: Record<string, any> = { zIndex };
-  // 菜单形态：用「内容高度」作 max-height 过渡目标，使 0→内容高 与 sheet 的 0→半屏 同节奏
-  // （否则 0→100vh 会让短菜单在约 1/4 时长内「瞬间长好」，与 sheet 生长速度明显不一致）
+  // 菜单形态：暴露「内容高度」为自定义属性，供 CSS 在「非出场帧」时作为 max-height 过渡目标，
+  // 使 0→内容高 与 sheet 的 0→半屏 同节奏（否则 0→100vh 会让短菜单在约 1/4 时长内「瞬间长好」）。
+  // ⚠️ 必须走 CSS 变量而非内联 max-height：内联会覆盖 .uc-grow-enter-from 的 max-height:0 起始帧，
+  // 导致浮层卡直接以最终高度出现、完全没有生长动画（帖子操作卡曾因此「生硬弹出」）。
   if (!props.persistent && props.variant === "menu" && props.maxHeightHint) {
-    style.maxHeight = `${props.maxHeightHint}rpx`;
+    style["--uc-menu-h"] = `${props.maxHeightHint}rpx`;
   }
-  if (!dragging.value || Math.abs(dragY.value) < 4) return style;
-  // 仅上拉（展开）实时跟随手指：拖拽中高度随手指伸缩、不走过渡
-  if (dragUp.value) {
-    const h = naturalHeight - dragY.value; // dragY 上拉为负→h 增大
+  // 拖拽中：高度实时跟手（下滑变矮、上滑变高），过铺满高度后加阻尼；不走过渡
+  if (dragging.value) {
     const maxH = winH.value - tabPx.value;
-    const finalH = h > maxH ? maxH + (h - maxH) * 0.2 : h;
-    return { ...style, height: `${finalH}px`, maxHeight: `${finalH}px`, transition: "none" };
+    let h = naturalHeight - dragY.value; // dragY 下拉为正 → h 减小
+    if (h < MIN_DRAG_H) h = MIN_DRAG_H; // 触底保底，避免高度为负
+    if (h > maxH) h = maxH + (h - maxH) * 0.2; // 超过铺满后阻尼
+    return { ...style, height: `${h}px`, maxHeight: `${h}px`, transition: "none" };
   }
-  // 下拉（收起）方向：保持当前高度不变，待松手过阈值后由 collapse()/closeOverlay() 统一动画
   return style;
 });
 
@@ -246,115 +315,6 @@ const gripVisible = computed(() => !(props.persistent && stage.value === "peek")
 // 常驻卡无 enter/leave（档位切换走高度 class 过渡）；浮层统一走 max-height 生长/收缩
 const transitionName = computed(() => (props.persistent ? "" : "uc-grow"));
 
-function ptY(e: any): number {
-  if (e.touches && e.touches[0]) return e.touches[0].clientY;
-  if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0].clientY;
-  return e.clientY || 0;
-}
-// 表单输入元素内手势不接管，避免影响文本选择 / 编辑
-function isFormField(el: any): boolean {
-  const t = (el && el.tagName) || "";
-  return t === "INPUT" || t === "TEXTAREA" || (el && el.isContentEditable);
-}
-// 触摸点所在的可滚动容器：业务 uni scroll-view，或 sheet 浮层自身的正文滚动区
-function findScrollEl(target: any): HTMLElement | null {
-  let node: HTMLElement | null = target;
-  while (node && node !== document.documentElement && node !== document.body) {
-    if (
-      node.classList &&
-      (node.classList.contains("uni-scroll-view") || node.classList.contains("uc-body")) &&
-      node.scrollHeight > node.clientHeight + 1
-    ) {
-      return node;
-    }
-    node = node.parentElement;
-  }
-  return null;
-}
-
-function onDown(e: any) {
-  if (isFormField(e.target)) return;
-  // 记录卡片当前高度作为拖拽伸缩基准（sheet=半屏/menu=内容高/常驻卡=档位高）
-  naturalHeight = (e.currentTarget && e.currentTarget.offsetHeight) || 0;
-  dragging.value = true;
-  dragY.value = 0;
-  dragUp.value = false;
-  dragMoved = false;
-  startY = ptY(e);
-  const sc = findScrollEl(e.target);
-  if (sc) {
-    scrollAtTop = sc.scrollTop <= 0;
-    scrollAtBottom = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 1;
-  } else {
-    scrollAtTop = true;
-    scrollAtBottom = true;
-  }
-}
-function onMove(e: any) {
-  if (!dragging.value) return;
-  const dy = ptY(e) - startY;
-  if (Math.abs(dy) < 4) return;
-  const upward = dy < 0;
-  const downward = dy > 0;
-  if (!props.persistent && props.variant === "menu") {
-    // 短菜单：整卡都是下拉区（内部无纵向滚动），上滑不处理
-    if (upward) {
-      dragY.value = 0;
-      return;
-    }
-  } else {
-    // 常驻卡 / sheet 浮层：内部列表滚到顶才接管下拉、滚到底才接管上拉，否则放行原生滚动
-    const hijack = downward ? scrollAtTop : scrollAtBottom;
-    if (!hijack) {
-      dragging.value = false;
-      dragY.value = 0;
-      return;
-    }
-  }
-  dragY.value = dy;
-  dragUp.value = upward;
-  dragMoved = true;
-  if (e.cancelable) {
-    try {
-      e.preventDefault();
-    } catch (_) {}
-  }
-}
-function onUp() {
-  if (!dragging.value) return;
-  dragging.value = false;
-  const dy = dragY.value;
-  dragY.value = 0;
-  // 位移 <10px 视为纯点击（不切档），点击收起由手柄/标题栏的 click 负责
-  if (Math.abs(dy) < 10) return;
-
-  if (props.persistent) {
-    if (dy < 0) {
-      // 上拉展开（保留实时跟随手感，松手即切档）
-      if (stage.value === "peek") {
-        stackJoin();
-        stage.value = "half";
-        emit("expand");
-      } else if (stage.value === "half") {
-        stage.value = "max";
-      }
-    } else if (Math.abs(dy) >= 60) {
-      // 下拉收起：过阈值才触发，且与点击手柄走同一 collapse()，动画时长/缓动/终点完全一致
-      // （阈值 60px 避免「轻拉即收」的过度敏感；原 10px 一拽就缩）
-      if (stage.value === "max") stage.value = "half";
-      else if (stage.value !== "peek") collapse();
-    }
-    return;
-  }
-  // 浮层卡：下拉收起 / 上拉铺满 统一 60px 阈值；收起与点击标题栏走同一 closeOverlay()
-  const THRESHOLD = 60;
-  if (dy <= -THRESHOLD && props.variant === "sheet" && stage.value === "half") {
-    stage.value = "max";
-  } else if (dy >= THRESHOLD) {
-    if (stage.value === "max") stage.value = "half";
-    else closeOverlay();
-  }
-}
 // 手柄点击：常驻卡 max→半屏 / 半屏→折叠；浮层卡 max→半屏 / 其余→关闭
 function onGripClick() {
   if (props.persistent) {
@@ -436,18 +396,16 @@ function onTopClick() {
   max-height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
 }
 
-/* 浮层手势策略：短菜单整卡可下拉（无内部纵向滚动）；sheet 正文 pan-y 原生滚动，
-   仅手柄 / 标题栏保留卡片手势；常驻卡手柄单独 touch-action:none，其余交给滚动接管判断 */
+/* 浮层手势策略：顶部手柄是唯一的拖拽热区（touch-action:none 吃掉手势）；
+   卡片其余区域不再触发拖拽，sheet 正文 pan-y 原生滚动、menu 内容区也不抢手势。 */
 .uc-overlay.uc-menu {
-  /* menu 高度随内容但不超过铺满高度；max-height 供浮层进出 max-height 生长过渡 */
+  /* 高度随内容；生长过渡由下方 .uc-grow 系列的 max-height 驱动 */
   max-height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
-  touch-action: none;
 }
 .uc-overlay.uc-sheet {
   touch-action: pan-y;
 }
-.uc-sheet .uc-grip,
-.uc-sheet .uc-head {
+.uc-overlay .uc-grip {
   touch-action: none;
 }
 
@@ -514,11 +472,18 @@ function onTopClick() {
 /* ============ 浮层进出场过渡（常驻卡档位切换不走 Transition） ============
    统一 max-height 生长：menu（auto 高）和 sheet（固定高）共用同一套动画。
    - sheet：height=max-height=档位高，max-height 从 0→档位高 过渡驱动生长
-   - menu：height=auto（无法过渡），max-height 从 0→铺满高 过渡驱动生长
-     （内容高 < max-height 时实际显示为内容高，max-height 超过内容高后即到位） */
+   - menu：height=auto（无法过渡），max-height 从 0→内容高（--uc-menu-h）/铺满高 过渡驱动生长
+   起始帧（enter-from / leave-to）必须把 max-height 归 0，否则浮层会直接以终高出现、没有生长。 */
 .uc-grow-enter-active,
 .uc-grow-leave-active {
   transition: max-height var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
+  max-height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
+}
+/* menu 卡：以内容高度为过渡目标，让 0→内容高 与 sheet 的 0→半屏 同节奏
+   （用 CSS 变量承载，避免内联 max-height 覆盖下面的 0 起始帧） */
+.uc-grow-enter-active.uc-menu,
+.uc-grow-leave-active.uc-menu {
+  max-height: var(--uc-menu-h, calc(100vh - 110rpx - env(safe-area-inset-bottom)));
 }
 .uc-grow-enter-from,
 .uc-grow-leave-to {

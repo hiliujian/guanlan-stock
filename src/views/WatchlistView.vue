@@ -722,6 +722,7 @@ import { getPosition, setPosition, clearPosition, listPositions, positionsVersio
 import { rpx } from "@/utils/rpx";
 import { hydrateCloudPositions } from "@/store/holdingsMirror";
 import { saveHolding, dropHolding } from "@/api/holdings";
+import { useLongPress } from "@/composables/useLongPress";
 
 // 长按操作菜单目标股（统一并入 UniversalCard 面板，替代原先独立的 ActionSheet 弹层）
 const sheetExpanded = ref(false);
@@ -1372,30 +1373,9 @@ const sumValue = computed(() => posRows.value.reduce((s, r) => s + (r.price && r
 const sumCost = computed(() => posRows.value.reduce((s, r) => s + (r.cost && r.qty ? r.cost * r.qty : 0), 0));
 // 点击持仓行：跳转行情页查看该股报告（持仓状态双视角在报告页自动生效）
 function openPosStock(p: PosRow) {
-  if (lpFired) {
-    lpFired = false; // 长按已触发菜单，抑制随后冒泡的 click，避免误开个股
-    return;
-  }
+  if (lp.consumeLongPress()) return; // 长按已触发菜单，抑制随后冒泡的 click，避免误开个股
   openInMarket(p.code, marketFromSecid(p.secid) as any);
   goTab("market");
-}
-// 持仓行长按：按 secid 回找自选集 WatchItem，复用同一套动作面板（设置持仓/清除持仓/预警等）
-function onPosPressStart(p: PosRow, e: any) {
-  // 持仓行可能不在自选列表中（仅在行情页设置了持仓但未加自选），
-  // 此时按 PosRow 构造临时 WatchItem，使长按操作面板仍可正常弹出（与自选行完全一致）
-  const it =
-    list.value.find((it) => resolveSecid(it.code, it.market as any) === p.secid)
-    ?? ({ code: p.code, market: marketFromSecid(p.secid), name: p.name, note: "" } as WatchItem);
-  if (lpCompatBlocked(e)) return; // 触摸手势的延迟兼容鼠标事件，不另起计时器
-  lpFired = false;
-  const pt = pressPt(e);
-  lpStartX = pt.x;
-  lpStartY = pt.y;
-  if (lpTimer != null) clearTimeout(lpTimer);
-  lpTimer = setTimeout(() => {
-    lpFired = true;
-    onRowLongPress(it);
-  }, LP_MS);
 }
 // 右上角总收益胶囊点击：展开抽屉面板（与分组/榜单同窗体）——透出持仓汇总明细
 function openPosSheet() {
@@ -1861,73 +1841,32 @@ watch(
 // ===== 自选股表格交互：点击行打开个股；长按行弹出操作菜单（删除/移分组/预警） =====
 function onItemClick(it: WatchItem) {
   if (reorderMode.value) return; // 整理顺序模式下禁用点击跳转
-  if (lpFired) {
-    lpFired = false; // 长按已触发菜单，抑制随后冒泡的 click，避免误开个股
-    return;
-  }
+  if (lp.consumeLongPress()) return; // 长按已触发菜单，抑制随后冒泡的 click，避免误开个股
   emit("open-market", { code: it.code, market: it.market });
 }
 
-// 自定义长按检测：手指/指针按下启动计时，移动超过阈值即取消（左/右拖拽横滑滚动时
-// 会触发移动，从而不会误判为长按），解决「拖拽滚动误触发长按」的手势冲突。
-let lpTimer: any = null;
-let lpStartX = 0;
-let lpStartY = 0;
-let lpFired = false;
-const LP_MS = 500;
-const LP_MOVE = 10;
-// 最近一次触摸手势时间戳（touchstart/touchend/touchcancel 时刷新）。
-// 移动端部分内核（VIA/X5、部分 iOS WKWebView）对长按手势补发的兼容 mousedown/
-// mouseup/mouseleave/mousemove 时序不固定，可能延迟到「下一次长按」已起手后才到达：
-// 那条迟到的兼容 mousedown 会清掉第二次长按刚启动的计时器，表现为第一次长按别的股票
-// 不切换、必须再按一次。触摸后 900ms 内收到的鼠标事件一律按兼容事件忽略
-// （PC 纯鼠标路径不产生触摸事件，不受影响）。
-const LP_COMPAT_MS = 900;
-let lpLastTouchAt = 0;
-function isTouchLike(e: any): boolean {
-  return !!e && typeof e.type === "string" && e.type.indexOf("touch") === 0;
-}
-function lpCompatBlocked(e: any): boolean {
-  if (isTouchLike(e)) {
-    lpLastTouchAt = Date.now();
-    return false;
-  }
-  return lpLastTouchAt !== 0 && Date.now() - lpLastTouchAt < LP_COMPAT_MS;
-}
-function pressPt(e: any): { x: number; y: number } {
-  const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
-  if (t) return { x: t.clientX, y: t.clientY };
-  return { x: e.clientX || 0, y: e.clientY || 0 };
-}
+// 统一长按手势（触摸 + 鼠标通用）：抽出到 useLongPress，与社区帖子长按同一套逻辑/表现。
+// 整理模式下禁用长按；长按触发后统一进入 UniversalCard 的 actions 面板。
+const lp = useLongPress<WatchItem>({
+  disabled: () => reorderMode.value,
+  onLongPress: (it) => onRowLongPress(it),
+});
 function onRowPressStart(it: WatchItem, e: any) {
-  if (reorderMode.value) return; // 整理模式下禁用长按菜单（拖拽手柄另行处理）
-  if (lpCompatBlocked(e)) return; // 触摸手势的延迟兼容鼠标事件，不另起计时器
-  lpFired = false;
-  const p = pressPt(e);
-  lpStartX = p.x;
-  lpStartY = p.y;
-  if (lpTimer != null) clearTimeout(lpTimer);
-  lpTimer = setTimeout(() => {
-    lpFired = true;
-    onRowLongPress(it);
-  }, LP_MS);
+  lp.onStart(it, e);
+}
+function onPosPressStart(p: PosRow, e: any) {
+  // 持仓行可能不在自选列表中（仅在行情页设置了持仓但未加自选），
+  // 此时按 PosRow 构造临时 WatchItem，使长按操作面板仍可正常弹出（与自选行完全一致）
+  const it =
+    list.value.find((it) => resolveSecid(it.code, it.market as any) === p.secid)
+    ?? ({ code: p.code, market: marketFromSecid(p.secid), name: p.name, note: "" } as WatchItem);
+  lp.onStart(it, e);
 }
 function onRowPressMove(e: any) {
-  if (lpTimer == null) return;
-  if (lpCompatBlocked(e)) return; // 兼容 mousemove 不得取消正在进行的触摸长按
-  const p = pressPt(e);
-  if (Math.abs(p.x - lpStartX) > LP_MOVE || Math.abs(p.y - lpStartY) > LP_MOVE) {
-    clearTimeout(lpTimer);
-    lpTimer = null;
-  }
+  lp.onMove(e);
 }
 function onRowPressEnd(e?: any) {
-  // 触摸结束刷新窗口（兼容鼠标事件恰在结束后补发）；窗口内的兼容 mouseup/mouseleave 直接忽略
-  if (e && lpCompatBlocked(e)) return;
-  if (lpTimer != null) {
-    clearTimeout(lpTimer);
-    lpTimer = null;
-  }
+  lp.onEnd(e);
 }
 
 function doRemove(it: WatchItem) {
