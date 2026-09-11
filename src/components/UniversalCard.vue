@@ -23,9 +23,6 @@
           class="uc-grip"
           @click.stop="onGripClick"
           @touchstart.stop="onDown"
-          @touchmove.stop="onMove"
-          @touchend.stop="onUp"
-          @touchcancel.stop="onUp"
           @mousedown.stop="onDown"
         >
           <view class="uc-handle" />
@@ -254,12 +251,17 @@ function onDown(e: any) {
   moved = false;
   startY = ptY(e);
   startX = ptX(e);
-  // 鼠标：把 move/up 挂到 window —— 鼠标按下后指针迅速移出 6rpx 小手柄，若监听绑在手柄上，
-  // 浏览器即停止派发 mousemove（且会触发 mouseleave→onUp 提前结束），导致 PC 拖不动；挂 window 可全程接收。
-  // 触摸事件本就全程派发到 touchstart 目标，无需挂 window，绑在手柄即可。
-  if (e.type === "mousedown" && typeof window !== "undefined") {
-    window.addEventListener("mousemove", onMove, { passive: false });
-    window.addEventListener("mouseup", onUp);
+  // 触摸 + 鼠标：把 move/up 挂到 window。
+  // · 鼠标：按下后指针迅速移出 6rpx 小手柄，绑在手柄上浏览器即停止派发 mousemove → PC 拖不动。
+  // · 触摸：touch 事件虽全程派发到 touchstart 目标，但手指移出手柄、或浏览器把纵向拖拽判定为
+  //   页面/正文滚动时会派发 touchcancel 提前结束 → 移动端「按住小横条拖拽无反应」。
+  // 挂 window + passive:false 可 preventDefault 阻止浏览器抢手势，全程稳定接收；松手在 onUp 统一移除。
+  if (typeof window !== "undefined" && (e.type === "touchstart" || e.type === "mousedown")) {
+    const mv = e.type === "touchstart" ? "touchmove" : "mousemove";
+    const up = e.type === "touchstart" ? "touchend" : "mouseup";
+    window.addEventListener(mv, onMove, { passive: false });
+    window.addEventListener(up, onUp);
+    if (e.type === "touchstart") window.addEventListener("touchcancel", onUp);
   }
 }
 function onMove(e: any) {
@@ -285,8 +287,11 @@ function onMove(e: any) {
 function onUp() {
   if (!pressing.value) return;
   pressing.value = false;
-  // 清理鼠标 window 监听（触摸路径未注册，remove 为 no-op）
+  // 清理 touch + 鼠标 window 监听（未注册的类型 remove 为 no-op）
   if (typeof window !== "undefined") {
+    window.removeEventListener("touchmove", onMove);
+    window.removeEventListener("touchend", onUp);
+    window.removeEventListener("touchcancel", onUp);
     window.removeEventListener("mousemove", onMove);
     window.removeEventListener("mouseup", onUp);
   }
@@ -538,6 +543,13 @@ function onTopClick() {
 .uc-grow-enter-active.uc-menu,
 .uc-grow-leave-active.uc-menu {
   max-height: var(--uc-menu-h, calc(100vh - 110rpx - env(safe-area-inset-bottom)));
+}
+/* sheet 卡：真实高度是半屏（50vh - 110rpx - 安全区），必须把生长过渡目标也钉在半屏，
+   否则沿用基础规则的 100vh 会在 max-height 过半（=半屏实际高）时就长满，等于用一半时长长完 → 看起来比 menu 卡快一倍。
+   钉到半屏后，0→半屏 与 menu 的 0→内容高 同节奏（都是 --dur 走完），生长速度对齐。 */
+.uc-grow-enter-active.uc-sheet,
+.uc-grow-leave-active.uc-sheet {
+  max-height: calc(50vh - 110rpx - env(safe-area-inset-bottom));
 }
 .uc-grow-enter-from,
 .uc-grow-leave-to {
