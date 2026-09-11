@@ -199,13 +199,20 @@ onUnmounted(() => {
 });
 
 // ─────────────────────── 拖拽手势：仅顶部手柄触发，下拉收起 / 上拉铺满 ───────────────────────
-const dragging = ref(false);
+// 手势三态严格区分：
+//  - 点击（按压 + 极小位移松手）：松手后的 click 触发收起，动效与生长展开完全对齐（禁止瞬间关闭）。
+//  - 滑动（位移超 DEAD_ZONE）：高度实时跟手；上滑继续展开、下滑执行收起；松手过阈值才切档，
+//    否则回弹归位。滑动结束后吞掉紧随的合成 click，避免误触收起。
+const pressing = ref(false); // 指针已落在手柄上（按下未抬起）
+const dragging = ref(false); // 已进入滑动跟手（位移超死区），应用实时高度
 const dragY = ref(0);
 let startY = 0;
 // 手势开始时卡片的自然高度（上拉/下拉以此为基准伸缩，与进出场生长动画一致）
 let naturalHeight = 0;
-// 浮层卡区分「真点击」与「拖过一下松手」（点击手柄才收起）
-let dragMoved = false;
+// 真实滑动发生后，吞掉松手紧随的合成 click，区分「滑动」与「点击」
+let justDragged = false;
+// 死区：按压后位移小于此值视为点击，不进入滑动跟手（避免轻微抖动就触发跟手/回弹/吞点击）
+const DEAD_ZONE = 6;
 // 拖拽高度下限（peek 预览行高度），避免下拉时高度压成负值
 const MIN_DRAG_H = rpx() * 76;
 // 切档阈值：下拉收起 / 上拉进入下一档（px），未达阈值回弹归位
@@ -228,33 +235,39 @@ function onDown(e: any) {
   // （sheet=半屏 / menu=内容高 / 常驻卡=档位高）
   const cardEl = (e.currentTarget && e.currentTarget.parentElement) || e.currentTarget;
   naturalHeight = (cardEl && cardEl.offsetHeight) || 0;
-  dragging.value = true;
+  pressing.value = true;
+  dragging.value = false;
   dragY.value = 0;
-  dragMoved = false;
+  justDragged = false;
   startY = ptY(e);
 }
 function onMove(e: any) {
-  if (!dragging.value) return;
+  if (!pressing.value) return;
   const dy = ptY(e) - startY;
-  dragY.value = dy;
-  if (Math.abs(dy) >= 4) dragMoved = true;
-  if (e.cancelable) {
-    try {
-      e.preventDefault();
-    } catch (_) {}
+  // 超过死区才进入滑动跟手（此前视为点击，不应用任何实时高度，避免抖动误触）
+  if (!dragging.value && Math.abs(dy) > DEAD_ZONE) dragging.value = true;
+  if (dragging.value) {
+    dragY.value = dy;
+    if (e.cancelable) {
+      try {
+        e.preventDefault();
+      } catch (_) {}
+    }
   }
 }
 function onUp() {
+  if (!pressing.value) return;
+  pressing.value = false;
+  // 仅真实滑动才在此切档；纯点击走 onGripClick，保持「点击 = 松手后收起」语义
   if (!dragging.value) return;
   dragging.value = false;
+  justDragged = true; // 吞掉紧随的合成 click，避免滑动后误触收起
   const dy = dragY.value;
   dragY.value = 0;
-  // 位移 <10px 视为纯点击（不切档），点击收起由手柄 click 负责
-  if (Math.abs(dy) < 10) return;
 
   if (props.persistent) {
     if (dy < 0) {
-      // 上拉：过阈值进入下一档，未达阈值回弹归位
+      // 上滑：过阈值进入下一档，未达阈值回弹归位
       if (Math.abs(dy) < DRAG_THRESHOLD) return;
       if (stage.value === "peek") {
         stackJoin();
@@ -264,14 +277,14 @@ function onUp() {
         stage.value = "max";
       }
     } else if (Math.abs(dy) >= DRAG_THRESHOLD) {
-      // 下拉收起：过阈值才触发，且与点击手柄走同一 collapse()，动画时长/缓动/终点完全一致
+      // 下滑收起：过阈值才触发，且与点击手柄走同一 collapse()，动画时长/缓动/终点完全一致
       // （阈值 60px 避免「轻拉即收」的过度敏感；原 10px 一拽就缩）
       if (stage.value === "max") stage.value = "half";
       else if (stage.value !== "peek") collapse();
     }
     return;
   }
-  // 浮层卡：下拉收起 / 上拉铺满 统一阈值；收起与点击手柄走同一 closeOverlay()
+  // 浮层卡：下滑收起 / 上滑铺满 统一阈值；收起与点击手柄走同一 closeOverlay()
   if (dy <= -DRAG_THRESHOLD && props.variant === "sheet" && stage.value === "half") {
     stage.value = "max";
   } else if (dy >= DRAG_THRESHOLD) {
@@ -280,20 +293,21 @@ function onUp() {
   }
 }
 
-// 手势只由顶部手柄触发，拖拽中高度「无极跟手」——上下都随手指连续伸缩，不走过渡；
+// 手势只由顶部手柄触发，滑动中高度「无极跟手」——上下都随手指连续伸缩，不走过渡；
 // 松手按阈值决定切档（收起 / 展开）或回弹归位（回到 naturalHeight，由基础 transition 平滑归位）。
 const cardStyle = computed(() => {
   const base = props.zIndex ?? baseZ.value;
   const zIndex = base + (sheetId ? sheetLift(sheetId) : 0);
   const style: Record<string, any> = { zIndex };
-  // 菜单形态：暴露「内容高度」为自定义属性，供 CSS 在「非出场帧」时作为 max-height 过渡目标，
-  // 使 0→内容高 与 sheet 的 0→半屏 同节奏（否则 0→100vh 会让短菜单在约 1/4 时长内「瞬间长好」）。
-  // ⚠️ 必须走 CSS 变量而非内联 max-height：内联会覆盖 .uc-grow-enter-from 的 max-height:0 起始帧，
-  // 导致浮层卡直接以最终高度出现、完全没有生长动画（帖子操作卡曾因此「生硬弹出」）。
+  // 菜单形态：暴露「内容高度」为自定义属性（必须换算成 px——JS 设置的 inline 样式里
+  // rpx 不会被编译，写成 rpx 会让变量失效并回退到 100vh，生长/收缩节奏错乱且卡顿），
+  // 供 CSS 在过渡帧内作为 max-height 目标，使 0→内容高 与 sheet 的 0→半屏 同节奏；
+  // 同时内联变量不会覆盖 .uc-grow-enter-from 的 max-height:0 起始帧，保留生长动画。
   if (!props.persistent && props.variant === "menu" && props.maxHeightHint) {
-    style["--uc-menu-h"] = `${props.maxHeightHint}rpx`;
+    style["--uc-menu-h"] = `${props.maxHeightHint * rpx()}px`;
   }
-  // 拖拽中：高度实时跟手（下滑变矮、上滑变高），过铺满高度后加阻尼；不走过渡
+  // 滑动跟手：高度实时随手指（下滑变矮、上滑变高），过铺满高度后加阻尼；不走过渡
+  // 仅在 dragging（超死区）时生效，纯点击不进入此分支，故无回弹误触
   if (dragging.value) {
     const maxH = winH.value - tabPx.value;
     let h = naturalHeight - dragY.value; // dragY 下拉为正 → h 减小
@@ -315,24 +329,26 @@ const gripVisible = computed(() => !(props.persistent && stage.value === "peek")
 // 常驻卡无 enter/leave（档位切换走高度 class 过渡）；浮层统一走 max-height 生长/收缩
 const transitionName = computed(() => (props.persistent ? "" : "uc-grow"));
 
-// 手柄点击：常驻卡 max→半屏 / 半屏→折叠；浮层卡 max→半屏 / 其余→关闭
+// 手柄点击：常驻卡 max→半屏 / 半屏→折叠；浮层卡 max→半屏 / 其余→关闭。
+// 仅当本次不是滑动（justDragged=false）才收起，且不走瞬间关闭——collapse()/closeOverlay()
+// 触发的档位/进出场过渡与生长展开动效同一套（高度/max-height transition），自然连贯。
 function onGripClick() {
+  if (justDragged) {
+    justDragged = false; // 滑动结束的合成 click，吞掉
+    return;
+  }
   if (props.persistent) {
     if (stage.value === "max") stage.value = "half";
     else collapse();
     return;
   }
-  if (dragMoved) {
-    dragMoved = false;
-    return;
-  }
   if (stage.value === "max") stage.value = "half";
   else closeOverlay();
 }
-// 浮层标题栏点击收起（拖拽回弹的松手 click 忽略）
+// 浮层标题栏点击收起（滑动回弹的松手 click 忽略）
 function onTopClick() {
-  if (dragMoved) {
-    dragMoved = false;
+  if (justDragged) {
+    justDragged = false;
     return;
   }
   closeOverlay();
