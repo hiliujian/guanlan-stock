@@ -27,9 +27,6 @@
           @touchend.stop="onUp"
           @touchcancel.stop="onUp"
           @mousedown.stop="onDown"
-          @mousemove.stop="onMove"
-          @mouseup.stop="onUp"
-          @mouseleave.stop="onUp"
         >
           <view class="uc-handle" />
         </view>
@@ -212,6 +209,9 @@ let startX = 0;
 let naturalHeight = 0;
 // 真实滑动发生后，吞掉松手紧随的合成 click，区分「滑动」与「点击」
 let justDragged = false;
+// 按压期间是否发生过明显位移（>6px）：用于区分「纯点击」与「轻微移动」——
+// 仅纯点击（零位移）才放行 onGripClick 收起；轻移也吞掉合成 click，避免「轻移即收起/塌缩」
+let moved = false;
 // 死区：按压后位移小于此值视为「仅触摸」，绝不进入滑动跟手（触屏静止按下的自然抖动通常 6~15px，
 //  故取到 10 以上才能稳稳区分「触摸」与「拖拽」，避免手指一搭上小横条卡片就跟着缩/塌）
 const DEAD_ZONE = 12;
@@ -238,25 +238,40 @@ function isFormField(el: any): boolean {
 
 function onDown(e: any) {
   if (isFormField(e.target)) return;
-  // 拖拽事件绑在手柄上：currentTarget 是手柄，需取父级卡片的实际高度作为伸缩基准
-  // （sheet=半屏 / menu=内容高 / 常驻卡=档位高）
-  const cardEl = (e.currentTarget && e.currentTarget.parentElement) || e.currentTarget;
-  naturalHeight = (cardEl && cardEl.offsetHeight) || 0;
+  // 双手柄卡片：currentTarget 是手柄，需取卡片实际高度作为伸缩基准（sheet=半屏 / menu=内容高 / 常驻卡=档位高）。
+  // 稳健取法：优先 closest('.uc-card')，兜底 parentElement；高度用 getBoundingClientRect（过渡中也能拿到真实视觉高）
+  // 兜底 offsetHeight；若仍取到 0（极端异常），退化到「铺满高度」，避免被拖拽下限 MIN_DRAG_H 钳成一小条（误塌缩）。
+  const cardEl =
+    (e.currentTarget && e.currentTarget.closest && e.currentTarget.closest(".uc-card")) ||
+    (e.currentTarget && e.currentTarget.parentElement) ||
+    e.currentTarget;
+  const cardH = cardEl && (cardEl.getBoundingClientRect().height || cardEl.offsetHeight);
+  naturalHeight = cardH || winH.value - tabPx.value;
   pressing.value = true;
   dragging.value = false;
   dragY.value = 0;
   justDragged = false;
+  moved = false;
   startY = ptY(e);
   startX = ptX(e);
+  // 鼠标：把 move/up 挂到 window —— 鼠标按下后指针迅速移出 6rpx 小手柄，若监听绑在手柄上，
+  // 浏览器即停止派发 mousemove（且会触发 mouseleave→onUp 提前结束），导致 PC 拖不动；挂 window 可全程接收。
+  // 触摸事件本就全程派发到 touchstart 目标，无需挂 window，绑在手柄即可。
+  if (e.type === "mousedown" && typeof window !== "undefined") {
+    window.addEventListener("mousemove", onMove, { passive: false });
+    window.addEventListener("mouseup", onUp);
+  }
 }
 function onMove(e: any) {
   if (!pressing.value) return;
   const dy = ptY(e) - startY;
+  const dx = ptX(e) - startX;
+  // 记录是否发生过明显位移（>6px）：松手时据此吞掉合成 click，避免「轻移即收起/塌缩」
+  if (Math.abs(dy) > 6 || Math.abs(dx) > 6) moved = true;
   // 仅「触摸」阶段：位移仍在死区内、或主要为横向（视为滚动/滑动意图）→ 完全不进入跟手，
   // 不应用任何实时高度，卡片状态纹丝不动，杜绝误触塌缩
   if (!dragging.value) {
     if (Math.abs(dy) <= DEAD_ZONE) return;
-    const dx = ptX(e) - startX;
     if (Math.abs(dy) < Math.abs(dx) * 1.5) return; // 纵向位移须明显大于横向，才认定为纵向拖拽
     dragging.value = true;
   }
@@ -270,10 +285,21 @@ function onMove(e: any) {
 function onUp() {
   if (!pressing.value) return;
   pressing.value = false;
-  // 仅真实滑动才在此切档；纯点击走 onGripClick，保持「点击 = 松手后收起」语义
-  if (!dragging.value) return;
+  // 清理鼠标 window 监听（触摸路径未注册，remove 为 no-op）
+  if (typeof window !== "undefined") {
+    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mouseup", onUp);
+  }
+  const wasDragging = dragging.value;
+  // 真实滑动，或仅发生轻微位移（未超死区）→ 都吞掉松手紧随的合成 click，
+  // 前者避免误触收起，后者避免「轻移即收起/塌缩」；只有纯点击（零位移）才放行 onGripClick 收起。
+  justDragged = wasDragging || moved;
+  if (!wasDragging) {
+    dragging.value = false;
+    dragY.value = 0;
+    return; // 纯点击：交给 onGripClick，保持「点击 = 松手后收起」语义
+  }
   dragging.value = false;
-  justDragged = true; // 吞掉紧随的合成 click，避免滑动后误触收起
   const dy = dragY.value;
   dragY.value = 0;
 
