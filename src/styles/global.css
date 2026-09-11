@@ -899,7 +899,7 @@ html.ps-lock body {
 
 /* ============ UniversalCard 常驻停靠卡折叠预览行（市场页 / 自选页 / 社区页共用，统一一套） ============ */
 /* 折叠态一行：左侧固定标签 + 中部滚动切换容器 + 右侧展开箭头，整体不换行、溢出裁切、垂直居中。
-   行内所有文案统一 --font-sm（根字号兜底，任何漏网的 text 也不会大一号）。 */
+   行内所有文案统一 --font-md，与卡片展开后的内容（.grp-label 等）同号（根字号兜底，任何漏网的 text 也不会小一号）。 */
 .peek-row {
   flex: 1;
   height: 76rpx;
@@ -908,7 +908,7 @@ html.ps-lock body {
   flex-wrap: nowrap;
   gap: 12rpx;
   padding: 0 28rpx;
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   cursor: pointer;
   overflow: hidden;
 }
@@ -922,7 +922,7 @@ html.ps-lock body {
   display: flex;
   align-items: center;
   white-space: nowrap;
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   line-height: 1;
   color: var(--text-3);
 }
@@ -962,7 +962,7 @@ html.ps-lock body {
   flex: none;
   max-width: 220rpx;
   min-width: 0;
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   line-height: 1.1;
   color: var(--text);
   overflow: hidden;
@@ -972,7 +972,7 @@ html.ps-lock body {
 /* 股票代码（自选页独有，紧跟名称）；与名称统一 line-height，保证同卡片内垂直居中对齐 */
 .peek-code {
   flex: none;
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   line-height: 1.1;
   color: var(--text);
   font-variant-numeric: tabular-nums;
@@ -981,7 +981,7 @@ html.ps-lock body {
 .peek-empty {
   flex: 1;
   min-width: 0;
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   /* 由 .roll-item / .peek-row 的 flex align-items:center 负责垂直居中；
      line-height 取正常值，避免等高行高在部分机型上把字形视觉顶偏 */
   line-height: 1.2;
@@ -998,8 +998,13 @@ html.ps-lock body {
 }
 .peek-price,
 .peek-pct {
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   font-variant-numeric: tabular-nums;
+}
+/* 异动类型胶囊也在折叠行内（.peek-right），字号随整行统一；
+   限定在折叠行内，展开的异动列表里仍保持原尺寸 */
+.peek-row .peek-right .anom-tag {
+  font-size: var(--font-md);
 }
 .peek-price.up,
 .peek-pct.up {
