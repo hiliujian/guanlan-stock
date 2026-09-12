@@ -47,6 +47,18 @@ export function resolveSecid(raw: string, market: Market): string {
   return "1." + raw;
 }
 
+// 不抛错版本：供**定时器 / 异步循环**等无法逐条 try 的场景使用。
+// 背景：resolveSecid 对无数字的脏代码会 throw，而这类调用点（异动监测 15s 心跳、
+// 帖子持仓卡 30s 心跳）一旦抛出就会中断整轮、并产生 unhandled rejection。
+// 调用方拿到 null 即按「该条无法解析」跳过，不影响其余标的。
+export function tryResolveSecid(raw: string, market: Market): string | null {
+  try {
+    return resolveSecid(raw, market);
+  } catch {
+    return null;
+  }
+}
+
 // 由 secid 反推市场标签（用于自选股存储 / 展示）
 export function marketFromSecid(secid: string): Market {
   const [m, code] = secid.split(".");

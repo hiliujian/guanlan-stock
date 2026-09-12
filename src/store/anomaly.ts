@@ -14,7 +14,7 @@ import { reactive, computed } from "vue";
 import { fetchSnapshots, type SnapResult } from "@/api/quote";
 import { useWatchlist } from "./watchlist";
 import { getMarketStatus } from "@/utils/marketStatus";
-import { resolveSecid } from "@/utils/period";
+import { tryResolveSecid } from "@/utils/period";
 import { loadConfig, watchPersist } from "@/utils/storageConfig";
 
 type AnomalyType =
@@ -249,11 +249,17 @@ async function monitorTick() {
   const wl = useWatchlist();
   const items = wl.items.map((it) => ({ code: it.code, market: it.market, name: it.name }));
   if (!items.length) return;
-  const secids = items.map((it) => resolveSecid(it.code, it.market as any));
+  // tryResolveSecid：自选列表若残留脏代码（非数字），resolveSecid 会 throw 并让整轮监测
+  // 中断 + 产生 unhandled rejection；此处用安全变体按只跳过脏项，不影响其余标的监测。
+  const parsed = items
+    .map((it) => ({ it, secid: tryResolveSecid(it.code, it.market as any) }))
+    .filter((x): x is { it: typeof items[number]; secid: string } => !!x.secid);
+  if (!parsed.length) return;
+  const secids = parsed.map((x) => x.secid);
   const snaps = await fetchSnapshots(secids);
-  for (let i = 0; i < items.length; i++) {
-    const s = snaps[secids[i]];
-    if (s) detect(items[i], secids[i], s);
+  for (const { it, secid } of parsed) {
+    const s = snaps[secid];
+    if (s) detect(it, secid, s);
   }
 }
 

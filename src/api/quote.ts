@@ -14,7 +14,7 @@
 import { codeFromSecid } from "@/utils/period";
 import type { Kline, Trend, PeriodKey } from "@/utils/period";
 import type { RawRealtime, SearchHit, FlowMap } from "@/api/sources/types";
-import { getRealtime, getKline, getTrend, getFlow, getSearch, getNews, getIndexBreadth, getStockIndustry, getIndustryBoards, getUlistQuotes, fetchTurnoverAnchor, type IndustryBoard } from "@/api/sources";
+import { getRealtime, getKline, getTrend, getFlow, getSearch, getNews, getIndexBreadth, getStockIndustry, getIndustryBoards, getUlistQuotes, fetchTurnoverAnchor, type IndustryBoard, type UlistQuote } from "@/api/sources";
 import { withTimeout } from "@/api/transport";
 import type { NewsItem } from "@/utils/newsSentiment";
 
@@ -197,6 +197,21 @@ export interface SnapResult {
 // 相位错开时会对同一 secid 各发一次请求（此时 20s 缓存恰好失效）。
 // 同一 secid 复用同一个 Promise，杜绝重复打上游。
 const _inflight = new Map<string, Promise<SnapResult>>();
+// 批量在途去重：key = 排序后的 secid 列表。上面注释描述的场景对**批量**路径同样成立——
+// 异动监测与自选页轮询各自调 fetchSnapshots，同拍且 20s 缓存双双失效时，会各发一次 ulist
+// （批量请求体大得多，重复代价更高）。共享同一个 Promise 即可；单只路径另有 _inflight。
+const _inflightBatch = new Map<string, Promise<UlistQuote[]>>();
+function fetchUlistDeduped(secids: string[]): Promise<UlistQuote[]> {
+  const key = [...secids].sort().join(",");
+  const pending = _inflightBatch.get(key);
+  if (pending) return pending;
+  const task = getUlistQuotes(secids);
+  _inflightBatch.set(key, task);
+  // 派生链先行吞掉异常（避免 unhandled rejection），结束后再摘除登记；
+  // 返回给调用方的仍是原始 task，错误照常由调用方处理。
+  task.catch(() => {}).finally(() => _inflightBatch.delete(key));
+  return task;
+}
 
 export async function fetchSnapshot(secid: string): Promise<SnapResult> {
   const ck = "snap:" + secid;
@@ -235,7 +250,7 @@ export async function fetchSnapshots(secids: string[]): Promise<Record<string, S
   }
   const uniq = Array.from(new Set(missed));
   if (!uniq.length) return out;
-  const ul = await getUlistQuotes(uniq);
+  const ul = await fetchUlistDeduped(uniq);
   const got = new Set<string>();
   for (const q of ul) {
     if (!q.secid || q.price == null || got.has(q.secid)) continue;

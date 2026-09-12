@@ -184,7 +184,7 @@ import { formatRelative, unpackCards, communityRepo, type CommunityPost, type Ho
 import { fetchSnapshots } from "@/api/quote";
 import { topicColor } from "@/utils/avatar";
 import { vipGatedFrame } from "@/utils/avatarFrame";
-import { marketCharFor, resolveSecid } from "@/utils/period";
+import { marketCharFor, tryResolveSecid } from "@/utils/period";
 import { openInMarket, goTab } from "@/store/nav";
 import { useFollow } from "@/store/follow";
 import { useLongPress } from "@/composables/useLongPress";
@@ -388,9 +388,15 @@ let liveTimer: any = null;
 async function liveTick() {
   const codes = Array.from(liveCards.keys());
   if (!codes.length) return;
-  const snaps = await fetchSnapshots(codes.map((c) => resolveSecid(c, "auto")));
+  // tryResolveSecid：注册码若为脏数据（非数字），resolveSecid 会 throw 中断整轮心跳；
+  // 用安全变体跳过脏项，其余卡片正常刷新。
+  const snaps = await fetchSnapshots(
+    codes.map((c) => tryResolveSecid(c, "auto")).filter((s): s is string => !!s)
+  );
   for (const [code, fns] of liveCards) {
-    const price = snaps[resolveSecid(code, "auto")]?.price;
+    const secid = tryResolveSecid(code, "auto");
+    if (!secid) continue;
+    const price = snaps[secid]?.price;
     if (!price) continue;
     for (const fn of Array.from(fns)) fn(price);
   }

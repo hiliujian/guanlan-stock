@@ -175,15 +175,21 @@
                   <OutlineIcon type="chevron-up" :size="20" color="var(--text-3)" class="idx-caret" :class="{ closed: collapsedGrps.has(g.title) }" />
                 </view>
                 <view v-show="!collapsedGrps.has(g.title)" class="tile-grid">
-                  <view v-for="it in g.items" :key="it.secid" class="idx-item" :class="{ 'bkt-clickable': !!qOf(it.secid)?.views }" @click="onItemCardClick(it)">
+                  <view v-for="it in g.items" :key="it.secid" class="idx-item" :class="{ 'bkt-clickable': bktSwitchable(it) }" @click="onItemCardClick(it)">
                     <view class="idx-item-head">
                       <image v-if="it.flag" class="peek-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
                       <image v-else-if="it.icon" class="peek-flag-ic" :src="COMMODITY_ICON[it.icon]" mode="aspectFit" />
                       <text class="idx-item-name">{{ it.name }}</text>
-                      <!-- 篮子时段角标：标注当前展示数据所属阶段（盘前/盘中/盘后），点击在三个时段间循环切换；
-                           数据非当日（休市/假期定格上一交易日）时改显日期（如 09-04）；所选时段无数据时
-                           不渲染任何标签——「盘前/盘中/盘后/日期」角标必须以数据为前提，杜绝标签配「暂无数据」 -->
-                      <text v-if="it.members && bktHasData(it)" class="idx-item-bkt bkt-switch" @click.stop="cycleBkt(it)">{{ bktLabel(it) }}</text>
+                      <!-- 数据角标（卡片右上角，靠 .idx-item-name 的 flex:1 顶到右侧）：
+                           美股篮子 = 所处时段（盘前/盘中/盘后）或非当日时的日期，点击可循环切换时段；
+                           日韩篮子 = 数据所属交易日日期（如 09-11），只读不切换——避免休市/周末恒显「盘中」误导。
+                           所选数据不存在时不渲染任何标签，杜绝「角标配暂无数据」 -->
+                      <text
+                        v-if="it.members && bktHasData(it) && bktLabel(it)"
+                        class="idx-item-bkt"
+                        :class="{ 'bkt-switch': bktSwitchable(it) }"
+                        @click.stop="bktSwitchable(it) && cycleBkt(it)"
+                      >{{ bktLabel(it) }}</text>
                     </view>
                     <view class="idx-item-right">
                       <text v-if="!it.members" class="idx-item-price" :class="[qCls(it.secid), qNa(it.secid) ? 'na' : '']">{{ qPrice(it.secid) }}</text>
@@ -197,10 +203,12 @@
               </view>
               <!-- 期指持仓（中金所官方日更，最近已发布交易日）：中信席位 / 前20机构 的加多/加空。
                    持仓变化为客观事实、非行情涨跌，故数据一律中性色呈现，不做多空红绿着色引导；
-                   图标沿用国旗（期指即中国股指期货）。 -->
+                   图标沿用国旗（期指即中国股指期货）。
+                   数据所属交易日以右上角角标呈现（复用篮子时段角标样式），而非挂在组标题后——
+                   与「每张卡片自述其数据日期」的指数卡口径一致。 -->
               <view class="idx-grp">
                 <view class="idx-grp-head" @click="toggleGrp('期指持仓')">
-                  <text class="idx-grp-t">期指持仓{{ cffexDateText }}</text>
+                  <text class="idx-grp-t">期指持仓</text>
                   <OutlineIcon type="chevron-up" :size="20" color="var(--text-3)" class="idx-caret" :class="{ closed: collapsedGrps.has('期指持仓') }" />
                 </view>
                 <view v-show="!collapsedGrps.has('期指持仓')" class="tile-grid">
@@ -208,6 +216,7 @@
                     <view class="idx-item-head">
                       <image class="peek-flag" :src="'https://flagcdn.com/w40/cn.png'" mode="aspectFit" />
                       <text class="idx-item-name">中信席位</text>
+                      <text v-if="cffexDateBadge" class="idx-item-bkt">{{ cffexDateBadge }}</text>
                     </view>
                     <view class="idx-item-right">
                       <text class="idx-item-price" :class="cffexPos ? '' : 'na'">{{ citText }}</text>
@@ -217,6 +226,7 @@
                     <view class="idx-item-head">
                       <image class="peek-flag" :src="'https://flagcdn.com/w40/cn.png'" mode="aspectFit" />
                       <text class="idx-item-name">前20机构</text>
+                      <text v-if="cffexDateBadge" class="idx-item-bkt">{{ cffexDateBadge }}</text>
                     </view>
                     <view class="idx-item-right">
                       <text class="idx-item-price" :class="cffexPos ? '' : 'na'">{{ top20Text }}</text>
@@ -504,12 +514,22 @@ function bktHasData(it: { secid: string }): boolean {
   const d = bktData(it);
   return !!d && d.pct != null && Number.isFinite(d.pct);
 }
-// 角标文案：默认「盘前/盘中/盘后」；所选视图数据非当日（假期/休市定格上一交易日）时
-// 改显日期（如 09-04），杜绝「盘中」标签配旧数据误导——与期指持仓日期后缀同思路
+/** 是否支持时段切换：仅美股篮子有三时段视图（views）。日韩篮子无 → 角标为只读数据日期，不参与切换。 */
+function bktSwitchable(it: { secid: string }): boolean {
+  return !!qOf(it.secid)?.views;
+}
+// 角标文案，三类数据源依次取用：
+//   ① 美股篮子·数据非当日 → 日期（如 09-04），替代「盘中」防误导；
+//   ② 美股篮子·数据为当日 → 盘前/盘中/盘后（当前所处阶段）；
+//   ③ 日韩篮子（无美东时段概念，无 views）→ 数据所属交易日日期（如 09-11），恒显示。
+//      绝不再回退到 BKT_LABEL —— 那会让日韩卡片在休市/周末仍显「盘中」（用户实测反馈）。
+// 拿不到任何文案时返回空串，模板据此不渲染角标（不出现空标签占位）。
 function bktLabel(it: { secid: string }): string {
   const q = qOf(it.secid);
   const v = q?.views?.[bktSel(it)];
-  return (v && v.date) || BKT_LABEL[bktSel(it)];
+  if (v?.date) return v.date;
+  if (q?.views) return BKT_LABEL[bktSel(it)];
+  return q?.date || "";
 }
 function bktPct(it: { secid: string }): string {
   const d = bktData(it);
@@ -533,11 +553,12 @@ async function loadCffex() {
     /* 失败保留 null，下次展开重试，界面降级「暂无数据」 */
   }
 }
-// 数据日期后缀：期指持仓在交易日收盘后（约 17:00）才更新，面板可能展示的是昨日数据，
-// 必须标注数据所属交易日避免误读；未加载成功时不加后缀（避免出现空日期「—」）
-const cffexDateText = computed(() => {
+// 数据日期角标（卡片右上角）：期指持仓在交易日收盘后（约 17:00）才更新，面板展示的常是上一交易日数据，
+// 必须标注数据所属交易日避免误读；文案取 "MM-DD"（与篮子日期角标同格式，不带括号——直接复用角标样式）。
+// 未加载成功时为空串，模板 v-if 不渲染角标（避免出现空日期「—」）。
+const cffexDateBadge = computed(() => {
   const d = cffexPos.value?.date;
-  return d && d.length === 8 ? "（" + d.slice(4, 6) + "-" + d.slice(6) + "）" : "";
+  return d && d.length === 8 ? d.slice(4, 6) + "-" + d.slice(6) : "";
 });
 // 净多变化 → 动态文案：正=加多、负=加空（多空方向每日由数据决定，不预设口径）
 function posLabel(netLongChg: number): string {

@@ -45,7 +45,6 @@
   --shadow-4: 0 16rpx 40rpx var(--shadow-color-strong);
   --shadow-primary-1: 0 1rpx 5rpx var(--shadow-primary);
   --shadow-primary-2: 0 4rpx 12rpx var(--shadow-primary);
-  --shadow-primary-3: 0 8rpx 22rpx var(--shadow-primary);
   --shadow-danger-1: 0 1rpx 5rpx var(--shadow-danger);
   --shadow-ambient: 0 0 40rpx var(--shadow-color);
   --shadow-sheet: 0 -1rpx 8rpx var(--shadow-color);
@@ -59,7 +58,6 @@
      新增浮层请归入对应档位。注意：仅调高单个元素数值无法解决 overflow 裁剪与父级
      stacking context 遮挡——被裁剪/遮挡时应让浮层 teleport 到 body 并引用 --z-popover。 */
   --z-card: 40; /* 底部常驻停靠卡片（UniversalCard persistent：自选面板 / 指数卡 / 发帖卡） */
-  --z-sticky: 61; /* 常驻吸顶 / 筛选栏（展开下拉时临时升档） */
   --z-tabbar: 900; /* 底部导航栏 */
   --z-card-overlay: 950; /* 底部浮层卡片（UniversalCard 浮层：设置持仓 / 消息中心 / 关注粉丝 / 操作菜单） */
   --z-popover: 970; /* 公共浮层：需脱离父卡片的浮层（表情面板 / 可见范围菜单 / 联想浮层） */
@@ -126,7 +124,6 @@
   --shadow-4: 0 16rpx 40rpx var(--shadow-color-strong);
   --shadow-primary-1: 0 1rpx 5rpx var(--shadow-primary);
   --shadow-primary-2: 0 4rpx 12rpx var(--shadow-primary);
-  --shadow-primary-3: 0 8rpx 22rpx var(--shadow-primary);
   --shadow-danger-1: 0 1rpx 5rpx var(--shadow-danger);
   --shadow-ambient: 0 0 40rpx var(--shadow-color);
   --shadow-sheet: 0 -1rpx 8rpx var(--shadow-color);

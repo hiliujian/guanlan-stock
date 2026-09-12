@@ -34,7 +34,7 @@ interface GlobalIndexGroup {
   items: GlobalIndexItem[];
 }
 type GlobalSessionLabel = "盘前" | "盘中" | "盘后";
-/** 单时段篮子视图：pct/chg 为该时段等权涨跌幅/涨跌额；date 为数据所属 ET 日期（"MM-DD"，当日省略）
+/** 单时段篮子视图：pct/chg 为该时段等权涨跌幅/涨跌额；date 为数据所属交易日（"MM-DD"，当日省略）
  *  ——休市/假期数据定格在上一交易日时，UI 用它把「盘中」角标替换为日期（如 09-04）防误导。 */
 interface BasketView {
   pct: number | null;
@@ -52,6 +52,10 @@ export interface GlobalIndexQuote {
   /** 美股篮子三时段视图（盘前/盘中/盘后各自的等权涨跌幅，null=该时段暂无数据）。
    *  供 UI 点击角标切换展示时段；pct/chg 始终为「实际所处阶段」的数据，与 session 一致。 */
   views?: { pre: BasketView | null; regular: BasketView | null; post: BasketView | null };
+  /** 日韩等**无美东时段概念**的篮子：数据所属交易日（本地市场时区 "MM-DD"，恒返回、不省略）。
+   *  这类篮子不参与美股盘前/盘中/盘后切换，若套用阶段标签会恒显「盘中」——休市/周末仍显「盘中」
+   *  即误导（用户实测反馈：09-12 周六显示「盘中」）。故改标注真实数据日期（如 09-11）。 */
+  date?: string;
 }
 
 // ---------------- 美东交易日划分（时区经 Intl 由 ICU 处理，自动适应冬/夏令时） ----------------
@@ -60,11 +64,13 @@ interface EtNow {
   weekday: string;
   month: number;
   day: number;
-  minutes: number; // 当日 0 点起的美东分钟数
+  minutes: number; // 当日 0 点起的本地分钟数
 }
-function etNow(d: Date = new Date()): EtNow {
+/** 任意时区的「当下」拆解（时区经 Intl 由 ICU 处理，自动适应冬/夏令时）。
+ *  美股走 America/New_York；日韩篮子需各自本地时区（Asia/Seoul / Asia/Tokyo）以标注数据所属交易日。 */
+function tzNow(tz: string, d: Date = new Date()): EtNow {
   const p = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
+    timeZone: tz,
     weekday: "short",
     month: "2-digit",
     day: "2-digit",
@@ -79,6 +85,9 @@ function etNow(d: Date = new Date()): EtNow {
     day: parseInt(g("day"), 10),
     minutes: (parseInt(g("hour"), 10) % 24) * 60 + parseInt(g("minute"), 10),
   };
+}
+function etNow(d: Date = new Date()): EtNow {
+  return tzNow("America/New_York", d);
 }
 /** 美股当前阶段：盘前 04:00–09:30 / 盘中 09:30–16:00 / 盘后 16:00–20:00（美东，周一至五）。 */
 function usSession(d: Date = new Date()): UsSession {
@@ -336,7 +345,20 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
       const nonUs = it.flag === "kr" || it.flag === "jp";
       if (nonUs) {
         const r = computeBasket(it, map, extMap, memberTs, "regular", et);
-        map.set(it.secid, { secid: it.secid, name: it.name, price: null, pct: r.pct, chg: r.chg, session: undefined });
+        // 无美东时段概念 → 角标改标注**本地市场时区**的数据所属交易日，且恒显示（当日也不省略）：
+        // 休市/周末显示上一交易日（如周六 09-12 显示 09-11），杜绝恒显「盘中」造成行情状态误读。
+        // 必须用成分股本地时区而非 ET：韩股 09:00 KST 开盘 ≈ 前一日 20:00 ET，用 ET 会把日期算少一天。
+        const tz = it.flag === "kr" ? "Asia/Seoul" : "Asia/Tokyo";
+        const latestTs = latestMemberTs(it, memberTs);
+        map.set(it.secid, {
+          secid: it.secid,
+          name: it.name,
+          price: null,
+          pct: r.pct,
+          chg: r.chg,
+          date: latestTs ? mmdd(tzNow(tz, new Date(latestTs * 1000))) : undefined,
+          session: undefined,
+        });
       } else {
         // 美股篮子：三时段视图一次算齐，供 UI 点击角标切换展示（无数据的时段为 null → 暂无数据）
         const views = {
@@ -386,8 +408,9 @@ function mergeWithLastGood(fresh: Map<string, GlobalIndexQuote>): Map<string, Gl
         if (views !== q.views) fresh.set(secid, { ...q, views });
         continue;
       }
-      // 数值兜底 + views 逐槽结果 + session 标签保持本次新鲜计算结果
-      fresh.set(secid, { ...q, price: old.price, pct: old.pct, chg: old.chg, views });
+      // 数值兜底 + views 逐槽结果 + session 阶段标签保持本次新鲜计算结果。
+      // date（日韩篮子数据日期）：本次算不出时沿用旧值——展示的是旧数据，角标须继续描述旧数据。
+      fresh.set(secid, { ...q, price: old.price, pct: old.pct, chg: old.chg, views, date: q.date ?? old.date });
     }
   }
   lastGoodGlobal = fresh;
@@ -412,10 +435,18 @@ function extFresh(
   return !t.am && t.minutes >= 960 && t.minutes <= 1260; // 盘后 16:00–20:00，容忍 21:00 前的迟到的戳
 }
 
-/** 数据日期标签（ET "MM-DD"）：当日省略，非当日返回如 "09-04"——供 UI 以日期角标替代「盘中/盘后」防误导 */
+/** "MM-DD" 日期角标文案（月/日补零）。 */
+function mmdd(t: { month: number; day: number }): string {
+  return String(t.month).padStart(2, "0") + "-" + String(t.day).padStart(2, "0");
+}
+/** 数据日期标签：当日省略，非当日返回如 "09-04"——供 UI 以日期角标替代「盘中/盘后」防误导。 */
 function etDateTag(t: { month: number; day: number }, today: EtNow): string | undefined {
   if (t.month === today.month && t.day === today.day) return undefined;
-  return String(t.month).padStart(2, "0") + "-" + String(t.day).padStart(2, "0");
+  return mmdd(t);
+}
+/** 篮子成分的最新行情时间戳（秒，f124）；无有效时间戳返回 0。 */
+function latestMemberTs(it: GlobalIndexItem, memberTs: Map<string, number>): number {
+  return (it.members ?? []).reduce((mx, m) => Math.max(mx, memberTs.get(m) ?? 0), 0);
 }
 
 /** 篮子等权计算：正式/休市走东财常规口径；盘前/盘后走新浪扩展行情并施加分级过滤。
@@ -459,7 +490,7 @@ function computeBasket(
   if (!rows.length) return { pct: null, chg: null };
   // 数据日期：取成分股最新行情时间戳（f124）换算 ET 日期；假期/休市数据定格在上一交易日
   // → 非当日返回 date 标签，UI 据此把「盘中」角标替换为日期（如 09-04）
-  const latest = (it.members ?? []).reduce((mx, m) => Math.max(mx, memberTs.get(m) ?? 0), 0);
+  const latest = latestMemberTs(it, memberTs);
   return {
     pct: mean(rows.map((q) => q.pct as number)),
     chg: mean(rows.map((q) => q.chg ?? 0)),
