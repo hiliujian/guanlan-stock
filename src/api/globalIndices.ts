@@ -360,15 +360,22 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
           session: undefined,
         });
       } else {
-        // 美股篮子：三时段视图一次算齐，供 UI 点击角标切换展示（无数据的时段为 null → 暂无数据）
+        // 美股篮子：三时段视图一次算齐（盘前/盘后走新浪扩展行情+分级过滤，盘中走东财 ulist）。
+        // views 既承载「诚实的多时段数据」，也供刷新容错逐槽兜底（mergeWithLastGood）。
+        // 注意：不再提供点击切换交互——UI 直接按 session 展示实际获取到的那个时段数据。
         const views = {
           pre: computeBasket(it, map, extMap, memberTs, "pre", et),
           regular: computeBasket(it, map, extMap, memberTs, "regular", et),
           post: computeBasket(it, map, extMap, memberTs, "post", et),
         };
-        // session 可能为 "closed"（休市）→ 常规口径兜底
+        // r = 实际展示数据（盘前/盘后时段取对应视图；休市/盘中取常规口径）
         const r = session === "pre" || session === "post" ? views[session] : views.regular;
-        map.set(it.secid, { secid: it.secid, name: it.name, price: null, pct: r.pct, chg: r.chg, views, session: label });
+        // 角标恒等于「实际展示数据所属阶段」：label 已按时钟+新鲜度确定阶段；
+        // 休市（深夜/周末/假期）时 label 为 undefined 而常规口径仍有上一交易日收盘数据 →
+        // 补「盘中」展示最近收盘，使前端可直接按 session 渲染、无需再回退其它时段（杜绝标签配「暂无数据」）。
+        const sessionLabel =
+          label ?? (session === "closed" && views.regular.pct != null ? "盘中" : undefined);
+        map.set(it.secid, { secid: it.secid, name: it.name, price: null, pct: r.pct, chg: r.chg, views, session: sessionLabel });
       }
     }
   }

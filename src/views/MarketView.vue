@@ -175,20 +175,18 @@
                   <OutlineIcon type="chevron-up" :size="20" color="var(--text-3)" class="idx-caret" :class="{ closed: collapsedGrps.has(g.title) }" />
                 </view>
                 <view v-show="!collapsedGrps.has(g.title)" class="tile-grid">
-                  <view v-for="it in g.items" :key="it.secid" class="idx-item" :class="{ 'bkt-clickable': bktSwitchable(it) }" @click="onItemCardClick(it)">
+                  <view v-for="it in g.items" :key="it.secid" class="idx-item">
                     <view class="idx-item-head">
                       <image v-if="it.flag" class="peek-flag" :src="'https://flagcdn.com/w40/'+it.flag+'.png'" mode="aspectFit" />
                       <image v-else-if="it.icon" class="peek-flag-ic" :src="COMMODITY_ICON[it.icon]" mode="aspectFit" />
                       <text class="idx-item-name">{{ it.name }}</text>
                       <!-- 数据角标（卡片右上角，靠 .idx-item-name 的 flex:1 顶到右侧）：
-                           美股篮子 = 所处时段（盘前/盘中/盘后）或非当日时的日期，点击可循环切换时段；
-                           日韩篮子 = 数据所属交易日日期（如 09-11），只读不切换——避免休市/周末恒显「盘中」误导。
+                           美股篮子 = 实际获取到的时段（盘前/盘中/盘后，由数据源 session 决定）或非当日时的日期；
+                           日韩篮子 = 数据所属交易日日期（如 09-11）。均为只读展示，无点击切换。
                            所选数据不存在时不渲染任何标签，杜绝「角标配暂无数据」 -->
                       <text
                         v-if="it.members && bktHasData(it) && bktLabel(it)"
                         class="idx-item-bkt"
-                        :class="{ 'bkt-switch': bktSwitchable(it) }"
-                        @click.stop="bktSwitchable(it) && cycleBkt(it)"
                       >{{ bktLabel(it) }}</text>
                     </view>
                     <view class="idx-item-right">
@@ -471,65 +469,44 @@ function qNa(secid: string): boolean {
 }
 
 
-// 美股篮子时段切换：点击角标在 盘前→盘中→盘后 间循环，展示所选时段的等权涨跌幅；
-// 所选时段无数据（如非该时段窗口）时模板直接不渲染涨跌幅（价格槽位统一显示「暂无数据」），不误导。
-// 默认展示实际所处阶段。
+// 美股篮子时段展示：直接读取数据源已确定的 session（盘前/盘中/盘后），展示该时段实际获取到的等权涨跌幅；
+// 无任何切换/回退逻辑——拿到哪个时段的数据就显示哪个时段（要求：展示与数据源完全一致）。
 type BktView = 'pre' | 'regular' | 'post';
-const BKT_CYCLE: BktView[] = ['pre', 'regular', 'post'];
-const BKT_LABEL: Record<BktView, string> = { pre: '盘前', regular: '盘中', post: '盘后' };
-const bktView = ref<Record<string, BktView>>({});
-function bktSel(it: { secid: string }): BktView {
-  const override = bktView.value[it.secid];
-  if (override) return override;
-  const q = qOf(it.secid);
-  const ok = (v?: { pct: number | null } | null) => !!v && v.pct != null && Number.isFinite(v.pct);
-  // 默认展示实际所处阶段；休市/深夜（session 无标签）按数据新鲜度回退：
-  // 盘后数据在 21:00 容忍期内视为最新成交优先展示，其后回落正式收盘（盘中），盘前仅手动查看
-  if (q?.session === '盘前' && ok(q.views?.pre)) return 'pre';
-  if (q?.session === '盘后' && ok(q.views?.post)) return 'post';
-  if (q?.session === '盘中' && ok(q.views?.regular)) return 'regular';
-  if (ok(q?.views?.post)) return 'post';
-  if (ok(q?.views?.regular)) return 'regular';
-  if (ok(q?.views?.pre)) return 'pre';
-  return 'regular';
-}
-function onItemCardClick(it: { secid: string }) {
-  if (qOf(it.secid)?.views) cycleBkt(it); // 仅美股篮子可切换，其余行点击无操作
-}
-function cycleBkt(it: { secid: string }) {
-  const cur = bktSel(it);
-  const next = BKT_CYCLE[(BKT_CYCLE.indexOf(cur) + 1) % BKT_CYCLE.length];
-  bktView.value = { ...bktView.value, [it.secid]: next };
+// session 标签 → views 槽位键：数据源已把关「标签 = 实际展示数据所属阶段」，前端零转换直接取数。
+function sessionKey(s: string | undefined): BktView | undefined {
+  if (s === '盘前') return 'pre';
+  if (s === '盘中') return 'regular';
+  if (s === '盘后') return 'post';
+  return undefined;
 }
 function bktData(it: { secid: string }): { pct: number | null; chg: number | null; date?: string } | null {
   const q = qOf(it.secid);
   if (!q) return null;
   if (!q.views) return { pct: q.pct, chg: q.chg }; // 非美股篮子（指数/日韩/商品）走原口径
-  return q.views[bktSel(it)] ?? null;
+  const k = sessionKey(q.session);
+  return k ? (q.views[k] ?? null) : null; // 拿到哪个时段的数据就展示哪个；session 无标签（无数据）→ null
 }
-// 角标渲染前提：所选时段确有数据（pct 有效）才显示——「盘前/盘中/盘后/日期」标签
-// 必须描述真实数据，拿不到数据（含非美股篮子无 views 的普通项）一律不渲染标签，
-// 杜绝「盘前/盘中/盘后/09-04」角标配「暂无数据」的组合（用户实测反馈）。
+// 角标渲染前提：实际时段确有数据（pct 有效）才显示——「盘前/盘中/盘后/日期」标签
+// 必须描述真实数据，拿不到数据一律不渲染标签，杜绝「时段/日期」角标配「暂无数据」的组合。
 function bktHasData(it: { secid: string }): boolean {
   const d = bktData(it);
   return !!d && d.pct != null && Number.isFinite(d.pct);
 }
-/** 是否支持时段切换：仅美股篮子有三时段视图（views）。日韩篮子无 → 角标为只读数据日期，不参与切换。 */
-function bktSwitchable(it: { secid: string }): boolean {
-  return !!qOf(it.secid)?.views;
-}
-// 角标文案，三类数据源依次取用：
+// 角标文案，三类数据源依次取用（纯展示，无切换）：
 //   ① 美股篮子·数据非当日 → 日期（如 09-04），替代「盘中」防误导；
-//   ② 美股篮子·数据为当日 → 盘前/盘中/盘后（当前所处阶段）；
-//   ③ 日韩篮子（无美东时段概念，无 views）→ 数据所属交易日日期（如 09-11），恒显示。
-//      绝不再回退到 BKT_LABEL —— 那会让日韩卡片在休市/周末仍显「盘中」（用户实测反馈）。
+//   ② 美股篮子·数据为当日 → 盘前/盘中/盘后（数据源 session 已定）；
+//   ③ 日韩篮子（无美东时段概念）→ 数据所属交易日日期（如 09-11），恒显示。
 // 拿不到任何文案时返回空串，模板据此不渲染角标（不出现空标签占位）。
 function bktLabel(it: { secid: string }): string {
   const q = qOf(it.secid);
-  const v = q?.views?.[bktSel(it)];
-  if (v?.date) return v.date;
-  if (q?.views) return BKT_LABEL[bktSel(it)];
-  return q?.date || "";
+  if (!q) return "";
+  if (q.views) {
+    const k = sessionKey(q.session);
+    const v = k ? q.views[k] : undefined;
+    if (v?.date) return v.date;
+    return q.session || "";
+  }
+  return q.date || ""; // 日韩篮子
 }
 function bktPct(it: { secid: string }): string {
   const d = bktData(it);
@@ -1621,8 +1598,8 @@ defineExpose({ refresh: () => refreshFull() });
   transform: rotate(180deg);
 }
 /* 卡片本体样式已抽到 global.css（.tile-grid/.idx-item 家族），与自选页持仓汇总共用；
-   此处仅保留本页特有的篮子时段角标与可点击态 */
-/* 篮子状态角标（盘前/盘中/盘后）：小号灰底轻量呈现，仅时段提示不抢视觉 */
+   此处仅保留本页特有的篮子时段角标 */
+/* 篮子状态角标（盘前/盘中/盘后/数据日期）：小号灰底轻量呈现，仅时段提示不抢视觉，只读不切换 */
 .idx-item-bkt {
   flex: none;
   font-size: var(--font-xs);
@@ -1631,13 +1608,6 @@ defineExpose({ refresh: () => refreshFull() });
   border-radius: 6rpx;
   color: var(--text-3);
   background: var(--card-2);
-}
-/* 可点击的时段角标与整卡：指针提示可切换（盘前/盘中/盘后循环） */
-.bkt-switch {
-  cursor: pointer;
-}
-.idx-item.bkt-clickable {
-  cursor: pointer;
 }
 .idx-scroll-pad {
   height: 24rpx;
