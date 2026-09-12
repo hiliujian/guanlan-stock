@@ -6,7 +6,7 @@
        body-flush：去掉 sheet 正文容器（.uc-body）的横向内边距，避免与内容自身 26rpx 叠加成 50rpx
        （价格预警在常驻卡里正文无内边距，故必须让浮层也同样贴齐，左缘才对得上）。
        保留当前实时价作录入成本参考；行情页报告卡与自选页长按菜单共用此组件。 -->
-  <UniversalCard v-model="visible" title="设置持仓" variant="sheet" body-flush>
+  <UniversalCard v-model="visible" title="设置持仓" variant="sheet" body-flush @update:modelValue="onVisible">
     <!-- 实时价参考：与价格预警面板共用 LivePriceBar 同一元素（同代码/同逻辑/同样式，
          同样不覆盖 hint 以对齐预警面板的默认无数据态「实时价获取中…」） -->
     <LivePriceBar :price="refPrice" :chg="refChg" :pct="refPct" />
@@ -59,9 +59,16 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "save", p: Position): void;
   (e: "clear"): void;
+  /** 打开态变化（含手势收起 / 标题栏收起 / 保存关闭）：供宿主同步按钮高亮、实现二次点击收起 */
+  (e: "update:visible", v: boolean): void;
 }>();
 
 const visible = ref(false);
+// 卡片自身关闭（下拉手势 / 标题栏点击 / 保存或清除）时回抛，宿主据此还原入口按钮态
+function onVisible(v: boolean) {
+  visible.value = v;
+  emit("update:visible", v);
+}
 const pfCost = ref("");
 const pfQty = ref("");
 
@@ -96,8 +103,13 @@ function open() {
   const p = props.secid ? getPosition(props.secid) : props.position;
   pfCost.value = p?.cost ? String(p.cost) : "";
   pfQty.value = p?.qty ? String(p.qty) : "";
-  visible.value = true;
+  onVisible(true);
   loadRef();
+}
+/** 关闭（宿主实现「再点一次入口收起」用）：走 v-model 回落，保留离场生长动画 */
+function close() {
+  if (!visible.value) return;
+  onVisible(false);
 }
 function onPfCost(e: any) {
   pfCost.value = String(e?.detail?.value ?? "");
@@ -118,16 +130,16 @@ function save() {
     return;
   }
   emit("save", { cost: c, qty });
-  visible.value = false;
+  onVisible(false);
 }
 function clear() {
   emit("clear");
   pfCost.value = "";
   pfQty.value = "";
-  visible.value = false;
+  onVisible(false);
 }
 
-defineExpose({ open });
+defineExpose({ open, close, visible });
 </script>
 
 <style scoped>

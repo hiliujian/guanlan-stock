@@ -8,7 +8,12 @@
 //   下一次长按刚起的计时器（表现为「长按不切换、要再按一次」）。touch 后 LP_COMPAT_MS 窗口内
 //   收到的鼠标事件一律视作兼容事件忽略（PC 纯鼠标路径不产生 touch，不受影响）。
 // - 长按触发后，在 document 捕获阶段拦一次随后冒泡的 click（长按松手的那一下），避免误触跳转；
-//   该捕获监听在消费后自移除，且仅作用于这一次，不会吃掉后续正常点击。
+//   该捕获监听在消费后自移除，且仅作用于这一次。
+//   ⚠️ 拦截必须限定在「长按时按下的那个元素」上：曾经无条件吞掉 document 上的下一次 click，
+//   而移动端长按松手通常不再补发合成 click（被系统长按/选择行为抑制），守卫就长期悬空，
+//   把用户随后在长按菜单里点的第一下（如「设置持仓」「编辑价格预警」）当成松手 click 吞掉，
+//   表现为「要连点两次才能进」；PC 鼠标路径 mouseup 后必定补发合成 click 先消费掉守卫，
+//   所以只在手机上复现。改为按目标元素判定后，菜单项的点击与长按行无关，不再被误吞。
 import { onUnmounted } from "vue";
 
 export interface UseLongPressOptions<T> {
@@ -36,6 +41,24 @@ export function useLongPress<T = void>(opts: UseLongPressOptions<T>) {
   let lpLastTouchAt = 0;
   let lpItem: T | undefined;
   let clickGuard: ((e: any) => void) | null = null;
+  // 长按触发时的按下元素：click 守卫只吞「落在该元素所在行内」的那次松手合成 click
+  let lpTarget: any = null;
+  // 同属一行判定：按下点可能是行内任意后代（如行内 <text>），松手 click 又可能命中行的其它
+  // 子节点或行本身，故按「互为祖先/后代」双向包含判定，任一方向成立即视为同一次松手。
+  function hitTarget(el: any): boolean {
+    if (!lpTarget || !el) return false;
+    let n: any = el;
+    while (n) {
+      if (n === lpTarget) return true;
+      n = n.parentElement;
+    }
+    n = lpTarget;
+    while (n) {
+      if (n === el) return true;
+      n = n.parentElement;
+    }
+    return false;
+  }
 
   function isTouchLike(e: any): boolean {
     return !!e && typeof e.type === "string" && e.type.indexOf("touch") === 0;
@@ -64,13 +87,16 @@ export function useLongPress<T = void>(opts: UseLongPressOptions<T>) {
       clickGuard = null;
     }
   }
-  // 长按触发后拦一次随后的 click（长按松手那一下），避免误触跳转
+  // 长按触发后拦一次随后的 click（长按松手那一下），避免误触跳转。
+  // 只吞「落在长按元素内」的 click；落在其它元素（如长按菜单项）的 click 直接放行，
+  // 并顺带清掉 lpFired——避免守卫悬空后让 consumeLongPress() 误吞后续正常点击。
   function installClickGuard() {
     removeClickGuard();
     const guard = (ev: any) => {
       removeClickGuard();
-      if (lpFired) {
-        lpFired = false;
+      const fired = lpFired;
+      lpFired = false;
+      if (fired && hitTarget(ev.target)) {
         ev.stopPropagation();
         ev.preventDefault();
       }
@@ -85,6 +111,7 @@ export function useLongPress<T = void>(opts: UseLongPressOptions<T>) {
     if (lpCompatBlocked(e)) return;
     lpFired = false;
     lpItem = item;
+    lpTarget = e.target || e.currentTarget || null;
     const p = pressPt(e);
     lpStartX = p.x;
     lpStartY = p.y;
@@ -109,6 +136,7 @@ export function useLongPress<T = void>(opts: UseLongPressOptions<T>) {
   function consumeLongPress(): boolean {
     if (lpFired) {
       lpFired = false;
+      lpTarget = null;
       removeClickGuard();
       return true;
     }

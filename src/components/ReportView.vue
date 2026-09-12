@@ -3,7 +3,9 @@
     <!-- 历史胜率提示（与信号卡同一引擎在近 250 个交易日逐日回放；买点+持有+卖点合并统计）：
          关注/观望不交易不统计；样本 <3 不展示。
          Tip 图标 + 文案左对齐 · 分隔；标签无色，仅数字按涨红/跌绿着色：
-         胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿；右端持仓图标弹出设置持仓（已持仓=主色，未持仓=灰） -->
+         胜率 ≥50% 红 / <50% 绿，收益 + 红 / − 绿；右端持仓图标弹出设置持仓（已持仓=主色，未持仓=灰）。
+         该按钮为 toggle：再点一次收起卡片；打开时按全站「激活分段」惯例走主色实心 + 图标反白
+         （与自选页列设置 / 拖拽排序的 .th-ic.on 同一套表现），与「已持仓」的描边主色可区分。 -->
     <view v-if="wr" class="sig-confidence">
       <OutlineIcon type="tip" :size="26" color="var(--warn)" />
       <text class="sc-label">20交易日胜率</text>
@@ -11,14 +13,15 @@
       <text class="sc-dot">·</text>
       <text class="sc-label">收益率</text>
       <text :class="['sc-num', wr.avgRet >= 0 ? 'ret-up' : 'ret-down']">{{ signedPct(wr.avgRet) }}</text>
-      <view class="sc-pos" @click="openPosForm" role="button" aria-label="设置持仓">
-        <OutlineIcon type="portfolio" :size="28" :color="holding ? 'var(--primary)' : 'var(--text-2)'" />
+      <view class="sc-pos" :class="{ on: posOpen }" @click="openPosForm" role="button" aria-label="设置持仓">
+        <OutlineIcon type="portfolio" :size="28" :color="posOpen ? '#fff' : holding ? 'var(--primary)' : 'var(--text-2)'" />
       </view>
     </view>
 
     <!-- 设置持仓弹窗（共享组件 PositionForm）：持仓成本/数量必填，保存/清除经父页写入 costBasis；
-         底部弹层样式与「编辑价格预警」一致，refPrice 传入分析报告当前价作成本参考 -->
-    <PositionForm ref="posFormRef" :position="position" :ref-price="a?.price ?? null" @save="p => emit('save-position', p)" @clear="emit('clear-position')" />
+         底部弹层样式与「编辑价格预警」一致，refPrice 传入分析报告当前价作成本参考。
+         update:visible 回传打开态：驱动入口按钮高亮，并让「再点一次入口」可收起（含手势收起后同步复位） -->
+    <PositionForm ref="posFormRef" :position="position" :ref-price="a?.price ?? null" @save="p => emit('save-position', p)" @clear="emit('clear-position')" @update:visible="posOpen = $event" />
 
     <!-- 直白操作信号：报告的操作结论以此卡为唯一来源（原顶部横幅已移除，避免两套判定相互矛盾）。
          标签/一句话建议由 utils/actionSignal 按持仓状态翻译（与自选页持仓表同一份实现）：
@@ -737,9 +740,17 @@ function signedPct(v: number) {
 // 保存到 costBasis（按股持久化）：成本驱动报告页持仓状态双视角建议。
 // 引擎信号与胜率回放本身不感知用户成本（成本是个体状态，进引擎会污染胜率口径）。
 const posFormRef = ref<any>(null);
+// 设置持仓卡片打开态（由 PositionForm 的 update:visible 回传）：驱动入口按钮高亮 + 实现 toggle
+const posOpen = ref(false);
 
-// 未登录游客直接拦到登录页（在弹窗打开前拦截，避免填完表单才被弹回，白填一遍）
+// 设置持仓入口（toggle）：未打开 → 校验登录后弹出卡片；已打开 → 再点同一入口收起。
+// 「懒人回原按钮」是对底部卡片操作的常见诉求，故与自选页「分组/列设置」入口保持同一 toggle 语义。
+// 未登录游客在弹窗打开前拦到登录页（避免填完表单才被弹回、白填一遍）
 function openPosForm() {
+  if (posOpen.value) {
+    posFormRef.value?.close();
+    return;
+  }
   if (!requireLogin()) return;
   posFormRef.value?.open();
 }
@@ -1380,17 +1391,25 @@ function openNews(it: NewsItem) {
 /* 持仓视角：浮动盈亏与动作着色（A 股红涨绿跌） */
 .pv-up { color: var(--up); }
 .pv-down { color: var(--down); }
-/* Tip 行右端「持仓」图标按钮：设置持仓入口 */
+/* Tip 行右端「持仓」图标按钮：设置持仓入口（toggle：再点一次收起） */
 .sc-pos {
   flex: none;
   margin-left: auto;
   display: flex;
   align-items: center;
-  padding: 6rpx;
-  border-radius: 8rpx;
+  justify-content: center;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 6rpx;
+  transition: background 0.18s ease;
 }
 .sc-pos:active {
   background: var(--primary-soft);
+}
+/* 打开态：复用全站「激活分段」惯例（自选页 .th-ic.on）——主色实心 + 图标反白。
+   与按下态（.sc-pos:active 的浅主色底 + 描边主色图标）分开表述，语义不重叠 */
+.sc-pos.on {
+  background: var(--primary);
 }
 
 /* 关键价位状态徽标（A股约定：已突破/上涨=红 var(--up)、已跌破/下跌=绿 var(--down)） */
