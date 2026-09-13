@@ -14,15 +14,12 @@
 //   把用户随后在长按菜单里点的第一下（如「设置持仓」「编辑价格预警」）当成松手 click 吞掉，
 //   表现为「要连点两次才能进」；PC 鼠标路径 mouseup 后必定补发合成 click 先消费掉守卫，
 //   所以只在手机上复现。改为按目标元素判定后，菜单项的点击与长按行无关，不再被误吞。
+//   守卫未命中时保留 lpFired 交给行级 consumeLongPress() 兜底，双保险堵住 PC 松手跳转。
 import { onUnmounted } from "vue";
 
 export interface UseLongPressOptions<T> {
   /** 触发长按的时长阈值(ms)，默认 500 */
   duration?: number;
-  /** 视为拖拽取消的位移阈值(px)，默认 10 */
-  moveTolerance?: number;
-  /** 触摸手势后忽略兼容鼠标事件的窗口(ms)，默认 900（PC 纯鼠标路径不受此影响） */
-  compatMs?: number;
   /** 长按触发回调，回传按下时携带的 item */
   onLongPress: (item: T) => void;
   /** 是否禁用（如整理模式 / 预览态），返回 true 时不启动计时 */
@@ -31,8 +28,9 @@ export interface UseLongPressOptions<T> {
 
 export function useLongPress<T = void>(opts: UseLongPressOptions<T>) {
   const LP_MS = opts.duration ?? 500;
-  const LP_MOVE = opts.moveTolerance ?? 10;
-  const LP_COMPAT_MS = opts.compatMs ?? 900;
+  // 移动阈值 / 兼容鼠标事件窗口：均为修过真 bug 的行为参数，无需调用方自定义
+  const LP_MOVE = 10;
+  const LP_COMPAT_MS = 900;
 
   let lpTimer: ReturnType<typeof setTimeout> | null = null;
   let lpFired = false;
@@ -88,15 +86,17 @@ export function useLongPress<T = void>(opts: UseLongPressOptions<T>) {
     }
   }
   // 长按触发后拦一次随后的 click（长按松手那一下），避免误触跳转。
-  // 只吞「落在长按元素内」的 click；落在其它元素（如长按菜单项）的 click 直接放行，
-  // 并顺带清掉 lpFired——避免守卫悬空后让 consumeLongPress() 误吞后续正常点击。
+  // PC 端长按松手会补发一次合成 click：命中长按元素时由守卫直接吞掉；若 DOM 归属
+  // 判定未命中（面板展开/回流导致元素引用变化等），保留 lpFired 交给行级
+  // consumeLongPress() 兜底吞掉——双保险确保「长按松手的那次 click」绝不触发跳转。
+  // 长按菜单项的 click 与长按行无关、不经过 consumeLongPress()，直接放行不受影响；
+  // 残留的 lpFired 会在下一次按下 onStart 时复位，不会误吞后续正常点击。
   function installClickGuard() {
     removeClickGuard();
     const guard = (ev: any) => {
       removeClickGuard();
-      const fired = lpFired;
-      lpFired = false;
-      if (fired && hitTarget(ev.target)) {
+      if (lpFired && hitTarget(ev.target)) {
+        lpFired = false;
         ev.stopPropagation();
         ev.preventDefault();
       }
@@ -149,5 +149,5 @@ export function useLongPress<T = void>(opts: UseLongPressOptions<T>) {
     removeClickGuard();
   });
 
-  return { onStart, onMove, onEnd, consumeLongPress, isFired: () => lpFired };
+  return { onStart, onMove, onEnd, consumeLongPress };
 }
