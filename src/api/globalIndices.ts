@@ -50,9 +50,9 @@ export interface GlobalIndexQuote {
   /** 篮子项当前所处美股行情阶段（盘前/盘中/盘后），UI 用它替代固定「篮子」角标；非篮子项缺省 */
   session?: GlobalSessionLabel;
   /** 美股篮子三时段视图（盘前/盘中/盘后各自的等权涨跌幅，null=该时段暂无数据）。
-   *  供 UI 点击角标切换展示时段；pct/chg 始终为「实际所处阶段」的数据，与 session 一致。 */
+   *  不提供点击切换——UI 按 session 展示实际获取到的那个时段；pct/chg 与 session 一致。 */
   views?: { pre: BasketView | null; regular: BasketView | null; post: BasketView | null };
-  /** 日韩等**无美东时段概念**的篮子：数据所属交易日（本地市场时区 "MM-DD"，恒返回、不省略）。
+  /** 亚太（中/日/韩）等**无美东时段概念**的篮子：数据所属交易日（本地市场时区 "MM-DD"，恒返回、不省略）。
    *  这类篮子不参与美股盘前/盘中/盘后切换，若套用阶段标签会恒显「盘中」——休市/周末仍显「盘中」
    *  即误导（用户实测反馈：09-12 周六显示「盘中」）。故改标注真实数据日期（如 09-11）。 */
   date?: string;
@@ -67,7 +67,7 @@ interface EtNow {
   minutes: number; // 当日 0 点起的本地分钟数
 }
 /** 任意时区的「当下」拆解（时区经 Intl 由 ICU 处理，自动适应冬/夏令时）。
- *  美股走 America/New_York；日韩篮子需各自本地时区（Asia/Seoul / Asia/Tokyo）以标注数据所属交易日。 */
+ *  美股走 America/New_York；亚太篮子需各自本地时区（Asia/Shanghai / Asia/Seoul / Asia/Tokyo）以标注数据所属交易日。 */
 function tzNow(tz: string, d: Date = new Date()): EtNow {
   const p = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
@@ -159,41 +159,55 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
     // 科技热点（中美合为一组）：与「市场魔方」行业级口径不同——此处是**热点概念细分**，
     // 非申万电子/计算机/通信/传媒全行业口径，目的在于让用户快速看 AI/半导体/机器人等
     // 最热科技方向的涨跌，不等同于「科技板块整体」。
-    // A 股项直接引用东财概念板块指数（官方市值加权指数，返回真实点位）；
-    // 美股东财无 SOX 等主题指数覆盖，按同思路自建等权合成指数：每主题取一篮子代表性
-    // 美股（全部经网关 ulist 有实时行情），涨跌幅由成分股等权平均。
-    // 篮子覆盖原则：覆盖该主题市场公认的主线环节（如半导体含 GPU/ASIC/代工/设备/模拟，
-    // CPO 含光模块/光引擎/连接器/交换芯片，机器人含人形/手术/仓储/协作/自动化），
-    // 每只均为对应环节的代表性公司，避免单点偏差；全部成员经 scripts/verify-tech-hotspots.mjs
-    // 实测在东财网关可达。新增/更换成员后必须重跑该脚本核对前缀与名称。
-    // 东财美股 secid 规则（实测确认）：NASDAQ 上市用 105. 前缀，NYSE 上市用 106. 前缀。
-    // COHR / CIEN / ROK 均为 NYSE 上市，必须用 106.；曾误把它们统一成 105. 导致静默取不到
-    // 数据、篮子口径失真，故此处显式用 106.。
-    // 盘前/盘后阶段：改用新浪美股 gb_ 扩展行情驱动篮子（见 fetchGlobalIndices 的分级过滤），
-    // 角标同步显示当前阶段（盘前/盘中/盘后）。
-    // 日韩主题（半导体/存储）：东财 ulist 覆盖韩国 KOSPI（市场号 177）与日本东证（市场号 176）
+    // 中/美/日韩全部走「等权合成篮子」：每主题取一篮子代表性龙头（全部经网关 ulist 有实时
+    // 行情），涨跌幅由成分股等权平均。中国主题不再用东财 BK 概念板块指数——其实际口径为
+    // 板块内全部成分（含小票）对涨跌的等权贡献，与主流软件的市值加权感知背离（实测
+    // 2026-09-14：CPO 板块官方指数 +0.33%，而工业富联/中际旭创/新易盛/立讯精密等龙头
+    // 全线 -4%~-6%，主流感知为深跌）；改用龙头等权后与主流涨跌方向一致。
+    // 篮子覆盖原则：每主题 6~13 只市场公认龙头（按「该主题主流行情软件首屏、大市值、
+    // 产业链主导环节」三重标准遴选），全部成员经 scripts/verify-tech-hotspots.mjs
+    // 实测在东财网关可达（119/119）。新增/更换成员后必须重跑该脚本核对前缀与名称。
+    // 东财 secid 规则：A股沪市（60x/68x）用 1. 前缀、深市（00x/30x）用 0. 前缀；
+    // 韩 177=KOSPI，日 176=东证，美 105=NASDAQ、106=NYSE。
+    // 日韩主题（半导体）：东财 ulist 覆盖韩国 KOSPI（市场号 177）与日本东证（市场号 176）
     // 的个股行情，均为等权合成篮子；KST/JST 交易时段与美东无关，恒走常规口径、
     // 不打美东阶段标签（见 fetchGlobalIndices 的 flag 特判）。
     title: "科技热点",
     items: [
-      { secid: "90.BK0917", name: "半导体(中国)", flag: "cn" },
-      { secid: "90.BK1137", name: "存储芯片(中国)", flag: "cn" },
-      { secid: "90.BK1128", name: "CPO(中国)", flag: "cn" },
-      { secid: "90.BK1629", name: "AI应用(中国)", flag: "cn" },
-      // PCB 与 MLCC 为 AI 硬件上游核心环节（高多层板/HDI、被动元件），东财官方概念板块指数
-      { secid: "90.BK0877", name: "PCB(中国)", flag: "cn" },
-      { secid: "90.BK0890", name: "MLCC(中国)", flag: "cn" },
-      { secid: "90.BK0963", name: "商业航天(中国)", flag: "cn" },
-      { secid: "90.BK1090", name: "机器人(中国)", flag: "cn" },
+      // 半导体(中国)：代工(中芯国际/华虹) + CPU/DCU(海光信息) + ASIC(寒武纪) +
+      // 设备(北方华创/中微/拓荆) + CIS传感(豪威集团) + 封测(长电科技)，覆盖设计→制造→封测主线
+      { secid: "bkt.cn.semi", name: "半导体(中国)", flag: "cn", members: ["1.688981", "1.688256", "1.688041", "0.002371", "1.688012", "1.688072", "1.688347", "1.603501", "1.600584"] },
+      // 存储(中国)：接口芯片(澜起科技) + NOR/利基DRAM(兆易创新) + 特种存储(君正) +
+      // 模组(江波龙/佰维) + NAND(东芯股份)
+      { secid: "bkt.cn.storage", name: "存储芯片(中国)", flag: "cn", members: ["1.688008", "1.603986", "0.300223", "0.301308", "1.688525", "1.688110"] },
+      // CPO(中国)：光模块(中际旭创/新易盛/天孚通信/光迅科技/华工科技) + 光芯片(源杰科技) +
+      // 设备商集成(工业富联)
+      { secid: "bkt.cn.cpo", name: "CPO(中国)", flag: "cn", members: ["0.300308", "0.300502", "1.601138", "0.300394", "0.002281", "1.688498", "0.000988"] },
+      // PCB(中国)：AI 高多层板/HDI 主力厂商（沪电/胜宏/深南/东山/生益/鹏鼎）
+      { secid: "bkt.cn.pcb", name: "PCB(中国)", flag: "cn", members: ["0.002463", "0.300476", "0.002916", "0.002384", "1.600183", "0.002938"] },
+      // MLCC(中国)：被动元件龙头（三环集团/风华高科/顺络电子/法拉电子/江海股份） +
+      // 军用电容(火炬电子)
+      { secid: "bkt.cn.mlcc", name: "MLCC(中国)", flag: "cn", members: ["0.300408", "0.000636", "0.002138", "1.600563", "0.002484", "1.603678"] },
+      // AI应用(中国)：大模型(科大讯飞) + 安防AI(海康威视) + 金融信息服务(同花顺) +
+      // 办公(金山办公) + 搜索(三六零) + 金融IT(恒生电子) + 工业(中控技术/宝信软件)
+      { secid: "bkt.cn.aiapp", name: "AI应用(中国)", flag: "cn", members: ["0.002230", "0.002415", "0.300033", "1.688111", "1.601360", "1.600570", "1.688777", "1.600845"] },
+      // 商业航天(中国)：卫星运营(中国卫通) + 卫星制造(中国卫星) + 航天电子/电器 +
+      // 遥感应用(中科星图) + 卫星金属3D打印(铂力特)
+      { secid: "bkt.cn.space", name: "商业航天(中国)", flag: "cn", members: ["1.601698", "1.600118", "1.600879", "0.002025", "1.688568", "1.688333"] },
+      // 机器人(中国)：Tier1执行器总成(三花智控/拓普集团) + 工业自动化(汇川/埃斯顿) +
+      // 智驾(德赛西威) + 人形执行器(鸣志/绿的谐波) + 扫地机(石头科技) + 代工(环旭电子) +
+      // 连接(电连技术) + 制造(光弘科技)，覆盖本体/核心部件/应用
+      { secid: "bkt.cn.robot", name: "机器人(中国)", flag: "cn", members: ["0.002050", "1.601689", "0.300124", "0.002920", "0.002747", "1.603728", "1.688017", "1.688169", "1.601231", "0.300679", "0.300735"] },
       // 半导体(韩国)：三星电子(存储/代工/手机 SoC) + SK海力士(HBM/DRAM，全球存储双寡头)。
       // 东财 177 = KOSPI 市场号，ulist 实测可用
       { secid: "bkt.kr.semi", name: "半导体(韩国)", flag: "kr", members: ["177.005930", "177.000660"] },
       // 半导体(日本)：东京电子(涂胶显影/刻蚀设备) + 爱德万测试(SoC/存储测试机) +
-      // 迪斯科(切割/研磨设备) + 信越化学(硅片)，设备与材料是日本半导体支柱环节。
+      // 迪斯科(切割/研磨设备) + 信越化学(硅片) + Lasertec(EUV掩膜检测)，
+      // 设备与材料是日本半导体支柱环节。
       // 东财 176 = 日本东证市场号，8035 实测可用（东京电子）
-      { secid: "bkt.jp.semi", name: "半导体(日本)", flag: "jp", members: ["176.8035", "176.6857", "176.6146", "176.4063"] },
+      { secid: "bkt.jp.semi", name: "半导体(日本)", flag: "jp", members: ["176.8035", "176.6857", "176.6146", "176.4063", "176.6920"] },
       {
-        // GPU/ASIC(英伟达/博通/AMD) + 代工/设备(台积电/阿斯麦/应用材料/泛林) +
+        // GPU/ASIC(英伟达/博通/AMD) + 代工/设备(台积电/阿斯麦/应用材料/泛林/科磊) +
         // CPU/模拟/连接(英特尔/高通/德仪/ADI/迈威尔)，覆盖半导体主线环节
         secid: "bkt.us.semi",
         name: "半导体(美国)",
@@ -211,36 +225,37 @@ export const GLOBAL_INDEX_GROUPS: GlobalIndexGroup[] = [
           "105.MRVL",
           "105.AMAT",
           "105.LRCX",
+          "105.KLAC",
         ],
       },
       // 内存(MU/SanDisk) + 硬盘(希捷/西数)：存储两大形态全覆盖
       { secid: "bkt.us.storage", name: "存储芯片(美国)", flag: "us", members: ["105.MU", "105.SNDK", "105.STX", "105.WDC"] },
-      // 光模块/光引擎(Coherent/Lumentum/Ciena/新易盛对标 Fabrinet) + 连接/接入(AAOI/
-      // Astera Labs) + 连接器/光纤(安费诺/康宁)，覆盖 CPO 产业链
+      // 交换机(Arista/思科) + 光模块/光引擎(Coherent/Lumentum/Ciena/Fabrinet) +
+      // 连接/接入(Credo/Astera Labs/AAOI) + 连接器/光纤(安费诺/康宁)，覆盖 CPO 产业链
       {
         secid: "bkt.us.cpo",
         name: "CPO(美国)",
         flag: "us",
-        members: ["106.COHR", "105.LITE", "106.CIEN", "106.FN", "105.AAOI", "105.ALAB", "106.APH", "106.GLW"],
+        members: ["106.ANET", "106.COHR", "105.CRDO", "105.ALAB", "106.CIEN", "105.LITE", "105.CSCO", "106.APH", "106.GLW", "106.FN", "105.AAOI"],
       },
-      // 云与大模型平台(微软/谷歌/Meta/亚马逊) + AI 软件应用(Palantir/ServiceNow/
-      // 赛富时/Adobe/AppLovin)，平台与行业应用兼顾
+      // 云与大模型平台(微软/谷歌/Meta/亚马逊/甲骨文) + AI 软件应用(Palantir/ServiceNow/
+      // 赛富时/Adobe/AppLovin/Snowflake)，平台与行业应用兼顾
       {
         secid: "bkt.us.aiapp",
         name: "AI应用(美国)",
         flag: "us",
-        members: ["105.PLTR", "105.MSFT", "105.GOOG", "105.META", "105.AMZN", "106.NOW", "106.CRM", "105.ADBE", "105.APP"],
+        members: ["105.PLTR", "105.MSFT", "105.GOOG", "105.META", "105.AMZN", "106.ORCL", "106.NOW", "106.CRM", "105.ADBE", "105.APP", "106.SNOW"],
       },
       // 火箭复用(Rocket Lab) + 低轨星座(AST) + 月球任务(Intuitive Machines) +
       // 空间基础设施(Redwire) + 卫星遥感(Planet) + 亚轨道旅游(维珍银河)
       { secid: "bkt.us.space", name: "商业航天(美国)", flag: "us", members: ["105.RKLB", "105.ASTS", "105.LUNR", "106.RDW", "106.PL", "106.SPCE"] },
       {
-        // 人形/具身智能(特斯拉 Optimus + 英伟达 GR00T 平台) + 手术(直觉外科) +
-        // 协作/半导体测试(泰瑞达) + 工业自动化(罗克韦尔) + 仓储(Symbotic) + 配送(Serve)
+        // 人形/具身智能(特斯拉 Optimus + 英伟达 GR00T 平台) + 手术(直觉外科/PROCEPT) +
+        // 半导体测试(泰瑞达) + 工业自动化与传感(霍尼韦尔/艾默生/罗克韦尔) + 仓储(Symbotic)
         secid: "bkt.us.robot",
         name: "机器人(美国)",
         flag: "us",
-        members: ["105.ISRG", "105.TER", "106.ROK", "105.SYM", "105.SERV", "105.TSLA", "105.NVDA"],
+        members: ["105.TSLA", "105.NVDA", "105.ISRG", "105.PRCT", "105.TER", "105.HON", "106.EMR", "105.SYM", "106.ROK"],
       },
     ],
   },
@@ -298,7 +313,7 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
   // 出的数值无指数含义，故 price 置 null，UI 仅展示涨跌幅（与 A 股官方板块指数区分）。
   const session = usSession();
   const et = etNow();
-  // 扩展行情恒拉取：美股篮子支持点击角标切换展示时段（盘前/盘中/盘后），
+  // 扩展行情恒拉取：美股篮子按 session 直接展示对应时段数据（无点击切换），
   // 非当前阶段的成分会被新鲜度过滤自然剔除 → 该时段视图为 null → UI 显示「暂无数据」，不误导
   const extMap = new Map<string, SinaUsExtQuote>();
   {
@@ -339,16 +354,17 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
   for (const g of GLOBAL_INDEX_GROUPS) {
     for (const it of g.items) {
       if (!it.members) continue;
-      // 日韩篮子（flag kr/jp）：KST/JST 交易时段与美东无关，成分也不在新浪美股扩展行情内——
+      // 亚太篮子（flag cn/kr/jp）：各自本地交易时段与美东无关，成分也不在新浪美股扩展行情内——
       // 若套用美东 session，盘前/盘后时段会因 extMap 无数据而误显「暂无数据」。
       // 故恒走常规口径（东财 ulist 等权），且不打美东阶段标签（与亚太指数一致，收盘后展示当日收盘）。
-      const nonUs = it.flag === "kr" || it.flag === "jp";
+      const nonUs = it.flag === "cn" || it.flag === "kr" || it.flag === "jp";
       if (nonUs) {
         const r = computeBasket(it, map, extMap, memberTs, "regular", et);
         // 无美东时段概念 → 角标改标注**本地市场时区**的数据所属交易日，且恒显示（当日也不省略）：
         // 休市/周末显示上一交易日（如周六 09-12 显示 09-11），杜绝恒显「盘中」造成行情状态误读。
         // 必须用成分股本地时区而非 ET：韩股 09:00 KST 开盘 ≈ 前一日 20:00 ET，用 ET 会把日期算少一天。
-        const tz = it.flag === "kr" ? "Asia/Seoul" : "Asia/Tokyo";
+        const tz =
+          it.flag === "kr" ? "Asia/Seoul" : it.flag === "jp" ? "Asia/Tokyo" : "Asia/Shanghai";
         const latestTs = latestMemberTs(it, memberTs);
         map.set(it.secid, {
           secid: it.secid,

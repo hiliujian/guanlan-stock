@@ -182,7 +182,7 @@
                       <text class="idx-item-name">{{ it.name }}</text>
                       <!-- 数据角标（卡片右上角，靠 .idx-item-name 的 flex:1 顶到右侧）：
                            美股篮子 = 实际获取到的时段（盘前/盘中/盘后，由数据源 session 决定）或非当日时的日期；
-                           日韩篮子 = 数据所属交易日日期（如 09-11）。均为只读展示，无点击切换。
+                           中日韩篮子 = 数据所属交易日日期（如 09-11）。均为只读展示，无点击切换。
                            所选数据不存在时不渲染任何标签，杜绝「角标配暂无数据」 -->
                       <text
                         v-if="it.members && bktHasData(it) && bktLabel(it)"
@@ -482,7 +482,7 @@ function sessionKey(s: string | undefined): BktView | undefined {
 function bktData(it: { secid: string }): { pct: number | null; chg: number | null; date?: string } | null {
   const q = qOf(it.secid);
   if (!q) return null;
-  if (!q.views) return { pct: q.pct, chg: q.chg }; // 非美股篮子（指数/日韩/商品）走原口径
+  if (!q.views) return { pct: q.pct, chg: q.chg }; // 非美股篮子（指数/中日韩篮子/商品）走原口径
   const k = sessionKey(q.session);
   return k ? (q.views[k] ?? null) : null; // 拿到哪个时段的数据就展示哪个；session 无标签（无数据）→ null
 }
@@ -495,7 +495,7 @@ function bktHasData(it: { secid: string }): boolean {
 // 角标文案，三类数据源依次取用（纯展示，无切换）：
 //   ① 美股篮子·数据非当日 → 日期（如 09-04），替代「盘中」防误导；
 //   ② 美股篮子·数据为当日 → 盘前/盘中/盘后（数据源 session 已定）；
-//   ③ 日韩篮子（无美东时段概念）→ 数据所属交易日日期（如 09-11），恒显示。
+//   ③ 中日韩篮子（无美东时段概念）→ 数据所属交易日日期（如 09-11），恒显示。
 // 拿不到任何文案时返回空串，模板据此不渲染角标（不出现空标签占位）。
 function bktLabel(it: { secid: string }): string {
   const q = qOf(it.secid);
@@ -506,7 +506,7 @@ function bktLabel(it: { secid: string }): string {
     if (v?.date) return v.date;
     return q.session || "";
   }
-  return q.date || ""; // 日韩篮子
+  return q.date || ""; // 中日韩篮子
 }
 function bktPct(it: { secid: string }): string {
   const d = bktData(it);
