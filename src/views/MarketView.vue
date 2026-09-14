@@ -495,7 +495,8 @@ function bktHasData(it: { secid: string }): boolean {
 // 角标文案，三类数据源依次取用（纯展示，无切换）：
 //   ① 美股篮子·数据非当日 → 日期（如 09-04），替代「盘中」防误导；
 //   ② 美股篮子·数据为当日 → 盘前/盘中/盘后（数据源 session 已定）；
-//   ③ 中日韩篮子（无美东时段概念）→ 数据所属交易日日期（如 09-11），恒显示。
+//   ③ 中日韩篮子（无美东时段概念）→ 数据所属交易日日期（如 09-11），恒显示；
+//      本地处于该市场交易时段时改显「盘中」，告知用户此刻数据实时刷新。
 // 拿不到任何文案时返回空串，模板据此不渲染角标（不出现空标签占位）。
 function bktLabel(it: { secid: string }): string {
   const q = qOf(it.secid);
@@ -506,7 +507,8 @@ function bktLabel(it: { secid: string }): string {
     if (v?.date) return v.date;
     return q.session || "";
   }
-  return q.date || ""; // 中日韩篮子
+  const inNow = bktInSession(it.secid);
+  return inNow ? "盘中" : q.date || ""; // 中日韩篮子：盘中显「盘中」，否则显数据日期
 }
 function bktPct(it: { secid: string }): string {
   const d = bktData(it);
@@ -517,6 +519,24 @@ function bktCls(it: { secid: string }): string {
   const d = bktData(it);
   if (!d || d.pct == null || !Number.isFinite(d.pct)) return 'na';
   return d.pct > 0 ? 'up' : d.pct < 0 ? 'down' : 'flat';
+}
+// 中日韩篮子盘中态判定（本地市场时区）：当前处于该市场交易时段 → 角标显「盘中」，
+// 提示此刻数据实时刷新；休市/周末/非交易时段仍显数据所属交易日日期（如 09-14），防误导。
+function bktInSession(secid: string): boolean {
+  const it = GLOBAL_INDEX_GROUPS.flatMap((g) => g.items).find((i) => i.secid === secid);
+  const tz = it?.flag === "kr" ? "Asia/Seoul" : it?.flag === "jp" ? "Asia/Tokyo" : "Asia/Shanghai";
+  const p = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const g = (t: string) => p.find((x) => x.type === t)?.value || "";
+  const wd = g("weekday");
+  if (wd === "Sat" || wd === "Sun") return false;
+  const m = (parseInt(g("hour"), 10) % 24) * 60 + parseInt(g("minute"), 10);
+  return (m >= 570 && m < 690) || (m >= 780 && m < 900); // 09:30–11:30, 13:00–15:00
 }
 
 // ---------------- 期指持仓（中金所官方，最近已发布交易日） ----------------
