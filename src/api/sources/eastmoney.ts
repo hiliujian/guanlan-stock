@@ -15,11 +15,20 @@ import type { Kline, Trend } from "@/utils/period";
 import { parseTrend } from "@/utils/period";
 import type { RawRealtime, SearchHit } from "./types";
 
-// 东方财富实时行情价格按精度缩放：A 股/指数 ×100，港股/美股 ×1000
+// 东方财富 stock/get 的价格字段（f43/f60/f46/f44/f45）按 10^f59（价格精度位数）
+// 缩放：A股个股/指数 f59=2（×100），ETF/基金与港股/美股 f59=3（×1000）。
+// f59 由网关默认 fields 携带并已实测全市场返回；缺失或非法时按市场兜底
+// （港美股 ×1000，其余 ×100，即历史口径）。
 function emPriceScale(secid: string): number {
   const m = secid.split(".")[0];
   if (m === "116" || m === "100" || m === "105") return 1000;
   return 100;
+}
+
+function emScaleFromData(data: Record<string, unknown>, secid: string): number {
+  const f59 = Number(data.f59);
+  if (Number.isInteger(f59) && f59 >= 0 && f59 <= 8) return Math.pow(10, f59);
+  return emPriceScale(secid);
 }
 
 function fmtEMTime(ts: number): string {
@@ -57,7 +66,7 @@ export function parseEMKline(text: string): Kline[] {
 export function parseEMRealtime(text: string, secid: string): RawRealtime | null {
   const data = JSON.parse(text)?.data;
   if (!data) return null;
-  const scale = emPriceScale(secid);
+  const scale = emScaleFromData(data, secid);
   const num = (k: string) => (data[k] != null && data[k] !== "" ? +data[k] : 0);
   return {
     name: data.f58 || "",
