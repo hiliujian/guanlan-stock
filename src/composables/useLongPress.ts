@@ -17,7 +17,7 @@
 //   守卫未命中时保留 lpFired 交给行级 consumeLongPress() 兜底，双保险堵住 PC 松手跳转。
 import { onUnmounted } from "vue";
 
-export interface UseLongPressOptions<T> {
+interface UseLongPressOptions<T> {
   /** 触发长按的时长阈值(ms)，默认 500 */
   duration?: number;
   /** 长按触发回调，回传按下时携带的 item */

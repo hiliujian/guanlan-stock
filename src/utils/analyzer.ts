@@ -968,12 +968,12 @@ function applyIntradayOverride(
 //   · 关注/观望（watch/wait）不产生持仓动作，旧口径把它们按「方向猜对」计入胜率、
 //     收益却记 0 摊进均值，震荡市会同时给出「胜率 65% · 平均收益 -0.8%」的自相矛盾数字，
 //     且对交易者无操作意义，故整体剔除。
-export interface SignalClassStat {
+interface SignalClassStat {
   count: number; // 样本数
   winRate: number; // 0~1：所有可交易操作（买点/持有/卖点）20 日方向正确率占比
   avgRet: number; // 平均20日前瞻收益（小数，0.042=+4.2%，买点/卖点均已按对应口径扣交易成本）
 }
-export interface SignalWinRateResult {
+interface SignalWinRateResult {
   horizon: number; // 前瞻评估窗口（交易日）
   combined: SignalClassStat; // 买点 + 持有 + 卖点合并统计
 }

@@ -16,7 +16,7 @@ const follows = ref<Set<string>>(new Set());
 // 跨组件打开「关注 / 粉丝」浮层的共享信号（ProfileView 置 open+mode，CommunityView 监听并打开 FollowListView）
 const followPanelOpen = ref(false);
 // 弹层内容方向：following=我关注的用户列表；fans=关注我的粉丝列表
-export type FollowPanelMode = "following" | "fans";
+type FollowPanelMode = "following" | "fans";
 const followPanelMode = ref<FollowPanelMode>("following");
 
 let loadStarted = false;

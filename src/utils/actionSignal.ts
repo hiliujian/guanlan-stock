@@ -16,12 +16,12 @@
 // =====================================================================
 
 /** 分析引擎输出的技术信号档位（与本模块的「动作档位」解耦） */
-export type EngineSignalLevel = "buy" | "sell" | "hold" | "watch" | "wait";
+type EngineSignalLevel = "buy" | "sell" | "hold" | "watch" | "wait";
 
 /** 对外的仓位动作档位 */
-export type ActionLevel = "buy" | "add" | "watch" | "hold" | "wait" | "reduce";
+type ActionLevel = "buy" | "add" | "watch" | "hold" | "wait" | "reduce";
 
-export interface ActionSignal {
+interface ActionSignal {
   /** 动作档位（决定配色与语义，不复用引擎 level） */
   level: ActionLevel;
   /** 展示标签：买点 / 加仓 / 关注 / 持有 / 观望 / 减仓 */
@@ -31,7 +31,7 @@ export interface ActionSignal {
 }
 
 /** 动作档位的展示类型（供 TS 约束，运行时即 ActionSignal） */
-export interface ActionChip {
+interface ActionChip {
   text: string;
   cls: string;
 }

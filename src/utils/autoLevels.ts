@@ -497,8 +497,8 @@ function ensureStructLine(
 
 // 交易参考线状态：ok=合格可执行参考；broken=破位/现价错误侧（标注已破位）；
 // weak=簇存在但触碰/打分证据不足（标注弱参考）；ref=无簇兜底最近短线摆动点/窗口极值。
-export type TradeLineStatus = "ok" | "broken" | "weak" | "ref";
-export interface TradeLineState {
+type TradeLineStatus = "ok" | "broken" | "weak" | "ref";
+interface TradeLineState {
   price: number;
   status: TradeLineStatus;
   tag: string;

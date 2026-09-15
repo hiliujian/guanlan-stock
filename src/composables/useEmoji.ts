@@ -15,7 +15,7 @@ export const EMOJIS: string[] = [
   "🎉","🎊","🎁","🧧","📈","📉","💰","🤑",
 ];
 
-export interface UseEmojiOptions {
+interface UseEmojiOptions {
   maxLength?: number;
   /** 插入 / 退格后回调（如发帖需同步 # 联想解析），参数为最新文本 */
   onAfterInsert?: (text: string) => void;

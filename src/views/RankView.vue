@@ -65,7 +65,7 @@ import { fetchStockHeat } from "@/api/heat";
 import { resolveSecid, marketCharFor } from "@/utils/period";
 import { staleGet, staleSet } from "@/utils/staleCache";
 
-export interface RankRow {
+interface RankRow {
   code: string;
   market: string;
   name: string;
