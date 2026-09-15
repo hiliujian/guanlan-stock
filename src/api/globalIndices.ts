@@ -116,11 +116,13 @@ const BASKET_SESSIONS: Record<string, [number, number][]> = {
 function basketTz(flag: string): string {
   return BASKET_TZ[flag] ?? BASKET_TZ.cn;
 }
-/** 该市场此刻是否处于本地常规交易时段（周末排除；节假日无日历不识别）。 */
+/** 该市场今日数据是否属「当前」：工作日且已开盘未收盘（**含午休**——午休展示的是今日晨盘
+ *  实拍数据，角标语义与盘中一致；用户实测 09-15 午休误显日期而非「盘中」）。
+ *  周末排除；节假日无日历不识别，由数据戳分支（dataDay 非今日）兜底标注实际日期。 */
 function flagInSession(flag: string, t = tzNow(basketTz(flag))): boolean {
   if (t.weekday === "Sat" || t.weekday === "Sun") return false;
   const win = BASKET_SESSIONS[flag] ?? BASKET_SESSIONS.cn;
-  return win.some(([a, b]) => t.minutes >= a && t.minutes < b);
+  return t.minutes >= win[0][0] && t.minutes < win[win.length - 1][1];
 }
 /** 中日韩科技热点篮子「盘中」判定（供行情页角标使用）：按篮子所属市场的本地钟。 */
 export function basketInSession(secid: string): boolean {
@@ -391,11 +393,11 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
         const flag = it.flag || "cn";
         const r = computeBasket(it, map, extMap, memberTs, "regular", et);
         // 角标描述「展示数据所属交易日」，按篮子所属市场的本地钟 + 成分股数据戳混合判定：
-        //   · 盘中 → 省略日期（UI 显「盘中」，提示实时刷新）；
-        //   · 数据戳为非今日（周末/节假日，f124 停在最近实际交易日）→ 以数据实际日期为准；
+        //   · 工作日已开盘未收盘（含午休，晨盘数据实拍）→ 省略日期（UI 显「盘中」）；
+        //   · 数据戳为非今日（节假日，f124 停在最近实际交易日）→ 以数据实际日期为准；
         //   · 今日数据尚未产出（盘前/集合竞价/周末）→ 上一交易日——盘前 f2=昨收、涨跌 0.00，
         //     集合竞价期间 f124 可能已跳到今日，若照抄会把昨收数据误标成今日（09-15 盘前实测）；
-        //   · 午休/收盘后（今日开盘时刻已过）→ 今日（晨盘/收盘数据已产出）。
+        //   · 收盘后 → 今日（当日收盘数据已产出）。
         const tz = basketTz(flag);
         const now = tzNow(tz);
         const inSession = flagInSession(flag, now);
@@ -434,11 +436,13 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
         };
         // r = 实际展示数据（盘前/盘后时段取对应视图；休市/盘中取常规口径）
         const r = session === "pre" || session === "post" ? views[session] : views.regular;
-        // 角标恒等于「实际展示数据所属阶段」：label 已按时钟+新鲜度确定阶段；
-        // 休市（深夜/周末/假期）时 label 为 undefined 而常规口径仍有上一交易日收盘数据 →
-        // 补「盘中」展示最近收盘，使前端可直接按 session 渲染、无需再回退其它时段（杜绝标签配「暂无数据」）。
-        const sessionLabel =
-          label ?? (session === "closed" && views.regular.pct != null ? "盘中" : undefined);
+        // 阶段标签须「标签与数据同真」：
+        //   · 盘前/盘后/盘中：label 已按时钟+新鲜度实证，直接采用；
+        //   · 休市（深夜/周末/假期）：无实时数据可言——若常规口径数据是「用户视角今日」
+        //     （如北京早晨刚收盘的美股当日数据）打「盘中」实为昨夜收盘，误导（09-15 实测
+        //     北京周二上午美股篮子显「盘中」实为周一收盘）→ 此时省略标签，由 views.regular.date
+        //     承担日期角标（如 09-14）；数据戳也非用户今日（周末）则同样交给 date。
+        const sessionLabel = label;
         map.set(it.secid, { secid: it.secid, name: it.name, price: null, pct: r.pct, chg: r.chg, views, session: sessionLabel });
       }
     }
@@ -510,10 +514,18 @@ function extFresh(
 function mmdd(t: { month: number; day: number }): string {
   return String(t.month).padStart(2, "0") + "-" + String(t.day).padStart(2, "0");
 }
-/** 数据日期标签：当日省略，非当日返回如 "09-04"——供 UI 以日期角标替代「盘中/盘后」防误导。 */
-function etDateTag(t: { month: number; day: number }, today: EtNow): string | undefined {
-  if (t.month === today.month && t.day === today.day) return undefined;
-  return mmdd(t);
+/** 篮子成分最新行情时间戳（秒，f124）换算数据戳本地钟的 "MM-DD" 日期角标：
+ *  美股成分股戳即美东钟，「数据戳日期 ≠ 用户视角今日（北京）」时如实标注——
+ *  美股周一收盘数据的美东日期是周一，北京时间已是周二，用户视角这是「昨天」的数据，
+ *  角标必须标注（如 09-14），不能因美东视角「当日」而隐藏日期、又配休市兜底的「盘中」
+ *  角标误导（用户实测：北京周二上午美股篮子显「盘中」实为周一收盘）。
+ *  返回 {tag, isToday}：isToday=数据戳与「用户本地今日」同日（省略角标的唯一条件）。 */
+function dataStampDateTag(ts: number, stampTz: string): { tag?: string; isToday: boolean } {
+  if (!ts) return { isToday: true };
+  const t = tzNow(stampTz, new Date(ts * 1000));
+  const here = tzNow("Asia/Shanghai");
+  const isToday = t.month === here.month && t.day === here.day;
+  return { tag: isToday ? undefined : mmdd(t), isToday };
 }
 /** 篮子成分的最新行情时间戳（秒，f124）；无有效时间戳返回 0。 */
 function latestMemberTs(it: GlobalIndexItem, memberTs: Map<string, number>): number {
@@ -530,7 +542,7 @@ function prevTradingDayTag(tz: string): string {
 }
 
 /** 篮子等权计算：正式/休市走东财常规口径；盘前/盘后走新浪扩展行情并施加分级过滤。
- *  regular 视图附带 date（成分股最新行情时间戳换算的 ET 日期，非当日才有）；
+ *  regular 视图附带 date（成分股最新行情时间戳换算的**用户视角**日期，非用户今日才有）；
  *  pre/post 视图行已被 extFresh 过滤为「当日」，天然无陈旧日期问题，不附 date。 */
 function computeBasket(
   it: GlobalIndexItem,
@@ -568,12 +580,15 @@ function computeBasket(
     .map((m) => map.get(m))
     .filter((q): q is GlobalIndexQuote => !!q && q.price != null && q.pct != null);
   if (!rows.length) return { pct: null, chg: null };
-  // 数据日期：取成分股最新行情时间戳（f124）换算 ET 日期；假期/休市数据定格在上一交易日
-  // → 非当日返回 date 标签，UI 据此把「盘中」角标替换为日期（如 09-04）
+  // 数据日期：取成分股最新行情时间戳（f124）换算**用户视角**日期（北京）——美股周一收盘
+  // 数据在美东是「当日」，但北京时间已是周二，须标注 09-14。
+  // 数据戳与用户今日同日才省略 date；假期/休市数据定格在上一交易日 → 非当日返回 date 标签，
+  // UI 据此把「盘中」角标替换为日期（如 09-11）
   const latest = latestMemberTs(it, memberTs);
+  const { tag, isToday } = dataStampDateTag(latest, "Asia/Shanghai");
   return {
     pct: mean(rows.map((q) => q.pct as number)),
     chg: mean(rows.map((q) => q.chg ?? 0)),
-    date: latest ? etDateTag(etNow(new Date(latest * 1000)), et) : undefined,
+    date: isToday ? undefined : tag,
   };
 }
