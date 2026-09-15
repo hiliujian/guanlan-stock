@@ -52,9 +52,9 @@ export interface GlobalIndexQuote {
   /** 美股篮子三时段视图（盘前/盘中/盘后各自的等权涨跌幅，null=该时段暂无数据）。
    *  不提供点击切换——UI 按 session 展示实际获取到的那个时段；pct/chg 与 session 一致。 */
   views?: { pre: BasketView | null; regular: BasketView | null; post: BasketView | null };
-  /** 亚太（中/日/韩）等**无美东时段概念**的篮子：数据所属交易日（本地市场时区 "MM-DD"，恒返回、不省略）。
-   *  这类篮子不参与美股盘前/盘中/盘后切换，若套用阶段标签会恒显「盘中」——休市/周末仍显「盘中」
-   *  即误导（用户实测反馈：09-12 周六显示「盘中」）。故改标注真实数据日期（如 09-11）。 */
+  /** 亚太（中/日/韩）等**无美东时段概念**的篮子：非交易时段时标注数据所属交易日（本地市场时区 "MM-DD"）。
+   *  盘中省略（UI 显「盘中」提示实时刷新）；盘前/周末/节假日 → 最近已完结交易日（如 09-14），
+   *  杜绝盘前把「昨收 0.00%」当今日数据误导（用户实测反馈：09-15 盘前角标误显 09-15）。 */
   date?: string;
 }
 
@@ -97,6 +97,35 @@ function usSession(d: Date = new Date()): UsSession {
   if (et.minutes >= 570 && et.minutes < 960) return "regular";
   if (et.minutes >= 960 && et.minutes < 1200) return "post";
   return "closed";
+}
+
+// ---------------- 亚太篮子（中/日/韩）本地交易时段 ----------------
+// 各市场常规交易时段（本地时区分钟数，午休拆两段）与 IANA 时区：
+// CN 沪深 09:30–11:30 / 13:00–15:00；KR KRX 09:00–12:00 / 13:00–15:30；
+// JP 东证 09:00–11:30 / 12:30–15:30（2024-11 起收盘延至 15:30）。
+const BASKET_TZ: Record<string, string> = {
+  cn: "Asia/Shanghai",
+  kr: "Asia/Seoul",
+  jp: "Asia/Tokyo",
+};
+const BASKET_SESSIONS: Record<string, [number, number][]> = {
+  cn: [[570, 690], [780, 900]],
+  kr: [[540, 720], [780, 930]],
+  jp: [[540, 690], [750, 930]],
+};
+function basketTz(flag: string): string {
+  return BASKET_TZ[flag] ?? BASKET_TZ.cn;
+}
+/** 该市场此刻是否处于本地常规交易时段（周末排除；节假日无日历不识别）。 */
+function flagInSession(flag: string, t = tzNow(basketTz(flag))): boolean {
+  if (t.weekday === "Sat" || t.weekday === "Sun") return false;
+  const win = BASKET_SESSIONS[flag] ?? BASKET_SESSIONS.cn;
+  return win.some(([a, b]) => t.minutes >= a && t.minutes < b);
+}
+/** 中日韩科技热点篮子「盘中」判定（供行情页角标使用）：按篮子所属市场的本地钟。 */
+export function basketInSession(secid: string): boolean {
+  const it = GLOBAL_INDEX_GROUPS.flatMap((g) => g.items).find((i) => i.secid === secid);
+  return flagInSession(it?.flag === "kr" || it?.flag === "jp" ? it.flag : "cn");
 }
 
 // 全球重要市场指数目录（按地区/品种分组）。国家/地区标的用 flag（列表前小国旗）；
@@ -359,20 +388,39 @@ export async function fetchGlobalIndices(): Promise<Map<string, GlobalIndexQuote
       // 故恒走常规口径（东财 ulist 等权），且不打美东阶段标签（与亚太指数一致，收盘后展示当日收盘）。
       const nonUs = it.flag === "cn" || it.flag === "kr" || it.flag === "jp";
       if (nonUs) {
+        const flag = it.flag || "cn";
         const r = computeBasket(it, map, extMap, memberTs, "regular", et);
-        // 无美东时段概念 → 角标改标注**本地市场时区**的数据所属交易日，且恒显示（当日也不省略）：
-        // 休市/周末显示上一交易日（如周六 09-12 显示 09-11），杜绝恒显「盘中」造成行情状态误读。
-        // 必须用成分股本地时区而非 ET：韩股 09:00 KST 开盘 ≈ 前一日 20:00 ET，用 ET 会把日期算少一天。
-        const tz =
-          it.flag === "kr" ? "Asia/Seoul" : it.flag === "jp" ? "Asia/Tokyo" : "Asia/Shanghai";
+        // 角标描述「展示数据所属交易日」，按篮子所属市场的本地钟 + 成分股数据戳混合判定：
+        //   · 盘中 → 省略日期（UI 显「盘中」，提示实时刷新）；
+        //   · 数据戳为非今日（周末/节假日，f124 停在最近实际交易日）→ 以数据实际日期为准；
+        //   · 今日数据尚未产出（盘前/集合竞价/周末）→ 上一交易日——盘前 f2=昨收、涨跌 0.00，
+        //     集合竞价期间 f124 可能已跳到今日，若照抄会把昨收数据误标成今日（09-15 盘前实测）；
+        //   · 午休/收盘后（今日开盘时刻已过）→ 今日（晨盘/收盘数据已产出）。
+        const tz = basketTz(flag);
+        const now = tzNow(tz);
+        const inSession = flagInSession(flag, now);
+        const weekday = now.weekday !== "Sat" && now.weekday !== "Sun";
+        const openMin = (BASKET_SESSIONS[flag] ?? BASKET_SESSIONS.cn)[0][0];
+        const beforeOpen = weekday && now.minutes < openMin;
         const latestTs = latestMemberTs(it, memberTs);
+        const dataDay = latestTs > 0 ? tzNow(tz, new Date(latestTs * 1000)) : null;
+        let date: string | undefined;
+        if (inSession) {
+          date = undefined;
+        } else if (dataDay && !(dataDay.month === now.month && dataDay.day === now.day)) {
+          date = mmdd(dataDay);
+        } else if (!weekday || beforeOpen) {
+          date = prevTradingDayTag(tz);
+        } else {
+          date = mmdd(now);
+        }
         map.set(it.secid, {
           secid: it.secid,
           name: it.name,
           price: null,
           pct: r.pct,
           chg: r.chg,
-          date: latestTs ? mmdd(tzNow(tz, new Date(latestTs * 1000))) : undefined,
+          date,
           session: undefined,
         });
       } else {
@@ -470,6 +518,15 @@ function etDateTag(t: { month: number; day: number }, today: EtNow): string | un
 /** 篮子成分的最新行情时间戳（秒，f124）；无有效时间戳返回 0。 */
 function latestMemberTs(it: GlobalIndexItem, memberTs: Map<string, number>): number {
   return (it.members ?? []).reduce((mx, m) => Math.max(mx, memberTs.get(m) ?? 0), 0);
+}
+
+/** 上一交易日 "MM-DD"（篮子本地时区；仅跳过周末，节假日无日历接受误差，配合 f124 数据戳兜底）。 */
+function prevTradingDayTag(tz: string): string {
+  for (let back = 1; back <= 7; back++) {
+    const t = tzNow(tz, new Date(Date.now() - back * 86400000));
+    if (t.weekday !== "Sat" && t.weekday !== "Sun") return mmdd(t);
+  }
+  return "";
 }
 
 /** 篮子等权计算：正式/休市走东财常规口径；盘前/盘后走新浪扩展行情并施加分级过滤。

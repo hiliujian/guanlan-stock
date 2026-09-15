@@ -264,7 +264,7 @@ import KlineCard from "@/components/KlineCard.vue";
 import StockTag from "@/components/StockTag.vue";
 import { fetchHotSearches, recordSearch, type HotStock } from "@/api/hot";
 import { fetchBundle, fetchSnapshot, fetchNews, searchStocks, localSuggest, resolveIndexForStock, type SearchHit, type QuoteBundle, type NewsItem } from "@/api/quote";
-import { fetchGlobalIndices, GLOBAL_INDEX_GROUPS, type GlobalIndexQuote } from "@/api/globalIndices";
+import { fetchGlobalIndices, GLOBAL_INDEX_GROUPS, basketInSession, type GlobalIndexQuote } from "@/api/globalIndices";
 import { fetchCffexPositions, type CffexPositions } from "@/api/cffex";
 import { getMarketStatus } from "@/utils/marketStatus";
 import { staleGet, staleSet } from "@/utils/staleCache";
@@ -520,23 +520,10 @@ function bktCls(it: { secid: string }): string {
   if (!d || d.pct == null || !Number.isFinite(d.pct)) return 'na';
   return d.pct > 0 ? 'up' : d.pct < 0 ? 'down' : 'flat';
 }
-// 中日韩篮子盘中态判定（本地市场时区）：当前处于该市场交易时段 → 角标显「盘中」，
-// 提示此刻数据实时刷新；休市/周末/非交易时段仍显数据所属交易日日期（如 09-14），防误导。
+// 中日韩篮子盘中态判定：逻辑随数据口径收敛进 globalIndices.ts（basketInSession，
+// 含 KR/JP 各自交易时段），此处仅透传，保证角标判定与数据侧单一来源一致。
 function bktInSession(secid: string): boolean {
-  const it = GLOBAL_INDEX_GROUPS.flatMap((g) => g.items).find((i) => i.secid === secid);
-  const tz = it?.flag === "kr" ? "Asia/Seoul" : it?.flag === "jp" ? "Asia/Tokyo" : "Asia/Shanghai";
-  const p = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date());
-  const g = (t: string) => p.find((x) => x.type === t)?.value || "";
-  const wd = g("weekday");
-  if (wd === "Sat" || wd === "Sun") return false;
-  const m = (parseInt(g("hour"), 10) % 24) * 60 + parseInt(g("minute"), 10);
-  return (m >= 570 && m < 690) || (m >= 780 && m < 900); // 09:30–11:30, 13:00–15:00
+  return basketInSession(secid);
 }
 
 // ---------------- 期指持仓（中金所官方，最近已发布交易日） ----------------
